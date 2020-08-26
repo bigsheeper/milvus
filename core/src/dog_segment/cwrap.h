@@ -12,7 +12,7 @@ typedef void* CSegmentBase;
 
 CSegmentBase SegmentBaseInit();
 
-int32_t Insert(CSegmentBase c_segment, signed long int size, const unsigned int* primary_keys, const unsigned long int* timestamps, DogDataChunk values);
+int32_t Insert(CSegmentBase c_segment, signed long int size, const unsigned long* primary_keys, const unsigned long int* timestamps, DogDataChunk values);
 
 #ifdef __cplusplus
 }

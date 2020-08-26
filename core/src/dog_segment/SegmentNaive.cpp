@@ -1,6 +1,7 @@
 #include <shared_mutex>
 
 #include "dog_segment/SegmentBase.h"
+#include "dog_segment/SegmentDefs.h"
 #include "query/GeneralQuery.h"
 #include "utils/Status.h"
 #include <tbb/concurrent_vector.h>
@@ -130,6 +131,10 @@ class SegmentNaive : public SegmentBase {
  public:
     friend std::shared_ptr<SegmentBase>
     CreateSegment(SchemaPtr schema);
+
+    friend SegmentBase*
+    CreateSegment();
+
  private:
     SchemaPtr schema_;
     std::shared_mutex mutex_;
@@ -146,6 +151,16 @@ class SegmentNaive : public SegmentBase {
 std::shared_ptr<SegmentBase>
 CreateSegment(SchemaPtr schema) {
     auto segment = std::make_shared<SegmentNaive>();
+    segment->schema_ = schema;
+    segment->entity_vecs_.resize(schema->size());
+    return segment;
+}
+
+SegmentBase* CreateSegment() {
+    auto segment = new SegmentNaive();
+    auto schema = std::make_shared<Schema>();
+    schema->AddField("fakevec", DataType::VECTOR_FLOAT, 16);
+    schema->AddField("age", DataType::INT32);
     segment->schema_ = schema;
     segment->entity_vecs_.resize(schema->size());
     return segment;

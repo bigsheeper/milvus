@@ -93,5 +93,7 @@ using SegmentBasePtr = std::shared_ptr<SegmentBase>;
 
 std::shared_ptr<SegmentBase> CreateSegment(SchemaPtr ptr);
 
+SegmentBase* CreateSegment();
+
 }  // namespace engine
 }  // namespace milvus

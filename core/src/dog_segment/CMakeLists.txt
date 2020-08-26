@@ -11,3 +11,16 @@ target_sources( dog_segment PRIVATE
         )
 #add_dependencies( segment sqlite mysqlpp )
 target_link_libraries(dog_segment tbb)
+
+add_executable(main main.cpp)
+target_link_libraries(main
+        dog_segment
+        server
+        milvus_engine
+        metrics
+        config
+        stdc++
+        utils
+        tracing
+        query
+        log)

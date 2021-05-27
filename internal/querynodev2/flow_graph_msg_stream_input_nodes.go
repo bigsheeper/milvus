@@ -17,10 +17,9 @@ import (
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 )
 
-func (dsService *dataSyncService) newDmInputNode(ctx context.Context) *flowgraph.InputNode {
-	// query node doesn't need to consume any topic
+func (dsService *dataSyncService) newDmInputNode(ctx context.Context, channel VChannel, subName consumeSubName) *flowgraph.InputNode {
 	insertStream, _ := dsService.msFactory.NewTtMsgStream(ctx)
-	//dsService.dmStream = insertStream
+	insertStream.AsConsumer(toDirSubChannels, consumeSubName)
 
 	maxQueueLength := Params.FlowGraphMaxQueueLength
 	maxParallelism := Params.FlowGraphMaxParallelism

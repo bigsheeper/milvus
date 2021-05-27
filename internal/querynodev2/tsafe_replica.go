@@ -11,7 +11,11 @@
 
 package querynode
 
-import "sync"
+import (
+	"errors"
+	"github.com/milvus-io/milvus/internal/log"
+	"sync"
+)
 
 type TSafeReplicaInterface interface {
 	getTSafe(vChannel VChannel) Timestamp
@@ -29,17 +33,30 @@ type tSafeReplica struct {
 func (t *tSafeReplica) getTSafe(vChannel VChannel) Timestamp {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.getTSaferPrivate(vChannel).get()
+	safer, err := t.getTSaferPrivate(vChannel)
+	if err != nil {
+		return 0
+	}
+	return safer.get()
 }
 
 func (t *tSafeReplica) setTSafe(vChannel VChannel, timestamp Timestamp) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.getTSaferPrivate(vChannel).set(timestamp)
+	safer, err := t.getTSaferPrivate(vChannel)
+	if err != nil {
+		return
+	}
+	safer.set(timestamp)
 }
 
-func (t *tSafeReplica) getTSaferPrivate(vChannel VChannel) tSafer {
-	return t.tSafes[vChannel]
+func (t *tSafeReplica) getTSaferPrivate(vChannel VChannel) (tSafer, error) {
+	if _, ok := t.tSafes[vChannel]; !ok {
+		err := errors.New("cannot found tSafer, vChannel = " + vChannel)
+		log.Error(err.Error())
+		return nil, err
+	}
+	return t.tSafes[vChannel], nil
 }
 
 func (t *tSafeReplica) addTSafe(vChannel VChannel) {
@@ -51,8 +68,11 @@ func (t *tSafeReplica) addTSafe(vChannel VChannel) {
 func (t *tSafeReplica) removeTSafe(vChannel VChannel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	ts := t.getTSaferPrivate(vChannel)
-	ts.close()
+	safer, err := t.getTSaferPrivate(vChannel)
+	if err != nil {
+		return
+	}
+	safer.close()
 	delete(t.tSafes, vChannel)
 }
 

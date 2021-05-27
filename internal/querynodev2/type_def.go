@@ -21,11 +21,12 @@ const (
 )
 
 type (
-	UniqueID      = typeutil.UniqueID
-	Timestamp     = typeutil.Timestamp
-	IntPrimaryKey = typeutil.IntPrimaryKey
-	DSL           = string
-	VChannel      = string
+	UniqueID       = typeutil.UniqueID
+	Timestamp      = typeutil.Timestamp
+	IntPrimaryKey  = typeutil.IntPrimaryKey
+	DSL            = string
+	VChannel       = string
+	ConsumeSubName = string
 )
 
 type TimeRange struct {

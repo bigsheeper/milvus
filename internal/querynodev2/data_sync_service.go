@@ -15,27 +15,38 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/log"
-	"go.uber.org/zap"
 	"sync"
 
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 )
 
+type flowGraphType = int32
+
+const (
+	flowGraphTypeCollection = 0
+	flowGraphTypePartition  = 1
+)
+
 type dataSyncService struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx context.Context
 
 	mu                   sync.Mutex                                    // guards FlowGraphs
 	collectionFlowGraphs map[UniqueID][]*flowgraph.TimeTickedFlowGraph // map[collectionID]flowGraphs
-	partitionFlowGraphs  map[UniqueID]*flowgraph.TimeTickedFlowGraph   // map[partitionID]flowGraph
+	partitionFlowGraphs  map[UniqueID][]*flowgraph.TimeTickedFlowGraph // map[partitionID]flowGraph
 
-	msFactory        msgstream.Factory
 	streamingReplica ReplicaInterface
+	tSafeReplica     TSafeReplicaInterface
+	msFactory        msgstream.Factory
 }
 
-func (dsService *dataSyncService) addCollectionFlowGraph(collectionID UniqueID, vChannels []string) error {
+func (dsService *dataSyncService) addCollectionFlowGraph(collectionID UniqueID,
+	vChannels []string,
+	subName ConsumeSubName) error {
+
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
@@ -44,8 +55,9 @@ func (dsService *dataSyncService) addCollectionFlowGraph(collectionID UniqueID, 
 	}
 	dsService.collectionFlowGraphs[collectionID] = make([]*flowgraph.TimeTickedFlowGraph, 0)
 	for _, vChannel := range vChannels {
-		fmt.Println(vChannel)
-		newFlowGraph := dsService.newDataSyncFlowGraph()
+		// collection flow graph doesn't need partition id
+		partitionID := UniqueID(0)
+		newFlowGraph := dsService.newDataSyncFlowGraph(flowGraphTypeCollection, collectionID, partitionID, vChannel, subName)
 		dsService.collectionFlowGraphs[collectionID] = append(dsService.collectionFlowGraphs[collectionID], newFlowGraph)
 		// start flow graph
 		newFlowGraph.Start()
@@ -53,16 +65,24 @@ func (dsService *dataSyncService) addCollectionFlowGraph(collectionID UniqueID, 
 	return nil
 }
 
-func (dsService *dataSyncService) addPartitionFlowGraph(partitionID UniqueID) error {
+func (dsService *dataSyncService) addPartitionFlowGraph(collectionID UniqueID,
+	partitionID UniqueID,
+	vChannels []string,
+	subName ConsumeSubName) error {
+
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.partitionFlowGraphs[partitionID]; ok {
 		return errors.New("partition flow graph has been existed, partitionID = " + fmt.Sprintln(partitionID))
 	}
-	dsService.partitionFlowGraphs[partitionID] = dsService.newDataSyncFlowGraph()
-	// start flow graph
-	dsService.partitionFlowGraphs[partitionID].Start()
+	dsService.partitionFlowGraphs[partitionID] = make([]*flowgraph.TimeTickedFlowGraph, 0)
+	for _, vChannel := range vChannels {
+		newFlowGraph := dsService.newDataSyncFlowGraph(flowGraphTypePartition, collectionID, partitionID, vChannel, subName)
+		dsService.partitionFlowGraphs[partitionID] = append(dsService.partitionFlowGraphs[partitionID], newFlowGraph)
+		// start flow graph
+		newFlowGraph.Start()
+	}
 	return nil
 }
 
@@ -85,19 +105,33 @@ func (dsService *dataSyncService) removePartitionFlowGraph(partitionID UniqueID)
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.partitionFlowGraphs[partitionID]; ok {
-		// close flow graph
-		dsService.partitionFlowGraphs[partitionID].Close()
+		for _, fg := range dsService.partitionFlowGraphs[partitionID] {
+			// close flow graph
+			fg.Close()
+		}
+		dsService.partitionFlowGraphs[partitionID] = nil
 	}
 	delete(dsService.partitionFlowGraphs, partitionID)
 }
 
-func (dsService *dataSyncService) newDataSyncFlowGraph(channel VChannel) *flowgraph.TimeTickedFlowGraph {
+func (dsService *dataSyncService) newDataSyncFlowGraph(flowGraphType flowGraphType,
+	collectionID UniqueID,
+	partitionID UniqueID,
+	channel VChannel,
+	subName ConsumeSubName) *flowgraph.TimeTickedFlowGraph {
+
 	fg := flowgraph.NewTimeTickedFlowGraph(dsService.ctx)
 
-	var dmStreamNode node = dsService.newDmInputNode(dsService.ctx, channel)
-	var filterDmNode node = newFilteredDmNode(dsService.streamingReplica, dsService.collectionID)
-	var insertNode node = newInsertNode(dsService.streamingReplica, dsService.collectionID)
-	var serviceTimeNode node = newServiceTimeNode(dsService.ctx, dsService.streamingReplica, dsService.msFactory, dsService.collectionID)
+	var dmStreamNode node = dsService.newDmInputNode(dsService.ctx, channel, subName)
+	var filterDmNode node = newFilteredDmNode(dsService.streamingReplica,
+		flowGraphType,
+		collectionID,
+		partitionID)
+	var insertNode node = newInsertNode(dsService.streamingReplica)
+	var serviceTimeNode node = newServiceTimeNode(dsService.ctx,
+		dsService.tSafeReplica,
+		channel,
+		dsService.msFactory)
 
 	fg.AddNode(dmStreamNode)
 	fg.AddNode(filterDmNode)
@@ -141,4 +175,19 @@ func (dsService *dataSyncService) newDataSyncFlowGraph(channel VChannel) *flowgr
 	}
 
 	return fg
+}
+
+func newDataSyncService(ctx context.Context,
+	streamingReplica ReplicaInterface,
+	tSafeReplica TSafeReplicaInterface,
+	factory msgstream.Factory) *dataSyncService {
+
+	return &dataSyncService{
+		ctx:                  ctx,
+		collectionFlowGraphs: make(map[UniqueID][]*flowgraph.TimeTickedFlowGraph),
+		partitionFlowGraphs:  make(map[UniqueID][]*flowgraph.TimeTickedFlowGraph),
+		streamingReplica:     streamingReplica,
+		tSafeReplica:         tSafeReplica,
+		msFactory:            factory,
+	}
 }

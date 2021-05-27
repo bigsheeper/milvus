@@ -26,7 +26,6 @@ import (
 
 type insertNode struct {
 	baseNode
-	collectionID UniqueID
 	replica      ReplicaInterface
 }
 
@@ -159,12 +158,11 @@ func (iNode *insertNode) insert(insertData *InsertData, segmentID int64, wg *syn
 	}
 
 	log.Debug("Do insert done", zap.Int("len", len(insertData.insertIDs[segmentID])),
-		zap.Int64("segmentID", segmentID),
-		zap.Int64("collectionID", iNode.collectionID))
+		zap.Int64("segmentID", segmentID))
 	wg.Done()
 }
 
-func newInsertNode(replica ReplicaInterface, collectionID UniqueID) *insertNode {
+func newInsertNode(replica ReplicaInterface) *insertNode {
 	maxQueueLength := Params.FlowGraphMaxQueueLength
 	maxParallelism := Params.FlowGraphMaxParallelism
 
@@ -174,7 +172,6 @@ func newInsertNode(replica ReplicaInterface, collectionID UniqueID) *insertNode 
 
 	return &insertNode{
 		baseNode:     baseNode,
-		collectionID: collectionID,
 		replica:      replica,
 	}
 }

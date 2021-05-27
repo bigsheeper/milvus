@@ -25,8 +25,8 @@ import (
 
 type serviceTimeNode struct {
 	baseNode
-	collectionID      UniqueID
-	replica           ReplicaInterface
+	vChannel          VChannel
+	tSafeReplica      TSafeReplicaInterface
 	timeTickMsgStream msgstream.MsgStream
 }
 
@@ -57,13 +57,9 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 
 	// update service time
-	//ts := stNode.replica.getTSafe(stNode.collectionID)
-	//if ts != nil {
-	//	ts.set(serviceTimeMsg.timeRange.timestampMax)
-	//	//log.Debug("update tSafe:",
-	//	//	zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)),
-	//	//	zap.Int64("collectionID", stNode.collectionID))
-	//}
+	stNode.tSafeReplica.setTSafe(stNode.vChannel, serviceTimeMsg.timeRange.timestampMax)
+	//log.Debug("update tSafe:",
+	//	zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)))
 
 	if err := stNode.sendTimeTick(serviceTimeMsg.timeRange.timestampMax); err != nil {
 		log.Error("Error: send time tick into pulsar channel failed", zap.Error(err))
@@ -97,7 +93,11 @@ func (stNode *serviceTimeNode) sendTimeTick(ts Timestamp) error {
 	return stNode.timeTickMsgStream.Produce(&msgPack)
 }
 
-func newServiceTimeNode(ctx context.Context, replica ReplicaInterface, factory msgstream.Factory, collectionID UniqueID) *serviceTimeNode {
+func newServiceTimeNode(ctx context.Context,
+	tSafeReplica TSafeReplicaInterface,
+	channel VChannel,
+	factory msgstream.Factory) *serviceTimeNode {
+
 	maxQueueLength := Params.FlowGraphMaxQueueLength
 	maxParallelism := Params.FlowGraphMaxParallelism
 
@@ -107,12 +107,12 @@ func newServiceTimeNode(ctx context.Context, replica ReplicaInterface, factory m
 
 	timeTimeMsgStream, _ := factory.NewMsgStream(ctx)
 	timeTimeMsgStream.AsProducer([]string{Params.QueryTimeTickChannelName})
-	log.Debug("querynode AsProducer: " + Params.QueryTimeTickChannelName)
+	log.Debug("query node AsProducer: " + Params.QueryTimeTickChannelName)
 
 	return &serviceTimeNode{
 		baseNode:          baseNode,
-		collectionID:      collectionID,
-		replica:           replica,
+		vChannel:          channel,
+		tSafeReplica:      tSafeReplica,
 		timeTickMsgStream: timeTimeMsgStream,
 	}
 }

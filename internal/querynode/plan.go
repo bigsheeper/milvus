@@ -27,66 +27,66 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 )
 
-type Plan struct {
-	cPlan C.CPlan
+type searchPlan struct {
+	cSearchPlan C.CPlan
 }
 
-func createPlan(col *Collection, dsl string) (*Plan, error) {
+func createSearchPlan(col *Collection, dsl string) (*searchPlan, error) {
 	cDsl := C.CString(dsl)
 	defer C.free(unsafe.Pointer(cDsl))
 	var cPlan C.CPlan
 	status := C.CreatePlan(col.collectionPtr, cDsl, &cPlan)
 
-	err1 := HandleCStatus(&status, "Create Plan failed")
+	err1 := HandleCStatus(&status, "Create searchPlan failed")
 	if err1 != nil {
 		return nil, err1
 	}
 
-	var newPlan = &Plan{cPlan: cPlan}
+	var newPlan = &searchPlan{cSearchPlan: cPlan}
 	return newPlan, nil
 }
 
-func createPlanByExpr(col *Collection, expr []byte) (*Plan, error) {
+func createSearchPlanByExpr(col *Collection, expr []byte) (*searchPlan, error) {
 	var cPlan C.CPlan
 	status := C.CreatePlanByExpr(col.collectionPtr, (*C.char)(unsafe.Pointer(&expr[0])), (C.int64_t)(len(expr)), &cPlan)
 
-	err1 := HandleCStatus(&status, "Create Plan by expr failed")
+	err1 := HandleCStatus(&status, "Create searchPlan by expr failed")
 	if err1 != nil {
 		return nil, err1
 	}
 
-	var newPlan = &Plan{cPlan: cPlan}
+	var newPlan = &searchPlan{cSearchPlan: cPlan}
 	return newPlan, nil
 }
 
-func (plan *Plan) getTopK() int64 {
-	topK := C.GetTopK(plan.cPlan)
+func (plan *searchPlan) getTopK() int64 {
+	topK := C.GetTopK(plan.cSearchPlan)
 	return int64(topK)
 }
 
-func (plan *Plan) getMetricType() string {
-	cMetricType := C.GetMetricType(plan.cPlan)
+func (plan *searchPlan) getMetricType() string {
+	cMetricType := C.GetMetricType(plan.cSearchPlan)
 	defer C.free(unsafe.Pointer(cMetricType))
 	metricType := C.GoString(cMetricType)
 	return metricType
 }
 
-func (plan *Plan) delete() {
-	C.DeletePlan(plan.cPlan)
+func (plan *searchPlan) delete() {
+	C.DeletePlan(plan.cSearchPlan)
 }
 
 type searchRequest struct {
 	cPlaceholderGroup C.CPlaceholderGroup
 }
 
-func parseSearchRequest(plan *Plan, searchRequestBlob []byte) (*searchRequest, error) {
+func parseSearchRequest(plan *searchPlan, searchRequestBlob []byte) (*searchRequest, error) {
 	if len(searchRequestBlob) == 0 {
 		return nil, errors.New("empty search request")
 	}
 	var blobPtr = unsafe.Pointer(&searchRequestBlob[0])
 	blobSize := C.long(len(searchRequestBlob))
 	var cPlaceholderGroup C.CPlaceholderGroup
-	status := C.ParsePlaceholderGroup(plan.cPlan, blobPtr, blobSize, &cPlaceholderGroup)
+	status := C.ParsePlaceholderGroup(plan.cSearchPlan, blobPtr, blobSize, &cPlaceholderGroup)
 
 	if err := HandleCStatus(&status, "parser searchRequest failed"); err != nil {
 		return nil, err

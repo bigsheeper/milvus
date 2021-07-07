@@ -36,10 +36,44 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+const queryBufferSize = 1024
+
 type queryMsg interface {
 	msgstream.TsMsg
 	GuaranteeTs() Timestamp
 	TravelTs() Timestamp
+}
+
+type searchMessage struct {
+	*msgstream.SearchMsg
+	plan *searchPlan
+	reqs []*searchRequest
+}
+
+type retrieveMessage struct {
+	*msgstream.RetrieveMsg
+	plan *RetrievePlan
+}
+
+type queryResult interface {
+	ID() UniqueID
+	Type() msgstream.MsgType
+}
+
+type retrieveResult struct {
+	err              error
+	msg              *msgstream.RetrieveMsg
+	segmentRetrieved []UniqueID
+	res              []*segcorepb.RetrieveResults
+}
+
+type searchResult struct {
+	err                   error
+	msg                   *searchMessage
+	reqs                  []*searchRequest
+	searchResults         []*searchResultFromSegCore
+	matchedSegments       []*Segment
+	sealedSegmentSearched []UniqueID
 }
 
 type queryCollection struct {
@@ -111,6 +145,22 @@ func (q *queryCollection) close() {
 	if q.queryResultMsgStream != nil {
 		q.queryResultMsgStream.Close()
 	}
+}
+
+func (r *retrieveResult) Type() msgstream.MsgType {
+	return commonpb.MsgType_Retrieve
+}
+
+func (s *searchResult) Type() msgstream.MsgType {
+	return commonpb.MsgType_Search
+}
+
+func (r *retrieveResult) ID() UniqueID {
+	return r.msg.ID()
+}
+
+func (s *searchResult) ID() UniqueID {
+	return s.msg.ID()
 }
 
 func (q *queryCollection) register() {
@@ -725,16 +775,16 @@ func (q *queryCollection) search(msg queryMsg) error {
 		return err
 	}
 
-	var plan *Plan
+	var plan *searchPlan
 	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
 		expr := searchMsg.SerializedExprPlan
-		plan, err = createPlanByExpr(collection, expr)
+		plan, err = createSearchPlanByExpr(collection, expr)
 		if err != nil {
 			return err
 		}
 	} else {
 		dsl := searchMsg.Dsl
-		plan, err = createPlan(collection, dsl)
+		plan, err = createSearchPlan(collection, dsl)
 		if err != nil {
 			return err
 		}
@@ -767,7 +817,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	tr := timerecord.NewTimeRecorder(fmt.Sprintf("search %d(nq=%d, k=%d)", searchMsg.CollectionID, queryNum, topK))
 
-	searchResults := make([]*SearchResult, 0)
+	searchResults := make([]*searchResultFromSegCore, 0)
 	matchedSegments := make([]*Segment, 0)
 	sealedSegmentSearched := make([]UniqueID, 0)
 
@@ -787,7 +837,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	// streaming search
 	var err2 error
 	for _, channel := range collection.getVChannels() {
-		var strSearchResults []*SearchResult
+		var strSearchResults []*searchResultFromSegCore
 		var strSegmentResults []*Segment
 		strSearchResults, strSegmentResults, err2 = q.streaming.search(searchRequests, collectionID, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
 		if err2 != nil {

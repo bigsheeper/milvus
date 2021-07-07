@@ -1095,7 +1095,7 @@ func doInsert(ctx context.Context, collectionID UniqueID, partitionID UniqueID, 
 //	searchTimestamp := Timestamp(1020)
 //	collection, err := node.historical.replica.getCollectionByID(collectionID)
 //	assert.NoError(t, err)
-//	plan, err := createPlan(*collection, dslString)
+//	plan, err := createSearchPlan(*collection, dslString)
 //	assert.NoError(t, err)
 //	holder, err := parseSearchRequest(plan, placeHolderGroupBlob)
 //	assert.NoError(t, err)

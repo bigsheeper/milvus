@@ -426,14 +426,14 @@ func TestSegment_segmentSearch(t *testing.T) {
 	}
 
 	travelTimestamp := Timestamp(1020)
-	plan, err := createPlan(collection, dslString)
+	plan, err := createSearchPlan(collection, dslString)
 	assert.NoError(t, err)
 	holder, err := parseSearchRequest(plan, placeHolderGroupBlob)
 	assert.NoError(t, err)
 	placeholderGroups := make([]*searchRequest, 0)
 	placeholderGroups = append(placeholderGroups, holder)
 
-	searchResults := make([]*SearchResult, 0)
+	searchResults := make([]*searchResultFromSegCore, 0)
 	matchedSegments := make([]*Segment, 0)
 
 	searchResult, err := segment.segmentSearch(plan, placeholderGroups, []Timestamp{travelTimestamp})

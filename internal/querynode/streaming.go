@@ -65,10 +65,10 @@ func (s *streaming) search(searchReqs []*searchRequest,
 	collID UniqueID,
 	partIDs []UniqueID,
 	vChannel Channel,
-	plan *Plan,
-	searchTs Timestamp) ([]*SearchResult, []*Segment, error) {
+	plan *searchPlan,
+	searchTs Timestamp) ([]*searchResultFromSegCore, []*Segment, error) {
 
-	searchResults := make([]*SearchResult, 0)
+	searchResults := make([]*searchResultFromSegCore, 0)
 	segmentResults := make([]*Segment, 0)
 
 	// get streaming partition ids

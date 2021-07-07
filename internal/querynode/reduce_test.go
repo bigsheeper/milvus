@@ -63,14 +63,14 @@ func TestReduce_AllFunc(t *testing.T) {
 		log.Print("marshal placeholderGroup failed")
 	}
 
-	plan, err := createPlan(collection, dslString)
+	plan, err := createSearchPlan(collection, dslString)
 	assert.NoError(t, err)
 	holder, err := parseSearchRequest(plan, placeGroupByte)
 	assert.NoError(t, err)
 	placeholderGroups := make([]*searchRequest, 0)
 	placeholderGroups = append(placeholderGroups, holder)
 
-	searchResults := make([]*SearchResult, 0)
+	searchResults := make([]*searchResultFromSegCore, 0)
 	matchedSegment := make([]*Segment, 0)
 	searchResult, err := segment.segmentSearch(plan, placeholderGroups, []Timestamp{0})
 	assert.Nil(t, err)

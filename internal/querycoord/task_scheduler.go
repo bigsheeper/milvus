@@ -542,6 +542,8 @@ func (scheduler *TaskScheduler) scheduleLoop() {
 			}
 			log.Debug("scheduleLoop: trigger task done and delete from etcd", zap.Int64("taskID", t.ID()))
 			t.Notify(err)
+			scheduler.meta.printMeta()
+			scheduler.cluster.printMeta()
 		}
 	}
 }

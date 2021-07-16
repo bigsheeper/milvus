@@ -15,8 +15,11 @@ nohup ./bin/milvus run proxy > /tmp/proxy.log 2>&1 &
 echo "starting querycoord"
 nohup ./bin/milvus run querycoord > /tmp/querycoord.log 2>&1 &
 
-echo "starting querynode"
-nohup ./bin/milvus run querynode > /tmp/querynode.log 2>&1 &
+echo "starting querynode1"
+nohup ./bin/milvus run querynode --alias querynode:1 > /tmp/querynode1.log 2>&1 &
+
+echo "starting querynode1"
+nohup ./bin/milvus run querynode --alias querynode:2 > /tmp/querynode2.log 2>&1 &
 
 echo "starting indexcoord"
 nohup ./bin/milvus run indexcoord > /tmp/indexcoord.log 2>&1 &

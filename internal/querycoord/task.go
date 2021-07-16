@@ -1221,6 +1221,12 @@ func (lbt *LoadBalanceTask) Execute(ctx context.Context) error {
 				watchDmChannelReqs := make([]*querypb.WatchDmChannelsRequest, 0)
 
 				dmChannels, err := lbt.meta.getDmChannelsByNodeID(collectionID, nodeID)
+				log.Debug("loadBalanceTask getDmChannelsByNodeID",
+					zap.Any("collectionID", collectionID),
+					zap.Any("partitionIDs", partitionIDs),
+					zap.Any("dmChannels", dmChannels),
+					zap.Any("nodeID", nodeID),
+				)
 				if err != nil {
 					status.Reason = err.Error()
 					lbt.result = status
@@ -1241,6 +1247,12 @@ func (lbt *LoadBalanceTask) Execute(ctx context.Context) error {
 						lbt.result = status
 						return err
 					}
+					log.Debug("loadBalanceTask recoveryInfo",
+						zap.Any("collectionID", collectionID),
+						zap.Any("partitionID", partitionID),
+						zap.Any("recoveryInfo", recoveryInfo),
+						zap.Any("nodeID", nodeID),
+					)
 
 					for _, segmentBingLog := range recoveryInfo.Binlogs {
 						segmentID := segmentBingLog.SegmentID

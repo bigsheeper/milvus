@@ -162,7 +162,7 @@ func (c *queryNodeCluster) LoadSegments(ctx context.Context, nodeID int64, in *q
 		if err == nil && status.ErrorCode == commonpb.ErrorCode_Success {
 			for _, info := range in.Infos {
 				//c.clusterMeta.addCollection(info.CollectionID, in.Schema)
-				//c.clusterMeta.addPartition(info.CollectionID, info.PartitionID)
+				c.clusterMeta.addPartition(info.CollectionID, info.PartitionID)
 
 				node.addCollection(info.CollectionID, in.Schema)
 				node.addPartition(info.CollectionID, info.PartitionID)
@@ -497,8 +497,20 @@ func (c *queryNodeCluster) isOnService(nodeID int64) (bool, error) {
 }
 
 func (c *queryNodeCluster) printMeta() {
+	log.Debug("queryNodeCluster",
+		zap.Any("nodes length", len(c.nodes)),
+		)
 	for id, node := range c.nodes {
+		log.Debug("queryNodeCluster",
+			zap.Any("nodeID", id),
+			zap.Any("onService", node.onService),
+		)
 		if node.isOnService() {
+			log.Debug("queryNodeCluster",
+				zap.Any("nodeID", id),
+				zap.Any("collectionInfos length", len(node.collectionInfos)),
+				zap.Any("watchedQueryChannels length", len(node.watchedQueryChannels)),
+			)
 			for collectionID, info := range node.collectionInfos {
 				log.Debug("query coordinator cluster info: collectionInfo", zap.Int64("nodeID", id), zap.Int64("collectionID", collectionID), zap.Any("info", info))
 			}

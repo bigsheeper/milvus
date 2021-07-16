@@ -474,6 +474,11 @@ func (m *meta) getDmChannelsByNodeID(collectionID UniqueID, nodeID int64) ([]str
 				channels = append(channels, channelInfo.ChannelIDs...)
 			}
 		}
+		log.Debug("getDmChannelsByNodeID",
+			zap.Any("collectionID", collectionID),
+			zap.Any("nodeID", nodeID),
+			zap.Any("channels", channels),
+		)
 		return channels, nil
 	}
 
@@ -504,6 +509,12 @@ func (m *meta) addDmChannel(collectionID UniqueID, nodeID int64, channels []stri
 		err := m.saveCollectionInfo(collectionID, info)
 		if err != nil {
 			log.Error("save collectionInfo error", zap.Any("error", err.Error()), zap.Int64("collectionID", collectionID))
+		} else {
+			log.Debug("save collectionInfo",
+				zap.Any("collectionID", collectionID),
+				zap.Any("nodeID", nodeID),
+				zap.Any("channels", channels),
+			)
 		}
 	}
 

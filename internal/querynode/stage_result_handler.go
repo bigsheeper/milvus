@@ -206,7 +206,8 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 func (q *resultHandlerStage) mergeRetrieveResults(dataArr []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {
 	var final *segcorepb.RetrieveResults
 	for _, data := range dataArr {
-		if data == nil {
+		// skip empty result, it will break merge result
+		if data == nil || len(data.Offset) == 0 {
 			continue
 		}
 

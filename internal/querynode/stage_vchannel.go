@@ -112,7 +112,7 @@ func (q *vChannelStage) start() {
 					res:              res,
 				}
 				if err != nil {
-					log.Error("retrieve error in vChannelStage",
+					log.Warn("retrieve error in vChannelStage",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -131,7 +131,7 @@ func (q *vChannelStage) start() {
 					sealedSegmentSearched: sealedSegmentSearched,
 				}
 				if err != nil {
-					log.Error("search error in vChannelStage",
+					log.Warn("search error in vChannelStage",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -140,7 +140,7 @@ func (q *vChannelStage) start() {
 				q.queryOutput <- searchRes
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 			}
 
 			sp.Finish()
@@ -231,7 +231,7 @@ func (q *vChannelStage) search(searchMsg *searchMsg) ([]*SearchResult, []*Segmen
 		travelTimestamp)
 
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return nil, nil, nil, err
 	}
 

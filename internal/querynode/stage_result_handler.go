@@ -99,7 +99,7 @@ func (q *resultHandlerStage) start() {
 						q.reduceSearch(k)
 					default:
 						err := fmt.Errorf("resultHandlerStage receive invalid msgType = %d", msgType)
-						log.Error(err.Error())
+						log.Warn(err.Error())
 					}
 					delete(q.results, msg.ID())
 				}
@@ -113,7 +113,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 	collectionID := msg.CollectionID
 	collection, err := q.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
-		log.Error("reduceRetrieve failed, err = " + err.Error())
+		log.Warn("reduceRetrieve failed, err = " + err.Error())
 		return
 	}
 
@@ -149,7 +149,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 	for _, res := range q.results[msgID] {
 		retrieveRes, ok := res.(*retrieveResult)
 		if !ok {
-			log.Error("invalid retrieve result",
+			log.Warn("invalid retrieve result",
 				zap.Any("collectionID", q.collectionID),
 				zap.Any("msgID", msgID),
 			)
@@ -161,7 +161,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 
 	result, err := q.mergeRetrieveResults(mergeList)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return
 	}
 
@@ -284,7 +284,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	for _, res := range q.results[msgID] {
 		searchRes, ok := res.(*searchResult)
 		if !ok {
-			log.Error("invalid retrieve result",
+			log.Warn("invalid retrieve result",
 				zap.Any("collectionID", q.collectionID),
 				zap.Any("msgID", msgID),
 			)
@@ -306,12 +306,12 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	collectionID := msg.CollectionID
 	collection, err := q.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return
 	}
 	schema, err := typeutil.CreateSchemaHelper(collection.schema)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return
 	}
 
@@ -328,7 +328,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 			for i := 0; i < int(nq); i++ {
 				bs, err := proto.Marshal(hit)
 				if err != nil {
-					log.Error(err.Error())
+					log.Warn(err.Error())
 					return
 				}
 				nilHits[i] = bs
@@ -340,12 +340,12 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 
 			transformed, err := q.translateHits(schema, msg.OutputFieldsId, nilHits)
 			if err != nil {
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				return
 			}
 			byteBlobs, err := proto.Marshal(transformed)
 			if err != nil {
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				return
 			}
 
@@ -392,32 +392,32 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 		err := fillTargetEntry(plan, searchResults, matchedSegments, inReduced)
 		sp.LogFields(oplog.String("statistical time", "fillTargetEntry end"))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 		marshaledHits, err = reorganizeSingleSearchResult(plan, searchRequests, searchResults[0])
 		sp.LogFields(oplog.String("statistical time", "reorganizeSingleQueryResult end"))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 	} else {
 		err := reduceSearchResults(searchResults, numSegment, inReduced)
 		sp.LogFields(oplog.String("statistical time", "reduceSearchResults end"))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 		err = fillTargetEntry(plan, searchResults, matchedSegments, inReduced)
 		sp.LogFields(oplog.String("statistical time", "fillTargetEntry end"))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 		marshaledHits, err = reorganizeSearchResults(plan, searchRequests, searchResults, numSegment, inReduced)
 		sp.LogFields(oplog.String("statistical time", "reorganizeQueryResults end"))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 	}
@@ -425,7 +425,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	hitsBlob, err := marshaledHits.getHitsBlob()
 	sp.LogFields(oplog.String("statistical time", "getHitsBlob end"))
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return
 	}
 	tr.Record("reduce result done")
@@ -438,7 +438,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	for index := range searchRequests {
 		hitBlobSizePeerQuery, err := marshaledHits.hitBlobSizeInGroup(int64(index))
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 		hits := make([][]byte, len(hitBlobSizePeerQuery))
@@ -461,12 +461,12 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 
 		transformed, err := q.translateHits(schema, msg.OutputFieldsId, hits)
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 		byteBlobs, err := proto.Marshal(transformed)
 		if err != nil {
-			log.Error(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 

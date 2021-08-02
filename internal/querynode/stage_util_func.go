@@ -32,7 +32,7 @@ func publishQueryResult(msg msgstream.TsMsg, stream msgstream.MsgStream) {
 	msgPack.Msgs = append(msgPack.Msgs, msg)
 	err := stream.Produce(&msgPack)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 	}
 }
 
@@ -57,7 +57,7 @@ func publishFailedQueryResult(msg msgstream.TsMsg, errMsg string, stream msgstre
 	case commonpb.MsgType_Retrieve:
 		rm, ok := msg.(*msgstream.RetrieveMsg)
 		if !ok {
-			log.Error("type assertion failed",
+			log.Warn("type assertion failed",
 				zap.Any("msgID", msg.ID()),
 				zap.Any("expect type", "MsgType_Retrieve"),
 				zap.Any("actual type", reflect.TypeOf(msg)),
@@ -79,7 +79,7 @@ func publishFailedQueryResult(msg msgstream.TsMsg, errMsg string, stream msgstre
 	case commonpb.MsgType_Search:
 		sm, ok := msg.(*msgstream.SearchMsg)
 		if !ok {
-			log.Error("type assertion failed",
+			log.Warn("type assertion failed",
 				zap.Any("msgID", msg.ID()),
 				zap.Any("expect type", "MsgType_Search"),
 				zap.Any("actual type", reflect.TypeOf(msg)),
@@ -97,7 +97,7 @@ func publishFailedQueryResult(msg msgstream.TsMsg, errMsg string, stream msgstre
 		}
 		msgPack.Msgs = append(msgPack.Msgs, searchResultMsg)
 	default:
-		log.Error(fmt.Errorf("publish invalid msgType %d", msgType).Error())
+		log.Warn(fmt.Errorf("publish invalid msgType %d", msgType).Error())
 		return
 	}
 

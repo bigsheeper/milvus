@@ -125,7 +125,7 @@ func (q *unsolvedStage) start() {
 					res:              res,
 				}
 				if err != nil {
-					log.Error("retrieve error in unsolvedStage 's start",
+					log.Warn("retrieve error in unsolvedStage 's start",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -144,7 +144,7 @@ func (q *unsolvedStage) start() {
 					sealedSegmentSearched: sealedSegmentSearched,
 				}
 				if err != nil {
-					log.Error("search error in unsolvedStage 's start",
+					log.Warn("search error in unsolvedStage 's start",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -153,7 +153,7 @@ func (q *unsolvedStage) start() {
 				q.output <- searchRes
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 			}
 
 			sp.Finish()
@@ -248,7 +248,7 @@ func (q *unsolvedStage) doUnsolvedQueryMsg() {
 						res:              res,
 					}
 					if err != nil {
-						log.Error("retrieve error in unsolvedStage's unsolved",
+						log.Warn("retrieve error in unsolvedStage's unsolved",
 							zap.Any("collectionID", q.collectionID),
 							zap.Any("msgID", m.ID()),
 							zap.Error(err),
@@ -267,7 +267,7 @@ func (q *unsolvedStage) doUnsolvedQueryMsg() {
 						sealedSegmentSearched: sealedSegmentSearched,
 					}
 					if err != nil {
-						log.Error("search error in unsolvedStage 's unsolved",
+						log.Warn("search error in unsolvedStage 's unsolved",
 							zap.Any("collectionID", q.collectionID),
 							zap.Any("msgID", m.ID()),
 							zap.Error(err),
@@ -276,7 +276,7 @@ func (q *unsolvedStage) doUnsolvedQueryMsg() {
 					q.output <- searchRes
 				default:
 					err = fmt.Errorf("receive invalid msgType = %d", msgType)
-					log.Error(err.Error())
+					log.Warn(err.Error())
 					continue
 				}
 
@@ -462,7 +462,7 @@ func (q *unsolvedStage) search(searchMsg *searchMsg) ([]*SearchResult, []*Segmen
 		travelTimestamp)
 
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return nil, nil, nil, err
 	}
 

@@ -55,7 +55,7 @@ func (q *loadBalanceStage) start() {
 			//	if nodeID == info.SourceNodeID {
 			//		err := s.historical.replica.removeSegment(segmentID)
 			//		if err != nil {
-			//			log.Error("loadBalance failed when remove segment",
+			//			log.Warn("loadBalance failed when remove segment",
 			//				zap.Error(err),
 			//				zap.Any("segmentID", segmentID))
 			//		}
@@ -63,7 +63,7 @@ func (q *loadBalanceStage) start() {
 			//	if nodeID == info.DstNodeID {
 			//		segment, err := s.historical.replica.getSegmentByID(segmentID)
 			//		if err != nil {
-			//			log.Error("loadBalance failed when making segment on service",
+			//			log.Warn("loadBalance failed when making segment on service",
 			//				zap.Error(err),
 			//				zap.Any("segmentID", segmentID))
 			//			continue // not return, try to load balance all segment

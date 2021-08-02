@@ -89,11 +89,11 @@ func (q *requestHandlerStage) start() {
 				//)
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				continue
 			}
 			if collectionID != q.collectionID {
-				//log.Error("not target collection query request",
+				//log.Warn("not target collection query request",
 				//	zap.Any("collectionID", q.collectionID),
 				//	zap.Int64("target collectionID", collectionID),
 				//	zap.Int64("msgID", msg.ID()),
@@ -108,7 +108,7 @@ func (q *requestHandlerStage) start() {
 			// check if collection has been released
 			collection, err := q.historical.replica.getCollectionByID(collectionID)
 			if err != nil {
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				publishFailedQueryResult(msg, err.Error(), q.queryResultStream)
 				log.Debug("do query failed in receiveQueryMsg, publish failed query result",
 					zap.Int64("collectionID", collectionID),
@@ -120,7 +120,7 @@ func (q *requestHandlerStage) start() {
 			guaranteeTs := msg.GuaranteeTs()
 			if guaranteeTs >= collection.getReleaseTime() {
 				err = fmt.Errorf("retrieve failed, collection has been released, msgID = %d, collectionID = %d", msg.ID(), collectionID)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				publishFailedQueryResult(msg, err.Error(), q.queryResultStream)
 				log.Debug("do query failed in receiveQueryMsg, publish failed query result",
 					zap.Int64("collectionID", collectionID),
@@ -134,7 +134,7 @@ func (q *requestHandlerStage) start() {
 			case commonpb.MsgType_Retrieve:
 				plan, err := q.parseRetrievePlan(msg)
 				if err != nil {
-					log.Error(err.Error())
+					log.Warn(err.Error())
 					publishFailedQueryResult(msg, err.Error(), q.queryResultStream)
 					log.Debug("parseRetrievePlan failed, publish failed query result",
 						zap.Int64("collectionID", collectionID),
@@ -150,7 +150,7 @@ func (q *requestHandlerStage) start() {
 			case commonpb.MsgType_Search:
 				plan, reqs, err := q.parseSearchPlan(msg)
 				if err != nil {
-					log.Error(err.Error())
+					log.Warn(err.Error())
 					publishFailedQueryResult(msg, err.Error(), q.queryResultStream)
 					log.Debug("parseSearchPlan failed, publish failed query result",
 						zap.Int64("collectionID", collectionID),
@@ -166,7 +166,7 @@ func (q *requestHandlerStage) start() {
 				q.sendRequests(sm)
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 				continue
 			}
 			tr.Record("operation done")

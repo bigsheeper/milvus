@@ -87,7 +87,7 @@ func (q *historicalStage) start() {
 					res:              res,
 				}
 				if err != nil {
-					log.Error("retrieve error in historicalStage",
+					log.Warn("retrieve error in historicalStage",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -106,7 +106,7 @@ func (q *historicalStage) start() {
 					sealedSegmentSearched: sealedSegmentSearched,
 				}
 				if err != nil {
-					log.Error("search error in historicalStage",
+					log.Warn("search error in historicalStage",
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 						zap.Error(err),
@@ -115,7 +115,7 @@ func (q *historicalStage) start() {
 				q.output <- searchRes
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Error(err.Error())
+				log.Warn(err.Error())
 			}
 
 			sp.Finish()
@@ -207,7 +207,7 @@ func (q *historicalStage) search(searchMsg *searchMsg) ([]*SearchResult, []*Segm
 		searchMsg.plan,
 		travelTimestamp)
 	if err != nil {
-		log.Error(err.Error())
+		log.Warn(err.Error())
 		return nil, nil, nil, err
 	}
 

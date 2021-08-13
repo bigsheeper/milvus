@@ -71,7 +71,6 @@ func (nodeCtx *nodeCtx) Start(ctx context.Context, wg *sync.WaitGroup) {
 				)
 			}
 			wg.Done()
-			//fmt.Println(nodeCtx.node.Name(), "closed")
 			return
 		default:
 			// inputs from inputsMessages for Operate
@@ -107,7 +106,6 @@ func (nodeCtx *nodeCtx) Start(ctx context.Context, wg *sync.WaitGroup) {
 func (nodeCtx *nodeCtx) Close() {
 	for _, channel := range nodeCtx.inputChannels {
 		close(channel)
-		fmt.Println("close inputChannel")
 	}
 	nodeCtx.node.Close()
 }

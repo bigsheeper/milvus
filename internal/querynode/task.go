@@ -139,6 +139,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	)
 
 	// init replica
+	w.node.streaming.replica.initExcludedSegments(collectionID)
 	if hasCollectionInStreaming := w.node.streaming.replica.hasCollection(collectionID); !hasCollectionInStreaming {
 		err := w.node.streaming.replica.addCollection(collectionID, w.req.Schema)
 		if err != nil {
@@ -521,67 +522,70 @@ func (r *releasePartitionsTask) PreExecute(ctx context.Context) error {
 func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	log.Debug("receive release partition task",
 		zap.Any("collectionID", r.req.CollectionID),
-		zap.Any("partitionIDs", r.req.PartitionIDs))
+		zap.Any("partitionIDs", r.req.PartitionIDs),
+	)
 
 	const gracefulReleaseTime = 1
-	func() { // release synchronously
-		errMsg := "release partitions failed, collectionID = " + strconv.FormatInt(r.req.CollectionID, 10) + ", err = "
-		time.Sleep(gracefulReleaseTime * time.Second)
+	time.Sleep(gracefulReleaseTime * time.Second)
 
-		hCol, err := r.node.historical.replica.getCollectionByID(r.req.CollectionID)
-		if err != nil {
-			log.Warn(errMsg + err.Error())
-			return
+	log.Debug("start to release partitions",
+		zap.Any("collectionID", r.req.CollectionID),
+		zap.Any("partitionIDs", r.req.PartitionIDs),
+	)
+	errMsg := "release partitions failed, collectionID = " + strconv.FormatInt(r.req.CollectionID, 10) + ", err = "
+	hCol, err := r.node.historical.replica.getCollectionByID(r.req.CollectionID)
+	if err != nil {
+		log.Warn(errMsg + err.Error())
+		return err
+	}
+
+	sCol, err := r.node.streaming.replica.getCollectionByID(r.req.CollectionID)
+	if err != nil {
+		log.Warn(errMsg + err.Error())
+		return err
+	}
+
+	vChannels := sCol.getVChannels()
+	for _, id := range r.req.PartitionIDs {
+		if _, err = r.node.streaming.dataSyncService.getPartitionFlowGraphs(id, vChannels); err == nil {
+			r.node.streaming.dataSyncService.removePartitionFlowGraph(id)
+			// remove all tSafes of the target partition
+			for _, channel := range vChannels {
+				log.Debug("releasing tSafe in releasePartitionTask...",
+					zap.Any("collectionID", r.req.CollectionID),
+					zap.Any("partitionID", id),
+					zap.Any("vChannel", channel),
+				)
+				r.node.streaming.tSafeReplica.removeTSafe(channel)
+			}
 		}
 
-		sCol, err := r.node.streaming.replica.getCollectionByID(r.req.CollectionID)
-		if err != nil {
-			log.Warn(errMsg + err.Error())
-			return
+		hasPartitionInHistorical := r.node.historical.replica.hasPartition(id)
+		if hasPartitionInHistorical {
+			err = r.node.historical.replica.removePartition(id)
+			if err != nil {
+				// not return, try to release all partitions
+				log.Warn(errMsg + err.Error())
+			}
 		}
+		hCol.addReleasedPartition(id)
 
-		vChannels := sCol.getVChannels()
-		for _, id := range r.req.PartitionIDs {
-			if _, err = r.node.streaming.dataSyncService.getPartitionFlowGraphs(id, vChannels); err == nil {
-				r.node.streaming.dataSyncService.removePartitionFlowGraph(id)
-				// remove all tSafes of the target partition
-				for _, channel := range vChannels {
-					log.Debug("releasing tSafe in releasePartitionTask...",
-						zap.Any("collectionID", r.req.CollectionID),
-						zap.Any("partitionID", id),
-						zap.Any("vChannel", channel),
-					)
-					r.node.streaming.tSafeReplica.removeTSafe(channel)
-				}
+		hasPartitionInStreaming := r.node.streaming.replica.hasPartition(id)
+		if hasPartitionInStreaming {
+			err = r.node.streaming.replica.removePartition(id)
+			if err != nil {
+				log.Warn(errMsg + err.Error())
 			}
-
-			hasPartitionInHistorical := r.node.historical.replica.hasPartition(id)
-			if hasPartitionInHistorical {
-				err = r.node.historical.replica.removePartition(id)
-				if err != nil {
-					// not return, try to release all partitions
-					log.Warn(errMsg + err.Error())
-				}
-			}
-			hCol.addReleasedPartition(id)
-
-			hasPartitionInStreaming := r.node.streaming.replica.hasPartition(id)
-			if hasPartitionInStreaming {
-				err = r.node.streaming.replica.removePartition(id)
-				if err != nil {
-					log.Warn(errMsg + err.Error())
-				}
-			}
-			sCol.addReleasedPartition(id)
 		}
+		sCol.addReleasedPartition(id)
+	}
 
-		// release global segment info
-		r.node.historical.removeGlobalSegmentIDsByPartitionIds(r.req.PartitionIDs)
+	// release global segment info
+	r.node.historical.removeGlobalSegmentIDsByPartitionIds(r.req.PartitionIDs)
 
-		log.Debug("release partition task done",
-			zap.Any("collectionID", r.req.CollectionID),
-			zap.Any("partitionIDs", r.req.PartitionIDs))
-	}()
+	log.Debug("release partition task done",
+		zap.Any("collectionID", r.req.CollectionID),
+		zap.Any("partitionIDs", r.req.PartitionIDs))
 
 	log.Debug("release partition task done",
 		zap.Any("collectionID", r.req.CollectionID),

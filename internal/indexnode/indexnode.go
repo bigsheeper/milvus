@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/kv"
@@ -30,7 +29,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
-	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/trace"
@@ -50,8 +48,6 @@ type IndexNode struct {
 
 	kv      kv.BaseKV
 	session *sessionutil.Session
-
-	serviceClient types.IndexCoord // method factory
 
 	// Add callback functions at different stages
 	startCallbacks []func()
@@ -90,8 +86,8 @@ func (i *IndexNode) Register() error {
 
 func (i *IndexNode) Init() error {
 	connectEtcdFn := func() error {
-		etcdClient, err := clientv3.New(clientv3.Config{Endpoints: Params.EtcdEndpoints})
-		i.etcdKV = etcdkv.NewEtcdKV(etcdClient, Params.MetaRootPath)
+		etcdKV, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
+		i.etcdKV = etcdKV
 		return err
 	}
 	err := retry.Do(i.loopCtx, connectEtcdFn, retry.Attempts(300))
@@ -147,10 +143,6 @@ func (i *IndexNode) Stop() error {
 
 func (i *IndexNode) UpdateStateCode(code internalpb.StateCode) {
 	i.stateCode.Store(code)
-}
-
-func (i *IndexNode) SetIndexCoordClient(serviceClient types.IndexCoord) {
-	i.serviceClient = serviceClient
 }
 
 func (i *IndexNode) CreateIndex(ctx context.Context, request *indexpb.CreateIndexRequest) (*commonpb.Status, error) {

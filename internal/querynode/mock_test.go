@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	"github.com/golang/protobuf/proto"
-	"go.etcd.io/etcd/clientv3"
 	"go.uber.org/zap"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -191,12 +190,8 @@ func genMinioKV(ctx context.Context) (*minioKV.MinIOKV, error) {
 }
 
 func genEtcdKV() (*etcdkv.EtcdKV, error) {
-	etcdClient, err := clientv3.New(clientv3.Config{Endpoints: Params.EtcdEndpoints})
-	if err != nil {
-		return nil, err
-	}
-	etcdKV := etcdkv.NewEtcdKV(etcdClient, Params.MetaRootPath)
-	return etcdKV, nil
+	etcdKV, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
+	return etcdKV, err
 }
 
 func genFactory() (msgstream.Factory, error) {

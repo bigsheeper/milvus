@@ -1,4 +1,6 @@
-// Copyright (C) 2019-2020 Zilliz. All rights reserved.//// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// Copyright (C) 2019-2020 Zilliz. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
 // http://www.apache.org/licenses/LICENSE-2.0
@@ -20,7 +22,6 @@ import (
 	datanodeclient "github.com/milvus-io/milvus/internal/distributed/datanode/client"
 	rootcoordclient "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
 	"github.com/milvus-io/milvus/internal/logutil"
-	"go.etcd.io/etcd/clientv3"
 	"go.uber.org/zap"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -78,6 +79,7 @@ type Server struct {
 	serverLoopCancel context.CancelFunc
 	serverLoopWg     sync.WaitGroup
 	isServing        ServerState
+	helper           ServerHelper
 
 	kvClient        *etcdkv.EtcdKV
 	meta            *meta
@@ -98,11 +100,27 @@ type Server struct {
 	rootCoordClientCreator rootCoordCreatorFunc
 }
 
+type ServerHelper struct {
+	eventAfterHandleDataNodeTt func()
+}
+
+func defaultServerHelper() ServerHelper {
+	return ServerHelper{
+		eventAfterHandleDataNodeTt: func() {},
+	}
+}
+
 type Option func(svr *Server)
 
 func SetRootCoordCreator(creator rootCoordCreatorFunc) Option {
 	return func(svr *Server) {
 		svr.rootCoordClientCreator = creator
+	}
+}
+
+func SetServerHelper(helper ServerHelper) Option {
+	return func(svr *Server) {
+		svr.helper = helper
 	}
 }
 
@@ -115,6 +133,7 @@ func CreateServer(ctx context.Context, factory msgstream.Factory, opts ...Option
 		flushCh:                make(chan UniqueID, 1024),
 		dataClientCreator:      defaultDataNodeCreatorFunc,
 		rootCoordClientCreator: defaultRootCoordCreatorFunc,
+		helper:                 defaultServerHelper(),
 	}
 
 	for _, opt := range opts {
@@ -246,11 +265,12 @@ func (s *Server) startSegmentManager() {
 
 func (s *Server) initMeta() error {
 	connectEtcdFn := func() error {
-		etcdClient, err := clientv3.New(clientv3.Config{Endpoints: Params.EtcdEndpoints})
+		etcdKV, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
 		if err != nil {
 			return err
 		}
-		s.kvClient = etcdkv.NewEtcdKV(etcdClient, Params.MetaRootPath)
+
+		s.kvClient = etcdKV
 		s.meta, err = newMeta(s.kvClient)
 		if err != nil {
 			return err
@@ -352,6 +372,7 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 
 			ch := ttMsg.ChannelName
 			ts := ttMsg.Timestamp
+			s.segmentManager.ExpireAllocations(ch, ts)
 			segments, err := s.segmentManager.GetFlushableSegments(ctx, ch, ts)
 			if err != nil {
 				log.Warn("get flushable segments failed", zap.Error(err))
@@ -375,8 +396,8 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 			if len(segmentInfos) > 0 {
 				s.cluster.Flush(segmentInfos)
 			}
-			s.segmentManager.ExpireAllocations(ch, ts)
 		}
+		s.helper.eventAfterHandleDataNodeTt()
 	}
 }
 

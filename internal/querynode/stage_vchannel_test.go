@@ -25,7 +25,6 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 	defer cancel()
 
 	inputChan := make(chan queryMsg, queryBufferSize)
-	unsolvedChan := make(chan queryMsg, queryBufferSize)
 	resChan := make(chan queryResult, queryBufferSize)
 
 	s, err := genSimpleStreaming(ctx)
@@ -35,7 +34,6 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 		defaultCollectionID,
 		defaultVChannel,
 		inputChan,
-		unsolvedChan,
 		resChan,
 		s)
 	go vStage.start()
@@ -56,7 +54,6 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 		reqs: reqs,
 	}
 
-	// 1. output of resultResultHandlerStage
 	go func() {
 		inputChan <- msg
 	}()
@@ -65,16 +62,4 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 	assert.True(t, ok)
 	assert.NoError(t, sr.err)
 	assert.Equal(t, 0, len(sr.sealedSegmentSearched))
-
-	// 2. output of unsolvedStage
-	msg.GuaranteeTimestamp = Timestamp(1000)
-	go func() {
-		inputChan <- msg
-	}()
-	res2 := <-unsolvedChan
-	sr2, ok := res2.(*searchMsg)
-	assert.True(t, ok)
-	assert.Equal(t, defaultCollectionID, sr2.CollectionID)
-	assert.Equal(t, 1, len(sr2.PartitionIDs))
-	assert.Equal(t, defaultPartitionID, sr2.PartitionIDs[0])
 }

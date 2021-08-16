@@ -152,22 +152,13 @@ func (q *queryCollection) start() error {
 		q.vcm)
 
 	vcStages := make(map[Channel]*vChannelStage)
-	unsolvedStages := make(map[Channel]*unsolvedStage)
 	for _, c := range channels {
 		vcStages[c] = newVChannelStage(q.releaseCtx,
 			q.collectionID,
 			c,
 			vChannelChan[c],
-			unsolvedChan[c],
 			resChan,
 			q.streaming)
-		unsolvedStages[c] = newUnsolvedStage(q.releaseCtx,
-			q.collectionID,
-			c,
-			unsolvedChan[c],
-			resChan,
-			q.streaming,
-			q.queryResultMsgStream)
 	}
 	resStage := newResultHandlerStage(q.releaseCtx,
 		q.collectionID,
@@ -183,9 +174,6 @@ func (q *queryCollection) start() error {
 	go reqStage.start()
 	go hisStage.start()
 	for _, s := range vcStages {
-		go s.start()
-	}
-	for _, s := range unsolvedStages {
 		go s.start()
 	}
 	go resStage.start()

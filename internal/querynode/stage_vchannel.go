@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	oplog "github.com/opentracing/opentracing-go/log"
 	"go.uber.org/zap"
@@ -33,117 +34,246 @@ type vChannelStage struct {
 	collectionID UniqueID
 	vChannel     Channel
 
-	input          chan queryMsg
-	unsolvedOutput chan queryMsg
-	queryOutput    chan queryResult
+	input       chan queryMsg
+	queryOutput chan queryResult
 
 	streaming *streaming
+
+	unsolvedMsgMu sync.Mutex // guards unsolvedMsg
+	unsolvedMsg   []queryMsg
+
+	tSafeWatcher *tSafeWatcher
 }
 
 func newVChannelStage(ctx context.Context,
 	collectionID UniqueID,
 	vChannel Channel,
 	input chan queryMsg,
-	unsolvedOutput chan queryMsg,
 	queryOutput chan queryResult,
 	streaming *streaming) *vChannelStage {
 
 	return &vChannelStage{
-		ctx:            ctx,
-		collectionID:   collectionID,
-		vChannel:       vChannel,
-		input:          input,
-		unsolvedOutput: unsolvedOutput,
-		queryOutput:    queryOutput,
-		streaming:      streaming,
+		ctx:          ctx,
+		collectionID: collectionID,
+		vChannel:     vChannel,
+		input:        input,
+		queryOutput:  queryOutput,
+		streaming:    streaming,
 	}
 }
 
 func (q *vChannelStage) start() {
+	q.register()
 	for {
 		select {
 		case <-q.ctx.Done():
 			log.Debug("stop vChannelStage", zap.Int64("collectionID", q.collectionID))
 			return
 		case msg := <-q.input:
-			msgType := msg.Type()
-			sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
-			msg.SetTraceCtx(ctx)
-
-			// tSafe check
-			guaranteeTs := msg.GuaranteeTs()
-			serviceTime := q.streaming.tSafeReplica.getTSafe(q.vChannel)
-			if guaranteeTs > serviceTime {
-				gt, _ := tsoutil.ParseTS(guaranteeTs)
-				st, _ := tsoutil.ParseTS(serviceTime)
-				log.Debug("query node::vChannelStage: add to query unsolved",
-					zap.Any("collectionID", q.collectionID),
-					zap.Any("sm.GuaranteeTimestamp", gt),
-					zap.Any("serviceTime", st),
-					zap.Any("delta seconds", (guaranteeTs-serviceTime)/(1000*1000*1000)),
-					zap.Any("msgID", msg.ID()),
-					zap.Any("msgType", msg.Type()),
-				)
-				q.unsolvedOutput <- msg
-				sp.LogFields(
-					oplog.String("send to query unsolved", "send to query unsolved"),
-					oplog.Object("guarantee ts", gt),
-					oplog.Object("serviceTime", st),
-					oplog.Float64("delta seconds", float64(guaranteeTs-serviceTime)/(1000.0*1000.0*1000.0)),
-				)
-				sp.Finish()
-				continue
-			}
-
-			log.Debug("doing query in vChannelStage...",
-				zap.Any("collectionID", q.collectionID),
-				zap.Any("msgID", msg.ID()),
-				zap.Any("msgType", msgType),
-			)
-
-			switch msgType {
-			case commonpb.MsgType_Retrieve:
-				rm := msg.(*retrieveMsg)
-				segmentRetrieved, res, err := q.retrieve(rm)
-				retrieveRes := &retrieveResult{
-					msg:              rm,
-					err:              err,
-					segmentRetrieved: segmentRetrieved,
-					res:              res,
-				}
-				if err != nil {
-					log.Warn("retrieve error in vChannelStage",
-						zap.Any("collectionID", q.collectionID),
-						zap.Any("msgID", msg.ID()),
-						zap.Error(err),
-					)
-				}
-				q.queryOutput <- retrieveRes
-			case commonpb.MsgType_Search:
-				sm := msg.(*searchMsg)
-				searchResults, sealedSegmentSearched, err := q.search(sm)
-				searchRes := &searchResult{
-					reqs:                  sm.reqs,
-					msg:                   sm,
-					err:                   err,
-					searchResults:         searchResults,
-					sealedSegmentSearched: sealedSegmentSearched,
-				}
-				if err != nil {
-					log.Warn("search error in vChannelStage",
-						zap.Any("collectionID", q.collectionID),
-						zap.Any("msgID", msg.ID()),
-						zap.Error(err),
-					)
-				}
-				q.queryOutput <- searchRes
-			default:
-				err := fmt.Errorf("receive invalid msgType = %d", msgType)
-				log.Warn(err.Error())
-			}
-
-			sp.Finish()
+			q.receiveQueryMsg(msg)
+		case <-q.tSafeWatcher.notifyChan:
+			t := q.streaming.tSafeReplica.getTSafe(q.vChannel)
+			q.doUnsolvedQueryMsg(t)
 		}
+	}
+}
+
+func (q *vChannelStage) receiveQueryMsg(msg queryMsg) {
+	// tSafe check
+	guaranteeTs := msg.GuaranteeTs()
+	serviceTime := q.streaming.tSafeReplica.getTSafe(q.vChannel)
+	if guaranteeTs > serviceTime {
+		gt, _ := tsoutil.ParseTS(guaranteeTs)
+		st, _ := tsoutil.ParseTS(serviceTime)
+		log.Debug("query node::vChannelStage: add to query unsolved",
+			zap.Any("collectionID", q.collectionID),
+			zap.Any("sm.GuaranteeTimestamp", gt),
+			zap.Any("serviceTime", st),
+			zap.Any("delta seconds", (guaranteeTs-serviceTime)/(1000*1000*1000)),
+			zap.Any("msgID", msg.ID()),
+			zap.Any("msgType", msg.Type()),
+		)
+		q.addToUnsolvedMsg(msg)
+		return
+	}
+
+	log.Debug("doing query in receiveQueryMsg...",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("msgID", msg.ID()),
+		zap.Any("msgType", msg.Type()),
+	)
+	err := q.execute(msg)
+	if err != nil {
+		log.Debug("query failed in receiveQueryMsg",
+			zap.Int64("collectionID", q.collectionID),
+			zap.Int64("msgID", msg.ID()),
+			zap.Error(err),
+		)
+	} else {
+		log.Debug("query done in receiveQueryMsg",
+			zap.Int64("collectionID", q.collectionID),
+			zap.Int64("msgID", msg.ID()),
+		)
+	}
+}
+
+func (q *vChannelStage) doUnsolvedQueryMsg(serviceTime Timestamp) {
+	//st, _ := tsoutil.ParseTS(serviceTime)
+	//log.Debug("get tSafe from flow graph",
+	//	zap.Int64("collectionID", q.collectionID),
+	//	zap.Any("tSafe", st))
+	unSolvedMsg := make([]queryMsg, 0)
+	tempMsg := q.popAllUnsolvedMsg()
+
+	for _, m := range tempMsg {
+		guaranteeTs := m.GuaranteeTs()
+		gt, _ := tsoutil.ParseTS(guaranteeTs)
+		st, _ := tsoutil.ParseTS(serviceTime)
+		log.Debug("get query message from unsolvedMsg",
+			zap.Int64("collectionID", q.collectionID),
+			zap.Int64("msgID", m.ID()),
+			zap.Any("reqTime_p", gt),
+			zap.Any("serviceTime_p", st),
+			zap.Any("guaranteeTime_l", guaranteeTs),
+			zap.Any("serviceTime_l", serviceTime),
+		)
+		// release check
+		collection, err := q.streaming.replica.getCollectionByID(q.collectionID)
+		if err != nil {
+			q.queryError(m, err)
+			continue
+		}
+		if guaranteeTs >= collection.getReleaseTime() {
+			err = fmt.Errorf("collection has been released, msgID = %d, collectionID = %d", m.ID(), q.collectionID)
+			q.queryError(m, err)
+			continue
+		}
+		// service time check
+		if guaranteeTs <= serviceTime {
+			unSolvedMsg = append(unSolvedMsg, m)
+			continue
+		}
+		log.Debug("query node::doUnsolvedMsg: add to unsolvedMsg",
+			zap.Any("collectionID", q.collectionID),
+			zap.Any("sm.BeginTs", gt),
+			zap.Any("serviceTime", st),
+			zap.Any("delta seconds", (guaranteeTs-serviceTime)/(1000*1000*1000)),
+			zap.Any("msgID", m.ID()),
+		)
+		q.addToUnsolvedMsg(m)
+	}
+
+	if len(unSolvedMsg) <= 0 {
+		return
+	}
+	for _, msg := range unSolvedMsg {
+		log.Debug("doing query in doUnsolvedQueryMsg...",
+			zap.Any("collectionID", q.collectionID),
+			zap.Any("msgID", msg.ID()),
+			zap.Any("msgType", msg.Type()),
+		)
+		err := q.execute(msg)
+		if err != nil {
+			log.Debug("query failed in doUnsolvedQueryMsg",
+				zap.Int64("collectionID", q.collectionID),
+				zap.Int64("msgID", msg.ID()),
+				zap.Error(err),
+			)
+		} else {
+			log.Debug("query done in doUnsolvedQueryMsg",
+				zap.Int64("collectionID", q.collectionID),
+				zap.Int64("msgID", msg.ID()),
+			)
+		}
+	}
+	log.Debug("doUnsolvedMsg: do query done", zap.Int("num of query msg", len(unSolvedMsg)))
+}
+
+func (q *vChannelStage) execute(msg queryMsg) error {
+	msgType := msg.Type()
+	var err error
+	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
+	msg.SetTraceCtx(ctx)
+
+	switch msgType {
+	case commonpb.MsgType_Retrieve:
+		rm := msg.(*retrieveMsg)
+		segmentRetrieved, res, err := q.retrieve(rm)
+		retrieveRes := &retrieveResult{
+			msg:              rm,
+			err:              err,
+			segmentRetrieved: segmentRetrieved,
+			res:              res,
+		}
+		q.queryOutput <- retrieveRes
+	case commonpb.MsgType_Search:
+		sm := msg.(*searchMsg)
+		searchResults, sealedSegmentSearched, err := q.search(sm)
+		searchRes := &searchResult{
+			reqs:                  sm.reqs,
+			msg:                   sm,
+			err:                   err,
+			searchResults:         searchResults,
+			sealedSegmentSearched: sealedSegmentSearched,
+		}
+		q.queryOutput <- searchRes
+	default:
+		err = fmt.Errorf("receive invalid msgType = %d", msgType)
+		log.Warn(err.Error())
+	}
+
+	sp.Finish()
+	return err
+}
+
+func (q *vChannelStage) register() {
+	channel := q.vChannel
+	log.Debug("register tSafe watcher and init watcher select case",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("dml channel", q.vChannel),
+	)
+	q.tSafeWatcher = newTSafeWatcher()
+	q.streaming.tSafeReplica.registerTSafeWatcher(channel, q.tSafeWatcher)
+}
+
+func (q *vChannelStage) addToUnsolvedMsg(msg queryMsg) {
+	q.unsolvedMsgMu.Lock()
+	defer q.unsolvedMsgMu.Unlock()
+	q.unsolvedMsg = append(q.unsolvedMsg, msg)
+}
+
+func (q *vChannelStage) popAllUnsolvedMsg() []queryMsg {
+	q.unsolvedMsgMu.Lock()
+	defer q.unsolvedMsgMu.Unlock()
+	tmp := q.unsolvedMsg
+	q.unsolvedMsg = q.unsolvedMsg[:0]
+	return tmp
+}
+
+func (q *vChannelStage) queryError(msg queryMsg, err error) {
+	msgType := msg.Type()
+	log.Debug("queryError in unsolvedStage",
+		zap.Int64("collectionID", q.collectionID),
+		zap.Int64("msgID", msg.ID()),
+		zap.Error(err),
+	)
+
+	switch msgType {
+	case commonpb.MsgType_Retrieve:
+		rm := msg.(*retrieveMsg)
+		retrieveRes := &retrieveResult{
+			msg: rm,
+			err: err,
+		}
+		q.queryOutput <- retrieveRes
+	case commonpb.MsgType_Search:
+		sm := msg.(*searchMsg)
+		searchRes := &searchResult{
+			reqs: sm.reqs,
+			msg:  sm,
+			err:  err,
+		}
+		q.queryOutput <- searchRes
 	}
 }
 

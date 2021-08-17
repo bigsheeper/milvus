@@ -29,7 +29,8 @@ import (
 )
 
 type vChannelStage struct {
-	ctx context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	collectionID UniqueID
 	vChannel     Channel
@@ -52,8 +53,10 @@ func newVChannelStage(ctx context.Context,
 	queryOutput chan queryResult,
 	streaming *streaming) *vChannelStage {
 
+	ctx1, cancel := context.WithCancel(ctx)
 	return &vChannelStage{
-		ctx:          ctx,
+		ctx:          ctx1,
+		cancel:       cancel,
 		collectionID: collectionID,
 		vChannel:     vChannel,
 		input:        input,
@@ -76,6 +79,10 @@ func (q *vChannelStage) start() {
 			q.doUnsolvedQueryMsg(t)
 		}
 	}
+}
+
+func (q *vChannelStage) stop() {
+	q.cancel()
 }
 
 func (q *vChannelStage) receiveQueryMsg(msg queryMsg) {
@@ -203,6 +210,7 @@ func (q *vChannelStage) execute(msg queryMsg) error {
 			msg:              rm,
 			err:              err,
 			segmentRetrieved: segmentRetrieved,
+			vChannel:         q.vChannel,
 			res:              res,
 		}
 		q.queryOutput <- retrieveRes
@@ -215,6 +223,7 @@ func (q *vChannelStage) execute(msg queryMsg) error {
 			err:                   err,
 			searchResults:         searchResults,
 			sealedSegmentSearched: sealedSegmentSearched,
+			vChannel:              q.vChannel,
 		}
 		q.queryOutput <- searchRes
 	default:
@@ -262,16 +271,18 @@ func (q *vChannelStage) queryError(msg queryMsg, err error) {
 	case commonpb.MsgType_Retrieve:
 		rm := msg.(*retrieveMsg)
 		retrieveRes := &retrieveResult{
-			msg: rm,
-			err: err,
+			msg:      rm,
+			err:      err,
+			vChannel: q.vChannel,
 		}
 		q.queryOutput <- retrieveRes
 	case commonpb.MsgType_Search:
 		sm := msg.(*searchMsg)
 		searchRes := &searchResult{
-			reqs: sm.reqs,
-			msg:  sm,
-			err:  err,
+			reqs:     sm.reqs,
+			msg:      sm,
+			err:      err,
+			vChannel: q.vChannel,
 		}
 		q.queryOutput <- searchRes
 	}

@@ -43,7 +43,6 @@ type resultHandlerStage struct {
 
 	queryResultStream msgstream.MsgStream
 	input             chan queryResult
-	channelNum        *int32
 
 	results map[UniqueID][]queryResult // map[msgID]queryResults
 }
@@ -53,8 +52,7 @@ func newResultHandlerStage(ctx context.Context,
 	streaming *streaming,
 	historical *historical,
 	input chan queryResult,
-	queryResultStream msgstream.MsgStream,
-	channelNum *int32) *resultHandlerStage {
+	queryResultStream msgstream.MsgStream) *resultHandlerStage {
 
 	return &resultHandlerStage{
 		ctx:               ctx,
@@ -63,7 +61,6 @@ func newResultHandlerStage(ctx context.Context,
 		historical:        historical,
 		queryResultStream: queryResultStream,
 		input:             input,
-		channelNum:        channelNum,
 		results:           make(map[UniqueID][]queryResult),
 	}
 }
@@ -71,7 +68,6 @@ func newResultHandlerStage(ctx context.Context,
 func (q *resultHandlerStage) start() {
 	log.Debug("starting resultHandlerStage...",
 		zap.Any("collectionID", q.collectionID),
-		zap.Any("channelNum", q.channelNum),
 	)
 	for {
 		select {
@@ -88,8 +84,9 @@ func (q *resultHandlerStage) start() {
 			}
 			q.results[msg.ID()] = append(q.results[msg.ID()], msg)
 			for k, v := range q.results {
-				// channelNum + 1 = vChannels + historical
-				if int32(len(v)) == *q.channelNum+1 {
+				channelNum := v[0].ChannelNum()
+				// `channelNum + 1` means `vChannels + historical`
+				if len(v) == channelNum+1 {
 					// do reduce
 					msgType := v[0].Type()
 					switch msgType {
@@ -111,11 +108,6 @@ func (q *resultHandlerStage) start() {
 func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 	msg := q.results[msgID][0].(*retrieveResult).msg
 	collectionID := msg.CollectionID
-	collection, err := q.streaming.replica.getCollectionByID(collectionID)
-	if err != nil {
-		log.Warn("reduceRetrieve failed, err = " + err.Error())
-		return
-	}
 
 	log.Debug("reducing Retrieve result...",
 		zap.Any("collectionID", msg.CollectionID),
@@ -146,6 +138,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 
 	segmentRetrieved := make([]UniqueID, 0)
 	mergeList := make([]*segcorepb.RetrieveResults, 0)
+	channelsRetrieved := make([]Channel, 0)
 	for _, res := range q.results[msgID] {
 		retrieveRes, ok := res.(*retrieveResult)
 		if !ok {
@@ -157,6 +150,9 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 		}
 		segmentRetrieved = append(segmentRetrieved, retrieveRes.segmentRetrieved...)
 		mergeList = append(mergeList, retrieveRes.res...)
+		if channel := retrieveRes.vChannel; channel != "" {
+			channelsRetrieved = append(channelsRetrieved, channel)
+		}
 	}
 
 	result, err := q.mergeRetrieveResults(mergeList)
@@ -182,7 +178,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 			FieldsData:                result.FieldsData,
 			ResultChannelID:           msg.ResultChannelID,
 			SealedSegmentIDsRetrieved: segmentRetrieved,
-			ChannelIDsRetrieved:       collection.getVChannels(),
+			ChannelIDsRetrieved:       channelsRetrieved,
 			GlobalSealedSegmentIDs:    globalSealedSegments,
 		},
 	}
@@ -190,7 +186,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 	log.Debug("delete plan",
 		zap.Any("collectionID", msg.CollectionID),
 		zap.Any("msgID", msg.ID()),
-		zap.Any("vChannels", collection.getVChannels()),
+		zap.Any("vChannels", channelsRetrieved),
 	)
 	msg.plan.delete()
 
@@ -198,7 +194,7 @@ func (q *resultHandlerStage) reduceRetrieve(msgID UniqueID) {
 	log.Debug("QueryNode publish RetrieveResultMsg",
 		zap.Any("collectionID", msg.CollectionID),
 		zap.Any("msgID", msg.ID()),
-		zap.Any("vChannels", collection.getVChannels()),
+		zap.Any("vChannels", channelsRetrieved),
 		zap.Any("sealedSegmentRetrieved", segmentRetrieved),
 	)
 }
@@ -278,6 +274,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 
 	searchResults := make([]*SearchResult, 0)
 	sealedSegmentSearched := make([]UniqueID, 0)
+	channelsSearched := make([]Channel, 0)
 	defer deleteSearchResults(searchResults)
 
 	// append all results
@@ -292,6 +289,9 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 		}
 		searchResults = append(searchResults, searchRes.searchResults...)
 		sealedSegmentSearched = append(sealedSegmentSearched, searchRes.sealedSegmentSearched...)
+		if channel := searchRes.vChannel; channel != "" {
+			channelsSearched = append(channelsSearched, searchRes.vChannel)
+		}
 	}
 
 	log.Debug("check SealedSegments",
@@ -366,14 +366,14 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 					SlicedNumCount:           1,
 					MetricType:               plan.getMetricType(),
 					SealedSegmentIDsSearched: sealedSegmentSearched,
-					ChannelIDsSearched:       collection.getVChannels(), // TODO: get vChannels from collection or queryResults
+					ChannelIDsSearched:       channelsSearched,
 					GlobalSealedSegmentIDs:   globalSealedSegments,
 				},
 			}
 			log.Debug("QueryNode Empty SearchResultMsg",
 				zap.Any("collectionID", collection.ID()),
 				zap.Any("msgID", msg.ID()),
-				zap.Any("vChannels", collection.getVChannels()),
+				zap.Any("vChannels", channelsSearched),
 				zap.Any("sealedSegmentSearched", sealedSegmentSearched),
 			)
 			publishQueryResult(searchResultMsg, q.queryResultStream)
@@ -465,14 +465,14 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 				SlicedNumCount:           1,
 				MetricType:               plan.getMetricType(),
 				SealedSegmentIDsSearched: sealedSegmentSearched,
-				ChannelIDsSearched:       collection.getVChannels(),
+				ChannelIDsSearched:       channelsSearched,
 				GlobalSealedSegmentIDs:   globalSealedSegments,
 			},
 		}
 		log.Debug("QueryNode SearchResultMsg",
 			zap.Any("collectionID", collection.ID()),
 			zap.Any("msgID", msg.ID()),
-			zap.Any("vChannels", collection.getVChannels()),
+			zap.Any("vChannels", channelsSearched),
 			zap.Any("sealedSegmentSearched", sealedSegmentSearched),
 		)
 

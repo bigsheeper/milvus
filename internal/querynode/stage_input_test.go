@@ -25,7 +25,6 @@ func TestInputStage_InputStage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	lbOutput := make(chan *msgstream.LoadBalanceSegmentsMsg, queryBufferSize)
 	queryOutput := make(chan queryMsg, queryBufferSize)
 
 	stream, err := genQueryMsgStream(ctx)
@@ -34,7 +33,7 @@ func TestInputStage_InputStage(t *testing.T) {
 	stream.Start()
 	defer stream.Close()
 
-	iStage := newInputStage(ctx, defaultCollectionID, stream, lbOutput, queryOutput)
+	iStage := newInputStage(ctx, defaultCollectionID, stream, queryOutput)
 	go iStage.start()
 	err = produceSimpleSearchMsg(ctx)
 	assert.NoError(t, err)

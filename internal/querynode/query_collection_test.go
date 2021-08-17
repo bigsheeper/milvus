@@ -131,7 +131,7 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	streaming.close()
 }
 
-func TestQueryCollection_addVChannel(t *testing.T) {
+func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -174,25 +174,35 @@ func TestQueryCollection_addVChannel(t *testing.T) {
 	res, err := consumeSimpleSearchResult(stream)
 	assert.NoError(t, err)
 	assert.Equal(t, defaultTopK, len(res.Hits))
-	assert.Equal(t, 1, len(res.ChannelIDsSearched))
+	assert.Equal(t, 1, len(res.ChannelIDsSearched)) // defaultChannel
 	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
 	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])
 
 	// add channel and query again
 	newChan := "query-node-unittest-channel-1"
-	colInStreaming, err := streaming.replica.getCollectionByID(defaultCollectionID)
-	assert.NoError(t, err)
-	colInStreaming.addVChannels([]string{newChan})
 	err = queryCollection.addVChannelStage(newChan)
 	assert.NoError(t, err)
 
 	err = produceSimpleSearchMsg(ctx)
 	assert.NoError(t, err)
 
-	res2, err2 := consumeSimpleSearchResult(stream)
-	assert.NoError(t, err2)
-	assert.Equal(t, defaultTopK, len(res2.Hits))
-	assert.Equal(t, 2, len(res2.ChannelIDsSearched))
-	assert.Equal(t, 1, len(res2.SealedSegmentIDsSearched))
-	assert.Equal(t, defaultSegmentID, res2.SealedSegmentIDsSearched[0])
+	res, err = consumeSimpleSearchResult(stream)
+	assert.NoError(t, err)
+	assert.Equal(t, defaultTopK, len(res.Hits))
+	assert.Equal(t, 2, len(res.ChannelIDsSearched)) // defaultChannel + newChan
+	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
+	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])
+
+	// remove channel and query again
+	queryCollection.removeVChannelStage(newChan)
+
+	err = produceSimpleSearchMsg(ctx)
+	assert.NoError(t, err)
+
+	res, err = consumeSimpleSearchResult(stream)
+	assert.NoError(t, err)
+	assert.Equal(t, defaultTopK, len(res.Hits))
+	assert.Equal(t, 1, len(res.ChannelIDsSearched)) // defaultChannel
+	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
+	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])
 }

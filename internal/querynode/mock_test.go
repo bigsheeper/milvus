@@ -222,7 +222,7 @@ func genQueryMsgStream(ctx context.Context) (msgstream.MsgStream, error) {
 	return stream, nil
 }
 
-func genLocalChunkManager() (*storage.LocalChunkManager,error) {
+func genLocalChunkManager() (*storage.LocalChunkManager, error) {
 	p, err := Params.Load("storage.path")
 	if err != nil {
 		return nil, err

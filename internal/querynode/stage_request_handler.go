@@ -144,6 +144,7 @@ func (q *requestHandlerStage) start() {
 				}
 				rm := &retrieveMsg{
 					RetrieveMsg: msg.(*msgstream.RetrieveMsg),
+					channelNum:  q.getChannelNums(),
 					plan:        plan,
 				}
 				q.sendRequests(rm)
@@ -159,9 +160,10 @@ func (q *requestHandlerStage) start() {
 					)
 				}
 				sm := &searchMsg{
-					SearchMsg: msg.(*msgstream.SearchMsg),
-					plan:      plan,
-					reqs:      reqs,
+					SearchMsg:  msg.(*msgstream.SearchMsg),
+					channelNum: q.getChannelNums(),
+					plan:       plan,
+					reqs:       reqs,
 				}
 				q.sendRequests(sm)
 			default:
@@ -274,4 +276,9 @@ func (q *requestHandlerStage) parseRetrievePlan(msg queryMsg) (*RetrievePlan, er
 
 	plan, err := createRetrievePlan(collection, req, timestamp)
 	return plan, err
+}
+
+func (q *requestHandlerStage) getChannelNums() int {
+	// TODO: add loadBalanceMsg, and update channel nums dynamically here
+	return len(q.vChannelOutputs)
 }

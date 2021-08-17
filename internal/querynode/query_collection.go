@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -33,24 +32,28 @@ type queryMsg interface {
 
 type searchMsg struct {
 	*msgstream.SearchMsg
-	plan *SearchPlan
-	reqs []*searchRequest
+	channelNum int
+	plan       *SearchPlan
+	reqs       []*searchRequest
 }
 
 type retrieveMsg struct {
 	*msgstream.RetrieveMsg
-	plan *RetrievePlan
+	channelNum int
+	plan       *RetrievePlan
 }
 
 type queryResult interface {
 	ID() UniqueID
 	Type() msgstream.MsgType
+	ChannelNum() int // num of channels should be queried
 }
 
 type retrieveResult struct {
 	err              error
 	msg              *retrieveMsg
 	segmentRetrieved []UniqueID
+	vChannel         Channel
 	res              []*segcorepb.RetrieveResults
 }
 
@@ -60,6 +63,7 @@ type searchResult struct {
 	reqs                  []*searchRequest
 	searchResults         []*SearchResult
 	sealedSegmentSearched []UniqueID
+	vChannel              Channel
 }
 
 type queryCollection struct {
@@ -75,14 +79,12 @@ type queryCollection struct {
 
 	vcm *storage.VectorChunkManager
 
-	inputStage       *inputStage
-	loadBalanceStage *loadBalanceStage
-	reqStage         *requestHandlerStage
-	historicalStage  *historicalStage
-	vChannelStages   map[Channel]*vChannelStage
-	resStage         *resultHandlerStage
+	inputStage      *inputStage
+	reqStage        *requestHandlerStage
+	historicalStage *historicalStage
+	vChannelStages  map[Channel]*vChannelStage
+	resStage        *resultHandlerStage
 
-	channelNum   int32
 	vChannelChan map[Channel]chan queryMsg
 	resChan      chan queryResult
 }
@@ -124,18 +126,12 @@ func newQueryCollection(releaseCtx context.Context,
 	}
 	channels := col.getVChannels()
 
-	lbChan := make(chan *msgstream.LoadBalanceSegmentsMsg, queryBufferSize)
 	reqChan := make(chan queryMsg, queryBufferSize)
 	iStage := newInputStage(qc.releaseCtx,
 		qc.collectionID,
 		qc.queryMsgStream,
-		lbChan,
 		reqChan)
 	qc.inputStage = iStage
-	lbStage := newLoadBalanceStage(qc.releaseCtx,
-		qc.collectionID,
-		lbChan)
-	qc.loadBalanceStage = lbStage
 
 	hisChan := make(chan queryMsg, queryBufferSize)
 	qc.vChannelChan = make(map[Channel]chan queryMsg)
@@ -171,14 +167,12 @@ func newQueryCollection(releaseCtx context.Context,
 			qc.streaming)
 	}
 	qc.vChannelStages = vcStages
-	qc.channelNum = int32(len(channels))
 	resStage := newResultHandlerStage(qc.releaseCtx,
 		qc.collectionID,
 		qc.streaming,
 		qc.historical,
 		qc.resChan,
-		qc.queryResultMsgStream,
-		&qc.channelNum)
+		qc.queryResultMsgStream)
 	qc.resStage = resStage
 
 	return qc, nil
@@ -190,7 +184,6 @@ func (q *queryCollection) start() {
 
 	// start stages
 	go q.inputStage.start()
-	go q.loadBalanceStage.start()
 	go q.reqStage.start()
 	go q.historicalStage.start()
 	for _, s := range q.vChannelStages {
@@ -223,30 +216,39 @@ func (q *queryCollection) addVChannelStage(channel Channel) error {
 		q.streaming)
 
 	q.vChannelStages[channel] = stage
-	atomic.AddInt32(&q.channelNum, 1)
 	go stage.start()
 	return nil
 }
 
 func (q *queryCollection) removeVChannelStage(channel Channel) {
+	if _, ok := q.vChannelStages[channel]; ok {
+		q.vChannelStages[channel].stop()
+	}
 	delete(q.vChannelStages, channel)
 	delete(q.vChannelChan, channel)
-	atomic.AddInt32(&q.channelNum, -1)
 }
 
 // result functions
-func (r *retrieveResult) Type() msgstream.MsgType {
-	return commonpb.MsgType_Retrieve
-}
-
 func (s *searchResult) Type() msgstream.MsgType {
 	return commonpb.MsgType_Search
+}
+
+func (s *searchResult) ID() UniqueID {
+	return s.msg.ID()
+}
+
+func (s *searchResult) ChannelNum() int {
+	return s.msg.channelNum
+}
+
+func (r *retrieveResult) Type() msgstream.MsgType {
+	return commonpb.MsgType_Retrieve
 }
 
 func (r *retrieveResult) ID() UniqueID {
 	return r.msg.ID()
 }
 
-func (s *searchResult) ID() UniqueID {
-	return s.msg.ID()
+func (r *retrieveResult) ChannelNum() int {
+	return r.msg.channelNum
 }

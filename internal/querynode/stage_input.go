@@ -26,21 +26,18 @@ type inputStage struct {
 	collectionID UniqueID
 
 	queryStream msgstream.MsgStream
-	lbOutput    chan *msgstream.LoadBalanceSegmentsMsg
 	queryOutput chan queryMsg
 }
 
 func newInputStage(ctx context.Context,
 	collectionID UniqueID,
 	queryStream msgstream.MsgStream,
-	lbOutput chan *msgstream.LoadBalanceSegmentsMsg,
 	queryOutput chan queryMsg) *inputStage {
 
 	return &inputStage{
 		ctx:          ctx,
 		collectionID: collectionID,
 		queryStream:  queryStream,
-		lbOutput:     lbOutput,
 		queryOutput:  queryOutput,
 	}
 }
@@ -80,8 +77,6 @@ func (q *inputStage) start() {
 						zap.Any("collectionID", q.collectionID),
 						zap.Any("msgID", msg.ID()),
 					)
-				case *msgstream.LoadBalanceSegmentsMsg:
-					q.lbOutput <- sm
 				default:
 					log.Warn("unsupported msg type in search channel", zap.Any("msg", sm))
 				}

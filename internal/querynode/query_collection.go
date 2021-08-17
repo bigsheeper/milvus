@@ -13,6 +13,9 @@ package querynode
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync/atomic"
 
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -71,6 +74,17 @@ type queryCollection struct {
 	queryResultMsgStream msgstream.MsgStream
 
 	vcm *storage.VectorChunkManager
+
+	inputStage       *inputStage
+	loadBalanceStage *loadBalanceStage
+	reqStage         *requestHandlerStage
+	historicalStage  *historicalStage
+	vChannelStages   map[Channel]*vChannelStage
+	resStage         *resultHandlerStage
+
+	channelNum   int32
+	vChannelChan map[Channel]chan queryMsg
+	resChan      chan queryResult
 }
 
 type ResultEntityIds []UniqueID
@@ -82,7 +96,7 @@ func newQueryCollection(releaseCtx context.Context,
 	streaming *streaming,
 	factory msgstream.Factory,
 	lcm storage.ChunkManager,
-	rcm storage.ChunkManager) *queryCollection {
+	rcm storage.ChunkManager) (*queryCollection, error) {
 
 	queryStream, _ := factory.NewQueryMsgStream(releaseCtx)
 	queryResultStream, _ := factory.NewQueryMsgStream(releaseCtx)
@@ -103,82 +117,86 @@ func newQueryCollection(releaseCtx context.Context,
 		vcm: vcm,
 	}
 
-	return qc
-}
-
-func (q *queryCollection) start() error {
-	q.queryMsgStream.Start()
-	q.queryResultMsgStream.Start()
-
 	// create query stages
-	col, err := q.streaming.replica.getCollectionByID(q.collectionID)
+	col, err := qc.streaming.replica.getCollectionByID(qc.collectionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	channels := col.getVChannels()
 
 	lbChan := make(chan *msgstream.LoadBalanceSegmentsMsg, queryBufferSize)
 	reqChan := make(chan queryMsg, queryBufferSize)
-	iStage := newInputStage(q.releaseCtx,
-		q.collectionID,
-		q.queryMsgStream,
+	iStage := newInputStage(qc.releaseCtx,
+		qc.collectionID,
+		qc.queryMsgStream,
 		lbChan,
 		reqChan)
-	lbStage := newLoadBalanceStage(q.releaseCtx,
-		q.collectionID,
+	qc.inputStage = iStage
+	lbStage := newLoadBalanceStage(qc.releaseCtx,
+		qc.collectionID,
 		lbChan)
+	qc.loadBalanceStage = lbStage
 
 	hisChan := make(chan queryMsg, queryBufferSize)
-	vChannelChan := make(map[Channel]chan queryMsg)
-	unsolvedChan := make(map[Channel]chan queryMsg)
+	qc.vChannelChan = make(map[Channel]chan queryMsg)
 	for _, c := range channels {
-		vChannelChan[c] = make(chan queryMsg, queryBufferSize)
-		unsolvedChan[c] = make(chan queryMsg, queryBufferSize)
+		qc.vChannelChan[c] = make(chan queryMsg, queryBufferSize)
 	}
-	reqStage := newRequestHandlerStage(q.releaseCtx,
-		q.collectionID,
+	reqStage := newRequestHandlerStage(qc.releaseCtx,
+		qc.collectionID,
 		reqChan,
 		hisChan,
-		vChannelChan,
-		q.streaming,
-		q.historical,
-		q.queryResultMsgStream)
-	resChan := make(chan queryResult, queryBufferSize*(len(channels)+1)) // vChannels + historical
-	hisStage := newHistoricalStage(q.releaseCtx,
-		q.collectionID,
+		qc.vChannelChan,
+		qc.streaming,
+		qc.historical,
+		qc.queryResultMsgStream)
+	qc.reqStage = reqStage
+	// expand channel's capacity is not allowed
+	qc.resChan = make(chan queryResult, queryBufferSize*(len(channels)+1)) // vChannels + historical
+	hisStage := newHistoricalStage(qc.releaseCtx,
+		qc.collectionID,
 		hisChan,
-		resChan,
-		q.historical,
-		q.vcm)
+		qc.resChan,
+		qc.historical,
+		qc.vcm)
+	qc.historicalStage = hisStage
 
 	vcStages := make(map[Channel]*vChannelStage)
 	for _, c := range channels {
-		vcStages[c] = newVChannelStage(q.releaseCtx,
-			q.collectionID,
+		vcStages[c] = newVChannelStage(qc.releaseCtx,
+			qc.collectionID,
 			c,
-			vChannelChan[c],
-			resChan,
-			q.streaming)
+			qc.vChannelChan[c],
+			qc.resChan,
+			qc.streaming)
 	}
-	resStage := newResultHandlerStage(q.releaseCtx,
-		q.collectionID,
-		q.streaming,
-		q.historical,
-		resChan,
-		q.queryResultMsgStream,
-		len(channels))
+	qc.vChannelStages = vcStages
+	qc.channelNum = int32(len(channels))
+	resStage := newResultHandlerStage(qc.releaseCtx,
+		qc.collectionID,
+		qc.streaming,
+		qc.historical,
+		qc.resChan,
+		qc.queryResultMsgStream,
+		&qc.channelNum)
+	qc.resStage = resStage
+
+	return qc, nil
+}
+
+func (q *queryCollection) start() {
+	q.queryMsgStream.Start()
+	q.queryResultMsgStream.Start()
 
 	// start stages
-	go iStage.start()
-	go lbStage.start()
-	go reqStage.start()
-	go hisStage.start()
-	for _, s := range vcStages {
+	go q.inputStage.start()
+	go q.loadBalanceStage.start()
+	go q.reqStage.start()
+	go q.historicalStage.start()
+	for _, s := range q.vChannelStages {
 		go s.start()
 	}
-	go resStage.start()
-
-	return nil
+	go q.resStage.start()
 }
 
 func (q *queryCollection) close() {
@@ -190,6 +208,33 @@ func (q *queryCollection) close() {
 	}
 }
 
+// vChannel stage management
+func (q *queryCollection) addVChannelStage(channel Channel) error {
+	if _, ok := q.vChannelStages[channel]; ok {
+		return errors.New("vChannelStage has been existed, collectionID = " + fmt.Sprintln(q.collectionID) +
+			", vChannel = " + fmt.Sprintln(channel))
+	}
+	q.vChannelChan[channel] = make(chan queryMsg, queryBufferSize)
+	stage := newVChannelStage(q.releaseCtx,
+		q.collectionID,
+		channel,
+		q.vChannelChan[channel],
+		q.resChan,
+		q.streaming)
+
+	q.vChannelStages[channel] = stage
+	atomic.AddInt32(&q.channelNum, 1)
+	go stage.start()
+	return nil
+}
+
+func (q *queryCollection) removeVChannelStage(channel Channel) {
+	delete(q.vChannelStages, channel)
+	delete(q.vChannelChan, channel)
+	atomic.AddInt32(&q.channelNum, -1)
+}
+
+// result functions
 func (r *retrieveResult) Type() msgstream.MsgType {
 	return commonpb.MsgType_Retrieve
 }

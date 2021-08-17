@@ -63,7 +63,8 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	queryCollection := newQueryCollection(ctx, cancel, 0, historical, streaming, factory, nil, nil)
+	queryCollection, err := newQueryCollection(ctx, cancel, 0, historical, streaming, factory, nil, nil)
+	assert.NoError(t, err)
 
 	producerChannels := []string{"testResultChannel"}
 	queryCollection.queryResultMsgStream.AsProducer(producerChannels)
@@ -128,4 +129,70 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	queryCollection.close()
 	historical.close()
 	streaming.close()
+}
+
+func TestQueryCollection_addVChannel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	historical, err := genSimpleHistorical(ctx)
+	assert.NoError(t, err)
+
+	streaming, err := genSimpleStreaming(ctx)
+	assert.NoError(t, err)
+
+	fac, err := genFactory()
+	assert.NoError(t, err)
+
+	localChunkManager, err := genLocalChunkManager()
+	assert.NoError(t, err)
+
+	minioChunkManager, err := genMinioChunkManager(ctx)
+	assert.NoError(t, err)
+
+	queryCollection, err := newQueryCollection(ctx,
+		cancel,
+		defaultCollectionID,
+		historical,
+		streaming,
+		fac,
+		localChunkManager,
+		minioChunkManager)
+	assert.NoError(t, err)
+
+	queryCollection.queryMsgStream.AsConsumer([]Channel{defaultQueryChannel}, defaultSubName)
+	queryCollection.queryResultMsgStream.AsProducer([]Channel{defaultQueryResultChannel})
+
+	queryCollection.start()
+
+	err = produceSimpleSearchMsg(ctx)
+	assert.NoError(t, err)
+
+	stream, err := initConsumer(ctx)
+	assert.NoError(t, err)
+
+	res, err := consumeSimpleSearchResult(stream)
+	assert.NoError(t, err)
+	assert.Equal(t, defaultTopK, len(res.Hits))
+	assert.Equal(t, 1, len(res.ChannelIDsSearched))
+	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
+	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])
+
+	// add channel and query again
+	newChan := "query-node-unittest-channel-1"
+	colInStreaming, err := streaming.replica.getCollectionByID(defaultCollectionID)
+	assert.NoError(t, err)
+	colInStreaming.addVChannels([]string{newChan})
+	err = queryCollection.addVChannelStage(newChan)
+	assert.NoError(t, err)
+
+	err = produceSimpleSearchMsg(ctx)
+	assert.NoError(t, err)
+
+	res2, err2 := consumeSimpleSearchResult(stream)
+	assert.NoError(t, err2)
+	assert.Equal(t, defaultTopK, len(res2.Hits))
+	assert.Equal(t, 2, len(res2.ChannelIDsSearched))
+	assert.Equal(t, 1, len(res2.SealedSegmentIDsSearched))
+	assert.Equal(t, defaultSegmentID, res2.SealedSegmentIDsSearched[0])
 }

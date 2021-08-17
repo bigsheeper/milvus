@@ -47,7 +47,10 @@ func TestStageUtilFunc_PublishQueryResult(t *testing.T) {
 	}
 	publishQueryResult(resMsg, stream)
 
-	res, err := consumeSimpleSearchResult(ctx)
+	resStream, err := initConsumer(ctx)
+	assert.NoError(t, err)
+
+	res, err := consumeSimpleSearchResult(resStream)
 	assert.NoError(t, err)
 	assert.Equal(t, commonpb.ErrorCode_Success, res.Status.ErrorCode)
 	assert.Equal(t, commonpb.MsgType_SearchResult, res.SearchResults.Base.MsgType)

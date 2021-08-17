@@ -43,7 +43,7 @@ type resultHandlerStage struct {
 
 	queryResultStream msgstream.MsgStream
 	input             chan queryResult
-	channelNum        int
+	channelNum        *int32
 
 	results map[UniqueID][]queryResult // map[msgID]queryResults
 }
@@ -54,7 +54,7 @@ func newResultHandlerStage(ctx context.Context,
 	historical *historical,
 	input chan queryResult,
 	queryResultStream msgstream.MsgStream,
-	channelNum int) *resultHandlerStage {
+	channelNum *int32) *resultHandlerStage {
 
 	return &resultHandlerStage{
 		ctx:               ctx,
@@ -89,7 +89,7 @@ func (q *resultHandlerStage) start() {
 			q.results[msg.ID()] = append(q.results[msg.ID()], msg)
 			for k, v := range q.results {
 				// channelNum + 1 = vChannels + historical
-				if len(v) == q.channelNum+1 {
+				if int32(len(v)) == *q.channelNum+1 {
 					// do reduce
 					msgType := v[0].Type()
 					switch msgType {
@@ -366,7 +366,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 					SlicedNumCount:           1,
 					MetricType:               plan.getMetricType(),
 					SealedSegmentIDsSearched: sealedSegmentSearched,
-					ChannelIDsSearched:       collection.getVChannels(),
+					ChannelIDsSearched:       collection.getVChannels(), // TODO: get vChannels from collection or queryResults
 					GlobalSealedSegmentIDs:   globalSealedSegments,
 				},
 			}

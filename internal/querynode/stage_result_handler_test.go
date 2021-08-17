@@ -33,13 +33,14 @@ func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
 	stream.AsProducer([]string{defaultQueryResultChannel})
 	stream.Start()
 
+	channelNum := 0
 	resStage := newResultHandlerStage(ctx,
 		defaultCollectionID,
 		s,
 		h,
 		inputChan,
 		stream,
-		0)
+		&channelNum)
 	go resStage.start()
 
 	resMsg, err := genSimpleSearchResult()
@@ -48,7 +49,10 @@ func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
 		inputChan <- resMsg
 	}()
 
-	res, err := consumeSimpleSearchResult(ctx)
+	resStream, err := initConsumer(ctx)
+	assert.NoError(t, err)
+
+	res, err := consumeSimpleSearchResult(resStream)
 	assert.NoError(t, err)
 	assert.Equal(t, defaultTopK, len(res.Hits))
 	assert.Equal(t, 0, len(res.ChannelIDsSearched))

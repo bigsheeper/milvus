@@ -14,6 +14,8 @@ package querynode
 import "C"
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -91,14 +93,14 @@ func (q *queryService) close() {
 	q.cancel()
 }
 
-func (q *queryService) addQueryCollection(collectionID UniqueID) {
+func (q *queryService) addQueryCollection(collectionID UniqueID) error {
 	if _, ok := q.queryCollections[collectionID]; ok {
-		log.Warn("query collection already exists", zap.Any("collectionID", collectionID))
-		return
+		err := errors.New("query collection already exists, collectionID = " + fmt.Sprintln(collectionID))
+		return err
 	}
 
 	ctx1, cancel := context.WithCancel(q.ctx)
-	qc := newQueryCollection(ctx1,
+	qc, err := newQueryCollection(ctx1,
 		cancel,
 		collectionID,
 		q.historical,
@@ -106,7 +108,11 @@ func (q *queryService) addQueryCollection(collectionID UniqueID) {
 		q.factory,
 		q.lcm,
 		q.rcm)
+	if err != nil {
+		return err
+	}
 	q.queryCollections[collectionID] = qc
+	return nil
 }
 
 func (q *queryService) hasQueryCollection(collectionID UniqueID) bool {

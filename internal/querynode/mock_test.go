@@ -222,6 +222,24 @@ func genQueryMsgStream(ctx context.Context) (msgstream.MsgStream, error) {
 	return stream, nil
 }
 
+func genLocalChunkManager() (*storage.LocalChunkManager,error) {
+	p, err := Params.Load("storage.path")
+	if err != nil {
+		return nil, err
+	}
+	lcm := storage.NewLocalChunkManager(p)
+	return lcm, nil
+}
+
+func genMinioChunkManager(ctx context.Context) (*storage.MinioChunkManager, error) {
+	client, err := genMinioKV(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rcm := storage.NewMinioChunkManager(client)
+	return rcm, nil
+}
+
 // ---------- unittest util functions ----------
 // functions of inserting data init
 func genInsertData(msgLength int, schema *schemapb.CollectionSchema) (*storage.InsertData, error) {
@@ -480,6 +498,13 @@ func genSimpleHistorical(ctx context.Context) (*historical, error) {
 		return nil, err
 	}
 	h.replica = r
+	col, err := h.replica.getCollectionByID(defaultCollectionID)
+	if err != nil {
+		return nil, err
+	}
+	col.addVChannels([]Channel{
+		defaultVChannel,
+	})
 	return h, nil
 }
 
@@ -507,6 +532,14 @@ func genSimpleStreaming(ctx context.Context) (*streaming, error) {
 		return nil, err
 	}
 	s.replica = r
+	col, err := s.replica.getCollectionByID(defaultCollectionID)
+	if err != nil {
+		return nil, err
+	}
+	col.addVChannels([]Channel{
+		defaultVChannel,
+	})
+	s.tSafeReplica.addTSafe(defaultVChannel)
 	return s, nil
 }
 
@@ -709,17 +742,20 @@ func produceSimpleSearchMsg(ctx context.Context) error {
 	return nil
 }
 
-func consumeSimpleSearchResult(ctx context.Context) (*msgstream.SearchResultMsg, error) {
+func initConsumer(ctx context.Context) (msgstream.MsgStream, error) {
 	stream, err := genQueryMsgStream(ctx)
 	if err != nil {
 		return nil, err
 	}
 	stream.AsConsumer([]string{defaultQueryResultChannel}, defaultSubName)
 	stream.Start()
-	defer stream.Close()
+	return stream, nil
+}
+
+func consumeSimpleSearchResult(stream msgstream.MsgStream) (*msgstream.SearchResultMsg, error) {
 	res := stream.Consume()
 	if len(res.Msgs) != 1 {
-		err = errors.New("unexpected message length")
+		err := errors.New("unexpected message length")
 		return nil, err
 	}
 	return res.Msgs[0].(*msgstream.SearchResultMsg), nil

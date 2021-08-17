@@ -9,27 +9,10 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package mqclient
+package metricsinfo
 
-import (
-	"context"
+import "errors"
 
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
-)
+const MsgUnimplementedMetric = "sorry, but this metric type is not implemented"
 
-type rmqProducer struct {
-	p rocksmq.Producer
-}
-
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
-}
-
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
-
-func (rp *rmqProducer) Close() {
-
-}
+var ErrUnimplementedMetric = errors.New(MsgUnimplementedMetric)

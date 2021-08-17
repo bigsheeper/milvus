@@ -12,24 +12,20 @@
 package mqclient
 
 import (
-	"context"
+	"fmt"
+	"testing"
 
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/stretchr/testify/assert"
 )
 
-type rmqProducer struct {
-	p rocksmq.Producer
-}
+func TestPatchEarliestMessageID(t *testing.T) {
+	mid := pulsar.EarliestMessageID()
 
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
-}
+	// String() -> ledgerID:entryID:partitionIdx
+	assert.Equal(t, "-1:-1:-1", fmt.Sprintf("%v", mid))
 
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
+	patchEarliestMessageID(&mid)
 
-func (rp *rmqProducer) Close() {
-
+	assert.Equal(t, "-1:-1:0", fmt.Sprintf("%v", mid))
 }

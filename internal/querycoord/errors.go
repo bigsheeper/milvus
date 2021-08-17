@@ -9,27 +9,21 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package mqclient
+package querycoord
 
 import (
-	"context"
-
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"errors"
+	"fmt"
 )
 
-type rmqProducer struct {
-	p rocksmq.Producer
+func errQueryNodeIsNotOnService(id UniqueID) error {
+	return fmt.Errorf("query node %d is not on service", id)
 }
 
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
+func msgQueryCoordIsUnhealthy(coordID UniqueID) string {
+	return fmt.Sprintf("QueryCoord %d is not ready", coordID)
 }
 
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
-
-func (rp *rmqProducer) Close() {
-
+func errQueryCoordIsUnhealthy(coordID UniqueID) error {
+	return errors.New(msgQueryCoordIsUnhealthy(coordID))
 }

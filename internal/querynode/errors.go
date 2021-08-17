@@ -9,27 +9,17 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package mqclient
+package querynode
 
 import (
-	"context"
-
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"errors"
+	"fmt"
 )
 
-type rmqProducer struct {
-	p rocksmq.Producer
+func msgQueryNodeIsUnhealthy(nodeID UniqueID) string {
+	return fmt.Sprintf("query node %d is not ready", nodeID)
 }
 
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
-}
-
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
-
-func (rp *rmqProducer) Close() {
-
+func errQueryNodeIsUnhealthy(nodeID UniqueID) error {
+	return errors.New(msgQueryNodeIsUnhealthy(nodeID))
 }

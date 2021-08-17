@@ -9,27 +9,27 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package mqclient
+package metricsinfo
 
 import (
-	"context"
-
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"encoding/json"
+	"fmt"
 )
 
-type rmqProducer struct {
-	p rocksmq.Producer
-}
+const (
+	MetricTypeKey     = "metric_type"
+	SystemInfoMetrics = "system_info"
+)
 
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
-}
-
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
-
-func (rp *rmqProducer) Close() {
-
+func ParseMetricType(req string) (string, error) {
+	m := make(map[string]interface{})
+	err := json.Unmarshal([]byte(req), &m)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode the request: %s", err.Error())
+	}
+	metricType, exist := m[MetricTypeKey]
+	if !exist {
+		return "", fmt.Errorf("%s not found in request", MetricTypeKey)
+	}
+	return metricType.(string), nil
 }

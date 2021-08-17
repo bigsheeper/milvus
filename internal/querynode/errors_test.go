@@ -9,27 +9,25 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package mqclient
+package querynode
 
 import (
-	"context"
+	"testing"
 
-	"github.com/milvus-io/milvus/internal/util/rocksmq/client/rocksmq"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 )
 
-type rmqProducer struct {
-	p rocksmq.Producer
+func TestMsgQueryNodeIsUnhealthy(t *testing.T) {
+	nodeIDList := []UniqueID{1, 2, 3}
+	for _, nodeID := range nodeIDList {
+		log.Info("TestMsgQueryNodeIsUnhealthy", zap.String("msg", msgQueryNodeIsUnhealthy(nodeID)))
+	}
 }
 
-func (rp *rmqProducer) Topic() string {
-	return rp.p.Topic()
-}
-
-func (rp *rmqProducer) Send(ctx context.Context, message *ProducerMessage) error {
-	pm := &rocksmq.ProducerMessage{Payload: message.Payload}
-	return rp.p.Send(pm)
-}
-
-func (rp *rmqProducer) Close() {
-
+func TestErrQueryNodeIsUnhealthy(t *testing.T) {
+	nodeIDList := []UniqueID{1, 2, 3}
+	for _, nodeID := range nodeIDList {
+		log.Info("TestErrQueryNodeIsUnhealthy", zap.Error(errQueryNodeIsUnhealthy(nodeID)))
+	}
 }

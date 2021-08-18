@@ -36,7 +36,7 @@ type historicalStage struct {
 	output chan queryResult
 
 	historical *historical
-	vcm        *storage.VectorChunkManager
+	vcm        storage.ChunkManager
 }
 
 func newHistoricalStage(ctx context.Context,
@@ -44,7 +44,7 @@ func newHistoricalStage(ctx context.Context,
 	input chan queryMsg,
 	output chan queryResult,
 	historical *historical,
-	vcm *storage.VectorChunkManager) *historicalStage {
+	vcm storage.ChunkManager) *historicalStage {
 
 	return &historicalStage{
 		ctx:          ctx,

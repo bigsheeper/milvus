@@ -63,7 +63,7 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	queryCollection, err := newQueryCollection(ctx, cancel, 0, historical, streaming, factory, nil, nil)
+	queryCollection, err := newQueryCollection(ctx, cancel, 0, historical, streaming, factory, nil)
 	assert.NoError(t, err)
 
 	producerChannels := []string{"testResultChannel"}
@@ -144,10 +144,7 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
-	localChunkManager, err := genLocalChunkManager()
-	assert.NoError(t, err)
-
-	minioChunkManager, err := genMinioChunkManager(ctx)
+	chunkManager, err := genChunkManager(ctx)
 	assert.NoError(t, err)
 
 	queryCollection, err := newQueryCollection(ctx,
@@ -156,8 +153,7 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 		historical,
 		streaming,
 		fac,
-		localChunkManager,
-		minioChunkManager)
+		chunkManager)
 	assert.NoError(t, err)
 
 	queryChannel := genQueryChannel()

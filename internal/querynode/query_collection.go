@@ -72,13 +72,14 @@ type queryCollection struct {
 	cancel     context.CancelFunc
 
 	collectionID UniqueID
+	collection   *Collection
 	historical   *historical
 	streaming    *streaming
 
 	queryMsgStream       msgstream.MsgStream
 	queryResultMsgStream msgstream.MsgStream
 
-	vcm *storage.VectorChunkManager
+	vcm storage.ChunkManager
 
 	inputStage      *inputStage
 	reqStage        *requestHandlerStage
@@ -98,19 +99,19 @@ func newQueryCollection(releaseCtx context.Context,
 	historical *historical,
 	streaming *streaming,
 	factory msgstream.Factory,
-	lcm storage.ChunkManager,
-	rcm storage.ChunkManager) (*queryCollection, error) {
+	vcm storage.ChunkManager) (*queryCollection, error) {
 
 	queryStream, _ := factory.NewQueryMsgStream(releaseCtx)
 	queryResultStream, _ := factory.NewQueryMsgStream(releaseCtx)
 
-	vcm := storage.NewVectorChunkManager(lcm, rcm)
+	collection, _ := streaming.replica.getCollectionByID(collectionID)
 
 	qc := &queryCollection{
 		releaseCtx: releaseCtx,
 		cancel:     cancel,
 
 		collectionID: collectionID,
+		collection:   collection,
 		historical:   historical,
 		streaming:    streaming,
 

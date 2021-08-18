@@ -222,22 +222,25 @@ func genQueryMsgStream(ctx context.Context) (msgstream.MsgStream, error) {
 	return stream, nil
 }
 
-func genLocalChunkManager() (*storage.LocalChunkManager, error) {
+func genChunkManager(ctx context.Context) (storage.ChunkManager, error) {
 	p, err := Params.Load("storage.path")
 	if err != nil {
 		return nil, err
 	}
 	lcm := storage.NewLocalChunkManager(p)
-	return lcm, nil
-}
 
-func genMinioChunkManager(ctx context.Context) (*storage.MinioChunkManager, error) {
 	client, err := genMinioKV(ctx)
 	if err != nil {
 		return nil, err
 	}
 	rcm := storage.NewMinioChunkManager(client)
-	return rcm, nil
+
+	schema, _ := genSimpleSchema()
+	vcm := storage.NewVectorChunkManager(lcm, rcm, &etcdpb.CollectionMeta{
+		ID:     defaultCollectionID,
+		Schema: schema,
+	}, false)
+	return vcm, nil
 }
 
 // ---------- unittest util functions ----------

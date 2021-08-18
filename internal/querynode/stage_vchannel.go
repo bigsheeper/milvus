@@ -17,14 +17,12 @@ import (
 	"fmt"
 	"sync"
 
-	oplog "github.com/opentracing/opentracing-go/log"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
-	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 )
 
@@ -199,8 +197,6 @@ func (q *vChannelStage) doUnsolvedQueryMsg(serviceTime Timestamp) {
 func (q *vChannelStage) execute(msg queryMsg) error {
 	msgType := msg.Type()
 	var err error
-	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
-	msg.SetTraceCtx(ctx)
 
 	switch msgType {
 	case commonpb.MsgType_Retrieve:
@@ -231,7 +227,6 @@ func (q *vChannelStage) execute(msg queryMsg) error {
 		log.Warn(err.Error())
 	}
 
-	sp.Finish()
 	return err
 }
 
@@ -335,10 +330,6 @@ func (q *vChannelStage) retrieve(retrieveMsg *retrieveMsg) ([]UniqueID, []*segco
 }
 
 func (q *vChannelStage) search(searchMsg *searchMsg) ([]*SearchResult, []UniqueID, error) {
-	sp, ctx := trace.StartSpanFromContext(searchMsg.TraceCtx())
-	defer sp.Finish()
-	searchMsg.SetTraceCtx(ctx)
-
 	travelTimestamp := searchMsg.TravelTimestamp
 	collectionID := searchMsg.CollectionID
 
@@ -348,16 +339,6 @@ func (q *vChannelStage) search(searchMsg *searchMsg) ([]*SearchResult, []UniqueI
 	}
 	queryNum := searchMsg.reqs[0].getNumOfQuery()
 	topK := searchMsg.plan.getTopK()
-
-	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
-		sp.LogFields(oplog.String("statistical time", "stats start"),
-			oplog.Object("nq", queryNum),
-			oplog.Object("expr", searchMsg.SerializedExprPlan))
-	} else {
-		sp.LogFields(oplog.String("statistical time", "stats start"),
-			oplog.Object("nq", queryNum),
-			oplog.Object("dsl", searchMsg.Dsl))
-	}
 
 	tr := timerecord.NewTimeRecorder(fmt.Sprintf("search %d(nq=%d, k=%d)", searchMsg.CollectionID, queryNum, topK))
 	sealedSegmentSearched := make([]UniqueID, 0)
@@ -376,7 +357,6 @@ func (q *vChannelStage) search(searchMsg *searchMsg) ([]*SearchResult, []UniqueI
 	}
 
 	tr.Record("streaming search done")
-	sp.LogFields(oplog.String("statistical time", "streaming search done"))
 	tr.Elapse("all done")
 	return strSearchResults, sealedSegmentSearched, nil
 }

@@ -160,16 +160,20 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 		minioChunkManager)
 	assert.NoError(t, err)
 
-	queryCollection.queryMsgStream.AsConsumer([]Channel{defaultQueryChannel}, defaultSubName)
-	queryCollection.queryResultMsgStream.AsProducer([]Channel{defaultQueryResultChannel})
+	queryChannel := genQueryChannel()
+	queryResChannel := genQueryResultChannel()
+	queryCollection.queryMsgStream.AsConsumer([]Channel{queryChannel}, defaultSubName)
+	queryCollection.queryResultMsgStream.AsProducer([]Channel{queryResChannel})
 
 	queryCollection.start()
+	defer queryCollection.close()
 
-	err = produceSimpleSearchMsg(ctx)
+	err = produceSimpleSearchMsg(ctx, queryChannel)
 	assert.NoError(t, err)
 
-	stream, err := initConsumer(ctx)
+	stream, err := initConsumer(ctx, queryResChannel)
 	assert.NoError(t, err)
+	defer stream.Close()
 
 	res, err := consumeSimpleSearchResult(stream)
 	assert.NoError(t, err)
@@ -183,7 +187,7 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 	err = queryCollection.addVChannelStage(newChan)
 	assert.NoError(t, err)
 
-	err = produceSimpleSearchMsg(ctx)
+	err = produceSimpleSearchMsg(ctx, queryChannel)
 	assert.NoError(t, err)
 
 	res, err = consumeSimpleSearchResult(stream)
@@ -196,7 +200,7 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 	// remove channel and query again
 	queryCollection.removeVChannelStage(newChan)
 
-	err = produceSimpleSearchMsg(ctx)
+	err = produceSimpleSearchMsg(ctx, queryChannel)
 	assert.NoError(t, err)
 
 	res, err = consumeSimpleSearchResult(stream)

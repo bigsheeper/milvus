@@ -29,13 +29,16 @@ func TestInputStage_InputStage(t *testing.T) {
 
 	stream, err := genQueryMsgStream(ctx)
 	assert.NoError(t, err)
-	stream.AsConsumer([]string{defaultQueryChannel}, defaultSubName)
+
+	queryChannel := genQueryChannel()
+
+	stream.AsConsumer([]string{queryChannel}, defaultSubName)
 	stream.Start()
 	defer stream.Close()
 
 	iStage := newInputStage(ctx, defaultCollectionID, stream, queryOutput)
 	go iStage.start()
-	err = produceSimpleSearchMsg(ctx)
+	err = produceSimpleSearchMsg(ctx, queryChannel)
 	assert.NoError(t, err)
 
 	msg := <-queryOutput

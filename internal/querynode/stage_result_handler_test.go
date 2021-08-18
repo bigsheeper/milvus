@@ -30,7 +30,10 @@ func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
 	inputChan := make(chan queryResult, queryBufferSize)
 	stream, err := genQueryMsgStream(ctx)
 	assert.NoError(t, err)
-	stream.AsProducer([]string{defaultQueryResultChannel})
+
+	queryResChannel := genQueryResultChannel()
+
+	stream.AsProducer([]string{queryResChannel})
 	stream.Start()
 
 	resStage := newResultHandlerStage(ctx,
@@ -47,8 +50,9 @@ func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
 		inputChan <- resMsg
 	}()
 
-	resStream, err := initConsumer(ctx)
+	resStream, err := initConsumer(ctx, queryResChannel)
 	assert.NoError(t, err)
+	defer resStream.Close()
 
 	res, err := consumeSimpleSearchResult(resStream)
 	assert.NoError(t, err)

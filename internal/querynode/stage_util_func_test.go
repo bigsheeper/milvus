@@ -29,7 +29,10 @@ func TestStageUtilFunc_PublishQueryResult(t *testing.T) {
 	stream, err := genQueryMsgStream(ctx)
 	assert.NoError(t, err)
 	defer stream.Close()
-	stream.AsProducer([]string{defaultQueryResultChannel})
+
+	queryResChannel := genQueryResultChannel()
+
+	stream.AsProducer([]string{queryResChannel})
 	stream.Start()
 
 	resMsg := &msgstream.SearchResultMsg{
@@ -47,8 +50,9 @@ func TestStageUtilFunc_PublishQueryResult(t *testing.T) {
 	}
 	publishQueryResult(resMsg, stream)
 
-	resStream, err := initConsumer(ctx)
+	resStream, err := initConsumer(ctx, queryResChannel)
 	assert.NoError(t, err)
+	defer resStream.Close()
 
 	res, err := consumeSimpleSearchResult(resStream)
 	assert.NoError(t, err)
@@ -63,7 +67,10 @@ func TestStageUtilFunc_PublishFailedQueryResult(t *testing.T) {
 	stream, err := genQueryMsgStream(ctx)
 	assert.NoError(t, err)
 	defer stream.Close()
-	stream.AsProducer([]string{defaultQueryResultChannel})
+
+	queryResultChannel := genQueryResultChannel()
+
+	stream.AsProducer([]string{queryResultChannel})
 	stream.Start()
 
 	sm, err := genSimpleSearchMsg()

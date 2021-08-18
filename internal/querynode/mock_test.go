@@ -51,11 +51,11 @@ const (
 	defaultNProb          = 10
 	defaultMetricType     = "JACCARD"
 
-	defaultKVRootPath         = "query-node-unittest"
-	defaultVChannel           = "query-node-unittest-channel-0"
-	defaultQueryChannel       = "query-node-unittest-query-channel-0"
-	defaultQueryResultChannel = "query-node-unittest-query-result-channel-0"
-	defaultSubName            = "query-node-unittest-sub-name-0"
+	defaultKVRootPath = "query-node-unittest"
+	defaultVChannel   = "query-node-unittest-channel-0"
+	//defaultQueryChannel       = "query-node-unittest-query-channel-0"
+	//defaultQueryResultChannel = "query-node-unittest-query-result-channel-0"
+	defaultSubName = "query-node-unittest-sub-name-0"
 )
 
 const (
@@ -658,7 +658,6 @@ func genSimpleSearchRequest() (*internalpb.SearchRequest, error) {
 			MsgType: commonpb.MsgType_Search,
 			MsgID:   rand.Int63(), // TODO: random msgID?
 		},
-		ResultChannelID:  defaultQueryResultChannel,
 		CollectionID:     defaultCollectionID,
 		PartitionIDs:     []UniqueID{defaultPartitionID},
 		Dsl:              simpleDSL,
@@ -719,12 +718,22 @@ func genSimpleSearchResult() (*searchResult, error) {
 	return res.(*searchResult), nil
 }
 
-func produceSimpleSearchMsg(ctx context.Context) error {
+func genQueryChannel() Channel {
+	const queryChannelPrefix = "query-node-unittest-query-channel-"
+	return queryChannelPrefix + strconv.Itoa(rand.Int())
+}
+
+func genQueryResultChannel() Channel {
+	const queryResultChannelPrefix = "query-node-unittest-query-result-channel-"
+	return queryResultChannelPrefix + strconv.Itoa(rand.Int())
+}
+
+func produceSimpleSearchMsg(ctx context.Context, queryChannel Channel) error {
 	stream, err := genQueryMsgStream(ctx)
 	if err != nil {
 		return err
 	}
-	stream.AsProducer([]string{defaultQueryChannel})
+	stream.AsProducer([]string{queryChannel})
 	stream.Start()
 	defer stream.Close()
 	msg, err := genSimpleSearchMsg()
@@ -742,12 +751,12 @@ func produceSimpleSearchMsg(ctx context.Context) error {
 	return nil
 }
 
-func initConsumer(ctx context.Context) (msgstream.MsgStream, error) {
+func initConsumer(ctx context.Context, queryResultChannel Channel) (msgstream.MsgStream, error) {
 	stream, err := genQueryMsgStream(ctx)
 	if err != nil {
 		return nil, err
 	}
-	stream.AsConsumer([]string{defaultQueryResultChannel}, defaultSubName)
+	stream.AsConsumer([]string{queryResultChannel}, defaultSubName)
 	stream.Start()
 	return stream, nil
 }

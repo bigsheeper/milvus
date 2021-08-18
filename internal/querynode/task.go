@@ -306,6 +306,17 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 		}
 	}
 
+	// add vChannelStage
+	if w.node.queryService.hasQueryCollection(collectionID) {
+		for _, c := range vChannels {
+			err = w.node.queryService.queryCollections[collectionID].addVChannelStage(c)
+			if err != nil {
+				return err
+			}
+			w.node.queryService.queryCollections[collectionID].startVChannelStage(c)
+		}
+	}
+
 	log.Debug("WatchDmChannels done", zap.String("ChannelIDs", fmt.Sprintln(vChannels)))
 	return nil
 }

@@ -14,6 +14,7 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	oplog "github.com/opentracing/opentracing-go/log"
 	"go.uber.org/zap"
@@ -33,7 +34,7 @@ type requestHandlerStage struct {
 
 	input            chan queryMsg
 	historicalOutput chan queryMsg
-	vChannelOutputs  map[Channel]chan queryMsg
+	vChannelOutputs  *sync.Map
 
 	streaming         *streaming
 	historical        *historical
@@ -44,7 +45,7 @@ func newRequestHandlerStage(ctx context.Context,
 	collectionID UniqueID,
 	input chan queryMsg,
 	historicalOutput chan queryMsg,
-	vChannelOutputs map[Channel]chan queryMsg,
+	vChannelOutputs *sync.Map,
 	streaming *streaming,
 	historical *historical,
 	queryResultStream msgstream.MsgStream) *requestHandlerStage {
@@ -130,6 +131,7 @@ func (q *requestHandlerStage) start() {
 				continue
 			}
 
+			channelNum := q.getChannelNums()
 			switch msgType {
 			case commonpb.MsgType_Retrieve:
 				plan, err := q.parseRetrievePlan(msg)
@@ -144,10 +146,10 @@ func (q *requestHandlerStage) start() {
 				}
 				rm := &retrieveMsg{
 					RetrieveMsg: msg.(*msgstream.RetrieveMsg),
-					channelNum:  q.getChannelNums(),
+					channelNum:  channelNum,
 					plan:        plan,
 				}
-				q.sendRequests(rm)
+				q.sendRequests(rm, channelNum)
 			case commonpb.MsgType_Search:
 				plan, reqs, err := q.parseSearchPlan(msg)
 				if err != nil {
@@ -161,11 +163,11 @@ func (q *requestHandlerStage) start() {
 				}
 				sm := &searchMsg{
 					SearchMsg:  msg.(*msgstream.SearchMsg),
-					channelNum: q.getChannelNums(),
+					channelNum: channelNum,
 					plan:       plan,
 					reqs:       reqs,
 				}
-				q.sendRequests(sm)
+				q.sendRequests(sm, channelNum)
 			default:
 				err := fmt.Errorf("receive invalid msgType = %d", msgType)
 				log.Warn(err.Error())
@@ -184,14 +186,21 @@ func (q *requestHandlerStage) start() {
 	}
 }
 
-func (q *requestHandlerStage) sendRequests(msg queryMsg) {
-	for i := range q.vChannelOutputs {
-		q.vChannelOutputs[i] <- msg
-	}
+func (q *requestHandlerStage) sendRequests(msg queryMsg, channelNum int) {
+	q.vChannelOutputs.Range(func(_, v interface{}) bool {
+		output, ok := v.(chan queryMsg)
+		if !ok {
+			log.Error("type assertion failed for vChannelOutputs, collectionID = " + fmt.Sprintln(q.collectionID))
+			return false
+		}
+		output <- msg
+		return true
+	})
 	q.historicalOutput <- msg
 	log.Debug("query request handler send requests done",
 		zap.Any("collectionID", q.collectionID),
 		zap.Any("msgID", msg.ID()),
+		zap.Any("channelNum", channelNum),
 	)
 }
 
@@ -280,5 +289,11 @@ func (q *requestHandlerStage) parseRetrievePlan(msg queryMsg) (*RetrievePlan, er
 
 func (q *requestHandlerStage) getChannelNums() int {
 	// TODO: add loadBalanceMsg, and update channel nums dynamically here
-	return len(q.vChannelOutputs)
+	length := 0
+	// TODO: too tedious, use an atomic int counter to optimize it
+	q.vChannelOutputs.Range(func(_, _ interface{}) bool {
+		length++
+		return true
+	})
+	return length
 }

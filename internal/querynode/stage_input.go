@@ -67,16 +67,16 @@ func (q *inputStage) start() {
 				switch sm := msg.(type) {
 				case *msgstream.SearchMsg:
 					q.queryOutput <- sm
-					log.Debug("inputStage consume Search message",
-						zap.Any("collectionID", q.collectionID),
-						zap.Any("msgID", msg.ID()),
-					)
+					//log.Debug("inputStage consume Search message",
+					//	zap.Any("collectionID", q.collectionID),
+					//	zap.Any("msgID", msg.ID()),
+					//)
 				case *msgstream.RetrieveMsg:
 					q.queryOutput <- sm
-					log.Debug("inputStage consume Retrieve message",
-						zap.Any("collectionID", q.collectionID),
-						zap.Any("msgID", msg.ID()),
-					)
+					//log.Debug("inputStage consume Retrieve message",
+					//	zap.Any("collectionID", q.collectionID),
+					//	zap.Any("msgID", msg.ID()),
+					//)
 				default:
 					log.Warn("unsupported msg type in search channel", zap.Any("msg", sm))
 				}

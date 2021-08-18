@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -85,7 +86,7 @@ type queryCollection struct {
 	vChannelStages  map[Channel]*vChannelStage
 	resStage        *resultHandlerStage
 
-	vChannelChan map[Channel]chan queryMsg
+	vChannelChan sync.Map
 	resChan      chan queryResult
 }
 
@@ -134,20 +135,19 @@ func newQueryCollection(releaseCtx context.Context,
 	qc.inputStage = iStage
 
 	hisChan := make(chan queryMsg, queryBufferSize)
-	qc.vChannelChan = make(map[Channel]chan queryMsg)
 	for _, c := range channels {
-		qc.vChannelChan[c] = make(chan queryMsg, queryBufferSize)
+		qc.vChannelChan.Store(c, make(chan queryMsg, queryBufferSize))
 	}
 	reqStage := newRequestHandlerStage(qc.releaseCtx,
 		qc.collectionID,
 		reqChan,
 		hisChan,
-		qc.vChannelChan,
+		&qc.vChannelChan,
 		qc.streaming,
 		qc.historical,
 		qc.queryResultMsgStream)
 	qc.reqStage = reqStage
-	// expand channel's capacity is not allowed
+	// TODO: expand channel's capacity is not allowed
 	qc.resChan = make(chan queryResult, queryBufferSize*(len(channels)+1)) // vChannels + historical
 	hisStage := newHistoricalStage(qc.releaseCtx,
 		qc.collectionID,
@@ -157,16 +157,13 @@ func newQueryCollection(releaseCtx context.Context,
 		qc.vcm)
 	qc.historicalStage = hisStage
 
-	vcStages := make(map[Channel]*vChannelStage)
+	qc.vChannelStages = make(map[Channel]*vChannelStage)
 	for _, c := range channels {
-		vcStages[c] = newVChannelStage(qc.releaseCtx,
-			qc.collectionID,
-			c,
-			qc.vChannelChan[c],
-			qc.resChan,
-			qc.streaming)
+		err = qc.addVChannelStage(c)
+		if err != nil {
+			return nil, err
+		}
 	}
-	qc.vChannelStages = vcStages
 	resStage := newResultHandlerStage(qc.releaseCtx,
 		qc.collectionID,
 		qc.streaming,
@@ -186,8 +183,8 @@ func (q *queryCollection) start() {
 	go q.inputStage.start()
 	go q.reqStage.start()
 	go q.historicalStage.start()
-	for _, s := range q.vChannelStages {
-		go s.start()
+	for c := range q.vChannelStages {
+		q.startVChannelStage(c)
 	}
 	go q.resStage.start()
 }
@@ -202,21 +199,28 @@ func (q *queryCollection) close() {
 }
 
 // vChannel stage management
+func (q *queryCollection) startVChannelStage(channel Channel) {
+	if _, ok := q.vChannelStages[channel]; !ok {
+		return
+	}
+	go q.vChannelStages[channel].start()
+}
+
 func (q *queryCollection) addVChannelStage(channel Channel) error {
 	if _, ok := q.vChannelStages[channel]; ok {
 		return errors.New("vChannelStage has been existed, collectionID = " + fmt.Sprintln(q.collectionID) +
 			", vChannel = " + fmt.Sprintln(channel))
 	}
-	q.vChannelChan[channel] = make(chan queryMsg, queryBufferSize)
+	vChannelChan := make(chan queryMsg, queryBufferSize)
+	q.vChannelChan.Store(channel, vChannelChan)
 	stage := newVChannelStage(q.releaseCtx,
 		q.collectionID,
 		channel,
-		q.vChannelChan[channel],
+		vChannelChan,
 		q.resChan,
 		q.streaming)
 
 	q.vChannelStages[channel] = stage
-	go stage.start()
 	return nil
 }
 
@@ -225,7 +229,7 @@ func (q *queryCollection) removeVChannelStage(channel Channel) {
 		q.vChannelStages[channel].stop()
 	}
 	delete(q.vChannelStages, channel)
-	delete(q.vChannelChan, channel)
+	q.vChannelChan.Delete(channel)
 }
 
 // result functions

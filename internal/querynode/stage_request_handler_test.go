@@ -13,6 +13,7 @@ package querynode
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,7 @@ func TestRequestHandlerStage_RequestHandlerStage(t *testing.T) {
 
 	inputChan := make(chan queryMsg, queryBufferSize)
 	hisOutput := make(chan queryMsg, queryBufferSize)
-	streamingOutput := make(map[Channel]chan queryMsg)
+	var streamingOutput sync.Map
 
 	resultStream, err := genQueryMsgStream(ctx)
 	assert.NoError(t, err)
@@ -37,7 +38,7 @@ func TestRequestHandlerStage_RequestHandlerStage(t *testing.T) {
 		defaultCollectionID,
 		inputChan,
 		hisOutput,
-		streamingOutput,
+		&streamingOutput,
 		s,
 		his,
 		resultStream)

@@ -87,6 +87,11 @@ func (q *resultHandlerStage) start() {
 				channelNum := v[0].ChannelNum()
 				// `channelNum + 1` means `vChannels + historical`
 				if len(v) == channelNum+1 {
+					log.Debug("prepare to reduce",
+						zap.Any("collectionID", q.collectionID),
+						zap.Any("msgID", msg.ID()),
+						zap.Any("channelNum", channelNum),
+					)
 					// do reduce
 					msgType := v[0].Type()
 					switch msgType {

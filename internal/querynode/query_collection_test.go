@@ -180,8 +180,7 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 
 	// add channel and query again
 	newChan := "query-node-unittest-channel-1"
-	err = queryCollection.addVChannelStage(newChan)
-	assert.NoError(t, err)
+	queryCollection.addVChannelStage(newChan)
 	queryCollection.startVChannelStage(newChan)
 
 	err = produceSimpleSearchMsg(ctx, queryChannel)

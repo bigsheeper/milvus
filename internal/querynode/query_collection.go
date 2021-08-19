@@ -13,10 +13,11 @@ package querynode
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
@@ -160,10 +161,7 @@ func newQueryCollection(releaseCtx context.Context,
 
 	qc.vChannelStages = make(map[Channel]*vChannelStage)
 	for _, c := range channels {
-		err = qc.addVChannelStage(c)
-		if err != nil {
-			return nil, err
-		}
+		qc.addVChannelStage(c)
 	}
 	resStage := newResultHandlerStage(qc.releaseCtx,
 		qc.collectionID,
@@ -207,10 +205,12 @@ func (q *queryCollection) startVChannelStage(channel Channel) {
 	go q.vChannelStages[channel].start()
 }
 
-func (q *queryCollection) addVChannelStage(channel Channel) error {
+func (q *queryCollection) addVChannelStage(channel Channel) {
 	if _, ok := q.vChannelStages[channel]; ok {
-		return errors.New("vChannelStage has been existed, collectionID = " + fmt.Sprintln(q.collectionID) +
-			", vChannel = " + fmt.Sprintln(channel))
+		log.Warn("vChannelStage has been existed",
+			zap.Any("collectionID", q.collectionID),
+			zap.Any("vChannel", channel),
+		)
 	}
 	vChannelChan := make(chan queryMsg, queryBufferSize)
 	q.vChannelChan.Store(channel, vChannelChan)
@@ -222,7 +222,6 @@ func (q *queryCollection) addVChannelStage(channel Channel) error {
 		q.streaming)
 
 	q.vChannelStages[channel] = stage
-	return nil
 }
 
 func (q *queryCollection) removeVChannelStage(channel Channel) {

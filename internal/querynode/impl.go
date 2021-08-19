@@ -95,15 +95,6 @@ func (node *QueryNode) AddQueryChannel(ctx context.Context, in *queryPb.AddQuery
 		return status, errors.New(errMsg)
 	}
 
-	//if _, ok := node.searchService.searchCollections[in.CollectionID]; !ok {
-	//	errMsg := "null search collection, collectionID = " + fmt.Sprintln(collectionID)
-	//	status := &commonpb.Status{
-	//		ErrorCode: commonpb.ErrorCode_UnexpectedError,
-	//		Reason:    errMsg,
-	//	}
-	//	return status, errors.New(errMsg)
-	//}
-
 	// add search collection
 	if !node.queryService.hasQueryCollection(collectionID) {
 		node.queryService.addQueryCollection(collectionID)
@@ -113,7 +104,6 @@ func (node *QueryNode) AddQueryChannel(ctx context.Context, in *queryPb.AddQuery
 	// add request channel
 	sc := node.queryService.queryCollections[in.CollectionID]
 	consumeChannels := []string{in.RequestChannelID}
-	//consumeSubName := Params.MsgChannelSubName
 	consumeSubName := Params.MsgChannelSubName + "-" + strconv.FormatInt(collectionID, 10) + "-" + strconv.Itoa(rand.Int())
 	sc.queryMsgStream.AsConsumer(consumeChannels, consumeSubName)
 	log.Debug("querynode AsConsumer: " + strings.Join(consumeChannels, ", ") + " : " + consumeSubName)
@@ -124,11 +114,6 @@ func (node *QueryNode) AddQueryChannel(ctx context.Context, in *queryPb.AddQuery
 	log.Debug("querynode AsProducer: " + strings.Join(producerChannels, ", "))
 
 	// message stream need to asConsumer before start
-	// add search collection
-	if !node.queryService.hasQueryCollection(collectionID) {
-		node.queryService.addQueryCollection(collectionID)
-		log.Debug("add query collection", zap.Any("collectionID", collectionID))
-	}
 	sc.start()
 	log.Debug("start query collection", zap.Any("collectionID", collectionID))
 

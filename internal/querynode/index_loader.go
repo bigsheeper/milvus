@@ -132,12 +132,7 @@ func (loader *indexLoader) loadIndex(segment *Segment, fieldID int64) error {
 	if err != nil {
 		return err
 	}
-	// 3. drop vector field data if index loaded successfully
-	err = segment.dropFieldData(fieldID)
-	if err != nil {
-		return err
-	}
-	// 4. update segment index stats
+	// 3. update segment index stats
 	err = loader.updateSegmentIndexStats(segment)
 	if err != nil {
 		return err
@@ -295,6 +290,11 @@ func (loader *indexLoader) setIndexInfo(collectionID UniqueID, segment *Segment,
 		CollectionID: collectionID,
 		SegmentID:    segment.segmentID,
 	}
+
+	if loader.indexCoord == nil || loader.rootCoord == nil {
+		return errors.New("null index coordinator client or root coordinator client")
+	}
+
 	response, err := loader.rootCoord.DescribeSegment(ctx, req)
 	if err != nil {
 		return err
@@ -305,10 +305,6 @@ func (loader *indexLoader) setIndexInfo(collectionID UniqueID, segment *Segment,
 
 	if !response.EnableIndex {
 		return errors.New("there are no indexes on this segment")
-	}
-
-	if loader.indexCoord == nil {
-		return errors.New("null index coordinator client")
 	}
 
 	indexFilePathRequest := &indexpb.GetIndexFilePathsRequest{

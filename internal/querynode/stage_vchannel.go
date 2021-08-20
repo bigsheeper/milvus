@@ -304,7 +304,7 @@ func (q *vChannelStage) retrieve(retrieveMsg *retrieveMsg) ([]UniqueID, []*segco
 			partitionIDsInStreaming = append(partitionIDsInStreaming, id)
 		}
 	}
-	sealedSegmentRetrieved := make([]UniqueID, 0)
+	sealedSegmentSearched := make([]UniqueID, 0)
 	var mergeList []*segcorepb.RetrieveResults
 	for _, partitionID := range partitionIDsInStreaming {
 		segmentIDs, err := q.streaming.replica.getSegmentIDs(partitionID)
@@ -321,12 +321,11 @@ func (q *vChannelStage) retrieve(retrieveMsg *retrieveMsg) ([]UniqueID, []*segco
 				return nil, nil, err
 			}
 			mergeList = append(mergeList, result)
-			sealedSegmentRetrieved = append(sealedSegmentRetrieved, segmentID)
 		}
 	}
 	tr.Record("streaming retrieve done")
 	tr.Elapse("all done")
-	return sealedSegmentRetrieved, mergeList, nil
+	return sealedSegmentSearched, mergeList, nil
 }
 
 func (q *vChannelStage) search(searchMsg *searchMsg) ([]*SearchResult, []UniqueID, error) {

@@ -20,7 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/msgstream"
 )
 
-func TestHistoricalStage_HistoricalStage(t *testing.T) {
+func TestHistoricalStage_TestSearch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -34,7 +34,7 @@ func TestHistoricalStage_HistoricalStage(t *testing.T) {
 	// construct searchMsg
 	searchReq, err := genSimpleSearchRequest()
 	assert.NoError(t, err)
-	plan, reqs, err := genSimplePlanAndRequests()
+	plan, reqs, err := genSimpleSearchPlanAndRequests()
 	assert.NoError(t, err)
 	msg := &searchMsg{
 		SearchMsg: &msgstream.SearchMsg{
@@ -58,4 +58,43 @@ func TestHistoricalStage_HistoricalStage(t *testing.T) {
 	assert.NoError(t, sr.err)
 	assert.Equal(t, 1, len(sr.sealedSegmentSearched))
 	assert.Equal(t, defaultSegmentID, sr.sealedSegmentSearched[0])
+}
+
+func TestHistoricalStage_TestRetrieve(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	his, err := genSimpleHistorical(ctx)
+	assert.NoError(t, err)
+	inputChan := make(chan queryMsg, queryBufferSize)
+	outputChan := make(chan queryResult, queryBufferSize)
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil)
+	go hs.start()
+
+	// construct retrieveMsg
+	retrieveReq, err := genSimpleRetrieveRequest()
+	assert.NoError(t, err)
+	plan, err := genSimpleRetrievePlan()
+	assert.NoError(t, err)
+	msg := &retrieveMsg{
+		RetrieveMsg: &msgstream.RetrieveMsg{
+			BaseMsg: msgstream.BaseMsg{
+				HashValues: []uint32{0},
+			},
+			RetrieveRequest: *retrieveReq,
+		},
+		plan: plan,
+	}
+
+	go func() {
+		inputChan <- msg
+	}()
+
+	//result check
+	res := <-outputChan
+	sr, ok := res.(*retrieveResult)
+	assert.True(t, ok)
+	assert.NoError(t, sr.err)
+	assert.Equal(t, 1, len(sr.segmentRetrieved))
+	assert.Equal(t, defaultSegmentID, sr.segmentRetrieved[0])
 }

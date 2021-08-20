@@ -32,6 +32,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
+	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
 )
 
@@ -613,7 +614,7 @@ func genSimplePlaceHolderGroup() ([]byte, error) {
 	return placeGroupByte, nil
 }
 
-func genSimplePlanAndRequests() (*SearchPlan, []*searchRequest, error) {
+func genSimpleSearchPlanAndRequests() (*SearchPlan, []*searchRequest, error) {
 	_, schema := genSimpleSchema()
 	collection := newCollection(defaultCollectionID, schema)
 
@@ -647,6 +648,25 @@ func genSimplePlanAndRequests() (*SearchPlan, []*searchRequest, error) {
 	return plan, searchRequests, nil
 }
 
+func genSimpleRetrievePlan() (*RetrievePlan, error) {
+	retrieveMsg, err := genSimpleRetrieveMsg()
+	if err != nil {
+		return nil, err
+	}
+	timestamp := retrieveMsg.RetrieveRequest.TravelTimestamp
+
+	req := &segcorepb.RetrieveRequest{
+		Ids:            retrieveMsg.Ids,
+		OutputFieldsId: retrieveMsg.OutputFieldsId,
+	}
+
+	_, schema := genSimpleSchema()
+	collection := newCollection(defaultCollectionID, schema)
+
+	plan, err := createRetrievePlan(collection, req, timestamp)
+	return plan, err
+}
+
 func genSimpleSearchRequest() (*internalpb.SearchRequest, error) {
 	placeHolder, err := genSimplePlaceHolderGroup()
 	if err != nil {
@@ -669,6 +689,27 @@ func genSimpleSearchRequest() (*internalpb.SearchRequest, error) {
 	}, nil
 }
 
+func genSimpleRetrieveRequest() (*internalpb.RetrieveRequest, error) {
+	ids := &schemapb.IDs{
+		IdField: &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: []int64{1, 2, 3},
+			},
+		},
+	}
+
+	return &internalpb.RetrieveRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_Retrieve,
+			MsgID:   rand.Int63(), // TODO: random msgID?
+		},
+		CollectionID:    defaultCollectionID,
+		PartitionIDs:    []UniqueID{defaultPartitionID},
+		Ids:             ids,
+		TravelTimestamp: Timestamp(0),
+	}, nil
+}
+
 func genSimpleSearchMsg() (*msgstream.SearchMsg, error) {
 	req, err := genSimpleSearchRequest()
 	if err != nil {
@@ -682,12 +723,25 @@ func genSimpleSearchMsg() (*msgstream.SearchMsg, error) {
 	}, nil
 }
 
+func genSimpleRetrieveMsg() (*msgstream.RetrieveMsg, error) {
+	req, err := genSimpleRetrieveRequest()
+	if err != nil {
+		return nil, err
+	}
+	return &msgstream.RetrieveMsg{
+		BaseMsg: msgstream.BaseMsg{
+			HashValues: []uint32{0},
+		},
+		RetrieveRequest: *req,
+	}, nil
+}
+
 func genSimpleSearchResult() (*searchResult, error) {
 	searchReq, err := genSimpleSearchRequest()
 	if err != nil {
 		return nil, err
 	}
-	plan, reqs, err := genSimplePlanAndRequests()
+	plan, reqs, err := genSimpleSearchPlanAndRequests()
 	if err != nil {
 		return nil, err
 	}
@@ -719,6 +773,44 @@ func genSimpleSearchResult() (*searchResult, error) {
 
 	res := <-outputChan
 	return res.(*searchResult), nil
+}
+
+func genSimpleRetrieveResult() (*retrieveResult, error) {
+	retrieveReq, err := genSimpleRetrieveRequest()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := genSimpleRetrievePlan()
+	if err != nil {
+		return nil, err
+	}
+	msg := &retrieveMsg{
+		RetrieveMsg: &msgstream.RetrieveMsg{
+			BaseMsg: msgstream.BaseMsg{
+				HashValues: []uint32{0},
+			},
+			RetrieveRequest: *retrieveReq,
+		},
+		plan: plan,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	his, err := genSimpleHistorical(ctx)
+	if err != nil {
+		return nil, err
+	}
+	inputChan := make(chan queryMsg, queryBufferSize)
+	outputChan := make(chan queryResult, queryBufferSize)
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil)
+	go hs.start()
+	go func() {
+		inputChan <- msg
+	}()
+
+	res := <-outputChan
+	return res.(*retrieveResult), nil
 }
 
 func genQueryChannel() Channel {
@@ -754,6 +846,29 @@ func produceSimpleSearchMsg(ctx context.Context, queryChannel Channel) error {
 	return nil
 }
 
+func produceSimpleRetrieveMsg(ctx context.Context, queryChannel Channel) error {
+	stream, err := genQueryMsgStream(ctx)
+	if err != nil {
+		return err
+	}
+	stream.AsProducer([]string{queryChannel})
+	stream.Start()
+	defer stream.Close()
+	msg, err := genSimpleRetrieveMsg()
+	if err != nil {
+		return err
+	}
+	msgPack := &msgstream.MsgPack{
+		Msgs: []msgstream.TsMsg{msg},
+	}
+	err = stream.Produce(msgPack)
+	if err != nil {
+		return err
+	}
+	log.Debug("[query node unittest] produce retrieve message done")
+	return nil
+}
+
 func initConsumer(ctx context.Context, queryResultChannel Channel) (msgstream.MsgStream, error) {
 	stream, err := genQueryMsgStream(ctx)
 	if err != nil {
@@ -771,4 +886,13 @@ func consumeSimpleSearchResult(stream msgstream.MsgStream) (*msgstream.SearchRes
 		return nil, err
 	}
 	return res.Msgs[0].(*msgstream.SearchResultMsg), nil
+}
+
+func consumeSimpleRetrieveResult(stream msgstream.MsgStream) (*msgstream.RetrieveResultMsg, error) {
+	res := stream.Consume()
+	if len(res.Msgs) != 1 {
+		err := errors.New("unexpected message length")
+		return nil, err
+	}
+	return res.Msgs[0].(*msgstream.RetrieveResultMsg), nil
 }

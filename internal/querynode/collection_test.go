@@ -33,3 +33,23 @@ func TestCollection_deleteCollection(t *testing.T) {
 	assert.Equal(t, collection.ID(), collectionID)
 	deleteCollection(collection)
 }
+
+func TestCollection_addVChannel(t *testing.T) {
+	collectionID := UniqueID(0)
+	collectionMeta := genTestCollectionMeta(collectionID, false)
+
+	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
+	collection.addVChannels([]string{defaultVChannel})
+	collection.addVChannels([]string{defaultVChannel})
+	collection.addVChannels([]string{"TestCollection_addVChannel_channel"})
+}
+
+func TestCollection_addPChannel(t *testing.T) {
+	collectionID := UniqueID(0)
+	collectionMeta := genTestCollectionMeta(collectionID, false)
+
+	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
+	collection.addVChannels([]string{"TestCollection_addPChannel_channel-0"})
+	collection.addVChannels([]string{"TestCollection_addPChannel_channel-0"})
+	collection.addVChannels([]string{"TestCollection_addPChannel_channel-1"})
+}

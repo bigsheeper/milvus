@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRequestHandlerStage_RequestHandlerStage(t *testing.T) {
+func TestRequestHandlerStage_TestSearch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -64,4 +64,47 @@ func TestRequestHandlerStage_RequestHandlerStage(t *testing.T) {
 	for _, req := range sm.reqs {
 		req.delete()
 	}
+}
+
+func TestRequestHandlerStage_TestRetrieve(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	his, err := genSimpleHistorical(ctx)
+	assert.NoError(t, err)
+	s, err := genSimpleStreaming(ctx)
+	assert.NoError(t, err)
+
+	inputChan := make(chan queryMsg, queryBufferSize)
+	hisOutput := make(chan queryMsg, queryBufferSize)
+	var streamingOutput sync.Map
+
+	resultStream, err := genQueryMsgStream(ctx)
+	assert.NoError(t, err)
+	reqStage := newRequestHandlerStage(ctx,
+		defaultCollectionID,
+		inputChan,
+		hisOutput,
+		&streamingOutput,
+		s,
+		his,
+		resultStream)
+	go reqStage.start()
+
+	// construct retrieveMsg
+	sm2, err := genSimpleRetrieveMsg()
+	assert.NoError(t, err)
+
+	go func() {
+		inputChan <- sm2
+	}()
+
+	res := <-hisOutput
+	sm, ok := res.(*retrieveMsg)
+	assert.True(t, ok)
+	assert.Equal(t, defaultCollectionID, sm.CollectionID)
+	assert.Equal(t, 1, len(sm.PartitionIDs))
+	assert.Equal(t, defaultPartitionID, sm.PartitionIDs[0])
+	assert.NotNil(t, sm.plan)
+	sm.plan.delete()
 }

@@ -20,7 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/msgstream"
 )
 
-func TestVChannelStage_VChannelStage(t *testing.T) {
+func TestVChannelStage_TestSearch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -41,7 +41,7 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 	// construct searchMsg
 	searchReq, err := genSimpleSearchRequest()
 	assert.NoError(t, err)
-	plan, reqs, err := genSimplePlanAndRequests()
+	plan, reqs, err := genSimpleSearchPlanAndRequests()
 	assert.NoError(t, err)
 	msg := &searchMsg{
 		SearchMsg: &msgstream.SearchMsg{
@@ -62,4 +62,47 @@ func TestVChannelStage_VChannelStage(t *testing.T) {
 	assert.True(t, ok)
 	assert.NoError(t, sr.err)
 	assert.Equal(t, 0, len(sr.sealedSegmentSearched))
+}
+
+func TestVChannelStage_TestRetrieve(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	inputChan := make(chan queryMsg, queryBufferSize)
+	resChan := make(chan queryResult, queryBufferSize)
+
+	s, err := genSimpleStreaming(ctx)
+	assert.NoError(t, err)
+
+	vStage := newVChannelStage(ctx,
+		defaultCollectionID,
+		defaultVChannel,
+		inputChan,
+		resChan,
+		s)
+	go vStage.start()
+
+	// construct retrieveMsg
+	retrieveReq, err := genSimpleRetrieveRequest()
+	assert.NoError(t, err)
+	plan, err := genSimpleRetrievePlan()
+	assert.NoError(t, err)
+	msg := &retrieveMsg{
+		RetrieveMsg: &msgstream.RetrieveMsg{
+			BaseMsg: msgstream.BaseMsg{
+				HashValues: []uint32{0},
+			},
+			RetrieveRequest: *retrieveReq,
+		},
+		plan: plan,
+	}
+
+	go func() {
+		inputChan <- msg
+	}()
+	res := <-resChan
+	sr, ok := res.(*retrieveResult)
+	assert.True(t, ok)
+	assert.NoError(t, sr.err)
+	assert.Equal(t, 0, len(sr.segmentRetrieved))
 }

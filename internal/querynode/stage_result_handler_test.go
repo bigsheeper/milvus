@@ -15,10 +15,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
+func TestResultHandlerStage_TestSearch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -60,4 +61,47 @@ func TestResultHandlerStage_ResultHandlerStage(t *testing.T) {
 	assert.Equal(t, 0, len(res.ChannelIDsSearched))
 	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
 	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])
+	assert.Equal(t, commonpb.ErrorCode_Success, res.Status.ErrorCode)
+}
+
+func TestResultHandlerStage_TestRetrieve(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s, err := genSimpleStreaming(ctx)
+	assert.NoError(t, err)
+	h, err := genSimpleHistorical(ctx)
+	assert.NoError(t, err)
+
+	inputChan := make(chan queryResult, queryBufferSize)
+	stream, err := genQueryMsgStream(ctx)
+	assert.NoError(t, err)
+
+	queryResChannel := genQueryResultChannel()
+
+	stream.AsProducer([]string{queryResChannel})
+	stream.Start()
+
+	resStage := newResultHandlerStage(ctx,
+		defaultCollectionID,
+		s,
+		h,
+		inputChan,
+		stream)
+	go resStage.start()
+
+	resMsg, err := genSimpleRetrieveResult()
+	assert.NoError(t, err)
+	go func() {
+		inputChan <- resMsg
+	}()
+
+	resStream, err := initConsumer(ctx, queryResChannel)
+	assert.NoError(t, err)
+	defer resStream.Close()
+
+	res, err := consumeSimpleRetrieveResult(resStream)
+	assert.NoError(t, err)
+	assert.NotNil(t, res.Ids)
+	assert.Equal(t, commonpb.ErrorCode_Success, res.Status.ErrorCode)
 }

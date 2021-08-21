@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"math"
 	"math/rand"
 	"path"
@@ -363,40 +364,47 @@ func genKey(collectionID, partitionID, segmentID UniqueID, fieldID int64) string
 	return path.Join(ids...)
 }
 
-func saveSimpleBinLog(ctx context.Context) error {
+func saveSimpleBinLog(ctx context.Context) ([]*datapb.FieldBinlog, error) {
 	collMeta := genSimpleCollectionMeta()
 	inCodec := storage.NewInsertCodec(collMeta)
 	insertData, err := genSimpleInsertData()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	// timestamp field not allowed 0 timestamp
+	insertData.Data[timestampFieldID].(*storage.Int64FieldData).Data[0] = 1
 	binLogs, _, err := inCodec.Serialize(defaultPartitionID, defaultSegmentID, insertData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Debug(".. [query node unittest] Saving bin logs to MinIO ..", zap.Int("number", len(binLogs)))
 	kvs := make(map[string]string, len(binLogs))
 
 	// write insert binlog
+	fieldBinlog := make([]*datapb.FieldBinlog, 0)
 	for _, blob := range binLogs {
 		fieldID, err := strconv.ParseInt(blob.GetKey(), 10, 64)
 		log.Debug("[query node unittest] save binlog", zap.Int64("fieldID", fieldID))
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		key := genKey(defaultCollectionID, defaultPartitionID, defaultSegmentID, fieldID)
 		kvs[key] = string(blob.Value[:])
+		fieldBinlog = append(fieldBinlog, &datapb.FieldBinlog{
+			FieldID: fieldID,
+			Binlogs: []string{key},
+		})
 	}
 	log.Debug("[query node unittest] save binlog file to MinIO/S3")
 
 	kv, err := genMinioKV(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = kv.MultiSave(kvs)
-	return err
+	return fieldBinlog, err
 }
 
 // ---------- unittest util functions ----------

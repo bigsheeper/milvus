@@ -60,6 +60,7 @@ func TestCollectionReplica_Collection(t *testing.T) {
 	})
 }
 
+// TODO: fix replica ut below
 func TestCollectionReplica_addCollection(t *testing.T) {
 	node := newQueryNodeMock()
 	initTestMeta(t, node, 0, 0)

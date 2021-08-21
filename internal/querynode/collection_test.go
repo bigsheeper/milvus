@@ -49,7 +49,7 @@ func TestCollection_addPChannel(t *testing.T) {
 	collectionMeta := genTestCollectionMeta(collectionID, false)
 
 	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
-	collection.addVChannels([]string{"TestCollection_addPChannel_channel-0"})
-	collection.addVChannels([]string{"TestCollection_addPChannel_channel-0"})
-	collection.addVChannels([]string{"TestCollection_addPChannel_channel-1"})
+	collection.addPChannels([]string{"TestCollection_addPChannel_channel-0"})
+	collection.addPChannels([]string{"TestCollection_addPChannel_channel-0"})
+	collection.addPChannels([]string{"TestCollection_addPChannel_channel-1"})
 }

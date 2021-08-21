@@ -465,13 +465,9 @@ func genSimpleSealedSegment() (*Segment, error) {
 }
 
 func genSimpleReplica() (ReplicaInterface, error) {
-	kv, err := genEtcdKV()
-	if err != nil {
-		return nil, err
-	}
-	r := newCollectionReplica(kv)
+	r := newCollectionReplica()
 	_, schema := genSimpleSchema()
-	err = r.addCollection(defaultCollectionID, schema)
+	err := r.addCollection(defaultCollectionID, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -517,11 +513,7 @@ func genSimpleStreaming(ctx context.Context) (*streaming, error) {
 	if err != nil {
 		return nil, err
 	}
-	kv, err := genEtcdKV()
-	if err != nil {
-		return nil, err
-	}
-	s := newStreaming(ctx, fac, kv)
+	s := newStreaming(ctx, fac)
 	r, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
@@ -895,4 +887,37 @@ func consumeSimpleRetrieveResult(stream msgstream.MsgStream) (*msgstream.Retriev
 		return nil, err
 	}
 	return res.Msgs[0].(*msgstream.RetrieveResultMsg), nil
+}
+
+// node
+func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
+	fac, err := genFactory()
+	if err != nil {
+		return nil, err
+	}
+	node := NewQueryNode(ctx, fac)
+
+	streaming, err := genSimpleStreaming(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	historical, err := genSimpleHistorical(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	node.streaming = streaming
+	node.historical = historical
+
+	// start task scheduler
+	go node.scheduler.Start()
+
+	qs := newQueryService(ctx, node.historical, node.streaming, node.msFactory)
+	defer qs.close()
+	node.queryService = qs
+
+	node.UpdateStateCode(internalpb.StateCode_Healthy)
+
+	return node, nil
 }

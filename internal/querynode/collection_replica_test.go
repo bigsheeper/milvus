@@ -18,12 +18,46 @@ import (
 )
 
 //----------------------------------------------------------------------------------------------------- collection
-func TestCollectionReplica_getCollectionNum(t *testing.T) {
-	node := newQueryNodeMock()
-	initTestMeta(t, node, 0, 0)
-	assert.Equal(t, node.historical.replica.getCollectionNum(), 1)
-	err := node.Stop()
-	assert.NoError(t, err)
+func TestCollectionReplica_Collection(t *testing.T) {
+	t.Run("Test_collection", func(t *testing.T) {
+		replica := newCollectionReplica()
+
+		_, schema := genSimpleSchema()
+
+		err := replica.addCollection(defaultCollectionID, schema)
+		assert.NoError(t, err)
+
+		has := replica.hasCollection(defaultCollectionID)
+		assert.True(t, has)
+
+		has = replica.hasCollection(UniqueID(1000))
+		assert.False(t, has)
+
+		col, err := replica.getCollectionByID(defaultCollectionID)
+		assert.NotNil(t, col)
+		assert.NoError(t, err)
+
+		num := replica.getCollectionNum()
+		assert.Equal(t, 1, num)
+
+		ids := replica.getCollectionIDs()
+		assert.Len(t, ids, 1)
+		assert.Equal(t, defaultCollectionID, ids[0])
+
+		ids, err = replica.getVecFieldIDsByCollectionID(defaultCollectionID)
+		assert.NoError(t, err)
+		assert.Len(t, ids, 1)
+		assert.Equal(t, simpleVecField.id, ids[0])
+
+		err = replica.removeCollection(defaultCollectionID)
+		assert.NoError(t, err)
+
+		num = replica.getCollectionNum()
+		assert.Equal(t, 0, num)
+
+		ids = replica.getCollectionIDs()
+		assert.Len(t, ids, 0)
+	})
 }
 
 func TestCollectionReplica_addCollection(t *testing.T) {

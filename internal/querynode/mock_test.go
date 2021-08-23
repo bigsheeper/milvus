@@ -64,6 +64,9 @@ const (
 	defaultCollectionID = UniqueID(0)
 	defaultPartitionID  = UniqueID(1)
 	defaultSegmentID    = UniqueID(2)
+
+	defaultCollectionName = "query-node-unittest-default-collection"
+	defaultPartitionName  = "query-node-unittest-default-partition"
 )
 
 const defaultMsgLength = 1000
@@ -143,6 +146,7 @@ func genSimpleSchema() (*schemapb.CollectionSchema, *schemapb.CollectionSchema) 
 	fieldInt := genConstantField(simpleConstField)
 
 	schema1 := schemapb.CollectionSchema{ // schema for insertData
+		Name:   defaultCollectionName,
 		AutoID: true,
 		Fields: []*schemapb.FieldSchema{
 			fieldUID,
@@ -152,6 +156,7 @@ func genSimpleSchema() (*schemapb.CollectionSchema, *schemapb.CollectionSchema) 
 		},
 	}
 	schema2 := schemapb.CollectionSchema{ // schema for segCore
+		Name:   defaultCollectionName,
 		AutoID: true,
 		Fields: []*schemapb.FieldSchema{
 			fieldVec,
@@ -364,7 +369,7 @@ func genKey(collectionID, partitionID, segmentID UniqueID, fieldID int64) string
 	return path.Join(ids...)
 }
 
-func saveSimpleBinLog(ctx context.Context) ([]*datapb.FieldBinlog, error) {
+func genSimpleStorageBlob() ([]*storage.Blob, error) {
 	collMeta := genSimpleCollectionMeta()
 	inCodec := storage.NewInsertCodec(collMeta)
 	insertData, err := genSimpleInsertData()
@@ -374,6 +379,74 @@ func saveSimpleBinLog(ctx context.Context) ([]*datapb.FieldBinlog, error) {
 	// timestamp field not allowed 0 timestamp
 	insertData.Data[timestampFieldID].(*storage.Int64FieldData).Data[0] = 1
 	binLogs, _, err := inCodec.Serialize(defaultPartitionID, defaultSegmentID, insertData)
+
+	return binLogs, err
+}
+
+func genSimpleFloatVectors() []float32 {
+	vec := make([]float32, defaultDim)
+	for i := 0; i < defaultDim; i++ {
+		vec[i] = rand.Float32()
+	}
+	return vec
+}
+
+func genCommonBlob(msgLength int, schema *schemapb.CollectionSchema) ([]*commonpb.Blob, error) {
+	genRawData := func(i int) ([]byte, error) {
+		var rawData []byte
+		for _, f := range schema.Fields {
+			switch f.DataType {
+			case schemapb.DataType_Int32:
+				bs := make([]byte, 4)
+				binary.LittleEndian.PutUint32(bs, uint32(i))
+				rawData = append(rawData, bs...)
+			case schemapb.DataType_FloatVector:
+				dim := simpleVecField.dim // if no dim specified, use simpleVecField's dim
+				for _, p := range f.TypeParams {
+					if p.Key == dimKey {
+						var err error
+						dim, err = strconv.Atoi(p.Value)
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+				for j := 0; j < dim; j++ {
+					f := float32(i*j)*0.1
+					buf := make([]byte, 4)
+					binary.LittleEndian.PutUint32(buf, math.Float32bits(f))
+					rawData = append(rawData, buf...)
+				}
+			default:
+				err := errors.New("data type not supported")
+				return nil, err
+			}
+		}
+		return rawData, nil
+	}
+
+	var records []*commonpb.Blob
+	for i := 0; i < msgLength; i++ {
+		data, err := genRawData(i)
+		if err != nil {
+			return nil, err
+		}
+		blob := &commonpb.Blob{
+			Value: data,
+		}
+		records = append(records, blob)
+	}
+
+	return records, nil
+}
+
+func genSimpleCommonBlob() ([]*commonpb.Blob, error) {
+	_, schema := genSimpleSchema()
+	return genCommonBlob(defaultMsgLength, schema)
+}
+
+func saveSimpleBinLog(ctx context.Context) ([]*datapb.FieldBinlog, error) {
+	binLogs, err := genSimpleStorageBlob()
 	if err != nil {
 		return nil, err
 	}
@@ -405,6 +478,52 @@ func saveSimpleBinLog(ctx context.Context) ([]*datapb.FieldBinlog, error) {
 	}
 	err = kv.MultiSave(kvs)
 	return fieldBinlog, err
+}
+
+func genSimpleTimestampFieldData() []Timestamp {
+	times := make([]Timestamp, defaultMsgLength)
+	for i := 0; i < defaultMsgLength; i++ {
+		times[i] = Timestamp(i)
+	}
+	// timestamp 0 is not allowed
+	times[0] = 1
+	return times
+}
+
+func genSimpleRowIDField() []IntPrimaryKey {
+	ids := make([]IntPrimaryKey, defaultMsgLength)
+	for i := 0; i < defaultMsgLength; i++ {
+		ids[i] = IntPrimaryKey(i)
+	}
+	return ids
+}
+
+func genSimpleInsertMsg() (*msgstream.InsertMsg, error) {
+	rowData, err := genSimpleCommonBlob()
+	if err != nil {
+		return nil, err
+	}
+
+	return &msgstream.InsertMsg{
+		BaseMsg: msgstream.BaseMsg{
+			HashValues: []uint32{0},
+		},
+		InsertRequest: internalpb.InsertRequest{
+			Base: &commonpb.MsgBase{
+				MsgType: commonpb.MsgType_Retrieve,
+				MsgID:   rand.Int63(),
+			},
+			CollectionName: defaultCollectionName,
+			PartitionName:  defaultPartitionName,
+			CollectionID:   defaultCollectionID,
+			PartitionID:    defaultPartitionID,
+			SegmentID:      defaultSegmentID,
+			ChannelID:      defaultVChannel,
+			Timestamps:     genSimpleTimestampFieldData(),
+			RowIDs:         genSimpleRowIDField(),
+			RowData:        rowData,
+		},
+	}, nil
 }
 
 // ---------- unittest util functions ----------

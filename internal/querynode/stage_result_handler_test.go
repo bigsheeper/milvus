@@ -57,7 +57,7 @@ func TestResultHandlerStage_TestSearch(t *testing.T) {
 
 	res, err := consumeSimpleSearchResult(resStream)
 	assert.NoError(t, err)
-	assert.Equal(t, defaultTopK, len(res.Hits))
+	assert.Equal(t, defaultTopK, res.TopK)
 	assert.Equal(t, 0, len(res.ChannelIDsSearched))
 	assert.Equal(t, 1, len(res.SealedSegmentIDsSearched))
 	assert.Equal(t, defaultSegmentID, res.SealedSegmentIDsSearched[0])

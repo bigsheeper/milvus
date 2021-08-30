@@ -15,7 +15,6 @@ import (
 	"testing"
 )
 
-
 // TODO: add task ut
 func TestTask_watchDmChannelsTask(t *testing.T) {
 

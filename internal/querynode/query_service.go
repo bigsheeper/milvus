@@ -23,7 +23,6 @@ import (
 	miniokv "github.com/milvus-io/milvus/internal/kv/minio"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
-	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/storage"
 )
 
@@ -38,9 +37,9 @@ type queryService struct {
 
 	factory msgstream.Factory
 
-	lcm               storage.ChunkManager
-	rcm               storage.ChunkManager
-	localCacheEnabled bool
+	localChunkManager  storage.ChunkManager
+	remoteChunkManager storage.ChunkManager
+	localCacheEnabled  bool
 }
 
 func newQueryService(ctx context.Context,
@@ -58,7 +57,7 @@ func newQueryService(ctx context.Context,
 	enabled, _ := Params.Load("localStorage.enabled")
 	localCacheEnabled, _ := strconv.ParseBool(enabled)
 
-	lcm := storage.NewLocalChunkManager(path)
+	localChunkManager := storage.NewLocalChunkManager(path)
 
 	option := &miniokv.Option{
 		Address:           Params.MinioEndPoint,
@@ -73,7 +72,7 @@ func newQueryService(ctx context.Context,
 	if err != nil {
 		panic(err)
 	}
-	rcm := storage.NewMinioChunkManager(client)
+	remoteChunkManager := storage.NewMinioChunkManager(client)
 
 	return &queryService{
 		ctx:    queryServiceCtx,
@@ -86,9 +85,9 @@ func newQueryService(ctx context.Context,
 
 		factory: factory,
 
-		lcm:               lcm,
-		rcm:               rcm,
-		localCacheEnabled: localCacheEnabled,
+		localChunkManager:  localChunkManager,
+		remoteChunkManager: remoteChunkManager,
+		localCacheEnabled:  localCacheEnabled,
 	}
 }
 
@@ -106,17 +105,6 @@ func (q *queryService) addQueryCollection(collectionID UniqueID) error {
 		err := errors.New("query collection already exists, collectionID = " + fmt.Sprintln(collectionID))
 		return err
 	}
-	collection, err := q.historical.replica.getCollectionByID(collectionID)
-	if err != nil {
-		return err
-	}
-
-	vcm := storage.NewVectorChunkManager(q.lcm, q.rcm,
-		&etcdpb.CollectionMeta{
-			ID:     collection.id,
-			Schema: collection.schema,
-		}, q.localCacheEnabled)
-
 	ctx1, cancel := context.WithCancel(q.ctx)
 	qc, err := newQueryCollection(ctx1,
 		cancel,
@@ -124,7 +112,9 @@ func (q *queryService) addQueryCollection(collectionID UniqueID) error {
 		q.historical,
 		q.streaming,
 		q.factory,
-		vcm,
+		q.localChunkManager,
+		q.remoteChunkManager,
+		q.localCacheEnabled,
 	)
 	if err != nil {
 		return err

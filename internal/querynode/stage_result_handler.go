@@ -247,6 +247,7 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	sr := q.results[msgID][0].(*searchResult)
 	msg := sr.msg
 	plan := msg.plan
+	topK := plan.getTopK()
 	searchRequests := sr.reqs
 
 	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
@@ -325,33 +326,8 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 		zap.Any("length", len(searchResults)),
 	)
 	if len(searchResults) <= 0 {
-		for _, group := range searchRequests {
-			nq := group.getNumOfQuery()
-			nilHits := make([][]byte, nq)
-			hit := &milvuspb.Hits{}
-			for i := 0; i < int(nq); i++ {
-				bs, err := proto.Marshal(hit)
-				if err != nil {
-					log.Warn(err.Error())
-					return
-				}
-				nilHits[i] = bs
-			}
-
-			// TODO: remove inefficient code in cgo and use SearchResultData directly
-			// TODO: Currently add a translate layer from hits to SearchResultData
-			// TODO: hits marshal and unmarshal is likely bottleneck
-
-			transformed, err := q.translateHits(schema, msg.OutputFieldsId, nilHits)
-			if err != nil {
-				log.Warn(err.Error())
-				return
-			}
-			byteBlobs, err := proto.Marshal(transformed)
-			if err != nil {
-				log.Warn(err.Error())
-				return
-			}
+		for _, searchReq := range searchRequests {
+			queryNum := searchReq.getNumOfQuery()
 
 			resultChannelInt := 0
 			searchResultMsg := &msgstream.SearchResultMsg{
@@ -365,11 +341,12 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 					},
 					Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 					ResultChannelID:          msg.ResultChannelID,
-					Hits:                     nilHits,
-					SlicedBlob:               byteBlobs,
+					MetricType:               plan.getMetricType(),
+					NumQueries:               queryNum,
+					TopK:                     topK,
+					SlicedBlob:               nil,
 					SlicedOffset:             1,
 					SlicedNumCount:           1,
-					MetricType:               plan.getMetricType(),
 					SealedSegmentIDsSearched: sealedSegmentSearched,
 					ChannelIDsSearched:       channelsSearched,
 					GlobalSealedSegmentIDs:   globalSealedSegments,
@@ -417,7 +394,8 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 	)
 
 	var offset int64 = 0
-	for index := range searchRequests {
+	for index, searchReq := range searchRequests {
+		queryNum := searchReq.getNumOfQuery()
 		hitBlobSizePeerQuery, err := marshaledHits.hitBlobSizeInGroup(int64(index))
 		if err != nil {
 			log.Warn(err.Error())
@@ -464,11 +442,12 @@ func (q *resultHandlerStage) reduceSearch(msgID UniqueID) {
 				},
 				Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 				ResultChannelID:          msg.ResultChannelID,
-				Hits:                     hits,
+				MetricType:               plan.getMetricType(),
+				NumQueries:               queryNum,
+				TopK:                     topK,
 				SlicedBlob:               byteBlobs,
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
-				MetricType:               plan.getMetricType(),
 				SealedSegmentIDsSearched: sealedSegmentSearched,
 				ChannelIDsSearched:       channelsSearched,
 				GlobalSealedSegmentIDs:   globalSealedSegments,

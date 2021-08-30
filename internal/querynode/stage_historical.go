@@ -21,6 +21,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
@@ -35,8 +36,11 @@ type historicalStage struct {
 	input  chan queryMsg
 	output chan queryResult
 
-	historical *historical
-	vcm        storage.ChunkManager
+	historical         *historical
+	localChunkManager  storage.ChunkManager
+	remoteChunkManager storage.ChunkManager
+	vectorChunkManager storage.ChunkManager
+	localCacheEnabled  bool
 }
 
 func newHistoricalStage(ctx context.Context,
@@ -44,15 +48,19 @@ func newHistoricalStage(ctx context.Context,
 	input chan queryMsg,
 	output chan queryResult,
 	historical *historical,
-	vcm storage.ChunkManager) *historicalStage {
+	localChunkManager storage.ChunkManager,
+	remoteChunkManager storage.ChunkManager,
+	localCacheEnabled bool) *historicalStage {
 
 	return &historicalStage{
-		ctx:          ctx,
-		collectionID: collectionID,
-		input:        input,
-		output:       output,
-		historical:   historical,
-		vcm:          vcm,
+		ctx:                ctx,
+		collectionID:       collectionID,
+		input:              input,
+		output:             output,
+		historical:         historical,
+		localChunkManager:  localChunkManager,
+		remoteChunkManager: remoteChunkManager,
+		localCacheEnabled:  localCacheEnabled,
 	}
 }
 
@@ -120,10 +128,31 @@ func (q *historicalStage) start() {
 func (q *historicalStage) retrieve(retrieveMsg *retrieveMsg) ([]UniqueID, []*segcorepb.RetrieveResults, error) {
 	collectionID := retrieveMsg.CollectionID
 	tr := timerecord.NewTimeRecorder(fmt.Sprintf("retrieve %d", collectionID))
+
+	collection, err := q.historical.replica.getCollectionByID(collectionID)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var mergeList []*segcorepb.RetrieveResults
+
+	if q.vectorChunkManager == nil {
+		if q.localChunkManager == nil {
+			return nil, nil, fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+		}
+		if q.remoteChunkManager == nil {
+			return nil, nil, fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+		}
+		q.vectorChunkManager = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
+			&etcdpb.CollectionMeta{
+				ID:     collection.id,
+				Schema: collection.schema,
+			}, q.localCacheEnabled)
+	}
+
 	hisRetrieveResults, sealedSegmentRetrieved, err1 := q.historical.retrieve(collectionID,
 		retrieveMsg.PartitionIDs,
-		q.vcm,
+		q.vectorChunkManager,
 		retrieveMsg.plan)
 	if err1 != nil {
 		log.Warn(err1.Error())

@@ -15,7 +15,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"math"
 	"math/rand"
 	"path"
@@ -29,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -412,7 +412,7 @@ func genCommonBlob(msgLength int, schema *schemapb.CollectionSchema) ([]*commonp
 					}
 				}
 				for j := 0; j < dim; j++ {
-					f := float32(i*j)*0.1
+					f := float32(i*j) * 0.1
 					buf := make([]byte, 4)
 					binary.LittleEndian.PutUint32(buf, math.Float32bits(f))
 					rawData = append(rawData, buf...)
@@ -884,7 +884,7 @@ func genSimpleSearchResult() (*searchResult, error) {
 	}
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil)
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
 	go hs.start()
 	go func() {
 		inputChan <- msg
@@ -922,7 +922,7 @@ func genSimpleRetrieveResult() (*retrieveResult, error) {
 	}
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil)
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
 	go hs.start()
 	go func() {
 		inputChan <- msg

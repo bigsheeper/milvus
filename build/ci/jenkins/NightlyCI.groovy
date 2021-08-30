@@ -5,8 +5,8 @@
 String cron_timezone = "TZ=Asia/Shanghai"
 String cron_string = BRANCH_NAME == "master" ? "50 22 * * * " : ""
 
-int total_timeout_minutes = 240
-int e2e_timeout_seconds = 3 * 60 * 60
+int total_timeout_minutes = 360
+int e2e_timeout_seconds = 4 * 60 * 60
 
 pipeline {
     agent none
@@ -67,6 +67,7 @@ pipeline {
                                         def clusterEnabled = "false"
                                         if ("${MILVUS_SERVER_TYPE}" == "distributed") {
                                             clusterEnabled = "true"
+                                            e2e_timeout_seconds = 5 * 60 * 60
                                         }
 
                                         if ("${MILVUS_CLIENT}" == "pymilvus") {
@@ -78,7 +79,7 @@ pipeline {
                                             --install-extra-arg "--set etcd.enabled=false --set externalEtcd.enabled=true --set externalEtcd.endpoints={\$KRTE_POD_IP:2379}" \
                                             --skip-export-logs \
                                             --skip-cleanup \
-                                            --test-extra-arg "--tags smoke L0 L1 L2"
+                                            --test-extra-arg "--tags smoke L0 L1 L2 --reportportal" \
                                             --test-timeout ${e2e_timeout_seconds}
                                             """
 //                                         } else if ("${MILVUS_CLIENT}" == "pymilvus-orm") {
@@ -139,7 +140,7 @@ pipeline {
                                 sh "./tests/scripts/export_logs.sh"
                                 dir("${env.ARTIFACTS}") {
                                     sh "find ./kind -path '*/history/*' -type f | xargs tar -zcvf artifacts-${PROJECT_NAME}-${MILVUS_SERVER_TYPE}-${SEMVER}-${env.BUILD_NUMBER}-e2e-nightly-logs.tar.gz --transform='s:^[^/]*/[^/]*/[^/]*/[^/]*/::g' || true"
-                                    if ("${MILVUS_CLIENT}" == "pymilvus-orm") {
+                                    if ("${MILVUS_CLIENT}" == "pymilvus") {
                                         sh "tar -zcvf artifacts-${PROJECT_NAME}-${MILVUS_SERVER_TYPE}-${MILVUS_CLIENT}-pytest-logs.tar.gz ./tests/pytest_logs --remove-files || true"
                                     }
                                     archiveArtifacts artifacts: "**.tar.gz", allowEmptyArchive: true

@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"go.uber.org/zap"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
-	"go.etcd.io/etcd/clientv3"
+	"go.uber.org/zap"
 )
 
 const (
@@ -33,7 +33,6 @@ type EtcdKV struct {
 }
 
 // NewEtcdKV creates a new etcd kv.
-// func NewEtcdKV(etcdEndpints []string, rootPath string) (*EtcdKV, error)
 func NewEtcdKV(etcdEndpoints []string, rootPath string) (*EtcdKV, error) {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   etcdEndpoints,
@@ -130,7 +129,7 @@ func (kv *EtcdKV) MultiLoad(keys []string) ([]string, error) {
 	result := make([]string, 0, len(keys))
 	invalid := make([]string, 0, len(keys))
 	for index, rp := range resp.Responses {
-		if rp.GetResponseRange().Kvs == nil {
+		if rp.GetResponseRange().Kvs == nil || len(rp.GetResponseRange().Kvs) == 0 {
 			invalid = append(invalid, keys[index])
 			result = append(result, "")
 		}

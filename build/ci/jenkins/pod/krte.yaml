@@ -47,6 +47,12 @@ spec:
     env:
     - name: ETCD_LOG_LEVEL
       value: debug
+    - name: ETCD_QUOTA_BACKEND_BYTES
+      value: "4294967296"
+    - name: ETCD_AUTO_COMPACTION_MODE
+      value: "revision"
+    - name: ETCD_AUTO_COMPACTION_RETENTION
+      value: "1000"
     command:
     - etcd
     - -advertise-client-urls=http://127.0.0.1:2379
@@ -54,7 +60,7 @@ spec:
     resources:
       limits:
         cpu: "2"
-        memory: "4Gi"
+        memory: "6Gi"
     ports:
     - containerPort: 2379
       name: client

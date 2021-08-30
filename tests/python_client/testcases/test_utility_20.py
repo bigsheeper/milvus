@@ -22,6 +22,24 @@ class TestUtilityParams(TestcaseBase):
     def get_invalid_metric_type(self, request):
         if request.param == [] or request.param == "":
             pytest.skip("metric empty is valid for distance calculation")
+        if isinstance(request.param, str):
+            pytest.skip("string is valid type for metric")
+        yield request.param
+
+    @pytest.fixture(scope="function", params=ct.get_invalid_strs)
+    def get_invalid_metric_value(self, request):
+        if request.param == [] or request.param == "":
+            pytest.skip("metric empty is valid for distance calculation")
+        if not isinstance(request.param, str):
+            pytest.skip("Skip invalid type for metric")
+        yield request.param
+
+    @pytest.fixture(scope="function", params=["JACCARD", "Superstructure", "Substructure"])
+    def get_not_support_metric(self, request):
+        yield request.param
+
+    @pytest.fixture(scope="function", params=["metric_type", "metric"])
+    def get_support_metric_field(self, request):
         yield request.param
 
     """
@@ -169,7 +187,6 @@ class TestUtilityParams(TestcaseBase):
                                                                     "is illegal".format(invalid_vector)})
 
     @pytest.mark.tags(CaseLabel.L1)
-    @pytest.mark.xfail(reason="issue 7038")
     def test_calc_distance_left_vector_invalid_value(self, get_invalid_vector_dict):
         """
         target: test calculated distance with invalid vectors
@@ -182,7 +199,8 @@ class TestUtilityParams(TestcaseBase):
             self.utility_wrap.calc_distance(invalid_vector, invalid_vector,
                                             check_task=CheckTasks.err_res,
                                             check_items={"err_code": 1,
-                                                         "err_msg": "Left vectors array is empty"})
+                                                         "err_msg": "vectors_left value {} "
+                                                                    "is illegal".format(invalid_vector)})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_calc_distance_right_vector_invalid_type(self, get_invalid_vector_dict):
@@ -217,12 +235,11 @@ class TestUtilityParams(TestcaseBase):
             self.utility_wrap.calc_distance(op_l, invalid_vector,
                                             check_task=CheckTasks.err_res,
                                             check_items={"err_code": 1,
-                                                         "err_msg": "Cannot calculate distance between "
-                                                                    "vectors with different dimension"})
+                                                         "err_msg": "vectors_right value {} "
+                                                                    "is illegal".format(invalid_vector)})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7086")
-    def test_calc_distance_invalid_metric(self, get_invalid_metric_type):
+    def test_calc_distance_invalid_metric_type(self, get_support_metric_field, get_invalid_metric_type):
         """
         target: test calculated distance with invalid metric
         method: input invalid metric
@@ -233,15 +250,59 @@ class TestUtilityParams(TestcaseBase):
         vectors_r = cf.gen_vectors(default_nb, default_dim)
         op_l = {"float_vectors": vectors_l}
         op_r = {"float_vectors": vectors_r}
+        metric_field = get_support_metric_field
         metric = get_invalid_metric_type
-        params = {"metric": metric}
+        params = {metric_field: metric}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.err_res,
                                         check_items={"err_code": 1,
-                                                     "err_msg": "Invalid metric type"})
+                                                     "err_msg": "params value {{'metric': {}}} "
+                                                                "is illegal".format(metric)})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_calc_distance_invalid_using(self):
+    def test_calc_distance_invalid_metric_value(self, get_support_metric_field, get_invalid_metric_value):
+        """
+        target: test calculated distance with invalid metric
+        method: input invalid metric
+        expected: raise exception
+        """
+        self._connect()
+        vectors_l = cf.gen_vectors(default_nb, default_dim)
+        vectors_r = cf.gen_vectors(default_nb, default_dim)
+        op_l = {"float_vectors": vectors_l}
+        op_r = {"float_vectors": vectors_r}
+        metric_field = get_support_metric_field
+        metric = get_invalid_metric_value
+        params = {metric_field: metric}
+        self.utility_wrap.calc_distance(op_l, op_r, params,
+                                        check_task=CheckTasks.err_res,
+                                        check_items={"err_code": 1,
+                                                     "err_msg": "{} metric type is invalid for "
+                                                                "float vector".format(metric)})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    def test_calc_distance_not_support_metric(self, get_support_metric_field, get_not_support_metric):
+        """
+        target: test calculated distance with invalid metric
+        method: input invalid metric
+        expected: raise exception
+        """
+        self._connect()
+        vectors_l = cf.gen_vectors(default_nb, default_dim)
+        vectors_r = cf.gen_vectors(default_nb, default_dim)
+        op_l = {"float_vectors": vectors_l}
+        op_r = {"float_vectors": vectors_r}
+        metric_field = get_support_metric_field
+        metric = get_not_support_metric
+        params = {metric_field: metric}
+        self.utility_wrap.calc_distance(op_l, op_r, params,
+                                        check_task=CheckTasks.err_res,
+                                        check_items={"err_code": 1,
+                                                     "err_msg": "{} metric type is invalid for "
+                                                                "float vector".format(metric)})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    def test_calc_distance_invalid_using(self, get_support_metric_field):
         """
         target: test calculated distance with invalid using
         method: input invalid using
@@ -252,7 +313,8 @@ class TestUtilityParams(TestcaseBase):
         vectors_r = cf.gen_vectors(default_nb, default_dim)
         op_l = {"float_vectors": vectors_l}
         op_r = {"float_vectors": vectors_r}
-        params = {"metric": "L2", "sqrt": True}
+        metric_field = get_support_metric_field
+        params = {metric_field: "L2", "sqrt": True}
         using = "empty"
         self.utility_wrap.calc_distance(op_l, op_r, params, using=using,
                                         check_task=CheckTasks.err_res,
@@ -279,8 +341,7 @@ class TestUtilityParams(TestcaseBase):
                                                                 "vectors with different dimension"})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7036")
-    def test_calc_distance_collection_before_load(self):
+    def test_calc_distance_collection_before_load(self, get_support_metric_field):
         """
         target: test calculated distance when entities is not ready
         method: calculate distance before load
@@ -295,14 +356,20 @@ class TestUtilityParams(TestcaseBase):
                 "field": default_field_name}
         op_r = {"ids": insert_ids[middle:], "collection": collection_w.name,
                 "field": default_field_name}
-        params = {"metric": "L2", "sqrt": True}
+        metric_field = get_support_metric_field
+        params = {metric_field: "L2", "sqrt": True}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.err_res,
                                         check_items={"err_code": 1,
-                                                     "err_msg": "Failed to fetch vectors"})
+                                                     "err_msg": "collection {} was not "
+                                                                "loaded into memory)".format(collection_w.name)})
 
 class TestUtilityBase(TestcaseBase):
     """ Test case of index interface """
+
+    @pytest.fixture(scope="function", params=["metric_type", "metric"])
+    def metric_field(self, request):
+        yield request.param
 
     @pytest.fixture(scope="function", params=[True, False])
     def sqrt(self, request):
@@ -312,7 +379,7 @@ class TestUtilityBase(TestcaseBase):
     def metric(self, request):
         yield request.param
 
-    @pytest.fixture(scope="function", params=["HAMMING", "TANIMOTO", "JACCARD"])
+    @pytest.fixture(scope="function", params=["HAMMING", "TANIMOTO"])
     def metric_binary(self, request):
         yield request.param
 
@@ -577,7 +644,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "vectors_r": vectors_r})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_calc_distance_default_sqrt(self, metric):
+    def test_calc_distance_default_sqrt(self, metric_field, metric):
         """
         target: test calculated distance with default param
         method: calculated distance with default sqrt
@@ -588,7 +655,7 @@ class TestUtilityBase(TestcaseBase):
         vectors_r = cf.gen_vectors(default_nb, default_dim)
         op_l = {"float_vectors": vectors_l}
         op_r = {"float_vectors": vectors_r}
-        params = {"metric": metric}
+        params = {metric_field: metric}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -615,8 +682,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7064")
-    def test_calc_distance_binary_metric(self, metric_binary):
+    def test_calc_distance_binary_metric(self, metric_field, metric_binary):
         """
         target: test calculate distance with binary vectors
         method: calculate distance between binary vectors
@@ -628,10 +694,9 @@ class TestUtilityBase(TestcaseBase):
         raw_vectors_r, vectors_r = cf.gen_binary_vectors(nb, default_dim)
         op_l = {"bin_vectors": vectors_l}
         op_r = {"bin_vectors": vectors_r}
-        params = {"metric": metric_binary}
-        if metric_binary == "HAMMING":
-            vectors_l = raw_vectors_l
-            vectors_r = raw_vectors_r
+        params = {metric_field: metric_binary}
+        vectors_l = raw_vectors_l
+        vectors_r = raw_vectors_r
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -639,7 +704,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "metric": metric_binary})
 
     @pytest.mark.tags(CaseLabel.L1)
-    def test_calc_distance_from_collection_ids(self, metric, sqrt):
+    def test_calc_distance_from_collection_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance from collection entities
         method: both left and right vectors are from collection
@@ -658,7 +723,7 @@ class TestUtilityBase(TestcaseBase):
                 "field": default_field_name}
         op_r = {"ids": insert_ids[middle:], "collection": collection_w.name,
                 "field": default_field_name}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -667,7 +732,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_calc_distance_from_collections(self, metric, sqrt):
+    def test_calc_distance_from_collections(self, metric_field, metric, sqrt):
         """
         target: test calculated distance between entities from collections
         method: calculated distance between entities from two collections
@@ -684,7 +749,7 @@ class TestUtilityBase(TestcaseBase):
                 "field": default_field_name}
         op_r = {"ids": insert_ids_1, "collection": collection_w_1.name,
                 "field": default_field_name}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -693,7 +758,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_calc_distance_left_vector_and_collection_ids(self, metric, sqrt):
+    def test_calc_distance_left_vector_and_collection_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance from collection entities
         method: set left vectors as random vectors, right vectors from collection
@@ -711,7 +776,7 @@ class TestUtilityBase(TestcaseBase):
         op_l = {"float_vectors": vectors_l}
         op_r = {"ids": insert_ids[middle:], "collection": collection_w.name,
                 "field": default_field_name}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -720,7 +785,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    def test_calc_distance_right_vector_and_collection_ids(self, metric, sqrt):
+    def test_calc_distance_right_vector_and_collection_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance from collection entities
         method: set right vectors as random vectors, left vectors from collection
@@ -736,7 +801,7 @@ class TestUtilityBase(TestcaseBase):
         op_l = {"ids": insert_ids[:middle], "collection": collection_w.name,
                 "field": default_field_name}
         op_r = {"float_vectors": vectors_r}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         self.utility_wrap.calc_distance(op_l, op_r, params,
                                         check_task=CheckTasks.check_distance,
                                         check_items={"vectors_l": vectors_l,
@@ -745,8 +810,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7046")
-    def test_calc_distance_from_partition_ids(self, metric, sqrt):
+    def test_calc_distance_from_partition_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance from one partition entities
         method: both left and right vectors are from partition
@@ -757,7 +821,7 @@ class TestUtilityBase(TestcaseBase):
         collection_w, vectors, _, insert_ids = self.init_collection_general(prefix, True, nb, partition_num=1)
         partitions = collection_w.partitions
         middle = len(insert_ids) // 2
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         for i in range(len(partitions)):
             vectors_l = vectors[i].loc[:, default_field_name]
             vectors_r = vectors[i].loc[:, default_field_name]
@@ -773,8 +837,7 @@ class TestUtilityBase(TestcaseBase):
                                                          "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7046")
-    def test_calc_distance_from_partitions(self, metric, sqrt):
+    def test_calc_distance_from_partitions(self, metric_field, metric, sqrt):
         """
         target: test calculated distance between entities from partitions
         method: calculate distance between entities from two partitions
@@ -785,7 +848,7 @@ class TestUtilityBase(TestcaseBase):
         collection_w, vectors, _, insert_ids = self.init_collection_general(prefix, True, nb, partition_num=1)
         partitions = collection_w.partitions
         middle = len(insert_ids) // 2
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         vectors_l = vectors[0].loc[:, default_field_name]
         vectors_r = vectors[1].loc[:, default_field_name]
         op_l = {"ids": insert_ids[:middle], "collection": collection_w.name,
@@ -800,8 +863,7 @@ class TestUtilityBase(TestcaseBase):
                                                      "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7046")
-    def test_calc_distance_left_vectors_and_partition_ids(self, metric, sqrt):
+    def test_calc_distance_left_vectors_and_partition_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance between vectors and partition entities
         method: set left vectors as random vectors, right vectors are entities
@@ -814,7 +876,7 @@ class TestUtilityBase(TestcaseBase):
         partitions = collection_w.partitions
         vectors_l = cf.gen_vectors(nb // 2, default_dim)
         op_l = {"float_vectors": vectors_l}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         for i in range(len(partitions)):
             vectors_r = vectors[i].loc[:, default_field_name]
             op_r = {"ids": insert_ids[middle:], "collection": collection_w.name,
@@ -827,8 +889,7 @@ class TestUtilityBase(TestcaseBase):
                                                          "sqrt": sqrt})
 
     @pytest.mark.tags(CaseLabel.L2)
-    @pytest.mark.xfail(reason="issue 7046")
-    def test_calc_distance_right_vectors_and_partition_ids(self, metric, sqrt):
+    def test_calc_distance_right_vectors_and_partition_ids(self, metric_field, metric, sqrt):
         """
         target: test calculated distance between vectors and partition entities
         method: set right vectors as random vectors, left vectors are entities
@@ -841,7 +902,7 @@ class TestUtilityBase(TestcaseBase):
         partitions = collection_w.partitions
         vectors_r = cf.gen_vectors(nb // 2, default_dim)
         op_r = {"float_vectors": vectors_r}
-        params = {"metric": metric, "sqrt": sqrt}
+        params = {metric_field: metric, "sqrt": sqrt}
         for i in range(len(partitions)):
             vectors_l = vectors[i].loc[:, default_field_name]
             op_l = {"ids": insert_ids[middle:], "collection": collection_w.name,

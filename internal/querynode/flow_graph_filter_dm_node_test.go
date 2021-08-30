@@ -13,13 +13,15 @@ package querynode
 
 import (
 	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func getFilterDMNode(ctx context.Context) (*filterDmNode, error) {

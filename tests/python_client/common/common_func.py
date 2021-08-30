@@ -338,6 +338,9 @@ def gen_normal_expressions():
         "int64 not in [1, 2, 3]",
         "int64 in [1, 2, 3] and float != 2",
         "int64 == 0 || int64 == 1 || int64 == 2",
+        "0 < int64 < 400",
+        "500 <= int64 < 1000",
+        "200+300 < int64 <= 500+500"
     ]
     return expressions
 
@@ -350,6 +353,9 @@ def gen_normal_expressions_field(field):
         f"{field} not in [1, 2, 3]",
         f"{field} in [1, 2, 3] and {field} != 2",
         f"{field} == 0 || {field} == 1 || {field} == 2",
+        f"0 < {field} < 400",
+        f"500 <= {field} <= 1000",
+        f"200+300 <= {field} <= 500+500"
     ]
     return expressions
 
@@ -379,6 +385,10 @@ def tanimoto(x, y):
     y = np.asarray(y, np.bool)
     return -np.log2(np.double(np.bitwise_and(x, y).sum()) / np.double(np.bitwise_or(x, y).sum()))
 
+def tanimoto_calc(x, y):
+    x = np.asarray(x, np.bool)
+    y = np.asarray(y, np.bool)
+    return np.double((len(x) - np.bitwise_xor(x, y).sum())) / (len(y) + np.bitwise_xor(x, y).sum())
 
 def substructure(x, y):
     x = np.asarray(x, np.bool)
@@ -403,7 +413,7 @@ def compare_distance_2d_vector(x, y, distance, metric, sqrt):
             elif metric == "HAMMING":
                 distance_i = hamming(x[i], y[j])
             elif metric == "TANIMOTO":
-                distance_i = tanimoto(x[i], y[j])
+                distance_i = tanimoto_calc(x[i], y[j])
             elif metric == "JACCARD":
                 distance_i = jaccard(x[i], y[j])
             else:

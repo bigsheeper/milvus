@@ -13,11 +13,13 @@ package querynode
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 )
 
 func TestSegmentLoader_loadSegment(t *testing.T) {
@@ -51,12 +53,13 @@ func TestSegmentLoader_loadSegment(t *testing.T) {
 		LoadCondition: querypb.TriggerCondition_grpcRequest,
 		Infos: []*querypb.SegmentLoadInfo{
 			{
-				SegmentID: defaultSegmentID,
-				PartitionID: defaultPartitionID,
+				SegmentID:    defaultSegmentID,
+				PartitionID:  defaultPartitionID,
 				CollectionID: defaultCollectionID,
-				BinlogPaths: fieldBinlog,
+				BinlogPaths:  fieldBinlog,
 			},
 		},
 	}
 	err = loader.loadSegment(req, true)
+	assert.NoError(t, err)
 }

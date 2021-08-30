@@ -17,7 +17,7 @@ set -x
 MILVUS_HELM_RELEASE_NAME="${MILVUS_HELM_RELEASE_NAME:-milvus-testing}"
 MILVUS_CLUSTER_ENABLED="${MILVUS_CLUSTER_ENABLED:-false}"
 MILVUS_HELM_NAMESPACE="${MILVUS_HELM_NAMESPACE:-default}"
-PARALLEL_NUM="${PARALLEL_NUM:-4}"
+PARALLEL_NUM="${PARALLEL_NUM:-6}"
 MILVUS_CLIENT="${MILVUS_CLIENT:-pymilvus}"
 
 SOURCE="${BASH_SOURCE[0]}"
@@ -54,11 +54,6 @@ if [[ "${TEST_ENV:-}" =~ ^kind*  ]]; then
 fi
 
 pushd "${ROOT}/tests/docker"
-  docker-compose pull --ignore-pull-failures pytest
-  if [[ -z "${SKIP_CHECK_PYTEST_ENV:-}" ]]; then
-    docker-compose build pytest
-  fi
-
   if [[ "${TEST_ENV:-}" =~ ^kind*  ]]; then
     export PRE_EXIST_NETWORK="true"
     export PYTEST_NETWORK="kind"

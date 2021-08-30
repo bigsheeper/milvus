@@ -13,6 +13,8 @@ package querynode
 
 import (
 	"context"
+	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
@@ -80,7 +82,10 @@ type queryCollection struct {
 	queryMsgStream       msgstream.MsgStream
 	queryResultMsgStream msgstream.MsgStream
 
-	vcm storage.ChunkManager
+	localChunkManager  storage.ChunkManager
+	remoteChunkManager storage.ChunkManager
+	vectorChunkManager storage.ChunkManager
+	localCacheEnabled  bool
 
 	inputStage      *inputStage
 	reqStage        *requestHandlerStage
@@ -100,7 +105,9 @@ func newQueryCollection(releaseCtx context.Context,
 	historical *historical,
 	streaming *streaming,
 	factory msgstream.Factory,
-	vcm storage.ChunkManager) (*queryCollection, error) {
+	localChunkManager storage.ChunkManager,
+	remoteChunkManager storage.ChunkManager,
+	localCacheEnabled bool) (*queryCollection, error) {
 
 	queryStream, _ := factory.NewQueryMsgStream(releaseCtx)
 	queryResultStream, _ := factory.NewQueryMsgStream(releaseCtx)
@@ -119,7 +126,9 @@ func newQueryCollection(releaseCtx context.Context,
 		queryMsgStream:       queryStream,
 		queryResultMsgStream: queryResultStream,
 
-		vcm: vcm,
+		localChunkManager:  localChunkManager,
+		remoteChunkManager: remoteChunkManager,
+		localCacheEnabled:  localCacheEnabled,
 	}
 
 	// create query stages
@@ -156,7 +165,9 @@ func newQueryCollection(releaseCtx context.Context,
 		hisChan,
 		qc.resChan,
 		qc.historical,
-		qc.vcm)
+		qc.localChunkManager,
+		qc.remoteChunkManager,
+		qc.localCacheEnabled)
 	qc.historicalStage = hisStage
 
 	qc.vChannelStages = make(map[Channel]*vChannelStage)
@@ -255,4 +266,25 @@ func (r *retrieveResult) ID() UniqueID {
 
 func (r *retrieveResult) ChannelNum() int {
 	return r.msg.channelNum
+}
+
+func getSegmentsByPKs(pks []int64, segments []*Segment) (map[int64][]int64, error) {
+	if pks == nil {
+		return nil, fmt.Errorf("pks is nil when getSegmentsByPKs")
+	}
+	if segments == nil {
+		return nil, fmt.Errorf("segments is nil when getSegmentsByPKs")
+	}
+	results := make(map[int64][]int64)
+	buf := make([]byte, 8)
+	for _, segment := range segments {
+		for _, pk := range pks {
+			binary.BigEndian.PutUint64(buf, uint64(pk))
+			exist := segment.pkFilter.Test(buf)
+			if exist {
+				results[segment.segmentID] = append(results[segment.segmentID], pk)
+			}
+		}
+	}
+	return results, nil
 }

@@ -626,6 +626,7 @@ func TestSegment_indexInfoTest(t *testing.T) {
 		fieldID := simpleVecField.id
 
 		err = seg.setIndexInfo(fieldID, &indexInfo{})
+		assert.NoError(t, err)
 
 		indexName := "query-node-test-index"
 		err = seg.setIndexName(fieldID, indexName)

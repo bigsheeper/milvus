@@ -48,7 +48,7 @@ const (
 
 	defaultVecFieldName   = "vec"
 	defaultConstFieldName = "const"
-	defaultTopK           = 10
+	defaultTopK           = int64(10)
 	defaultDim            = 128
 	defaultNProb          = 10
 	defaultMetricType     = "JACCARD"
@@ -229,7 +229,28 @@ func genQueryMsgStream(ctx context.Context) (msgstream.MsgStream, error) {
 	return stream, nil
 }
 
-func genChunkManager(ctx context.Context) (storage.ChunkManager, error) {
+func genLocalChunkManager() (storage.ChunkManager, error) {
+	p, err := Params.Load("storage.path")
+	if err != nil {
+		return nil, err
+	}
+	lcm := storage.NewLocalChunkManager(p)
+
+	return lcm, nil
+}
+
+func genRemoteChunkManager(ctx context.Context) (storage.ChunkManager, error) {
+	client, err := genMinioKV(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rcm := storage.NewMinioChunkManager(client)
+
+
+	return rcm, nil
+}
+
+func genVectorChunkManager(ctx context.Context) (storage.ChunkManager, error) {
 	p, err := Params.Load("storage.path")
 	if err != nil {
 		return nil, err
@@ -668,11 +689,11 @@ func genSimpleStreaming(ctx context.Context) (*streaming, error) {
 
 // ---------- unittest util functions ----------
 // functions of messages and requests
-func genDSL(schema *schemapb.CollectionSchema, nProb int, topK int) (string, error) {
+func genDSL(schema *schemapb.CollectionSchema, nProb int, topK int64) (string, error) {
 	var vecFieldName string
 	var metricType string
 	nProbStr := strconv.Itoa(nProb)
-	topKStr := strconv.Itoa(topK)
+	topKStr := strconv.FormatInt(topK, 10)
 	for _, f := range schema.Fields {
 		if f.DataType == schemapb.DataType_FloatVector {
 			vecFieldName = f.Name
@@ -708,7 +729,7 @@ func genSimplePlaceHolderGroup() ([]byte, error) {
 		Type:   milvuspb.PlaceholderType_FloatVector,
 		Values: make([][]byte, 0),
 	}
-	for i := 0; i < defaultTopK; i++ {
+	for i := 0; i < int(defaultTopK); i++ {
 		var vec = make([]float32, defaultDim)
 		for j := 0; j < defaultDim; j++ {
 			vec[j] = rand.Float32()
@@ -884,7 +905,18 @@ func genSimpleSearchResult() (*searchResult, error) {
 	}
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
+
+	localManager, err := genLocalChunkManager()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteManager, err := genRemoteChunkManager(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, localManager, remoteManager, false)
 	go hs.start()
 	go func() {
 		inputChan <- msg
@@ -922,7 +954,18 @@ func genSimpleRetrieveResult() (*retrieveResult, error) {
 	}
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
+
+	localManager, err := genLocalChunkManager()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteManager, err := genRemoteChunkManager(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, localManager, remoteManager, false)
 	go hs.start()
 	go func() {
 		inputChan <- msg

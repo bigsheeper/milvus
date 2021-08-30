@@ -145,7 +145,10 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
-	chunkManager, err := genChunkManager(ctx)
+	localManager, err := genLocalChunkManager()
+	assert.NoError(t, err)
+
+	remoteManager, err := genRemoteChunkManager(ctx)
 	assert.NoError(t, err)
 
 	queryCollection, err := newQueryCollection(ctx,
@@ -154,8 +157,8 @@ func TestQueryCollection_addVChannelStage_and_removeVChannelStage(t *testing.T) 
 		historical,
 		streaming,
 		fac,
-		chunkManager,
-		chunkManager,
+		localManager,
+		remoteManager,
 		false)
 	assert.NoError(t, err)
 

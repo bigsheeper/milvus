@@ -28,7 +28,14 @@ func TestHistoricalStage_TestSearch(t *testing.T) {
 	assert.NoError(t, err)
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
+
+	localManager, err := genLocalChunkManager()
+	assert.NoError(t, err)
+
+	remoteManager, err := genRemoteChunkManager(ctx)
+	assert.NoError(t, err)
+
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, localManager, remoteManager, false)
 	go hs.start()
 
 	// construct searchMsg
@@ -68,7 +75,14 @@ func TestHistoricalStage_TestRetrieve(t *testing.T) {
 	assert.NoError(t, err)
 	inputChan := make(chan queryMsg, queryBufferSize)
 	outputChan := make(chan queryResult, queryBufferSize)
-	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, nil, nil, false)
+
+	localManager, err := genLocalChunkManager()
+	assert.NoError(t, err)
+
+	remoteManager, err := genRemoteChunkManager(ctx)
+	assert.NoError(t, err)
+
+	hs := newHistoricalStage(ctx, defaultCollectionID, inputChan, outputChan, his, localManager, remoteManager, false)
 	go hs.start()
 
 	// construct retrieveMsg

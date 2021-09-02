@@ -241,10 +241,10 @@ func (lct *LoadCollectionTask) Execute(ctx context.Context) error {
 		for _, segmentBingLog := range recoveryInfo.Binlogs {
 			segmentID := segmentBingLog.SegmentID
 			segmentLoadInfo := &querypb.SegmentLoadInfo{
-				SegmentID:    segmentID,
-				PartitionID:  partitionID,
-				CollectionID: collectionID,
-				BinlogPaths:  segmentBingLog.FieldBinlogs,
+				SegmentID:      segmentID,
+				PartitionID:    partitionID,
+				CollectionID:   collectionID,
+				SegmentBinlogs: segmentBingLog,
 			}
 
 			msgBase := proto.Clone(lct.Base).(*commonpb.MsgBase)
@@ -544,10 +544,10 @@ func (lpt *LoadPartitionTask) Execute(ctx context.Context) error {
 		for _, segmentBingLog := range recoveryInfo.Binlogs {
 			segmentID := segmentBingLog.SegmentID
 			segmentLoadInfo := &querypb.SegmentLoadInfo{
-				SegmentID:    segmentID,
-				PartitionID:  partitionID,
-				CollectionID: collectionID,
-				BinlogPaths:  segmentBingLog.FieldBinlogs,
+				SegmentID:      segmentID,
+				PartitionID:    partitionID,
+				CollectionID:   collectionID,
+				SegmentBinlogs: segmentBingLog,
 			}
 
 			msgBase := proto.Clone(lpt.Base).(*commonpb.MsgBase)
@@ -1281,10 +1281,10 @@ func (lbt *LoadBalanceTask) Execute(ctx context.Context) error {
 					for _, segmentBingLog := range recoveryInfo.Binlogs {
 						segmentID := segmentBingLog.SegmentID
 						segmentLoadInfo := &querypb.SegmentLoadInfo{
-							SegmentID:    segmentID,
-							PartitionID:  partitionID,
-							CollectionID: collectionID,
-							BinlogPaths:  segmentBingLog.FieldBinlogs,
+							SegmentID:      segmentID,
+							PartitionID:    partitionID,
+							CollectionID:   collectionID,
+							SegmentBinlogs: segmentBingLog,
 						}
 
 						msgBase := proto.Clone(lbt.Base).(*commonpb.MsgBase)

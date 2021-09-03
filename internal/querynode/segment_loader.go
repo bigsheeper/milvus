@@ -15,10 +15,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"syscall"
 
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/milvus-io/milvus/internal/kv"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -195,8 +195,8 @@ func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment 
 }
 
 func (loader *segmentLoader) checkSegmentMemory(segmentLoadInfos []*querypb.SegmentLoadInfo) error {
-	si := &syscall.Sysinfo_t{}
-	err := syscall.Sysinfo(si)
+	si := &unix.Sysinfo_t{}
+	err := unix.Sysinfo(si)
 	if err != nil {
 		return err
 	}

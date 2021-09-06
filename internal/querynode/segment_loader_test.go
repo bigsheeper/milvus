@@ -15,7 +15,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -42,10 +41,7 @@ func TestSegmentLoader_CheckSegmentMemory(t *testing.T) {
 			SegmentID:    segmentID,
 			PartitionID:  UniqueID(0),
 			CollectionID: collectionID,
-			SegmentBinlogs: &datapb.SegmentBinlogs{
-				SegmentID: segmentID,
-				NumOfRows: 1000,
-			},
+			NumOfRows:    1000,
 		}
 	}
 
@@ -73,7 +69,7 @@ func TestSegmentLoader_CheckSegmentMemory(t *testing.T) {
 		assert.NoError(t, err)
 
 		info := genSegmentLoadInfo()
-		info.SegmentBinlogs.NumOfRows = int64(totalRAM / uint64(sizePerRecord))
+		info.NumOfRows = int64(totalRAM / uint64(sizePerRecord))
 		err = loader.checkSegmentMemory([]*querypb.SegmentLoadInfo{info})
 		assert.Error(t, err)
 	})

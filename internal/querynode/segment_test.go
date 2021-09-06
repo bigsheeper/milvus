@@ -624,7 +624,7 @@ func TestSegment_ConcurrentOperation(t *testing.T) {
 	assert.Equal(t, collection.ID(), collectionID)
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 100; i++ {
 		segmentID := UniqueID(i)
 		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, true)
 		assert.Equal(t, segmentID, segment.segmentID)

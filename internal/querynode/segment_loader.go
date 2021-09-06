@@ -18,7 +18,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
-	"golang.org/x/sys/unix"
 
 	"github.com/milvus-io/milvus/internal/kv"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -30,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -158,7 +158,7 @@ func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment 
 	}
 
 	// add VectorFieldInfo for vector fields
-	for _, fieldBinlog := range segmentLoadInfo.SegmentBinlogs.FieldBinlogs {
+	for _, fieldBinlog := range segmentLoadInfo.BinlogPaths {
 		if funcutil.SliceContain(vectorFieldIDs, fieldBinlog.FieldID) {
 			vectorFieldInfo := newVectorFieldInfo(fieldBinlog)
 			segment.setVectorFieldInfo(fieldBinlog.FieldID, vectorFieldInfo)
@@ -176,7 +176,7 @@ func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment 
 	}
 
 	// we don't need to load raw data for indexed vector field
-	fieldBinlogs := loader.filterFieldBinlogs(segmentLoadInfo.SegmentBinlogs.FieldBinlogs, indexedFieldIDs)
+	fieldBinlogs := loader.filterFieldBinlogs(segmentLoadInfo.BinlogPaths, indexedFieldIDs)
 
 	log.Debug("loading insert...")
 	err = loader.loadSegmentFieldsData(segment, fieldBinlogs)
@@ -195,20 +195,8 @@ func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment 
 }
 
 func (loader *segmentLoader) checkSegmentMemory(segmentLoadInfos []*querypb.SegmentLoadInfo) error {
-	si := &unix.Sysinfo_t{}
-	err := unix.Sysinfo(si)
-	if err != nil {
-		return err
-	}
-	totalRAM := si.Totalram
-	freeRAM := si.Freeram
-	// TODO: load memory info from /proc/meminfo ?
-	// `usedRAM + buffer/cacheRAM + freeRAM = totalRAM`
-	// however, Sysinfo_t doesn't have cacheRAM, so we get the
-	// occupiedRAM(both applications and disk cache) by
-	// buffer/cacheRAM + usedRAM, which is equivalent to
-	// totalRAM - freeRAM.
-	occupiedRAM := si.Totalram - si.Freeram
+	totalRAM := metricsinfo.GetMemoryCount()
+	usedRAM := metricsinfo.GetUsedMemoryCount()
 
 	segmentTotalSize := uint64(0)
 	for _, segInfo := range segmentLoadInfos {
@@ -225,7 +213,7 @@ func (loader *segmentLoader) checkSegmentMemory(segmentLoadInfos []*querypb.Segm
 			return err
 		}
 
-		segmentSize := uint64(int64(sizePerRecord) * segInfo.SegmentBinlogs.NumOfRows)
+		segmentSize := uint64(int64(sizePerRecord) * segInfo.NumOfRows)
 		segmentTotalSize += segmentSize
 		// TODO: get 0.9 from param table
 		thresholdMemSize := float64(totalRAM) * 0.9
@@ -233,15 +221,14 @@ func (loader *segmentLoader) checkSegmentMemory(segmentLoadInfos []*querypb.Segm
 		log.Debug("memory size[byte] stats when load segment",
 			zap.Any("collectionIDs", collectionID),
 			zap.Any("segmentID", segmentID),
-			zap.Any("numOfRows", segInfo.SegmentBinlogs.NumOfRows),
+			zap.Any("numOfRows", segInfo.NumOfRows),
 			zap.Any("totalRAM", totalRAM),
-			zap.Any("freeRAM", freeRAM),
-			zap.Any("occupiedRAM", occupiedRAM),
+			zap.Any("usedRAM", usedRAM),
 			zap.Any("segmentSize", segmentSize),
 			zap.Any("segmentTotalSize", segmentTotalSize),
 			zap.Any("thresholdMemSize", thresholdMemSize),
 		)
-		if freeRAM+segmentTotalSize > uint64(thresholdMemSize) {
+		if usedRAM+segmentTotalSize > uint64(thresholdMemSize) {
 			return errors.New("load segment failed, OOM if load, collectionID = " + fmt.Sprintln(collectionID))
 		}
 	}

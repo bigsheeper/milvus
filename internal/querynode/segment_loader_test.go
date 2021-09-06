@@ -15,12 +15,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/sys/unix"
-
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSegmentLoader_CheckSegmentMemory(t *testing.T) {
@@ -64,10 +63,7 @@ func TestSegmentLoader_CheckSegmentMemory(t *testing.T) {
 	})
 
 	t.Run("test OOM", func(t *testing.T) {
-		si := &unix.Sysinfo_t{}
-		err := unix.Sysinfo(si)
-		assert.NoError(t, err)
-		totalRAM := si.Totalram
+		totalRAM := metricsinfo.GetMemoryCount()
 
 		loader := genSegmentLoader()
 		col, err := loader.historicalReplica.getCollectionByID(collectionID)

@@ -15,7 +15,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"math"
 	"math/rand"
 	"path"
@@ -33,6 +32,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
+	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
 )
@@ -795,16 +795,7 @@ func genSimpleSearchPlanAndRequests() (*SearchPlan, []*searchRequest, error) {
 	return plan, searchRequests, nil
 }
 
-func genSimpleRetrievePlan() (*RetrievePlan, error) {
-	retrieveMsg, err := genSimpleRetrieveMsg()
-	if err != nil {
-		return nil, err
-	}
-	timestamp := retrieveMsg.RetrieveRequest.TravelTimestamp
-
-	_, schema := genSimpleSchema()
-	collection := newCollection(defaultCollectionID, schema)
-
+func genSimpleRetrievePlanExpr() ([]byte, error) {
 	planNode := &planpb.PlanNode{
 		Node: &planpb.PlanNode_Predicates{
 			Predicates: &planpb.Expr{
@@ -838,6 +829,20 @@ func genSimpleRetrievePlan() (*RetrievePlan, error) {
 		OutputFieldIds: []int64{simpleConstField.id},
 	}
 	planExpr, err := proto.Marshal(planNode)
+	return planExpr, err
+}
+
+func genSimpleRetrievePlan() (*RetrievePlan, error) {
+	retrieveMsg, err := genSimpleRetrieveMsg()
+	if err != nil {
+		return nil, err
+	}
+	timestamp := retrieveMsg.RetrieveRequest.TravelTimestamp
+
+	_, schema := genSimpleSchema()
+	collection := newCollection(defaultCollectionID, schema)
+
+	planExpr, err := genSimpleRetrievePlanExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -869,15 +874,21 @@ func genSimpleSearchRequest() (*internalpb.SearchRequest, error) {
 }
 
 func genSimpleRetrieveRequest() (*internalpb.RetrieveRequest, error) {
+	expr, err := genSimpleRetrievePlanExpr()
+	if err != nil {
+		return nil, err
+	}
+
 	return &internalpb.RetrieveRequest{
 		Base: &commonpb.MsgBase{
 			MsgType: commonpb.MsgType_Retrieve,
 			MsgID:   rand.Int63(), // TODO: random msgID?
 		},
-		CollectionID:    defaultCollectionID,
-		PartitionIDs:    []UniqueID{defaultPartitionID},
-		OutputFieldsId:  []int64{1, 2, 3},
-		TravelTimestamp: Timestamp(1000),
+		CollectionID:       defaultCollectionID,
+		PartitionIDs:       []UniqueID{defaultPartitionID},
+		OutputFieldsId:     []int64{1, 2, 3},
+		TravelTimestamp:    Timestamp(1000),
+		SerializedExprPlan: expr,
 	}, nil
 }
 

@@ -27,7 +27,7 @@ type loadType = int32
 
 const (
 	loadTypeCollection loadType = 0
-	loadTypePartition loadType  = 1
+	loadTypePartition  loadType = 1
 )
 
 type dataSyncService struct {

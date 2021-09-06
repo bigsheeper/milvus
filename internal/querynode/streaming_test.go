@@ -13,8 +13,9 @@ package querynode
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStreaming_streaming(t *testing.T) {

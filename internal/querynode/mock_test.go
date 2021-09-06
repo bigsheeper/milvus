@@ -877,7 +877,7 @@ func genSimpleRetrieveRequest() (*internalpb.RetrieveRequest, error) {
 		CollectionID:    defaultCollectionID,
 		PartitionIDs:    []UniqueID{defaultPartitionID},
 		OutputFieldsId:  []int64{1, 2, 3},
-		TravelTimestamp: Timestamp(0),
+		TravelTimestamp: Timestamp(1000),
 	}, nil
 }
 

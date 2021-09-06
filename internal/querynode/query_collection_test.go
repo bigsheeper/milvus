@@ -3,6 +3,7 @@ package querynode
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"math"
 	"math/rand"
 	"testing"
@@ -17,6 +18,43 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 )
+
+func genSimpleQueryCollection(ctx context.Context, cancel context.CancelFunc) (*queryCollection, error) {
+	historical, err := genSimpleHistorical(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	streaming, err := genSimpleStreaming(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	fac, err := genFactory()
+	if err != nil {
+		return nil, err
+	}
+
+	localCM, err := genLocalChunkManager()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteCM, err := genRemoteChunkManager(ctx)
+
+	queryCollection := newQueryCollection(ctx, cancel,
+		defaultCollectionID,
+		historical,
+		streaming,
+		fac,
+		localCM,
+		remoteCM,
+		false)
+	if queryCollection == nil {
+		return nil, errors.New("nil simple query collection")
+	}
+	return queryCollection, nil
+}
 
 func TestQueryCollection_withoutVChannel(t *testing.T) {
 	m := map[string]interface{}{
@@ -179,3 +217,31 @@ func TestGetSegmentsByPKs(t *testing.T) {
 	_, err = getSegmentsByPKs([]int64{0, 1, 2, 3, 4}, nil)
 	assert.NotNil(t, err)
 }
+
+func TestQueryCollection_unsolvedMsg(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	queryCollection, err := genSimpleQueryCollection(ctx, cancel)
+	assert.NoError(t, err)
+
+	qm, err:= genSimpleSearchMsg()
+	assert.NoError(t, err)
+
+	queryCollection.addToUnsolvedMsg(qm)
+
+	res := queryCollection.popAllUnsolvedMsg()
+	assert.NotNil(t, res)
+	assert.Len(t, res, 1)
+}
+
+func TestQueryCollection_consumeQuery(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	queryCollection, err := genSimpleQueryCollection(ctx, cancel)
+	assert.NoError(t, err)
+
+	go queryCollection.consumeQuery()
+
+
+}
+

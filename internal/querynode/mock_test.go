@@ -40,9 +40,9 @@ import (
 
 // ---------- unittest util functions ----------
 // common definitions
-const ctxTimeInMillisecond = 5000
+const ctxTimeInMillisecond = 500
 const debug = false
-const runTimeConsumingTest = true
+const runTimeConsumingTest = false
 
 const (
 	dimKey        = "dim"
@@ -69,6 +69,12 @@ const (
 
 	defaultCollectionName = "query-node-unittest-default-collection"
 	defaultPartitionName  = "query-node-unittest-default-partition"
+)
+
+const (
+	indexID = UniqueID(0)
+	buildID = UniqueID(0)
+	indexName = "query-node-index-0"
 )
 
 const defaultMsgLength = 100
@@ -243,7 +249,7 @@ func generateIndex(segmentID UniqueID) ([]string, error) {
 
 	// serialize index params
 	var indexCodec storage.IndexCodec
-	serializedIndexBlobs, err := indexCodec.Serialize(binarySet, indexParams, "index_test_name", 1234)
+	serializedIndexBlobs, err := indexCodec.Serialize(binarySet, indexParams, indexName, indexID)
 	if err != nil {
 		return nil, err
 	}

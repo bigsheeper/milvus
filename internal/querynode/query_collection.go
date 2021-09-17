@@ -153,6 +153,13 @@ func (q *queryCollection) register() {
 func (q *queryCollection) addTSafeWatcher(vChannel Channel) {
 	q.tSafeWatchersMu.Lock()
 	defer q.tSafeWatchersMu.Unlock()
+	if _, ok := q.tSafeWatchers[vChannel]; ok {
+		log.Debug("tSafeWatcher of queryCollection has been exists",
+			zap.Any("collectionID", q.collectionID),
+			zap.Any("channel", vChannel),
+		)
+		return
+	}
 	q.tSafeWatchers[vChannel] = newTSafeWatcher()
 	q.streaming.tSafeReplica.registerTSafeWatcher(vChannel, q.tSafeWatchers[vChannel])
 	log.Debug("add tSafeWatcher to queryCollection",

@@ -40,7 +40,7 @@ func (t *tSafeReplica) getTSafe(vChannel Channel) Timestamp {
 	defer t.mu.Unlock()
 	safer, err := t.getTSaferPrivate(vChannel)
 	if err != nil {
-		log.Warn("get tSafe failed", zap.Error(err))
+		//log.Warn("get tSafe failed", zap.Error(err))
 		return 0
 	}
 	return safer.get()

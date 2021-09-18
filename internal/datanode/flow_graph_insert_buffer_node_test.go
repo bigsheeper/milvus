@@ -111,7 +111,35 @@ func TestFlowGraphInsertBufferNodeCreate(t *testing.T) {
 	assert.Error(t, err)
 }
 
+type mockMsg struct{}
+
+func (*mockMsg) TimeTick() Timestamp {
+	return 0
+}
+
 func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
+	t.Run("Test iBNode Operate invalid Msg", func(te *testing.T) {
+		invalidInTests := []struct {
+			in          []Msg
+			description string
+		}{
+			{[]Msg{},
+				"Invalid input length == 0"},
+			{[]Msg{&insertMsg{}, &insertMsg{}, &insertMsg{}},
+				"Invalid input length == 3"},
+			{[]Msg{&mockMsg{}},
+				"Invalid input length == 1 but input message is not insertMsg"},
+		}
+
+		for _, test := range invalidInTests {
+			te.Run(test.description, func(t0 *testing.T) {
+				ibn := &insertBufferNode{}
+				rt := ibn.Operate(test.in)
+				assert.Empty(t0, rt)
+			})
+		}
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -469,13 +497,6 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 		inMsg.startPositions = []*internalpb.MsgPosition{{Timestamp: 234}}
 		inMsg.endPositions = []*internalpb.MsgPosition{{Timestamp: 345}}
 		iBNode.Operate([]flowgraph.Msg{iMsg})
-		assert.Equal(t, len(iBNode.segmentCheckPoints), 3)
-		assert.Equal(t, iBNode.segmentCheckPoints[1].numRows, int64(50+16000+100+32000))
-		assert.Equal(t, iBNode.segmentCheckPoints[2].numRows, int64(100+32000))
-		assert.Equal(t, iBNode.segmentCheckPoints[3].numRows, int64(0))
-		assert.Equal(t, iBNode.segmentCheckPoints[1].pos.Timestamp, Timestamp(345))
-		assert.Equal(t, iBNode.segmentCheckPoints[2].pos.Timestamp, Timestamp(234))
-		assert.Equal(t, iBNode.segmentCheckPoints[3].pos.Timestamp, Timestamp(123))
 
 		assert.Equal(t, len(flushUnit), 2)
 		assert.Equal(t, flushUnit[1].segID, int64(1))
@@ -511,11 +532,6 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 		assert.Equal(t, len(flushSeg), 1)
 		assert.Equal(t, flushSeg[0].FieldID, int64(1))
 		assert.NotNil(t, flushSeg[0].Binlogs)
-		assert.Equal(t, len(iBNode.segmentCheckPoints), 2)
-		assert.Equal(t, iBNode.segmentCheckPoints[2].numRows, int64(100+32000))
-		assert.Equal(t, iBNode.segmentCheckPoints[3].numRows, int64(0))
-		assert.Equal(t, iBNode.segmentCheckPoints[2].pos.Timestamp, Timestamp(234))
-		assert.Equal(t, iBNode.segmentCheckPoints[3].pos.Timestamp, Timestamp(123))
 
 		assert.Equal(t, len(flushUnit), 3)
 		assert.Equal(t, flushUnit[2].segID, int64(1))
@@ -545,9 +561,6 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 		assert.Equal(t, len(flushSeg), 1)
 		assert.Equal(t, flushSeg[0].FieldID, int64(3))
 		assert.NotNil(t, flushSeg[0].Binlogs)
-		assert.Equal(t, len(iBNode.segmentCheckPoints), 1)
-		assert.Equal(t, iBNode.segmentCheckPoints[2].numRows, int64(100+32000))
-		assert.Equal(t, iBNode.segmentCheckPoints[2].pos.Timestamp, Timestamp(234))
 		assert.Equal(t, len(flushUnit), 4)
 		assert.Equal(t, flushUnit[3].segID, int64(3))
 		assert.Equal(t, len(flushUnit[3].checkPoint), 2)
@@ -695,4 +708,38 @@ func TestInsertBufferNode_bufferInsertMsg(t *testing.T) {
 		err = iBNode.bufferInsertMsg(&inMsg, msg)
 		assert.NotNil(t, err)
 	}
+}
+
+func TestInsertBufferNode_updateSegStatesInReplica(te *testing.T) {
+	invalideTests := []struct {
+		replicaCollID UniqueID
+
+		inCollID    UniqueID
+		segID       UniqueID
+		description string
+	}{
+		{1, 9, 100, "collectionID mismatch"},
+	}
+
+	for _, test := range invalideTests {
+		ibNode := &insertBufferNode{
+			replica: newReplica(&RootCoordFactory{}, test.replicaCollID),
+		}
+
+		im := []*msgstream.InsertMsg{
+			{
+				InsertRequest: internalpb.InsertRequest{
+					CollectionID: test.inCollID,
+					SegmentID:    test.segID,
+				},
+			},
+		}
+
+		seg, err := ibNode.updateSegStatesInReplica(im, &internalpb.MsgPosition{}, &internalpb.MsgPosition{})
+
+		assert.Error(te, err)
+		assert.Empty(te, seg)
+
+	}
+
 }

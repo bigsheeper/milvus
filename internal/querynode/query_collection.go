@@ -49,7 +49,6 @@ type queryCollection struct {
 	cancel     context.CancelFunc
 
 	collectionID UniqueID
-	collection   *Collection
 	historical   *historical
 	streaming    *streaming
 
@@ -90,14 +89,11 @@ func newQueryCollection(releaseCtx context.Context,
 	queryStream, _ := factory.NewQueryMsgStream(releaseCtx)
 	queryResultStream, _ := factory.NewQueryMsgStream(releaseCtx)
 
-	collection, _ := streaming.replica.getCollectionByID(collectionID)
-
 	qc := &queryCollection{
 		releaseCtx: releaseCtx,
 		cancel:     cancel,
 
 		collectionID: collectionID,
-		collection:   collection,
 		historical:   historical,
 		streaming:    streaming,
 
@@ -791,7 +787,12 @@ func (q *queryCollection) search(msg queryMsg) error {
 	searchTimestamp := searchMsg.BeginTs()
 	travelTimestamp := searchMsg.TravelTimestamp
 
-	schema, err := typeutil.CreateSchemaHelper(q.collection.schema)
+	collection, err := q.streaming.replica.getCollectionByID(searchMsg.CollectionID)
+	if err != nil {
+		return err
+	}
+
+	schema, err := typeutil.CreateSchemaHelper(collection.schema)
 	if err != nil {
 		return err
 	}
@@ -799,13 +800,13 @@ func (q *queryCollection) search(msg queryMsg) error {
 	var plan *SearchPlan
 	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
 		expr := searchMsg.SerializedExprPlan
-		plan, err = createSearchPlanByExpr(q.collection, expr)
+		plan, err = createSearchPlanByExpr(collection, expr)
 		if err != nil {
 			return err
 		}
 	} else {
 		dsl := searchMsg.Dsl
-		plan, err = createSearchPlan(q.collection, dsl)
+		plan, err = createSearchPlan(collection, dsl)
 		if err != nil {
 			return err
 		}
@@ -843,13 +844,13 @@ func (q *queryCollection) search(msg queryMsg) error {
 	if len(searchMsg.PartitionIDs) > 0 {
 		globalSealedSegments = q.historical.getGlobalSegmentIDsByPartitionIds(searchMsg.PartitionIDs)
 	} else {
-		globalSealedSegments = q.historical.getGlobalSegmentIDsByCollectionID(q.collection.id)
+		globalSealedSegments = q.historical.getGlobalSegmentIDsByCollectionID(collection.id)
 	}
 
 	searchResults := make([]*SearchResult, 0)
 
 	// historical search
-	hisSearchResults, sealedSegmentSearched, err1 := q.historical.search(searchRequests, q.collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
+	hisSearchResults, sealedSegmentSearched, err1 := q.historical.search(searchRequests, collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
 	if err1 != nil {
 		log.Warn(err1.Error())
 		return err1
@@ -859,9 +860,9 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	// streaming search
 	var err2 error
-	for _, channel := range q.collection.getVChannels() {
+	for _, channel := range collection.getVChannels() {
 		var strSearchResults []*SearchResult
-		strSearchResults, err2 = q.streaming.search(searchRequests, q.collection.id, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
+		strSearchResults, err2 = q.streaming.search(searchRequests, collection.id, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
 		if err2 != nil {
 			log.Warn(err2.Error())
 			return err2
@@ -892,14 +893,14 @@ func (q *queryCollection) search(msg queryMsg) error {
 					SlicedOffset:             1,
 					SlicedNumCount:           1,
 					SealedSegmentIDsSearched: sealedSegmentSearched,
-					ChannelIDsSearched:       q.collection.getVChannels(),
+					ChannelIDsSearched:       collection.getVChannels(),
 					GlobalSealedSegmentIDs:   globalSealedSegments,
 				},
 			}
 			log.Debug("QueryNode Empty SearchResultMsg",
-				zap.Any("collectionID", q.collection.id),
+				zap.Any("collectionID", collection.id),
 				zap.Any("msgID", searchMsg.ID()),
-				zap.Any("vChannels", q.collection.getVChannels()),
+				zap.Any("vChannels", collection.getVChannels()),
 				zap.Any("sealedSegmentSearched", sealedSegmentSearched),
 			)
 			err = q.publishQueryResult(searchResultMsg, searchMsg.CollectionID)
@@ -984,14 +985,14 @@ func (q *queryCollection) search(msg queryMsg) error {
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
 				SealedSegmentIDsSearched: sealedSegmentSearched,
-				ChannelIDsSearched:       q.collection.getVChannels(),
+				ChannelIDsSearched:       collection.getVChannels(),
 				GlobalSealedSegmentIDs:   globalSealedSegments,
 			},
 		}
 		log.Debug("QueryNode SearchResultMsg",
-			zap.Any("collectionID", q.collection.id),
+			zap.Any("collectionID", collection.id),
 			zap.Any("msgID", searchMsg.ID()),
-			zap.Any("vChannels", q.collection.getVChannels()),
+			zap.Any("vChannels", collection.getVChannels()),
 			zap.Any("sealedSegmentSearched", sealedSegmentSearched),
 		)
 

@@ -23,38 +23,44 @@ import (
 
 // TSafeReplicaInterface is the interface wrapper of tSafeReplica
 type TSafeReplicaInterface interface {
-	getTSafe(vChannel Channel) Timestamp
-	setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp)
+	getTSafe(vChannel Channel) (Timestamp, error)
+	setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) error
 	addTSafe(vChannel Channel)
-	removeTSafe(vChannel Channel)
-	registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher)
+	removeTSafe(vChannel Channel) error
+	registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) error
+	removeRecord(vChannel Channel, id UniqueID) error
 }
 
 type tSafeReplica struct {
-	mu     sync.Mutex        // guards tSafes
-	tSafes map[string]tSafer // map[vChannel]tSafer
+	mu         sync.Mutex        // guards tSafes
+	tSafes     map[string]tSafer // map[vChannel]tSafer
+	refCounter map[Channel]int   // map[vChannel]count
 }
 
-func (t *tSafeReplica) getTSafe(vChannel Channel) Timestamp {
+func (t *tSafeReplica) getTSafe(vChannel Channel) (Timestamp, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	safer, err := t.getTSaferPrivate(vChannel)
 	if err != nil {
-		log.Warn("get tSafe failed", zap.Error(err))
-		return 0
+		//log.Warn("get tSafe failed",
+		//	zap.Any("channel", vChannel),
+		//	zap.Error(err),
+		//)
+		return 0, err
 	}
-	return safer.get()
+	return safer.get(), nil
 }
 
-func (t *tSafeReplica) setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) {
+func (t *tSafeReplica) setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	safer, err := t.getTSaferPrivate(vChannel)
 	if err != nil {
-		log.Warn("set tSafe failed", zap.Error(err))
-		return
+		//log.Warn("set tSafe failed", zap.Error(err))
+		return err
 	}
 	safer.set(id, timestamp)
+	return nil
 }
 
 func (t *tSafeReplica) getTSaferPrivate(vChannel Channel) (tSafer, error) {
@@ -70,43 +76,71 @@ func (t *tSafeReplica) addTSafe(vChannel Channel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	ctx := context.Background()
+	t.refCounter[vChannel]++
 	if _, ok := t.tSafes[vChannel]; !ok {
 		t.tSafes[vChannel] = newTSafe(ctx, vChannel)
 		t.tSafes[vChannel].start()
-		log.Debug("add tSafe done", zap.Any("channel", vChannel))
+		log.Debug("add tSafe done",
+			zap.Any("channel", vChannel),
+			zap.Any("count", t.refCounter[vChannel]),
+		)
 	} else {
-		log.Warn("tSafe has been existed", zap.Any("channel", vChannel))
+		log.Debug("tSafe has been existed",
+			zap.Any("channel", vChannel),
+			zap.Any("count", t.refCounter[vChannel]),
+		)
 	}
 }
 
-func (t *tSafeReplica) removeTSafe(vChannel Channel) {
+func (t *tSafeReplica) removeTSafe(vChannel Channel) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
-	if err != nil {
-		return
-	}
-	log.Debug("remove tSafe replica",
+	t.refCounter[vChannel]--
+	log.Debug("reduce tSafe reference count",
 		zap.Any("vChannel", vChannel),
+		zap.Any("count", t.refCounter[vChannel]),
 	)
-	safer.close()
-	delete(t.tSafes, vChannel)
+	if t.refCounter[vChannel] == 0 {
+		safer, err := t.getTSaferPrivate(vChannel)
+		if err != nil {
+			return err
+		}
+		log.Debug("remove tSafe replica",
+			zap.Any("vChannel", vChannel),
+		)
+		safer.close()
+		delete(t.tSafes, vChannel)
+		delete(t.refCounter, vChannel)
+	}
+	return nil
 }
 
-func (t *tSafeReplica) registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) {
+func (t *tSafeReplica) removeRecord(vChannel Channel, id UniqueID) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	safer, err := t.getTSaferPrivate(vChannel)
 	if err != nil {
-		log.Warn("register tSafe watcher failed", zap.Error(err))
-		return
+		return err
+	}
+	safer.removeRecord(id)
+	return nil
+}
+
+func (t *tSafeReplica) registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	safer, err := t.getTSaferPrivate(vChannel)
+	if err != nil {
+		return err
 	}
 	safer.registerTSafeWatcher(watcher)
+	return nil
 }
 
 func newTSafeReplica() TSafeReplicaInterface {
 	var replica TSafeReplicaInterface = &tSafeReplica{
-		tSafes: make(map[string]tSafer),
+		tSafes:     make(map[string]tSafer),
+		refCounter: make(map[Channel]int),
 	}
 	return replica
 }

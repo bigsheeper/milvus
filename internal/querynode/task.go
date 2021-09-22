@@ -474,7 +474,11 @@ func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 			zap.Any("collectionID", r.req.CollectionID),
 			zap.Any("vChannel", channel),
 		)
-		r.node.streaming.tSafeReplica.removeTSafe(channel)
+		// no tSafe in tSafeReplica, don't return error
+		err = r.node.streaming.tSafeReplica.removeTSafe(channel)
+		if err != nil {
+			log.Warn(err.Error())
+		}
 	}
 
 	// remove excludedSegments record
@@ -568,7 +572,11 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 					zap.Any("partitionID", id),
 					zap.Any("vChannel", channel),
 				)
-				r.node.streaming.tSafeReplica.removeTSafe(channel)
+				// no tSafe in tSafeReplica, don't return error
+				err = r.node.streaming.tSafeReplica.removeTSafe(channel)
+				if err != nil {
+					log.Warn(err.Error())
+				}
 			}
 		}
 

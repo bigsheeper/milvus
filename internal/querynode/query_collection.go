@@ -14,6 +14,7 @@ package querynode
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -55,9 +56,10 @@ type queryCollection struct {
 	unsolvedMsgMu sync.Mutex // guards unsolvedMsg
 	unsolvedMsg   []queryMsg
 
-	tSafeWatchersMu   sync.Mutex // guards tSafeWatchers
-	tSafeWatchers     map[Channel]*tSafeWatcher
-	watcherSharedChan chan struct{}
+	tSafeWatchersMu sync.Mutex // guards tSafeWatchers
+	tSafeWatchers   map[Channel]*tSafeWatcher
+	tSafeUpdate     bool
+	watcherCond     *sync.Cond
 
 	serviceableTimeMutex sync.Mutex // guards serviceableTime
 	serviceableTime      Timestamp
@@ -82,12 +84,14 @@ func newQueryCollection(releaseCtx context.Context,
 	localChunkManager storage.ChunkManager,
 	remoteChunkManager storage.ChunkManager,
 	localCacheEnabled bool,
-) *queryCollection {
+) (*queryCollection, error) {
 
 	unsolvedMsg := make([]queryMsg, 0)
 
 	queryStream, _ := factory.NewQueryMsgStream(releaseCtx)
 	queryResultStream, _ := factory.NewQueryMsgStream(releaseCtx)
+
+	condMu := sync.Mutex{}
 
 	qc := &queryCollection{
 		releaseCtx: releaseCtx,
@@ -97,8 +101,9 @@ func newQueryCollection(releaseCtx context.Context,
 		historical:   historical,
 		streaming:    streaming,
 
-		tSafeWatchers:     make(map[Channel]*tSafeWatcher),
-		watcherSharedChan: make(chan struct{}, 1024),
+		tSafeWatchers: make(map[Channel]*tSafeWatcher),
+		tSafeUpdate:   false,
+		watcherCond:   sync.NewCond(&condMu),
 
 		unsolvedMsg: unsolvedMsg,
 
@@ -110,8 +115,11 @@ func newQueryCollection(releaseCtx context.Context,
 		localCacheEnabled:  localCacheEnabled,
 	}
 
-	qc.register()
-	return qc
+	err := qc.register()
+	if err != nil {
+		return nil, err
+	}
+	return qc, nil
 }
 
 func (q *queryCollection) start() {
@@ -131,10 +139,10 @@ func (q *queryCollection) close() {
 }
 
 // register tSafe watcher if vChannels exists
-func (q *queryCollection) register() {
+func (q *queryCollection) register() error {
 	collection, err := q.streaming.replica.getCollectionByID(q.collectionID)
 	if err != nil {
-		return
+		return err
 	}
 
 	log.Debug("register tSafe watcher and init watcher select case",
@@ -142,27 +150,34 @@ func (q *queryCollection) register() {
 		zap.Any("dml channels", collection.getVChannels()),
 	)
 	for _, channel := range collection.getVChannels() {
-		q.addTSafeWatcher(channel)
+		err = q.addTSafeWatcher(channel)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (q *queryCollection) addTSafeWatcher(vChannel Channel) {
+func (q *queryCollection) addTSafeWatcher(vChannel Channel) error {
 	q.tSafeWatchersMu.Lock()
 	defer q.tSafeWatchersMu.Unlock()
 	if _, ok := q.tSafeWatchers[vChannel]; ok {
-		log.Debug("tSafeWatcher of queryCollection has been exists",
-			zap.Any("collectionID", q.collectionID),
-			zap.Any("channel", vChannel),
-		)
-		return
+		err := errors.New(fmt.Sprintln("tSafeWatcher of queryCollection has been exists, ",
+			"collectionID = ", q.collectionID, ", ",
+			"channel = ", vChannel))
+		return err
 	}
 	q.tSafeWatchers[vChannel] = newTSafeWatcher()
-	q.streaming.tSafeReplica.registerTSafeWatcher(vChannel, q.tSafeWatchers[vChannel])
+	err := q.streaming.tSafeReplica.registerTSafeWatcher(vChannel, q.tSafeWatchers[vChannel])
+	if err != nil {
+		return err
+	}
 	log.Debug("add tSafeWatcher to queryCollection",
 		zap.Any("collectionID", q.collectionID),
 		zap.Any("channel", vChannel),
 	)
 	go q.startWatcher(q.tSafeWatchers[vChannel].watcherChan())
+	return nil
 }
 
 // TODO: add stopWatcher(), add close() to tSafeWatcher
@@ -173,7 +188,10 @@ func (q *queryCollection) startWatcher(channel <-chan bool) {
 			return
 		case <-channel:
 			// TODO: check if channel is closed
-			q.watcherSharedChan <- struct{}{}
+			q.watcherCond.L.Lock()
+			q.tSafeUpdate = true
+			q.watcherCond.Broadcast()
+			q.watcherCond.L.Unlock()
 		}
 	}
 }
@@ -193,18 +211,24 @@ func (q *queryCollection) popAllUnsolvedMsg() []queryMsg {
 	return ret
 }
 
-func (q *queryCollection) waitNewTSafe() Timestamp {
-	// block until any vChannel updating tSafe
-	<-q.watcherSharedChan
+func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
+	q.watcherCond.L.Lock()
+	for !q.tSafeUpdate {
+		q.watcherCond.Wait()
+	}
+	q.watcherCond.L.Unlock()
 	//log.Debug("wait new tSafe", zap.Any("collectionID", s.collectionID))
 	t := Timestamp(math.MaxInt64)
 	for channel := range q.tSafeWatchers {
-		ts := q.streaming.tSafeReplica.getTSafe(channel)
+		ts, err := q.streaming.tSafeReplica.getTSafe(channel)
+		if err != nil {
+			return 0, err
+		}
 		if ts <= t {
 			t = ts
 		}
 	}
-	return t
+	return t, nil
 }
 
 func (q *queryCollection) getServiceableTime() Timestamp {
@@ -415,7 +439,11 @@ func (q *queryCollection) doUnsolvedQueryMsg() {
 			return
 		default:
 			//time.Sleep(10 * time.Millisecond)
-			serviceTime := q.waitNewTSafe()
+			serviceTime, err := q.waitNewTSafe()
+			if err != nil {
+				log.Error(err.Error())
+				return
+			}
 			//st, _ := tsoutil.ParseTS(serviceTime)
 			//log.Debug("get tSafe from flow graph",
 			//	zap.Int64("collectionID", q.collectionID),

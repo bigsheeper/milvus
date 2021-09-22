@@ -177,6 +177,7 @@ func (s *Server) Run() error {
 	return nil
 }
 
+// GetComponentStates gets states of datacoord and datanodes
 func (s *Server) GetComponentStates(ctx context.Context, req *internalpb.GetComponentStatesRequest) (*internalpb.ComponentStates, error) {
 	return s.dataCoord.GetComponentStates(ctx)
 }
@@ -199,6 +200,7 @@ func (s *Server) Flush(ctx context.Context, req *datapb.FlushRequest) (*datapb.F
 	return s.dataCoord.Flush(ctx, req)
 }
 
+// AssignSegmentID requests to allocate segment space for insert
 func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentIDRequest) (*datapb.AssignSegmentIDResponse, error) {
 	return s.dataCoord.AssignSegmentID(ctx, req)
 }

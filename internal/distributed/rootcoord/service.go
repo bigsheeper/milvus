@@ -295,10 +295,12 @@ func (s *Server) DropCollection(ctx context.Context, in *milvuspb.DropCollection
 	return s.rootCoord.DropCollection(ctx, in)
 }
 
+// HasCollection checks whether a collection is created
 func (s *Server) HasCollection(ctx context.Context, in *milvuspb.HasCollectionRequest) (*milvuspb.BoolResponse, error) {
 	return s.rootCoord.HasCollection(ctx, in)
 }
 
+// DescribeCollection gets meta info of a collection
 func (s *Server) DescribeCollection(ctx context.Context, in *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error) {
 	return s.rootCoord.DescribeCollection(ctx, in)
 }

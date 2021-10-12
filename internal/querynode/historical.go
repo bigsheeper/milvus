@@ -40,9 +40,10 @@ const (
 type historical struct {
 	ctx context.Context
 
-	replica      ReplicaInterface
-	loader       *segmentLoader
-	statsService *statsService
+	replica          ReplicaInterface
+	streamingReplica ReplicaInterface // streamingReplica for reducing duplicated segments in query
+	loader           *segmentLoader
+	statsService     *statsService
 
 	mu                   sync.Mutex // guards globalSealedSegments
 	globalSealedSegments map[UniqueID]*querypb.SegmentInfo
@@ -54,6 +55,7 @@ type historical struct {
 func newHistorical(ctx context.Context,
 	rootCoord types.RootCoord,
 	indexCoord types.IndexCoord,
+	streamingReplica ReplicaInterface,
 	factory msgstream.Factory,
 	etcdKV *etcdkv.EtcdKV) *historical {
 	replica := newCollectionReplica(etcdKV)
@@ -63,6 +65,7 @@ func newHistorical(ctx context.Context,
 	return &historical{
 		ctx:                  ctx,
 		replica:              replica,
+		streamingReplica:     streamingReplica,
 		loader:               loader,
 		statsService:         ss,
 		globalSealedSegments: make(map[UniqueID]*querypb.SegmentInfo),
@@ -210,6 +213,10 @@ func (h *historical) retrieve(collID UniqueID, partIDs []UniqueID, vcm storage.C
 			return retrieveResults, retrieveSegmentIDs, err
 		}
 		for _, segID := range segIDs {
+			if h.streamingReplica.hasSegment(segID) {
+				// avoid searching duplicated segment which created in `hand-off`, `load balance` or `compaction`
+				continue
+			}
 			seg, err := h.replica.getSegmentByID(segID)
 			if err != nil {
 				return retrieveResults, retrieveSegmentIDs, err
@@ -291,6 +298,10 @@ func (h *historical) search(searchReqs []*searchRequest, collID UniqueID, partID
 			return searchResults, searchSegmentIDs, err
 		}
 		for _, segID := range segIDs {
+			if h.streamingReplica.hasSegment(segID) {
+				// avoid searching duplicated segment which created in `hand-off`, `load balance` or `compaction`
+				continue
+			}
 			seg, err := h.replica.getSegmentByID(segID)
 			if err != nil {
 				return searchResults, searchSegmentIDs, err

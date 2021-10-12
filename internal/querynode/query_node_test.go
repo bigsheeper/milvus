@@ -191,8 +191,8 @@ func newQueryNodeMock() *QueryNode {
 		panic(err)
 	}
 	svr := NewQueryNode(ctx, msFactory)
-	svr.historical = newHistorical(svr.queryNodeLoopCtx, nil, nil, svr.msFactory, etcdKV)
 	svr.streaming = newStreaming(ctx, msFactory, etcdKV)
+	svr.historical = newHistorical(svr.queryNodeLoopCtx, nil, nil, svr.streaming.replica, svr.msFactory, etcdKV)
 	svr.etcdKV = etcdKV
 
 	return svr

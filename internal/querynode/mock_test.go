@@ -831,7 +831,7 @@ func genSimpleHistorical(ctx context.Context) (*historical, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := newHistorical(ctx, newMockRootCoord(), newMockIndexCoord(), fac, kv)
+	h := newHistorical(ctx, newMockRootCoord(), newMockIndexCoord(), nil, fac, kv)
 	r, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
@@ -1211,6 +1211,7 @@ func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
 
 	node.streaming = streaming
 	node.historical = historical
+	node.historical.streamingReplica = node.streaming.replica
 
 	// start task scheduler
 	go node.scheduler.Start()

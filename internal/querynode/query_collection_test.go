@@ -109,7 +109,7 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	schema := genTestCollectionSchema(0, false, 2)
-	historical := newHistorical(context.Background(), nil, nil, factory, etcdKV)
+	historical := newHistorical(context.Background(), nil, nil, nil, factory, etcdKV)
 
 	//add a segment to historical data
 	err = historical.replica.addCollection(0, schema)

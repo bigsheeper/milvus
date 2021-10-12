@@ -164,12 +164,13 @@ func (node *QueryNode) Init() error {
 			zap.Any("MetaRootPath", Params.MetaRootPath),
 		)
 
+		node.streaming = newStreaming(node.queryNodeLoopCtx, node.msFactory, node.etcdKV)
 		node.historical = newHistorical(node.queryNodeLoopCtx,
 			node.rootCoord,
 			node.indexCoord,
+			node.streaming.replica,
 			node.msFactory,
 			node.etcdKV)
-		node.streaming = newStreaming(node.queryNodeLoopCtx, node.msFactory, node.etcdKV)
 
 		node.InitSegcore()
 

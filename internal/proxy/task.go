@@ -1637,6 +1637,25 @@ func (st *searchTask) PreExecute(ctx context.Context) error {
 	st.SearchRequest.Dsl = st.query.Dsl
 	st.SearchRequest.PlaceholderGroup = st.query.PlaceholderGroup
 
+	searchIDs := st.query.GetSearchIDs().GetIntId().GetData()
+	if len(st.SearchRequest.PlaceholderGroup) == 0 && len(searchIDs) > 0 {
+		pkField := ""
+		for _, field := range schema.Fields {
+			if field.IsPrimaryKey {
+				pkField = field.Name
+			}
+		}
+		searchByIDExpr := IDs2Expr(pkField, searchIDs)
+		searchByIDExprPlan, err := CreateExprPlan(schema, searchByIDExpr)
+		if err != nil {
+			return err
+		}
+		st.SearchByIDExprPlan, err = proto.Marshal(searchByIDExprPlan)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

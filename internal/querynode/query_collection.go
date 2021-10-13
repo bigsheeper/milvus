@@ -12,6 +12,7 @@
 package querynode
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -446,7 +447,7 @@ func (q *queryCollection) receiveQueryMsg(msg queryMsg) error {
 	)
 	switch msgType {
 	case commonpb.MsgType_Retrieve:
-		err = q.retrieve(msg)
+		_, err = q.retrieve(msg, true)
 	case commonpb.MsgType_Search:
 		err = q.search(msg)
 	default:
@@ -543,7 +544,7 @@ func (q *queryCollection) doUnsolvedQueryMsg() {
 				)
 				switch msgType {
 				case commonpb.MsgType_Retrieve:
-					err = q.retrieve(m)
+					_, err = q.retrieve(m, true)
 				case commonpb.MsgType_Search:
 					err = q.search(m)
 				default:
@@ -853,10 +854,20 @@ func translateHits(schema *typeutil.SchemaHelper, fieldIDs []int64, rawHits [][]
 	return finalResult, nil
 }
 
-// TODO:: cache map[dsl]plan
-// TODO: reBatched search requests
 func (q *queryCollection) search(msg queryMsg) error {
 	searchMsg := msg.(*msgstream.SearchMsg)
+	if len(searchMsg.PlaceholderGroup) > 0 {
+		return q.searchByVectors(searchMsg)
+	} else if len(searchMsg.SearchByIDExprPlan) > 0 {
+		return q.searchByID(searchMsg)
+	} else {
+		return errors.New(fmt.Sprintln("no search ids or vectors specified, collectionID = ", searchMsg.CollectionID, ", msgID = ", searchMsg.ID()))
+	}
+}
+
+// TODO:: cache map[dsl]plan
+// TODO: reBatched search requests
+func (q *queryCollection) searchByVectors(searchMsg *msgstream.SearchMsg) error {
 	sp, ctx := trace.StartSpanFromContext(searchMsg.TraceCtx())
 	defer sp.Finish()
 	searchMsg.SetTraceCtx(ctx)
@@ -1100,7 +1111,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	return nil
 }
 
-func (q *queryCollection) retrieve(msg queryMsg) error {
+func (q *queryCollection) retrieve(msg queryMsg, publishResult bool) (*msgstream.RetrieveResultMsg, error) {
 	// TODO(yukun)
 	// step 1: get retrieve object and defer destruction
 	// step 2: for each segment, call retrieve to get ids proto buffer
@@ -1116,13 +1127,13 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 	collectionID := retrieveMsg.CollectionID
 	collection, err := q.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	expr := retrieveMsg.SerializedExprPlan
 	plan, err := createRetrievePlanByExpr(collection, expr, timestamp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer plan.delete()
 
@@ -1139,10 +1150,10 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 
 	if q.vectorChunkManager == nil {
 		if q.localChunkManager == nil {
-			return fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+			return nil, fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
 		}
 		if q.remoteChunkManager == nil {
-			return fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+			return nil, fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
 		}
 		q.vectorChunkManager = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
 			&etcdpb.CollectionMeta{
@@ -1154,7 +1165,7 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 	hisRetrieveResults, sealedSegmentRetrieved, err1 := q.historical.retrieve(collectionID, retrieveMsg.PartitionIDs, q.vectorChunkManager, plan)
 	if err1 != nil {
 		log.Warn(err1.Error())
-		return err1
+		return nil, err1
 	}
 	mergeList = append(mergeList, hisRetrieveResults...)
 	tr.Record("historical retrieve done")
@@ -1163,14 +1174,14 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 	strRetrieveResults, _, err2 := q.streaming.retrieve(collectionID, retrieveMsg.PartitionIDs, plan)
 	if err2 != nil {
 		log.Warn(err2.Error())
-		return err2
+		return nil, err2
 	}
 	mergeList = append(mergeList, strRetrieveResults...)
 	tr.Record("streaming retrieve done")
 
 	result, err := mergeRetrieveResults(mergeList)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tr.Record("merge result done")
 
@@ -1193,17 +1204,128 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 		},
 	}
 
-	err = q.publishQueryResult(retrieveResultMsg, retrieveMsg.CollectionID)
+	if publishResult {
+		err = q.publishQueryResult(retrieveResultMsg, retrieveMsg.CollectionID)
+		if err != nil {
+			return nil, err
+		}
+		log.Debug("QueryNode publish RetrieveResultMsg",
+			zap.Any("vChannels", collection.getVChannels()),
+			zap.Any("collectionID", collection.ID()),
+			zap.Any("sealedSegmentRetrieved", sealedSegmentRetrieved),
+		)
+		tr.Elapse("all done")
+		return nil, nil
+	}
+
+	return retrieveResultMsg, nil
+}
+
+func (q *queryCollection) searchByID(searchByIDMsg *msgstream.SearchMsg) error {
+	collectionID := searchByIDMsg.CollectionID
+	col, err := q.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
 	}
-	log.Debug("QueryNode publish RetrieveResultMsg",
-		zap.Any("vChannels", collection.getVChannels()),
-		zap.Any("collectionID", collection.ID()),
-		zap.Any("sealedSegmentRetrieved", sealedSegmentRetrieved),
-	)
-	tr.Elapse("all done")
-	return nil
+
+	// TODO: support binary vector
+	vectorFieldIDs := make([]int64, 0)
+	for _, field := range col.Schema().GetFields() {
+		if field.DataType == schemapb.DataType_FloatVector {
+			vectorFieldIDs = append(vectorFieldIDs, field.FieldID)
+		}
+	}
+
+	// we only have one vector field for now
+	if len(vectorFieldIDs) != 1 {
+		return errors.New(fmt.Sprintln("cannot find vector field when searchByID, collectionID = ", collectionID))
+	}
+
+	// construct retrieveMsg
+	retrieveMsg := &msgstream.RetrieveMsg{
+		BaseMsg: searchByIDMsg.BaseMsg,
+		RetrieveRequest: internalpb.RetrieveRequest{
+			Base: &commonpb.MsgBase{
+				MsgType: commonpb.MsgType_Retrieve,
+				MsgID:   searchByIDMsg.Base.MsgID,
+			},
+			DbID:               searchByIDMsg.DbID,
+			CollectionID:       searchByIDMsg.CollectionID,
+			PartitionIDs:       searchByIDMsg.PartitionIDs,
+			SerializedExprPlan: searchByIDMsg.SearchByIDExprPlan,
+			OutputFieldsId:     vectorFieldIDs,
+			TravelTimestamp:    searchByIDMsg.TravelTimestamp,
+			GuaranteeTimestamp: searchByIDMsg.GuaranteeTimestamp,
+		},
+	}
+
+	retrieveResult, err := q.retrieve(retrieveMsg, false)
+	if err != nil {
+		return err
+	}
+
+	// get float vector, TODO: support binary vector
+	var floatVector []float32
+	var dim int64
+	fieldsData := retrieveResult.RetrieveResults.GetFieldsData()
+	for _, field := range fieldsData {
+		vector := field.GetVectors()
+		if vector != nil && field.Type == schemapb.DataType_FloatVector {
+			floatVector = vector.GetFloatVector().GetData()
+			dim = vector.GetDim()
+		}
+	}
+	if len(floatVector) == 0 {
+		return errors.New(fmt.Sprintln("no float vectors in retrieveResult, collectionID = ", collectionID))
+	}
+
+	placeHolderGroupBytes, err := preparePlaceHolderGroupByVectors(floatVector, int(dim), collectionID)
+	if err != nil {
+		return err
+	}
+
+	// construct search message
+	searchByIDMsg.PlaceholderGroup = placeHolderGroupBytes
+	return q.searchByVectors(searchByIDMsg)
+}
+
+func preparePlaceHolderGroupByVectors(vec []float32, dim int, collectionID UniqueID) ([]byte, error) {
+	const placeHolderGroupTag = "$0"
+
+	if len(vec)%dim != 0 {
+		return nil, errors.New(fmt.Sprintln("illegal vector when preparePlaceHolderGroupByVectors, collectionID = ", collectionID))
+	}
+
+	nq := len(vec) / dim
+	values := make([][]byte, 0, nq)
+	for i := 0; i < nq; i++ {
+		bs := make([]byte, 0, dim*4)
+		for j := 0; j < dim; j++ {
+			var buffer bytes.Buffer
+			f := vec[i*dim+j]
+			err := binary.Write(&buffer, binary.LittleEndian, f)
+			if err != nil {
+				return nil, err
+			}
+			bs = append(bs, buffer.Bytes()...)
+		}
+		values = append(values, bs)
+	}
+
+	placeholderGroup := milvuspb.PlaceholderGroup{
+		Placeholders: []*milvuspb.PlaceholderValue{
+			{
+				Tag:    placeHolderGroupTag,
+				Type:   milvuspb.PlaceholderType_FloatVector,
+				Values: values,
+			},
+		},
+	}
+	placeGroupByte, err := proto.Marshal(&placeholderGroup)
+	if err != nil {
+		return nil, err
+	}
+	return placeGroupByte, nil
 }
 
 func getSegmentsByPKs(pks []int64, segments []*Segment) (map[int64][]int64, error) {

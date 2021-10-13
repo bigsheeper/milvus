@@ -204,12 +204,14 @@ func (colReplica *collectionReplica) hasCollectionPrivate(collectionID UniqueID)
 	return ok
 }
 
+// getCollectionNum returns num of collections in collectionReplica
 func (colReplica *collectionReplica) getCollectionNum() int {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
 	return len(colReplica.collections)
 }
 
+// getPartitionIDs returns partition ids of collection
 func (colReplica *collectionReplica) getPartitionIDs(collectionID UniqueID) ([]UniqueID, error) {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
@@ -222,6 +224,7 @@ func (colReplica *collectionReplica) getPartitionIDs(collectionID UniqueID) ([]U
 	return collection.partitionIDs, nil
 }
 
+// getVecFieldIDsByCollectionID returns vector field ids of collection
 func (colReplica *collectionReplica) getVecFieldIDsByCollectionID(collectionID UniqueID) ([]FieldID, error) {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()

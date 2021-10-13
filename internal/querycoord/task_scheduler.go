@@ -814,6 +814,7 @@ func (scheduler *TaskScheduler) processActivateTaskLoop() {
 	}
 }
 
+// Start function start two goroutines to process trigger tasks and internal tasks
 func (scheduler *TaskScheduler) Start() error {
 	scheduler.wg.Add(2)
 	go scheduler.scheduleLoop()
@@ -821,6 +822,7 @@ func (scheduler *TaskScheduler) Start() error {
 	return nil
 }
 
+// Close function stops the scheduleLoop and the processActivateTaskLoop
 func (scheduler *TaskScheduler) Close() {
 	scheduler.cancel()
 	scheduler.wg.Wait()

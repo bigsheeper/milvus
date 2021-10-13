@@ -42,8 +42,10 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+// UniqueID is an alias for type typeutil.UniqueID, used as a unique identifier for the request.
 type UniqueID = typeutil.UniqueID
 
+// Server is the grpc server of QueryNode.
 type Server struct {
 	querynode   types.QueryNodeComponent
 	wg          sync.WaitGroup
@@ -59,6 +61,7 @@ type Server struct {
 	closer io.Closer
 }
 
+// NewServer create a new QueryNode grpc server.
 func NewServer(ctx context.Context, factory msgstream.Factory) (*Server, error) {
 	ctx1, cancel := context.WithCancel(ctx)
 
@@ -71,6 +74,7 @@ func NewServer(ctx context.Context, factory msgstream.Factory) (*Server, error) 
 	return s, nil
 }
 
+// init initializes QueryNode's grpc service.
 func (s *Server) init() error {
 	Params.Init()
 
@@ -170,10 +174,12 @@ func (s *Server) init() error {
 	return nil
 }
 
+// start starts QueryNode's grpc service.
 func (s *Server) start() error {
 	return s.querynode.Start()
 }
 
+// startGrpcLoop starts the grpc loop of QueryNode component.
 func (s *Server) startGrpcLoop(grpcPort int) {
 	defer s.wg.Done()
 

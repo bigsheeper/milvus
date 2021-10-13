@@ -471,8 +471,10 @@ class TestCollectionSearchInvalid(TestcaseBase):
     def test_search_with_empty_collection(self):
         """
         target: test search with empty connection
-        method: search the empty collection
-        expected: raise exception and report the error
+        method: 1. search the empty collection before load
+                2. search the empty collection after load
+        expected: 1. raise exception if not loaded
+                  2. return topk=0  if loaded
         """
         # 1. initialize without data
         collection_w = self.init_collection_general(prefix)[0]
@@ -493,6 +495,8 @@ class TestCollectionSearchInvalid(TestcaseBase):
                             check_items={"nq": default_nq,
                                          "ids": [],
                                          "limit": 0})
+        # 4. TODO: search collection with data inserted and not load again
+
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_search_partition_deleted(self):
@@ -1081,26 +1085,27 @@ class TestCollectionSearch(TestcaseBase):
 
     @pytest.mark.tags(CaseLabel.L2)
     #@pytest.mark.skip(reason="skip temporarily for debug")
-    def test_search_max_dim(self, nq, auto_id, _async):
+    def test_search_max_dim(self, auto_id, _async):
         """
         target: test search with max configuration
         method: create connection, collection, insert and search with max dim
         expected: search successfully with limit(topK)
         """
         # 1. initialize with data
-        collection_w, _, _, insert_ids = self.init_collection_general(prefix, True, default_nb,
+        collection_w, _, _, insert_ids = self.init_collection_general(prefix, True, 100,
                                                                       auto_id=auto_id,
                                                                       dim=max_dim)
         # 2. search
+        nq = 2
         log.info("test_search_max_dim: searching collection %s" % collection_w.name)
         vectors = [[random.random() for _ in range(max_dim)] for _ in range(nq)]
         collection_w.search(vectors[:nq], default_search_field,
-                            default_search_params, 2,
+                            default_search_params, nq,
                             default_search_exp, _async=_async,
                             check_task=CheckTasks.check_search_results,
                             check_items={"nq": nq,
                                          "ids": insert_ids,
-                                         "limit": 2,
+                                         "limit": nq,
                                          "_async": _async})
 
     @pytest.mark.tags(CaseLabel.L2)
@@ -1109,9 +1114,9 @@ class TestCollectionSearch(TestcaseBase):
                                  ct.default_index_params[:9]))
     def test_search_after_different_index_with_params(self, dim, index, params, auto_id, _async):
         """
-        target: test search with invalid search params
-        method: test search with invalid params type
-        expected: raise exception and report the error
+        target: test search after different index
+        method: test search after different index and corresponding search params
+        expected: search successfully with limit(topK)
         """
         # 1. initialize with data
         collection_w, _, _, insert_ids = self.init_collection_general(prefix, True, 5000,

@@ -1233,6 +1233,7 @@ func (q *queryCollection) searchByID(searchByIDMsg *msgstream.SearchMsg) error {
 	for _, field := range col.Schema().GetFields() {
 		if field.DataType == schemapb.DataType_FloatVector {
 			vectorFieldIDs = append(vectorFieldIDs, field.FieldID)
+			break
 		}
 	}
 

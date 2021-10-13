@@ -1274,7 +1274,7 @@ func (q *queryCollection) searchByID(searchByIDMsg *msgstream.SearchMsg) error {
 		}
 	}
 	if len(floatVector) == 0 {
-		return errors.New(fmt.Sprintln("no float vectors in retrieveResult, collectionID = ", collectionID))
+		return errors.New(fmt.Sprintln("no float vectors in retrieveResult when searchByID, collectionID = ", collectionID))
 	}
 
 	placeHolderGroupBytes, err := preparePlaceHolderGroupByVectors(floatVector, int(dim), collectionID)

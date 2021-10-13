@@ -607,17 +607,12 @@ func TestQueryCollection_search(t *testing.T) {
 }
 
 func TestQueryCollection_preparePlaceHolderGroupByVectors(t *testing.T) {
-	t.Run("test preparePlaceHolderGroupByVectors", func(t *testing.T) {
-		vector := genSimpleFloatVectors()
-		_, err := preparePlaceHolderGroupByVectors(vector, defaultDim, defaultCollectionID)
-		assert.NoError(t, err)
-	})
+	vector := genSimpleFloatVectors()
+	_, err := preparePlaceHolderGroupByVectors(vector, defaultDim, defaultCollectionID)
+	assert.NoError(t, err)
 
-	t.Run("test illegal dim", func(t *testing.T) {
-		vector := genSimpleFloatVectors()
-		_, err := preparePlaceHolderGroupByVectors(vector, defaultDim+1, defaultCollectionID)
-		assert.Error(t, err)
-	})
+	_, err = preparePlaceHolderGroupByVectors(vector, defaultDim+1, defaultCollectionID)
+	assert.Error(t, err)
 }
 
 func TestQueryCollection_searchByID(t *testing.T) {

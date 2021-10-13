@@ -2624,7 +2624,6 @@ func TestSearchTask_PreExecute(t *testing.T) {
 
 	// TODO(dragondriver): test partition-related error
 
-	// get search by id expr plan
 	tmpPlaceHolder := task.query.PlaceholderGroup
 	task.query.PlaceholderGroup = nil
 	task.query.SearchIDs = &schemapb.IDs{

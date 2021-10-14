@@ -28,6 +28,14 @@ import (
 )
 
 func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, node *QueryNode) (*milvuspb.GetMetricsResponse, error) {
+	usedMem, err := getUsedMemory()
+	if err != nil {
+		return nil, err
+	}
+	totalMem, err := getTotalMemory()
+	if err != nil {
+		return nil, err
+	}
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeID),
@@ -35,8 +43,8 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 				IP:           node.session.Address,
 				CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
 				CPUCoreUsage: metricsinfo.GetCPUUsage(),
-				Memory:       uint64(getTotalMemory()),
-				MemoryUsage:  uint64(getUsedMemory(node.historical.replica, node.streaming.replica)),
+				Memory:       totalMem,
+				MemoryUsage:  usedMem,
 				Disk:         metricsinfo.GetDiskCount(),
 				DiskUsage:    metricsinfo.GetDiskUsage(),
 			},
@@ -82,19 +90,29 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 	}, nil
 }
 
-func getUsedMemory(historicalReplica, streamingReplica ReplicaInterface) int64 {
-	historicalSegmentsMemSize := historicalReplica.getSegmentsMemSize()
-	streamingSegmentsMemSize := streamingReplica.getSegmentsMemSize()
-	return historicalSegmentsMemSize + streamingSegmentsMemSize
+func getUsedMemory() (uint64, error) {
+	if Params.InContainer {
+		return metricsinfo.GetContainerMemUsed()
+	}
+	return metricsinfo.GetUsedMemoryCount(), nil
 }
 
-func getTotalMemory() int64 {
-	return Params.CacheSize * 1024 * 1024 * 1024
+func getTotalMemory() (uint64, error) {
+	if Params.InContainer {
+		return metricsinfo.GetContainerMemLimit()
+	}
+	return metricsinfo.GetMemoryCount(), nil
 }
 
 func checkSegmentMemory(segmentLoadInfos []*querypb.SegmentLoadInfo, historicalReplica, streamingReplica ReplicaInterface) error {
-	usedRAMInMB := getUsedMemory(historicalReplica, streamingReplica) / 1024.0 / 1024.0
-	totalRAMInMB := getTotalMemory() / 1024.0 / 1024.0
+	usedMem, err := getUsedMemory()
+	if err != nil {
+		return err
+	}
+	totalMem, err := getTotalMemory()
+	if err != nil {
+		return err
+	}
 
 	segmentTotalSize := int64(0)
 	for _, segInfo := range segmentLoadInfos {
@@ -112,25 +130,22 @@ func checkSegmentMemory(segmentLoadInfos []*querypb.SegmentLoadInfo, historicalR
 		}
 
 		segmentSize := int64(sizePerRecord) * segInfo.NumOfRows
-		segmentTotalSize += segmentSize / 1024.0 / 1024.0
-		// TODO: get threshold factor from param table
-		thresholdMemSize := float64(totalRAMInMB) * 0.7
+		segmentTotalSize += segmentSize
 
 		log.Debug("memory stats when load segment",
 			zap.Any("collectionIDs", collectionID),
 			zap.Any("segmentID", segmentID),
 			zap.Any("numOfRows", segInfo.NumOfRows),
-			zap.Any("totalRAM(MB)", totalRAMInMB),
-			zap.Any("usedRAM(MB)", usedRAMInMB),
-			zap.Any("segmentTotalSize(MB)", segmentTotalSize),
-			zap.Any("thresholdMemSize(MB)", thresholdMemSize),
+			zap.Any("totalMem", totalMem),
+			zap.Any("usedMem", usedMem),
+			zap.Any("segmentTotalSize", segmentTotalSize),
 		)
-		if usedRAMInMB+segmentTotalSize > int64(thresholdMemSize) {
+		if int64(usedMem)+segmentTotalSize + segmentSize > int64(float64(totalMem) * 0.9) {
 			return errors.New(fmt.Sprintln("load segment failed, OOM if load, "+
 				"collectionID = ", collectionID, ", ",
-				"usedRAM(MB) = ", usedRAMInMB, ", ",
+				"usedMem = ", usedMem, ", ",
 				"segmentTotalSize(MB) = ", segmentTotalSize, ", ",
-				"thresholdMemSize(MB) = ", thresholdMemSize))
+				"totalMem = ", totalMem))
 		}
 	}
 

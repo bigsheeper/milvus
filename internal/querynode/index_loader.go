@@ -146,6 +146,25 @@ func (loader *indexLoader) getIndexBinlog(indexPath []string) ([][]byte, indexPa
 	return index, indexParams, indexName, nil
 }
 
+func (loader *indexLoader) estimateIndexBinlogSize(segment *Segment, fieldID FieldID) (int64, error) {
+	indexSize := int64(0)
+	indexPaths := segment.getIndexPaths(fieldID)
+	for _, p := range indexPaths {
+		logSize, err := storage.EstimateMemorySize(nil, p)
+		if err != nil {
+			return 0, err
+		}
+		indexSize += logSize
+	}
+	log.Debug("estimate segment index size",
+		zap.Any("collectionID", segment.collectionID),
+		zap.Any("segmentID", segment.ID()),
+		zap.Any("fieldID", fieldID),
+		zap.Any("indexPaths", indexPaths),
+	)
+	return indexSize, nil
+}
+
 func (loader *indexLoader) setIndexInfo(collectionID UniqueID, segment *Segment, fieldID UniqueID) error {
 	if loader.indexCoord == nil || loader.rootCoord == nil {
 		return errors.New("null index coordinator client or root coordinator client, collectionID = " +

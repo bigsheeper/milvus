@@ -80,20 +80,30 @@ def update_values(src_values_file, deploy_params_file):
         cpus = res["cpus"]
         mems = res["mems"]
         gpus = res["gpus"]
-    if cpus and mems:
-        # Set the scope of cpu application according to the configuration
+    if cpus:
         resources = {
-                "limits": {
-                    "cpu": str(int(cpus)) + ".0",
-                    "memory": str(int(mems)) + "Gi"
-                },
-                "requests": {
-                    "cpu": str(int(cpus) // 2 + 1) + ".0",
-                    "memory": str(int(mems) // 2 + 1) + "Gi"
-                    # "cpu": "4.0"
-                    # "cpu": str(int(cpus) - 1) + ".0"
-                }
+            "limits": {
+                "cpu": str(int(cpus)) + ".0"
+            },
+            "requests": {
+                "cpu": str(int(cpus) // 2 + 1) + ".0"
+                # "cpu": "4.0"
+                # "cpu": str(int(cpus) - 1) + ".0"
             }
+        }
+    if cpus and mems:
+        resources_cluster = {
+            "limits": {
+                "cpu": str(int(cpus)) + ".0",
+                "memory": str(int(mems)) + "Gi"
+            },
+            "requests": {
+                "cpu": str(int(cpus) // 2 + 1) + ".0",
+                "memory": str(int(mems) // 2 + 1) + "Gi"
+                # "cpu": "4.0"
+                # "cpu": str(int(cpus) - 1) + ".0"
+            }
+        }
     # use external minio/s3
     
     # TODO: disable temp
@@ -135,9 +145,9 @@ def update_values(src_values_file, deploy_params_file):
             # values_dict['etcd']['nodeSelector'] = node_config
             # # set limit/request cpus in resources
             # values_dict['proxy']['resources'] = resources
-            values_dict['queryNode']['resources'] = resources
-            values_dict['indexNode']['resources'] = resources
-            values_dict['dataNode']['resources'] = resources
+            values_dict['queryNode']['resources'] = resources_cluster
+            values_dict['indexNode']['resources'] = resources_cluster
+            values_dict['dataNode']['resources'] = resources_cluster
             # values_dict['minio']['resources'] = resources
             # values_dict['pulsarStandalone']['resources'] = resources
         if mems:
@@ -157,7 +167,7 @@ def update_values(src_values_file, deploy_params_file):
         values_dict['dataNode']['tolerations'] = perf_tolerations
         values_dict['etcd']['tolerations'] = perf_tolerations
         values_dict['minio']['tolerations'] = perf_tolerations
-        if deploy_mode != config.CLUSTER_3RD_DEPLOY_MODE:
+        if deploy_mode == config.SINGLE_DEPLOY_MODE:
             values_dict['pulsarStandalone']['tolerations'] = perf_tolerations
         # TODO: for distributed deployment
         # values_dict['pulsar']['autoRecovery']['tolerations'] = perf_tolerations

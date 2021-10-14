@@ -101,7 +101,6 @@ type DataNode struct {
 	dataCoord types.DataCoord
 
 	session  *sessionutil.Session
-	liveCh   <-chan bool
 	kvClient *etcdkv.EtcdKV
 
 	closer io.Closer
@@ -169,12 +168,19 @@ func (node *DataNode) SetNodeID(id UniqueID) {
 // Register register datanode to etcd
 func (node *DataNode) Register() error {
 	node.session = sessionutil.NewSession(node.ctx, Params.MetaRootPath, Params.EtcdEndpoints)
-	node.liveCh = node.session.Init(typeutil.DataNodeRole, Params.IP+":"+strconv.Itoa(Params.Port), false)
+	node.session.Init(typeutil.DataNodeRole, Params.IP+":"+strconv.Itoa(Params.Port), false)
 	Params.NodeID = node.session.ServerID
 	node.NodeID = node.session.ServerID
 	Params.SetLogger(Params.NodeID)
 	// Start node watch node
 	go node.StartWatchChannels(node.ctx)
+	// Start liveness check
+	go node.session.LivenessCheck(node.ctx, func() {
+		err := node.Stop()
+		if err != nil {
+			log.Warn("node stop failed", zap.Error(err))
+		}
+	})
 
 	Params.initMsgChannelSubName()
 	//TODO reset
@@ -200,7 +206,7 @@ func (node *DataNode) Init() error {
 func (node *DataNode) StartWatchChannels(ctx context.Context) {
 	defer logutil.LogPanic()
 	// REF MEP#7 watch path should be [prefix]/channel/{node_id}/{channel_name}
-	watchPrefix := fmt.Sprintf("channel/%d", node.NodeID)
+	watchPrefix := fmt.Sprintf("%s/%d", Params.ChannelWatchSubPath, node.NodeID)
 	evtChan := node.kvClient.WatchWithPrefix(watchPrefix)
 	// after watch, first check all exists nodes first
 	node.checkWatchedList()
@@ -236,8 +242,7 @@ func (node *DataNode) StartWatchChannels(ctx context.Context) {
 // serves the corner case for etcd connection lost and missing some events
 func (node *DataNode) checkWatchedList() error {
 	// REF MEP#7 watch path should be [prefix]/channel/{node_id}/{channel_name}
-	prefix := fmt.Sprintf("channel/%d", node.NodeID)
-
+	prefix := fmt.Sprintf("%s/%d", Params.ChannelWatchSubPath, node.NodeID)
 	keys, values, err := node.kvClient.LoadWithPrefix(prefix)
 	if err != nil {
 		return err
@@ -285,7 +290,7 @@ func (node *DataNode) handleWatchInfo(key string, data []byte) {
 		log.Warn("fail to Marshal watchInfo", zap.String("key", key), zap.Error(err))
 		return
 	}
-	err = node.kvClient.Save(fmt.Sprintf("channel/%d/%s", node.NodeID, watchInfo.Vchan.ChannelName), string(v))
+	err = node.kvClient.Save(fmt.Sprintf("%s/%d/%s", Params.ChannelWatchSubPath, node.NodeID, watchInfo.Vchan.ChannelName), string(v))
 	if err != nil {
 		log.Warn("fail to change WatchState to complete", zap.String("key", key), zap.Error(err))
 		node.ReleaseDataSyncService(key)
@@ -407,13 +412,6 @@ func (node *DataNode) Start() error {
 	FilterThreshold = rep.GetTimestamp()
 
 	go node.BackGroundGC(node.clearSignal)
-
-	go node.session.LivenessCheck(node.ctx, node.liveCh, func() {
-		err := node.Stop()
-		if err != nil {
-			log.Warn("node stop failed", zap.Error(err))
-		}
-	})
 
 	Params.CreatedTime = time.Now()
 	Params.UpdatedTime = time.Now()

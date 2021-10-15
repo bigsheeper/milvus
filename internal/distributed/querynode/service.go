@@ -264,14 +264,17 @@ func (s *Server) SetRootCoord(rootCoord types.RootCoord) error {
 	return s.querynode.SetRootCoord(rootCoord)
 }
 
+// SetIndexCoord sets the IndexCoord's client for QueryNode component.
 func (s *Server) SetIndexCoord(indexCoord types.IndexCoord) error {
 	return s.querynode.SetIndexCoord(indexCoord)
 }
 
+// GetTimeTickChannel gets the time tick channel of QueryNode.
 func (s *Server) GetTimeTickChannel(ctx context.Context, req *internalpb.GetTimeTickChannelRequest) (*milvuspb.StringResponse, error) {
 	return s.querynode.GetTimeTickChannel(ctx)
 }
 
+// GetStatisticsChannel gets the statistics channel of QueryNode.
 func (s *Server) GetStatisticsChannel(ctx context.Context, req *internalpb.GetStatisticsChannelRequest) (*milvuspb.StringResponse, error) {
 	return s.querynode.GetStatisticsChannel(ctx)
 }

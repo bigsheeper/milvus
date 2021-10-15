@@ -278,12 +278,14 @@ func (colReplica *collectionReplica) addPartitionPrivate(collectionID UniqueID, 
 	return nil
 }
 
+// removePartition removes the partition from collectionReplica
 func (colReplica *collectionReplica) removePartition(partitionID UniqueID) error {
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
 	return colReplica.removePartitionPrivate(partitionID)
 }
 
+// removePartitionPrivate is the private function in collectionReplica, to remove the partition from collectionReplica
 func (colReplica *collectionReplica) removePartitionPrivate(partitionID UniqueID) error {
 	partition, err := colReplica.getPartitionByIDPrivate(partitionID)
 	if err != nil {
@@ -307,6 +309,7 @@ func (colReplica *collectionReplica) removePartitionPrivate(partitionID UniqueID
 	return nil
 }
 
+// getPartitionByID returns the partition which id is partitionID
 func (colReplica *collectionReplica) getPartitionByID(partitionID UniqueID) (*Partition, error) {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()

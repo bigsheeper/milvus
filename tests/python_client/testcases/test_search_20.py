@@ -1,4 +1,5 @@
 import pytest
+from time import sleep
 
 from base.client_base import TestcaseBase
 from utils.util_log import test_log as log
@@ -212,7 +213,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
     def test_search_param_invalid_field_type(self, get_invalid_fields_type):
         """
         target: test search with invalid parameter type
-        method: search with invalid field
+        method: search with invalid field type
         expected: raise exception and report the error
         """
         # 1. initialize with data
@@ -231,7 +232,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
     def test_search_param_invalid_field_value(self, get_invalid_fields_value):
         """
         target: test search with invalid parameter values
-        method: search with invalid field
+        method: search with invalid field value
         expected: raise exception and report the error
         """
         # 1. initialize with data
@@ -302,7 +303,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
     def test_search_param_invalid_limit_type(self, get_invalid_limit):
         """
         target: test search with invalid limit type
-        method: search with invalid limit
+        method: search with invalid limit type
         expected: raise exception and report the error
         """
         # 1. initialize with data
@@ -495,8 +496,18 @@ class TestCollectionSearchInvalid(TestcaseBase):
                             check_items={"nq": default_nq,
                                          "ids": [],
                                          "limit": 0})
-        # 4. TODO: search collection with data inserted and not load again
-
+        # 4. search with data inserted but not load again
+        data = cf.gen_default_dataframe_data(nb=2000)
+        insert_res, _ = collection_w.insert(data)
+        sleep(0.2)
+        # insert_ids = []
+        # insert_ids.extend(insert_res.primary_keys)
+        collection_w.search(vectors[:default_nq], default_search_field, default_search_params,
+                            default_limit, default_search_exp,
+                            check_task=CheckTasks.check_search_results,
+                            check_items={"nq": default_nq,
+                                         "ids": insert_res.primary_keys,
+                                         "limit": default_limit})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_search_partition_deleted(self):
@@ -1084,7 +1095,6 @@ class TestCollectionSearch(TestcaseBase):
                                          "_async": _async})
 
     @pytest.mark.tags(CaseLabel.L2)
-    #@pytest.mark.skip(reason="skip temporarily for debug")
     def test_search_max_dim(self, auto_id, _async):
         """
         target: test search with max configuration

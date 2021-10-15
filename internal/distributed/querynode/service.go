@@ -279,16 +279,19 @@ func (s *Server) GetStatisticsChannel(ctx context.Context, req *internalpb.GetSt
 	return s.querynode.GetStatisticsChannel(ctx)
 }
 
+// GetComponentStates gets the component states of QueryNode.
 func (s *Server) GetComponentStates(ctx context.Context, req *internalpb.GetComponentStatesRequest) (*internalpb.ComponentStates, error) {
 	// ignore ctx and in
 	return s.querynode.GetComponentStates(ctx)
 }
 
+// AddQueryChannel adds query channel for QueryNode component.
 func (s *Server) AddQueryChannel(ctx context.Context, req *querypb.AddQueryChannelRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.AddQueryChannel(ctx, req)
 }
 
+// RemoveQueryChannel removes the query channel for QueryNode component.
 func (s *Server) RemoveQueryChannel(ctx context.Context, req *querypb.RemoveQueryChannelRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.RemoveQueryChannel(ctx, req)

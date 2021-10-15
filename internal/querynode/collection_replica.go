@@ -316,6 +316,7 @@ func (colReplica *collectionReplica) getPartitionByID(partitionID UniqueID) (*Pa
 	return colReplica.getPartitionByIDPrivate(partitionID)
 }
 
+// getPartitionByIDPrivate is the private function in collectionReplica, to get the partition
 func (colReplica *collectionReplica) getPartitionByIDPrivate(partitionID UniqueID) (*Partition, error) {
 	partition, ok := colReplica.partitions[partitionID]
 	if !ok {
@@ -325,12 +326,14 @@ func (colReplica *collectionReplica) getPartitionByIDPrivate(partitionID UniqueI
 	return partition, nil
 }
 
+// hasPartition returns true if collectionReplica has the partition, false otherwise
 func (colReplica *collectionReplica) hasPartition(partitionID UniqueID) bool {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
 	return colReplica.hasPartitionPrivate(partitionID)
 }
 
+// hasPartitionPrivate is the private function in collectionReplica, to check if collectionReplica has the partition
 func (colReplica *collectionReplica) hasPartitionPrivate(partitionID UniqueID) bool {
 	_, ok := colReplica.partitions[partitionID]
 	return ok

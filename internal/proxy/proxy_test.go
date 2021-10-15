@@ -1332,6 +1332,16 @@ func TestProxy(t *testing.T) {
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
 
+	wg.Add(1)
+	t.Run("loadBalance", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.LoadBalance(ctx, &milvuspb.LoadBalanceRequest{
+			Base: nil,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+	})
+
 	// TODO(dragondriver): dummy
 
 	wg.Add(1)

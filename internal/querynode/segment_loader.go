@@ -48,10 +48,6 @@ type segmentLoader struct {
 	indexLoader *indexLoader
 }
 
-type segmentsLoadTask struct {
-	loadInfo []*querypb.SegmentLoadInfo
-}
-
 func (loader *segmentLoader) loadSegmentOfConditionHandOff(req *querypb.LoadSegmentsRequest) error {
 	return errors.New("TODO: implement hand off")
 }

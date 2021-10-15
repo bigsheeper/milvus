@@ -77,6 +77,10 @@ func (m *MockQueryCoordClient) GetSegmentInfo(ctx context.Context, in *querypb.G
 	return &querypb.GetSegmentInfoResponse{}, m.err
 }
 
+func (m *MockQueryCoordClient) LoadBalance(ctx context.Context, in *querypb.LoadBalanceRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
+	return &commonpb.Status{}, m.err
+}
+
 func (m *MockQueryCoordClient) GetMetrics(ctx context.Context, in *milvuspb.GetMetricsRequest, opts ...grpc.CallOption) (*milvuspb.GetMetricsResponse, error) {
 	return &milvuspb.GetMetricsResponse{}, m.err
 }
@@ -153,6 +157,9 @@ func Test_NewClient(t *testing.T) {
 
 		r15, err := client.GetMetrics(ctx, nil)
 		retCheck(retNotNil, r15, err)
+
+		r16, err := client.LoadBalance(ctx, nil)
+		retCheck(retNotNil, r16, err)
 	}
 
 	client.getGrpcClient = func() (querypb.QueryCoordClient, error) {

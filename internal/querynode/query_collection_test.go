@@ -316,22 +316,6 @@ func TestQueryCollection_consumeQuery(t *testing.T) {
 		runConsumeQuery(msg)
 	})
 
-	t.Run("consume load balance", func(t *testing.T) {
-		msg := &msgstream.LoadBalanceSegmentsMsg{
-			BaseMsg: msgstream.BaseMsg{
-				HashValues: []uint32{0},
-			},
-			LoadBalanceSegmentsRequest: internalpb.LoadBalanceSegmentsRequest{
-				Base: &commonpb.MsgBase{
-					MsgType: commonpb.MsgType_LoadBalanceSegments,
-					MsgID:   rand.Int63(), // TODO: random msgID?
-				},
-				SegmentIDs: []UniqueID{defaultSegmentID},
-			},
-		}
-		runConsumeQuery(msg)
-	})
-
 	t.Run("consume SimpleSealedSegmentsChangeInfoMsg", func(t *testing.T) {
 		// test is success if it doesn't block
 		msg := genSimpleSealedSegmentsChangeInfoMsg()

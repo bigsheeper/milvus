@@ -1942,6 +1942,14 @@ func TestProxy(t *testing.T) {
 	})
 
 	wg.Add(1)
+	t.Run("LoadBalance fail, unhealthy", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.LoadBalance(ctx, &milvuspb.LoadBalanceRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+	})
+
+	wg.Add(1)
 	t.Run("RegisterLink fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.RegisterLink(ctx, &milvuspb.RegisterLinkRequest{})

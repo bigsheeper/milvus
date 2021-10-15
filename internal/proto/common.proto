@@ -108,7 +108,7 @@ enum MsgType {
     LoadSegments = 252;
     ReleaseSegments = 253;
     HandoffSegments = 254;
-    LoadBalanceSegments = 255;
+    LoadBalanceSegments = 255; // TODO: rename LoadBalanceSegments to LoadBalance
 
     /* DEFINITION REQUESTS: INDEX */
     CreateIndex = 300;

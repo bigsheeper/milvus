@@ -26,6 +26,7 @@ service QueryCoord {
   rpc CreateQueryChannel(CreateQueryChannelRequest) returns (CreateQueryChannelResponse) {}
   rpc GetPartitionStates(GetPartitionStatesRequest) returns (GetPartitionStatesResponse) {}
   rpc GetSegmentInfo(GetSegmentInfoRequest) returns (GetSegmentInfoResponse) {}
+  rpc LoadBalance(LoadBalanceRequest) returns (common.Status) {}
 
   // https://wiki.lfaidata.foundation/display/MIL/MEP+8+--+Add+metrics+for+proxy
   rpc GetMetrics(milvus.GetMetricsRequest) returns (milvus.GetMetricsResponse) {}
@@ -304,6 +305,7 @@ message LoadBalanceRequest {
   common.MsgBase base = 1;
   repeated int64 source_nodeIDs = 2;
   TriggerCondition balance_reason = 3;
+  repeated int64 sealed_segmentIDs = 4;
 }
 
 //---------------- common query proto -----------------

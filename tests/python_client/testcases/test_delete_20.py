@@ -98,6 +98,35 @@ class TestDeleteParams(TestcaseBase):
         collection_w.delete(expr)
         assert collection_w.num_entities == ct.default_nb
 
+    @pytest.mark.skip(reason="Delete function is not implemented")
+    @pytest.mark.tags(CaseLabel.L1)
+    def test_delete_expr_single(self):
+        """
+        target: test delete with one value
+        method: delete with expr: "id in [0]"
+        expected: Describe num entities by one
+        """
+        # init collection with tmp_nb default data
+        collection_w = self.init_collection_general(prefix, nb=tmp_nb, insert_data=True)[0]
+        expr = f'{ct.default_int64_field_name} in {[0]}'
+        collection_w.delete(expr)
+        assert collection_w.num_entities == tmp_nb - 1
+
+    @pytest.mark.skip(reason="Delete function is not implemented")
+    @pytest.mark.tags(CaseLabel.L1)
+    def test_delete_expr_all_values(self):
+        """
+        target: test delete with all values
+        method: delete with expr: "id in [all]"
+        expected: num entities becomes zero
+        """
+        # init collection with default_nb default data
+        collection_w, _, _, ids = self.init_collection_general(prefix, insert_data=True)
+        expr = f'{ct.default_int64_field_name} in {ids[0]}'
+        collection_w.delete(expr)
+        assert collection_w.num_entities == 0
+        assert collection_w.is_empty
+
 
 @pytest.mark.skip(reason="Waiting for development")
 class TestDeleteOperation(TestcaseBase):
@@ -137,3 +166,23 @@ class TestDeleteOperation(TestcaseBase):
         # raise exception
         error = {ct.err_code: 0, ct.err_msg: "..."}
         collection_w.delete(expr=tmp_expr, check_task=CheckTasks.err_res, check_items=error)
+
+    @pytest.mark.skip(reason="Delete function is not implemented")
+    @pytest.mark.tags(CaseLabel.L1)
+    def test_delete_after_index(self):
+        """
+        target: test delete after creating index
+        method: 1.create index 2.delete entities
+        expected: assert index and num entities
+        """
+        # init collection with nb default data
+        collection_w = self.init_collection_general(prefix, nb=tmp_nb, insert_data=True)[0]
+
+        # create index
+        index_params = {"index_type": "IVF_SQ8", "metric_type": "L2", "params": {"nlist": 64}}
+        collection_w.create_index(ct.default_float_vec_field_name, index_params)
+        assert collection_w.has_index()[0]
+        # delete entity
+        collection_w.delete(tmp_expr)
+        assert collection_w.num_entities == tmp_nb - 1
+        assert collection_w.has_index()

@@ -41,6 +41,7 @@ const (
 )
 
 const (
+	// MaxRetryNum is the maximum number of times that each task can be retried
 	MaxRetryNum = 5
 )
 
@@ -237,6 +238,7 @@ func (bt *BaseTask) rollBack(ctx context.Context) []task {
 }
 
 //************************grpcTask***************************//
+// LoadCollectionTask will load all the data of this collection to query nodes
 type LoadCollectionTask struct {
 	*BaseTask
 	*querypb.LoadCollectionRequest

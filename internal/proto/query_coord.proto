@@ -304,8 +304,10 @@ message LoadBalanceSegmentInfo {
 
 message LoadBalanceRequest {
   common.MsgBase base = 1;
-  repeated int64 source_nodeIDs = 2;
+  repeated int64 source_nodeIDs = 2; // deprecated
   TriggerCondition balance_reason = 3;
+  int64 src_nodeID = 6;
+  int64 dst_nodeID = 5;
   repeated int64 sealed_segmentIDs = 4;
 }
 

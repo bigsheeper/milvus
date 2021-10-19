@@ -687,8 +687,9 @@ message GetMetricsResponse {
 */
 message LoadBalanceRequest {
   common.MsgBase base = 1;
-  repeated int64 source_nodeIDs = 2;
-  repeated int64 sealed_segmentIDs = 3;
+  int64 src_nodeID = 2;
+  int64 dst_nodeID = 3;
+  repeated int64 sealed_segmentIDs = 4;
 }
 
 service ProxyService {

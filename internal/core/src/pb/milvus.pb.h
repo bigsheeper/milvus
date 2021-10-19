@@ -11675,22 +11675,12 @@ class LoadBalanceRequest :
   // accessors -------------------------------------------------------
 
   enum : int {
-    kSourceNodeIDsFieldNumber = 2,
-    kSealedSegmentIDsFieldNumber = 3,
+    kSealedSegmentIDsFieldNumber = 4,
     kBaseFieldNumber = 1,
+    kSrcNodeIDFieldNumber = 2,
+    kDstNodeIDFieldNumber = 3,
   };
-  // repeated int64 source_nodeIDs = 2;
-  int source_nodeids_size() const;
-  void clear_source_nodeids();
-  ::PROTOBUF_NAMESPACE_ID::int64 source_nodeids(int index) const;
-  void set_source_nodeids(int index, ::PROTOBUF_NAMESPACE_ID::int64 value);
-  void add_source_nodeids(::PROTOBUF_NAMESPACE_ID::int64 value);
-  const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 >&
-      source_nodeids() const;
-  ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 >*
-      mutable_source_nodeids();
-
-  // repeated int64 sealed_segmentIDs = 3;
+  // repeated int64 sealed_segmentIDs = 4;
   int sealed_segmentids_size() const;
   void clear_sealed_segmentids();
   ::PROTOBUF_NAMESPACE_ID::int64 sealed_segmentids(int index) const;
@@ -11709,16 +11699,26 @@ class LoadBalanceRequest :
   ::milvus::proto::common::MsgBase* mutable_base();
   void set_allocated_base(::milvus::proto::common::MsgBase* base);
 
+  // int64 src_nodeID = 2;
+  void clear_src_nodeid();
+  ::PROTOBUF_NAMESPACE_ID::int64 src_nodeid() const;
+  void set_src_nodeid(::PROTOBUF_NAMESPACE_ID::int64 value);
+
+  // int64 dst_nodeID = 3;
+  void clear_dst_nodeid();
+  ::PROTOBUF_NAMESPACE_ID::int64 dst_nodeid() const;
+  void set_dst_nodeid(::PROTOBUF_NAMESPACE_ID::int64 value);
+
   // @@protoc_insertion_point(class_scope:milvus.proto.milvus.LoadBalanceRequest)
  private:
   class _Internal;
 
   ::PROTOBUF_NAMESPACE_ID::internal::InternalMetadataWithArena _internal_metadata_;
-  ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 > source_nodeids_;
-  mutable std::atomic<int> _source_nodeids_cached_byte_size_;
   ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 > sealed_segmentids_;
   mutable std::atomic<int> _sealed_segmentids_cached_byte_size_;
   ::milvus::proto::common::MsgBase* base_;
+  ::PROTOBUF_NAMESPACE_ID::int64 src_nodeid_;
+  ::PROTOBUF_NAMESPACE_ID::int64 dst_nodeid_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_milvus_2eproto;
 };
@@ -22365,37 +22365,35 @@ inline void LoadBalanceRequest::set_allocated_base(::milvus::proto::common::MsgB
   // @@protoc_insertion_point(field_set_allocated:milvus.proto.milvus.LoadBalanceRequest.base)
 }
 
-// repeated int64 source_nodeIDs = 2;
-inline int LoadBalanceRequest::source_nodeids_size() const {
-  return source_nodeids_.size();
+// int64 src_nodeID = 2;
+inline void LoadBalanceRequest::clear_src_nodeid() {
+  src_nodeid_ = PROTOBUF_LONGLONG(0);
 }
-inline void LoadBalanceRequest::clear_source_nodeids() {
-  source_nodeids_.Clear();
+inline ::PROTOBUF_NAMESPACE_ID::int64 LoadBalanceRequest::src_nodeid() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.LoadBalanceRequest.src_nodeID)
+  return src_nodeid_;
 }
-inline ::PROTOBUF_NAMESPACE_ID::int64 LoadBalanceRequest::source_nodeids(int index) const {
-  // @@protoc_insertion_point(field_get:milvus.proto.milvus.LoadBalanceRequest.source_nodeIDs)
-  return source_nodeids_.Get(index);
-}
-inline void LoadBalanceRequest::set_source_nodeids(int index, ::PROTOBUF_NAMESPACE_ID::int64 value) {
-  source_nodeids_.Set(index, value);
-  // @@protoc_insertion_point(field_set:milvus.proto.milvus.LoadBalanceRequest.source_nodeIDs)
-}
-inline void LoadBalanceRequest::add_source_nodeids(::PROTOBUF_NAMESPACE_ID::int64 value) {
-  source_nodeids_.Add(value);
-  // @@protoc_insertion_point(field_add:milvus.proto.milvus.LoadBalanceRequest.source_nodeIDs)
-}
-inline const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 >&
-LoadBalanceRequest::source_nodeids() const {
-  // @@protoc_insertion_point(field_list:milvus.proto.milvus.LoadBalanceRequest.source_nodeIDs)
-  return source_nodeids_;
-}
-inline ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::int64 >*
-LoadBalanceRequest::mutable_source_nodeids() {
-  // @@protoc_insertion_point(field_mutable_list:milvus.proto.milvus.LoadBalanceRequest.source_nodeIDs)
-  return &source_nodeids_;
+inline void LoadBalanceRequest::set_src_nodeid(::PROTOBUF_NAMESPACE_ID::int64 value) {
+  
+  src_nodeid_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.LoadBalanceRequest.src_nodeID)
 }
 
-// repeated int64 sealed_segmentIDs = 3;
+// int64 dst_nodeID = 3;
+inline void LoadBalanceRequest::clear_dst_nodeid() {
+  dst_nodeid_ = PROTOBUF_LONGLONG(0);
+}
+inline ::PROTOBUF_NAMESPACE_ID::int64 LoadBalanceRequest::dst_nodeid() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.LoadBalanceRequest.dst_nodeID)
+  return dst_nodeid_;
+}
+inline void LoadBalanceRequest::set_dst_nodeid(::PROTOBUF_NAMESPACE_ID::int64 value) {
+  
+  dst_nodeid_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.LoadBalanceRequest.dst_nodeID)
+}
+
+// repeated int64 sealed_segmentIDs = 4;
 inline int LoadBalanceRequest::sealed_segmentids_size() const {
   return sealed_segmentids_.size();
 }

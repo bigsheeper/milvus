@@ -297,31 +297,37 @@ func (s *Server) RemoveQueryChannel(ctx context.Context, req *querypb.RemoveQuer
 	return s.querynode.RemoveQueryChannel(ctx, req)
 }
 
+// WatchDmChannels watches the channels about data manipulation.
 func (s *Server) WatchDmChannels(ctx context.Context, req *querypb.WatchDmChannelsRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.WatchDmChannels(ctx, req)
 }
 
+// LoadSegments loads the segments to search.
 func (s *Server) LoadSegments(ctx context.Context, req *querypb.LoadSegmentsRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.LoadSegments(ctx, req)
 }
 
+// ReleaseCollection releases the data of the specified collection in QueryNode.
 func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseCollectionRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.ReleaseCollection(ctx, req)
 }
 
+// ReleasePartitions releases the data of the specified partitions in QueryNode.
 func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.ReleasePartitions(ctx, req)
 }
 
+// ReleaseSegments releases the data of the specified segments in QueryNode.
 func (s *Server) ReleaseSegments(ctx context.Context, req *querypb.ReleaseSegmentsRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.ReleaseSegments(ctx, req)
 }
 
+// GetSegmentInfo gets the information of the specified segments in QueryNode.
 func (s *Server) GetSegmentInfo(ctx context.Context, req *querypb.GetSegmentInfoRequest) (*querypb.GetSegmentInfoResponse, error) {
 	return s.querynode.GetSegmentInfo(ctx, req)
 }

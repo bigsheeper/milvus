@@ -75,9 +75,8 @@ type ReplicaInterface interface {
 	getSegmentStatistics() []*internalpb.SegmentStats
 
 	// excluded segments
-	initExcludedSegments(collectionID UniqueID)
 	removeExcludedSegments(collectionID UniqueID)
-	addExcludedSegments(collectionID UniqueID, segmentInfos []*datapb.SegmentInfo) error
+	addExcludedSegments(collectionID UniqueID, segmentInfos []*datapb.SegmentInfo)
 	getExcludedSegments(collectionID UniqueID) ([]*datapb.SegmentInfo, error)
 
 	getSegmentsMemSize() int64
@@ -339,18 +338,21 @@ func (colReplica *collectionReplica) hasPartitionPrivate(partitionID UniqueID) b
 	return ok
 }
 
+// getPartitionNum returns num of partitions
 func (colReplica *collectionReplica) getPartitionNum() int {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
 	return len(colReplica.partitions)
 }
 
+// getSegmentIDs returns segment ids
 func (colReplica *collectionReplica) getSegmentIDs(partitionID UniqueID) ([]UniqueID, error) {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
 	return colReplica.getSegmentIDsPrivate(partitionID)
 }
 
+// getSegmentIDsByVChannel returns segment ids which virtual channel is vChannel
 func (colReplica *collectionReplica) getSegmentIDsByVChannel(partitionID UniqueID, vChannel Channel) ([]UniqueID, error) {
 	colReplica.mu.RLock()
 	defer colReplica.mu.RUnlock()
@@ -372,6 +374,7 @@ func (colReplica *collectionReplica) getSegmentIDsByVChannel(partitionID UniqueI
 	return segmentIDsTmp, nil
 }
 
+// getSegmentIDsPrivate is private function in collectionReplica, it returns segment ids
 func (colReplica *collectionReplica) getSegmentIDsPrivate(partitionID UniqueID) ([]UniqueID, error) {
 	partition, err2 := colReplica.getPartitionByIDPrivate(partitionID)
 	if err2 != nil {
@@ -381,6 +384,7 @@ func (colReplica *collectionReplica) getSegmentIDsPrivate(partitionID UniqueID) 
 }
 
 //----------------------------------------------------------------------------------------------------- segment
+// addSegment add a new segment to collectionReplica
 func (colReplica *collectionReplica) addSegment(segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, segType segmentType, onService bool) error {
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
@@ -392,6 +396,7 @@ func (colReplica *collectionReplica) addSegment(segmentID UniqueID, partitionID 
 	return colReplica.addSegmentPrivate(segmentID, partitionID, seg)
 }
 
+// addSegmentPrivate is private function in collectionReplica, to add a new segment to collectionReplica
 func (colReplica *collectionReplica) addSegmentPrivate(segmentID UniqueID, partitionID UniqueID, segment *Segment) error {
 	partition, err := colReplica.getPartitionByIDPrivate(partitionID)
 	if err != nil {
@@ -504,15 +509,6 @@ func (colReplica *collectionReplica) getSegmentStatistics() []*internalpb.Segmen
 	return statisticData
 }
 
-func (colReplica *collectionReplica) initExcludedSegments(collectionID UniqueID) {
-	colReplica.mu.Lock()
-	defer colReplica.mu.Unlock()
-
-	if _, ok := colReplica.excludedSegments[collectionID]; !ok {
-		colReplica.excludedSegments[collectionID] = make([]*datapb.SegmentInfo, 0)
-	}
-}
-
 func (colReplica *collectionReplica) removeExcludedSegments(collectionID UniqueID) {
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
@@ -520,16 +516,15 @@ func (colReplica *collectionReplica) removeExcludedSegments(collectionID UniqueI
 	delete(colReplica.excludedSegments, collectionID)
 }
 
-func (colReplica *collectionReplica) addExcludedSegments(collectionID UniqueID, segmentInfos []*datapb.SegmentInfo) error {
+func (colReplica *collectionReplica) addExcludedSegments(collectionID UniqueID, segmentInfos []*datapb.SegmentInfo) {
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
 
 	if _, ok := colReplica.excludedSegments[collectionID]; !ok {
-		return errors.New("addExcludedSegments failed, cannot found collection, id =" + fmt.Sprintln(collectionID))
+		colReplica.excludedSegments[collectionID] = make([]*datapb.SegmentInfo, 0)
 	}
 
 	colReplica.excludedSegments[collectionID] = append(colReplica.excludedSegments[collectionID], segmentInfos...)
-	return nil
 }
 
 func (colReplica *collectionReplica) getExcludedSegments(collectionID UniqueID) ([]*datapb.SegmentInfo, error) {

@@ -2415,7 +2415,8 @@ func (node *Proxy) LoadBalance(ctx context.Context, req *milvuspb.LoadBalanceReq
 			Timestamp: 0,
 			SourceID:  Params.ProxyID,
 		},
-		SourceNodeIDs:    req.SourceNodeIDs,
+		SrcNodeID:        req.SrcNodeID,
+		DstNodeID:        req.DstNodeID,
 		BalanceReason:    querypb.TriggerCondition_grpcRequest,
 		SealedSegmentIDs: req.SealedSegmentIDs,
 	})

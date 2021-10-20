@@ -7894,9 +7894,9 @@ class SearchRequest :
     kDslFieldNumber = 5,
     kPlaceholderGroupFieldNumber = 6,
     kBaseFieldNumber = 1,
+    kSearchIDsFieldNumber = 12,
     kTravelTimestampFieldNumber = 10,
     kGuaranteeTimestampFieldNumber = 11,
-    kSearchIDsFieldNumber = 12,
     kDslTypeFieldNumber = 7,
   };
   // repeated string partition_names = 4;
@@ -19488,13 +19488,13 @@ inline const ::milvus::proto::schema::IDs& SearchRequest::searchids() const {
 }
 inline ::milvus::proto::schema::IDs* SearchRequest::release_searchids() {
   // @@protoc_insertion_point(field_release:milvus.proto.milvus.SearchRequest.searchIDs)
-
+  
   ::milvus::proto::schema::IDs* temp = searchids_;
   searchids_ = nullptr;
   return temp;
 }
 inline ::milvus::proto::schema::IDs* SearchRequest::mutable_searchids() {
-
+  
   if (searchids_ == nullptr) {
     auto* p = CreateMaybeMessage<::milvus::proto::schema::IDs>(GetArenaNoVirtual());
     searchids_ = p;
@@ -19513,9 +19513,9 @@ inline void SearchRequest::set_allocated_searchids(::milvus::proto::schema::IDs*
       searchids = ::PROTOBUF_NAMESPACE_ID::internal::GetOwnedMessage(
           message_arena, searchids, submessage_arena);
     }
-
+    
   } else {
-
+    
   }
   searchids_ = searchids;
   // @@protoc_insertion_point(field_set_allocated:milvus.proto.milvus.SearchRequest.searchIDs)

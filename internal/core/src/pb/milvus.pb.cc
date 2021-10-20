@@ -21986,8 +21986,8 @@ void PlaceholderGroup::InternalSwap(PlaceholderGroup* other) {
 void SearchRequest::InitAsDefaultInstance() {
   ::milvus::proto::milvus::_SearchRequest_default_instance_._instance.get_mutable()->base_ = const_cast< ::milvus::proto::common::MsgBase*>(
       ::milvus::proto::common::MsgBase::internal_default_instance());
-      ::milvus::proto::milvus::_SearchRequest_default_instance_._instance.get_mutable()->searchids_ = const_cast< ::milvus::proto::schema::IDs*>(
-        ::milvus::proto::schema::IDs::internal_default_instance());
+  ::milvus::proto::milvus::_SearchRequest_default_instance_._instance.get_mutable()->searchids_ = const_cast< ::milvus::proto::schema::IDs*>(
+      ::milvus::proto::schema::IDs::internal_default_instance());
 }
 class SearchRequest::_Internal {
  public:
@@ -22224,7 +22224,7 @@ const char* SearchRequest::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_
           CHK_(ptr);
         } else goto handle_unusual;
         continue;
-        // .milvus.proto.schema.IDs searchIDs = 12;
+      // .milvus.proto.schema.IDs searchIDs = 12;
       case 12:
         if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 98)) {
           ptr = ctx->ParseMessage(mutable_searchids(), ptr);

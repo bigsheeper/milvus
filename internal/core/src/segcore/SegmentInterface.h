@@ -28,11 +28,12 @@
 
 namespace milvus::segcore {
 
-// common interface of SegmentSealed and SegmentGrowing
-// used by C API
+// common interface of SegmentSealed and SegmentGrowing used by C API
 class SegmentInterface {
  public:
-    // fill results according to target_entries in plan
+    virtual void
+    FillPrimaryKeys(const query::Plan* plan, SearchResult& results) const = 0;
+
     virtual void
     FillTargetEntry(const query::Plan* plan, SearchResult& results) const = 0;
 
@@ -83,6 +84,9 @@ class SegmentInternalInterface : public SegmentInterface {
            Timestamp timestamp) const override;
 
     void
+    FillPrimaryKeys(const query::Plan* plan, SearchResult& results) const override;
+
+    void
     FillTargetEntry(const query::Plan* plan, SearchResult& results) const override;
 
     std::unique_ptr<proto::segcore::RetrieveResults>
@@ -100,6 +104,9 @@ class SegmentInternalInterface : public SegmentInterface {
                   Timestamp timestamp,
                   const BitsetView& bitset,
                   SearchResult& output) const = 0;
+
+    virtual BitsetView
+    get_filtered_bitmap(const BitsetView& bitset, int64_t ins_barrier, Timestamp timestamp) const = 0;
 
     // count of chunk that has index available
     virtual int64_t

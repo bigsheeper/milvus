@@ -90,7 +90,7 @@ type MetaTable struct {
 }
 
 // NewMetaTable create meta table for rootcoord, which stores all in-memory information
-// for collection, partion, segment, index etc.
+// for collection, partition, segment, index etc.
 func NewMetaTable(kv kv.SnapShotKV) (*MetaTable, error) {
 	mt := &MetaTable{
 		client:     kv,
@@ -1283,6 +1283,7 @@ func (mt *MetaTable) AlterAlias(collectionAlias string, collectionName string, t
 	return nil
 }
 
+// IsAlias returns true if specific `collectionAlias` is an alias of collection.
 func (mt *MetaTable) IsAlias(collectionAlias string) bool {
 	mt.ddLock.RLock()
 	defer mt.ddLock.RUnlock()

@@ -88,6 +88,8 @@ func (b Blob) GetValue() []byte {
 }
 
 type FieldData interface {
+	Length() int
+	Get(i int) interface{}
 }
 
 type BoolFieldData struct {
@@ -132,6 +134,28 @@ type FloatVectorFieldData struct {
 	Data    []float32
 	Dim     int
 }
+
+func (data *BoolFieldData) Length() int         { return len(data.Data) }
+func (data *Int8FieldData) Length() int         { return len(data.Data) }
+func (data *Int16FieldData) Length() int        { return len(data.Data) }
+func (data *Int32FieldData) Length() int        { return len(data.Data) }
+func (data *Int64FieldData) Length() int        { return len(data.Data) }
+func (data *FloatFieldData) Length() int        { return len(data.Data) }
+func (data *DoubleFieldData) Length() int       { return len(data.Data) }
+func (data *StringFieldData) Length() int       { return len(data.Data) }
+func (data *BinaryVectorFieldData) Length() int { return len(data.Data) }
+func (data *FloatVectorFieldData) Length() int  { return len(data.Data) }
+
+func (data *BoolFieldData) Get(i int) interface{}         { return data.Data[i] }
+func (data *Int8FieldData) Get(i int) interface{}         { return data.Data[i] }
+func (data *Int16FieldData) Get(i int) interface{}        { return data.Data[i] }
+func (data *Int32FieldData) Get(i int) interface{}        { return data.Data[i] }
+func (data *Int64FieldData) Get(i int) interface{}        { return data.Data[i] }
+func (data *FloatFieldData) Get(i int) interface{}        { return data.Data[i] }
+func (data *DoubleFieldData) Get(i int) interface{}       { return data.Data[i] }
+func (data *StringFieldData) Get(i int) interface{}       { return data.Data[i] }
+func (data *BinaryVectorFieldData) Get(i int) interface{} { return data.Data[i] }
+func (data *FloatVectorFieldData) Get(i int) interface{}  { return data.Data[i] }
 
 // why not binary.Size(data) directly? binary.Size(data) return -1
 // binary.Size returns how many bytes Write would generate to encode the value v, which
@@ -306,7 +330,7 @@ func (insertCodec *InsertCodec) Serialize(partitionID UniqueID, segmentID Unique
 		statsWriter := &StatsWriter{}
 		switch field.DataType {
 		case schemapb.DataType_Int64:
-			err = statsWriter.StatsInt64(field.FieldID, singleData.(*Int64FieldData).Data)
+			err = statsWriter.StatsInt64(field.FieldID, field.IsPrimaryKey, singleData.(*Int64FieldData).Data)
 		}
 		if err != nil {
 			return nil, nil, err
@@ -638,44 +662,58 @@ func (deleteCodec *DeleteCodec) Serialize(partitionID UniqueID, segmentID Unique
 
 }
 
-func (deleteCodec *DeleteCodec) Deserialize(blob *Blob) (partitionID UniqueID, segmentID UniqueID, data *DeleteData, err error) {
-	if blob == nil {
+// Deserialize deserializes the deltalog blobs into DeleteData
+func (deleteCodec *DeleteCodec) Deserialize(blobs []*Blob) (partitionID UniqueID, segmentID UniqueID, data *DeleteData, err error) {
+	if len(blobs) == 0 {
 		return InvalidUniqueID, InvalidUniqueID, nil, fmt.Errorf("blobs is empty")
 	}
 	readerClose := func(reader *BinlogReader) func() error {
 		return func() error { return reader.Close() }
 	}
-	binlogReader, err := NewBinlogReader(blob.Value)
-	if err != nil {
-		return InvalidUniqueID, InvalidUniqueID, nil, err
-	}
-	pid, sid := binlogReader.PartitionID, binlogReader.SegmentID
-	eventReader, err := binlogReader.NextEventReader()
-	if err != nil {
-		return InvalidUniqueID, InvalidUniqueID, nil, err
-	}
-	result := &DeleteData{
-		Data: make(map[string]int64),
-	}
-	length, err := eventReader.GetPayloadLengthFromReader()
-	for i := 0; i < length; i++ {
-		singleString, err := eventReader.GetOneStringFromPayload(i)
+
+	var pid, sid UniqueID
+	result := &DeleteData{Data: make(map[string]int64)}
+	for _, blob := range blobs {
+		binlogReader, err := NewBinlogReader(blob.Value)
 		if err != nil {
 			return InvalidUniqueID, InvalidUniqueID, nil, err
 		}
-		splits := strings.Split(singleString, ",")
-		if len(splits) != 2 {
-			return InvalidUniqueID, InvalidUniqueID, nil, fmt.Errorf("the format of delta log is incorrect")
-		}
-		ts, err := strconv.ParseInt(splits[1], 10, 64)
-		if err != nil {
-			return -1, -1, nil, err
-		}
-		result.Data[splits[0]] = ts
-	}
-	deleteCodec.readerCloseFunc = append(deleteCodec.readerCloseFunc, readerClose(binlogReader))
-	return pid, sid, result, nil
 
+		pid, sid = binlogReader.PartitionID, binlogReader.SegmentID
+		eventReader, err := binlogReader.NextEventReader()
+		if err != nil {
+			return InvalidUniqueID, InvalidUniqueID, nil, err
+		}
+
+		length, err := eventReader.GetPayloadLengthFromReader()
+		if err != nil {
+			return InvalidUniqueID, InvalidUniqueID, nil, err
+		}
+
+		for i := 0; i < length; i++ {
+			singleString, err := eventReader.GetOneStringFromPayload(i)
+			if err != nil {
+				return InvalidUniqueID, InvalidUniqueID, nil, err
+			}
+
+			splits := strings.Split(singleString, ",")
+			if len(splits) != 2 {
+				return InvalidUniqueID, InvalidUniqueID, nil, fmt.Errorf("the format of delta log is incorrect")
+			}
+
+			ts, err := strconv.ParseInt(splits[1], 10, 64)
+			if err != nil {
+				return InvalidUniqueID, InvalidUniqueID, nil, err
+			}
+
+			result.Data[splits[0]] = ts
+		}
+
+		deleteCodec.readerCloseFunc = append(deleteCodec.readerCloseFunc, readerClose(binlogReader))
+
+	}
+
+	return pid, sid, result, nil
 }
 
 // Blob key example:

@@ -49,6 +49,7 @@ const (
 
 	defaultVecFieldName   = "vec"
 	defaultConstFieldName = "const"
+	defaultPKFieldName    = "pk"
 	defaultTopK           = int64(10)
 	defaultRoundDecimal   = int64(6)
 	defaultDim            = 128
@@ -71,7 +72,10 @@ const (
 	defaultPartitionName  = "query-node-unittest-default-partition"
 )
 
-const defaultMsgLength = 100
+const (
+	defaultMsgLength = 100
+	defaultDelLength = 10
+)
 
 const (
 	buildID   = UniqueID(0)
@@ -105,6 +109,11 @@ var simpleConstField = constFieldParam{
 	dataType: schemapb.DataType_Int32,
 }
 
+var simplePKField = constFieldParam{
+	id:       102,
+	dataType: schemapb.DataType_Int64,
+}
+
 var uidField = constFieldParam{
 	id:       rowIDFieldID,
 	dataType: schemapb.DataType_Int64,
@@ -120,6 +129,16 @@ func genConstantField(param constFieldParam) *schemapb.FieldSchema {
 		FieldID:      param.id,
 		Name:         defaultConstFieldName,
 		IsPrimaryKey: false,
+		DataType:     param.dataType,
+	}
+	return field
+}
+
+func genPKField(param constFieldParam) *schemapb.FieldSchema {
+	field := &schemapb.FieldSchema{
+		FieldID:      param.id,
+		Name:         defaultPKFieldName,
+		IsPrimaryKey: true,
 		DataType:     param.dataType,
 	}
 	return field
@@ -281,13 +300,15 @@ func generateIndex(segmentID UniqueID) ([]string, error) {
 func genSimpleSegCoreSchema() *schemapb.CollectionSchema {
 	fieldVec := genFloatVectorField(simpleVecField)
 	fieldInt := genConstantField(simpleConstField)
+	fieldPK := genPKField(simplePKField)
 
 	schema := schemapb.CollectionSchema{ // schema for segCore
 		Name:   defaultCollectionName,
-		AutoID: true,
+		AutoID: false,
 		Fields: []*schemapb.FieldSchema{
 			fieldVec,
 			fieldInt,
+			fieldPK,
 		},
 	}
 	return &schema
@@ -577,6 +598,10 @@ func genCommonBlob(msgLength int, schema *schemapb.CollectionSchema) ([]*commonp
 				bs := make([]byte, 4)
 				binary.LittleEndian.PutUint32(bs, uint32(i))
 				rawData = append(rawData, bs...)
+			case schemapb.DataType_Int64:
+				bs := make([]byte, 8)
+				binary.LittleEndian.PutUint32(bs, uint32(i))
+				rawData = append(rawData, bs...)
 			case schemapb.DataType_FloatVector:
 				dim := simpleVecField.dim // if no dim specified, use simpleVecField's dim
 				for _, p := range f.TypeParams {
@@ -681,10 +706,27 @@ func genSimpleTimestampFieldData() []Timestamp {
 	return times
 }
 
+func genSimpleTimestampDeletedPK() []Timestamp {
+	times := make([]Timestamp, defaultDelLength)
+	for i := 0; i < defaultDelLength; i++ {
+		times[i] = Timestamp(i)
+	}
+	times[0] = 1
+	return times
+}
+
 func genSimpleRowIDField() []IntPrimaryKey {
 	ids := make([]IntPrimaryKey, defaultMsgLength)
 	for i := 0; i < defaultMsgLength; i++ {
 		ids[i] = IntPrimaryKey(i)
+	}
+	return ids
+}
+
+func genSimpleDeleteID() []IntPrimaryKey {
+	ids := make([]IntPrimaryKey, defaultDelLength)
+	for i := 0; i < defaultDelLength; i++ {
+		ids[0] = IntPrimaryKey(i)
 	}
 	return ids
 }
@@ -721,6 +763,21 @@ func genSimpleInsertMsg() (*msgstream.InsertMsg, error) {
 			Timestamps:     genSimpleTimestampFieldData(),
 			RowIDs:         genSimpleRowIDField(),
 			RowData:        rowData,
+		},
+	}, nil
+}
+
+func genSimpleDeleteMsg() (*msgstream.DeleteMsg, error) {
+	return &msgstream.DeleteMsg{
+		BaseMsg: genMsgStreamBaseMsg(),
+		DeleteRequest: internalpb.DeleteRequest{
+			Base:           genCommonMsgBase(commonpb.MsgType_Delete),
+			CollectionName: defaultCollectionName,
+			PartitionName:  defaultPartitionName,
+			CollectionID:   defaultCollectionID,
+			PartitionID:    defaultPartitionID,
+			PrimaryKeys:    genSimpleDeleteID(),
+			Timestamps:     genSimpleTimestampDeletedPK(),
 		},
 	}, nil
 }
@@ -771,7 +828,7 @@ func genSealedSegment(schemaForCreate *schemapb.CollectionSchema,
 		case *storage.DoubleFieldData:
 			numRows = fieldData.NumRows
 			data = fieldData.Data
-		case storage.StringFieldData:
+		case *storage.StringFieldData:
 			numRows = fieldData.NumRows
 			data = fieldData.Data
 		case *storage.FloatVectorFieldData:

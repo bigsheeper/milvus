@@ -474,8 +474,10 @@ class TestCollectionSearchInvalid(TestcaseBase):
         target: test search with empty connection
         method: 1. search the empty collection before load
                 2. search the empty collection after load
+                3. search collection with data inserted but not load again
         expected: 1. raise exception if not loaded
                   2. return topk=0  if loaded
+                  3. return topk successfully
         """
         # 1. initialize without data
         collection_w = self.init_collection_general(prefix)[0]
@@ -498,10 +500,11 @@ class TestCollectionSearchInvalid(TestcaseBase):
                                          "limit": 0})
         # 4. search with data inserted but not load again
         data = cf.gen_default_dataframe_data(nb=2000)
+
         insert_res, _ = collection_w.insert(data)
-        sleep(0.2)
-        # insert_ids = []
-        # insert_ids.extend(insert_res.primary_keys)
+
+        sleep(1)
+
         collection_w.search(vectors[:default_nq], default_search_field, default_search_params,
                             default_limit, default_search_exp,
                             check_task=CheckTasks.check_search_results,
@@ -635,7 +638,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
         """
         target: test search with output fields
         method: search with non-exist output_field
-        expected: search success
+        expected: raise exception
         """
         # 1. initialize with data
         collection_w, _, _, insert_ids = self.init_collection_general(prefix, True)
@@ -1079,7 +1082,7 @@ class TestCollectionSearch(TestcaseBase):
         # 3. insert new data
         nb_new = 300
         insert_ids_new = cf.insert_data(collection_w, nb_new,
-                                        auto_id=auto_id, dim=dim)[3]
+                                        auto_id=auto_id, dim=dim, insert_offset=nb_old)[3]
         insert_ids.extend(insert_ids_new)
         # gracefulTime is default as 1s which allows data
         # could not be searched instantly in gracefulTime
@@ -2237,7 +2240,8 @@ class TestSearchBase:
         get_simple_index["metric_type"] = "IP"
         connect.create_index(collection, field_name, get_simple_index)
         search_param = get_search_param(index_type)
-        query, _ = gen_search_vectors_params(field_name, entities, top_k, nq, metric_type="IP", search_params=search_param)
+        query, _ = gen_search_vectors_params(field_name, entities, top_k, nq, metric_type="IP",
+                                             search_params=search_param)
         connect.load_collection(collection)
         res = connect.search(collection, **query)
         assert len(res) == nq
@@ -2264,7 +2268,7 @@ class TestSearchBase:
         connect.create_index(collection, field_name, get_simple_index)
         search_param = get_search_param(index_type)
         query, _ = gen_search_vectors_params(field_name, entities, top_k, nq, metric_type=metric_type,
-                                          search_params=search_param)
+                                             search_params=search_param)
         if top_k > max_top_k:
             with pytest.raises(Exception) as e:
                 res = connect.search(collection, **query)
@@ -2584,7 +2588,7 @@ class TestSearchBase:
     @pytest.mark.timeout(300)
     def test_search_concurrent_multithreads_single_connection(self, connect, args):
         """
-        target: test concurrent search with multiprocessess
+        target: test concurrent search with multi processes
         method: search with 10 processes, each process uses dependent connection
         expected: status ok and the returned vectors should be query_records
         """
@@ -2652,6 +2656,11 @@ class TestSearchDSL(object):
 
     @pytest.mark.tags(CaseLabel.L0)
     def test_query_vector_only(self, connect, collection):
+        """
+        target: test search normal scenario
+        method: search vector only
+        expected: search status ok, the length of result
+        """
         entities, ids = init_data(connect, collection)
         connect.load_collection(collection)
         res = connect.search(collection, **default_query)
@@ -2667,4 +2676,3 @@ class TestSearchDSL(object):
         query = {}
         with pytest.raises(Exception) as e:
             res = connect.search(collection, query)
-

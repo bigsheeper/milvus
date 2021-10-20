@@ -8,6 +8,7 @@
 // Unless required by applicable law or agreed to in writing, software distributed under the License
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
+
 package datacoord
 
 import (
@@ -38,9 +39,10 @@ type SegmentInfo struct {
 // the worst case scenario is to have a segment with twice size we expects
 func NewSegmentInfo(info *datapb.SegmentInfo) *SegmentInfo {
 	return &SegmentInfo{
-		SegmentInfo: info,
-		currRows:    0,
-		allocations: make([]*Allocation, 0, 16),
+		SegmentInfo:   info,
+		currRows:      0,
+		allocations:   make([]*Allocation, 0, 16),
+		lastFlushTime: time.Now().Add(-1 * flushInterval),
 	}
 }
 
@@ -292,3 +294,6 @@ func addSegmentBinlogs(field2Binlogs map[UniqueID][]string) SegmentInfoOption {
 		}
 	}
 }
+
+// SegmentInfoSelector is the function type to select SegmentInfo from meta
+type SegmentInfoSelector func(*SegmentInfo) bool

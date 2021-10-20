@@ -96,7 +96,7 @@ func (queue *TaskQueue) addTaskToFront(t task) {
 }
 
 // PopTask pops a trigger task from task list
-func (queue *TaskQueue) PopTask() task {
+func (queue *TaskQueue) popTask() task {
 	queue.Lock()
 	defer queue.Unlock()
 
@@ -272,8 +272,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		loadCollectionTask := &LoadCollectionTask{
-			BaseTask:              baseTask,
+		loadCollectionTask := &loadCollectionTask{
+			baseTask:              baseTask,
 			LoadCollectionRequest: &loadReq,
 			rootCoord:             scheduler.rootCoord,
 			dataCoord:             scheduler.dataCoord,
@@ -287,8 +287,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		loadPartitionTask := &LoadPartitionTask{
-			BaseTask:              baseTask,
+		loadPartitionTask := &loadPartitionTask{
+			baseTask:              baseTask,
 			LoadPartitionsRequest: &loadReq,
 			dataCoord:             scheduler.dataCoord,
 			cluster:               scheduler.cluster,
@@ -301,8 +301,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		releaseCollectionTask := &ReleaseCollectionTask{
-			BaseTask:                 baseTask,
+		releaseCollectionTask := &releaseCollectionTask{
+			baseTask:                 baseTask,
 			ReleaseCollectionRequest: &loadReq,
 			cluster:                  scheduler.cluster,
 			meta:                     scheduler.meta,
@@ -315,8 +315,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		releasePartitionTask := &ReleasePartitionTask{
-			BaseTask:                 baseTask,
+		releasePartitionTask := &releasePartitionTask{
+			baseTask:                 baseTask,
 			ReleasePartitionsRequest: &loadReq,
 			cluster:                  scheduler.cluster,
 		}
@@ -328,8 +328,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		loadSegmentTask := &LoadSegmentTask{
-			BaseTask:            baseTask,
+		loadSegmentTask := &loadSegmentTask{
+			baseTask:            baseTask,
 			LoadSegmentsRequest: &loadReq,
 			cluster:             scheduler.cluster,
 			meta:                scheduler.meta,
@@ -343,8 +343,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		releaseSegmentTask := &ReleaseSegmentTask{
-			BaseTask:               baseTask,
+		releaseSegmentTask := &releaseSegmentTask{
+			baseTask:               baseTask,
 			ReleaseSegmentsRequest: &loadReq,
 			cluster:                scheduler.cluster,
 		}
@@ -356,8 +356,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		watchDmChannelTask := &WatchDmChannelTask{
-			BaseTask:               baseTask,
+		watchDmChannelTask := &watchDmChannelTask{
+			baseTask:               baseTask,
 			WatchDmChannelsRequest: &loadReq,
 			cluster:                scheduler.cluster,
 			meta:                   scheduler.meta,
@@ -371,8 +371,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		watchQueryChannelTask := &WatchQueryChannelTask{
-			BaseTask:               baseTask,
+		watchQueryChannelTask := &watchQueryChannelTask{
+			baseTask:               baseTask,
 			AddQueryChannelRequest: &loadReq,
 			cluster:                scheduler.cluster,
 		}
@@ -384,8 +384,8 @@ func (scheduler *TaskScheduler) unmarshalTask(taskID UniqueID, t string) (task, 
 		if err != nil {
 			return nil, err
 		}
-		loadBalanceTask := &LoadBalanceTask{
-			BaseTask:           baseTask,
+		loadBalanceTask := &loadBalanceTask{
+			baseTask:           baseTask,
 			LoadBalanceRequest: &loadReq,
 			rootCoord:          scheduler.rootCoord,
 			dataCoord:          scheduler.dataCoord,
@@ -599,7 +599,7 @@ func (scheduler *TaskScheduler) scheduleLoop() {
 			scheduler.stopActivateTaskLoopChan <- 1
 			return
 		case <-scheduler.triggerTaskQueue.Chan():
-			triggerTask = scheduler.triggerTaskQueue.PopTask()
+			triggerTask = scheduler.triggerTaskQueue.popTask()
 			log.Debug("scheduleLoop: pop a triggerTask from triggerTaskQueue", zap.Int64("triggerTaskID", triggerTask.getTaskID()))
 			alreadyNotify := true
 			if triggerTask.getState() == taskUndo || triggerTask.getState() == taskDoing {
@@ -661,6 +661,7 @@ func (scheduler *TaskScheduler) scheduleLoop() {
 	}
 }
 
+// waitActivateTaskDone function Synchronous wait internal task to be done
 func (scheduler *TaskScheduler) waitActivateTaskDone(wg *sync.WaitGroup, t task, triggerTask task) {
 	defer wg.Done()
 	var err error
@@ -791,6 +792,7 @@ func (scheduler *TaskScheduler) waitActivateTaskDone(wg *sync.WaitGroup, t task,
 	}
 }
 
+// processActivateTaskLoop process internal task, such as loadSegment, watchQUeryChannel, watDmChannel
 func (scheduler *TaskScheduler) processActivateTaskLoop() {
 	defer scheduler.wg.Done()
 	for {

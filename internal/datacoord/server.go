@@ -20,12 +20,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/rootcoord"
-	"github.com/milvus-io/milvus/internal/util/metricsinfo"
-
 	datanodeclient "github.com/milvus-io/milvus/internal/distributed/datanode/client"
 	rootcoordclient "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
 	"github.com/milvus-io/milvus/internal/logutil"
+	"github.com/milvus-io/milvus/internal/rootcoord"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+	"github.com/milvus-io/milvus/internal/util/mqclient"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
@@ -46,10 +47,11 @@ const connEtcdMaxRetryTime = 100000
 
 var (
 	// TODO: sunby put to config
-	enableTtChecker  = true
-	ttCheckerName    = "dataTtChecker"
-	ttMaxInterval    = 3 * time.Minute
-	ttCheckerWarnMsg = fmt.Sprintf("we haven't received tt for %f minutes", ttMaxInterval.Minutes())
+	enableTtChecker           = true
+	ttCheckerName             = "dataTtChecker"
+	ttMaxInterval             = 3 * time.Minute
+	ttCheckerWarnMsg          = fmt.Sprintf("we haven't received tt for %f minutes", ttMaxInterval.Minutes())
+	segmentTimedFlushDuration = 10.0
 )
 
 type (
@@ -261,7 +263,7 @@ func (s *Server) initCluster() error {
 func (s *Server) initServiceDiscovery() error {
 	sessions, rev, err := s.session.GetSessions(typeutil.DataNodeRole)
 	if err != nil {
-		log.Debug("dataCoord initMeta failed", zap.Error(err))
+		log.Debug("dataCoord initServiceDiscovery failed", zap.Error(err))
 		return err
 	}
 	log.Debug("registered sessions", zap.Any("sessions", sessions))
@@ -360,8 +362,8 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 		log.Error("new msg stream failed", zap.Error(err))
 		return
 	}
-	ttMsgStream.AsConsumer([]string{Params.TimeTickChannelName},
-		Params.DataCoordSubscriptionName)
+	ttMsgStream.AsConsumerWithPosition([]string{Params.TimeTickChannelName},
+		Params.DataCoordSubscriptionName, mqclient.SubscriptionPositionLatest)
 	log.Debug("dataCoord create time tick channel consumer",
 		zap.String("timeTickChannelName", Params.TimeTickChannelName),
 		zap.String("subscriptionName", Params.DataCoordSubscriptionName))
@@ -403,16 +405,25 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 				log.Warn("failed to expire allocations", zap.Error(err))
 				continue
 			}
+			physical, _ := tsoutil.ParseTS(ts)
+			if time.Since(physical).Minutes() > 1 {
+				// if lag behind, log every 1 mins about
+				log.RatedWarn(60.0, "Time tick lag behind for more than 1 minutes", zap.String("channel", ch), zap.Time("tt", physical))
+			}
 			segments, err := s.segmentManager.GetFlushableSegments(ctx, ch, ts)
 			if err != nil {
 				log.Warn("get flushable segments failed", zap.Error(err))
 				continue
 			}
 
-			if len(segments) == 0 {
+			staleSegments := s.meta.SelectSegments(func(info *SegmentInfo) bool {
+				return !info.lastFlushTime.IsZero() && time.Since(info.lastFlushTime).Minutes() >= segmentTimedFlushDuration
+			})
+
+			if len(segments)+len(staleSegments) == 0 {
 				continue
 			}
-			log.Debug("flush segments", zap.Int64s("segmentIDs", segments))
+			log.Debug("flush segments", zap.Int64s("segmentIDs", segments), zap.Int("markSegments count", len(staleSegments)))
 			segmentInfos := make([]*datapb.SegmentInfo, 0, len(segments))
 			for _, id := range segments {
 				sInfo := s.meta.GetSegment(id)
@@ -424,8 +435,19 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 				segmentInfos = append(segmentInfos, sInfo.SegmentInfo)
 				s.meta.SetLastFlushTime(id, time.Now())
 			}
-			if len(segmentInfos) > 0 {
-				s.cluster.Flush(s.ctx, segmentInfos)
+			markSegments := make([]*datapb.SegmentInfo, 0, len(staleSegments))
+			for _, segment := range staleSegments {
+				for _, fSeg := range segmentInfos {
+					// check segment needs flush first
+					if segment.GetID() == fSeg.GetID() {
+						continue
+					}
+				}
+				markSegments = append(markSegments, segment.SegmentInfo)
+				s.meta.SetLastFlushTime(segment.GetID(), time.Now())
+			}
+			if len(segmentInfos)+len(markSegments) > 0 {
+				s.cluster.Flush(s.ctx, segmentInfos, markSegments)
 			}
 		}
 		s.helper.eventAfterHandleDataNodeTt()

@@ -1,13 +1,18 @@
-// Copyright (C) 2019-2020 Zilliz. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied. See the License for the specific language governing permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package datanode implements data persistence logic.
 //
@@ -92,7 +97,7 @@ type DataNode struct {
 
 	chanMut           sync.RWMutex
 	vchan2SyncService map[string]*dataSyncService // vchannel name
-	vchan2FlushChs    map[string]*flushChans      // vchannel name to flush channels
+	vchan2FlushChs    map[string]chan flushMsg    // vchannel name to flush channels
 
 	clearSignal  chan UniqueID // collection ID
 	segmentCache *Cache
@@ -106,14 +111,6 @@ type DataNode struct {
 	closer io.Closer
 
 	msFactory msgstream.Factory
-}
-
-type flushChans struct {
-	// Flush signal for insert buffer
-	insertBufferCh chan *flushMsg
-
-	// Flush signal for delete buffer
-	deleteBufferCh chan *flushMsg
 }
 
 // NewDataNode will return a DataNode with abnormal state.
@@ -131,7 +128,7 @@ func NewDataNode(ctx context.Context, factory msgstream.Factory) *DataNode {
 		segmentCache: newCache(),
 
 		vchan2SyncService: make(map[string]*dataSyncService),
-		vchan2FlushChs:    make(map[string]*flushChans),
+		vchan2FlushChs:    make(map[string]chan flushMsg),
 		clearSignal:       make(chan UniqueID, 100),
 	}
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
@@ -209,7 +206,11 @@ func (node *DataNode) StartWatchChannels(ctx context.Context) {
 	watchPrefix := fmt.Sprintf("%s/%d", Params.ChannelWatchSubPath, node.NodeID)
 	evtChan := node.kvClient.WatchWithPrefix(watchPrefix)
 	// after watch, first check all exists nodes first
-	node.checkWatchedList()
+	err := node.checkWatchedList()
+	if err != nil {
+		log.Warn("StartWatchChannels failed", zap.Error(err))
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -317,18 +318,15 @@ func (node *DataNode) NewDataSyncService(vchan *datapb.VchannelInfo) error {
 		zap.Int("Flushed Segment Number", len(vchan.GetFlushedSegments())),
 	)
 
-	flushChs := &flushChans{
-		insertBufferCh: make(chan *flushMsg, 100),
-		deleteBufferCh: make(chan *flushMsg, 100),
-	}
+	flushCh := make(chan flushMsg, 100)
 
-	dataSyncService, err := newDataSyncService(node.ctx, flushChs, replica, alloc, node.msFactory, vchan, node.clearSignal, node.dataCoord, node.segmentCache)
+	dataSyncService, err := newDataSyncService(node.ctx, flushCh, replica, alloc, node.msFactory, vchan, node.clearSignal, node.dataCoord, node.segmentCache)
 	if err != nil {
 		return err
 	}
 
 	node.vchan2SyncService[vchan.GetChannelName()] = dataSyncService
-	node.vchan2FlushChs[vchan.GetChannelName()] = flushChs
+	node.vchan2FlushChs[vchan.GetChannelName()] = flushCh
 
 	log.Info("Start New dataSyncService",
 		zap.Int64("Collection ID", vchan.GetCollectionID()),
@@ -561,51 +559,61 @@ func (node *DataNode) FlushSegments(ctx context.Context, req *datapb.FlushSegmen
 		zap.Int64s("segments", req.SegmentIDs),
 	)
 
-	for _, id := range req.SegmentIDs {
-		chanName := node.getChannelNamebySegmentID(id)
-		if len(chanName) == 0 {
-			log.Warn("FlushSegments failed, cannot find segment in DataNode replica",
-				zap.Int64("collectionID", req.GetCollectionID()), zap.Int64("segmentID", id))
+	processSegments := func(segmentIDs []UniqueID, flushed bool) bool {
+		noErr := true
+		for _, id := range segmentIDs {
+			chanName := node.getChannelNamebySegmentID(id)
+			if len(chanName) == 0 {
+				log.Warn("FlushSegments failed, cannot find segment in DataNode replica",
+					zap.Int64("collectionID", req.GetCollectionID()), zap.Int64("segmentID", id))
 
-			status.Reason = fmt.Sprintf("DataNode replica not find segment %d!", id)
-			return status, nil
+				status.Reason = fmt.Sprintf("DataNode replica not find segment %d!", id)
+				noErr = false
+				continue
+			}
+
+			if node.segmentCache.checkIfCached(id) {
+				// Segment in flushing, ignore
+				log.Info("Segment flushing, ignore the flush request until flush is done.",
+					zap.Int64("collectionID", req.GetCollectionID()), zap.Int64("segmentID", id))
+
+				continue
+			}
+
+			node.segmentCache.Cache(id)
+
+			node.chanMut.RLock()
+			flushChs, ok := node.vchan2FlushChs[chanName]
+			node.chanMut.RUnlock()
+			if !ok {
+				status.Reason = "DataNode abnormal, restarting"
+				log.Error("DataNode abnormal, no flushCh for a vchannel")
+				noErr = false
+				continue
+			}
+
+			flushChs <- flushMsg{
+				msgID:        req.Base.MsgID,
+				timestamp:    req.Base.Timestamp,
+				segmentID:    id,
+				collectionID: req.CollectionID,
+				flushed:      flushed,
+			}
 		}
+		log.Debug("Flowgraph flushSegment tasks triggered", zap.Bool("flushed", flushed),
+			zap.Int64("collectionID", req.GetCollectionID()), zap.Int64s("segments", segmentIDs))
 
-		if node.segmentCache.checkIfCached(id) {
-			// Segment in flushing, ignore
-			log.Info("Segment flushing, ignore the flush request until flush is done.",
-				zap.Int64("collectionID", req.GetCollectionID()), zap.Int64("segmentID", id))
-
-			continue
-		}
-
-		node.segmentCache.Cache(id)
-
-		node.chanMut.RLock()
-		flushChs, ok := node.vchan2FlushChs[chanName]
-		node.chanMut.RUnlock()
-		if !ok {
-			status.Reason = "DataNode abnormal, restarting"
-			log.Error("DataNode abnormal, no flushCh for a vchannel")
-			return status, nil
-		}
-
-		insertFlushmsg := flushMsg{
-			msgID:        req.Base.MsgID,
-			timestamp:    req.Base.Timestamp,
-			segmentID:    id,
-			collectionID: req.CollectionID,
-		}
-
-		// Copy flushMsg to a different address
-		deleteFlushMsg := insertFlushmsg
-
-		flushChs.insertBufferCh <- &insertFlushmsg
-		flushChs.deleteBufferCh <- &deleteFlushMsg
+		return noErr
 	}
 
-	log.Debug("Flowgraph flushSegment tasks triggered",
-		zap.Int64("collectionID", req.GetCollectionID()), zap.Int64s("segments", req.GetSegmentIDs()))
+	ok := processSegments(req.GetSegmentIDs(), true)
+	if !ok {
+		return status, nil
+	}
+	ok = processSegments(req.GetMarkSegmentIDs(), false)
+	if !ok {
+		return status, nil
+	}
 
 	status.ErrorCode = commonpb.ErrorCode_Success
 	metrics.DataNodeFlushSegmentsCounter.WithLabelValues(MetricRequestsSuccess).Inc()

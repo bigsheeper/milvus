@@ -391,6 +391,7 @@ func (rmq *rocksmq) RegisterConsumer(consumer *Consumer) {
 	log.Debug("Rocksmq register consumer successfully ", zap.String("topic", consumer.Topic), zap.Int64("elapsed", time.Since(start).Milliseconds()))
 }
 
+// DestroyConsumerGroup removes a consumer group from rocksdb_kv
 func (rmq *rocksmq) DestroyConsumerGroup(topicName, groupName string) error {
 	start := time.Now()
 	ll, ok := topicMu.Load(topicName)
@@ -426,6 +427,7 @@ func (rmq *rocksmq) DestroyConsumerGroup(topicName, groupName string) error {
 	return nil
 }
 
+// Produce produces messages for topic and updates page infos for retention
 func (rmq *rocksmq) Produce(topicName string, messages []ProducerMessage) ([]UniqueID, error) {
 	ll, ok := topicMu.Load(topicName)
 	if !ok {
@@ -570,6 +572,10 @@ func (rmq *rocksmq) updatePageInfo(topicName string, msgIDs []UniqueID, msgSizes
 	return nil
 }
 
+// Consume steps:
+// 1. Consume n messages from rocksdb
+// 2. Update current_id to the last consumed message
+// 3. Update ack informations in rocksdb
 func (rmq *rocksmq) Consume(topicName string, groupName string, n int) ([]ConsumerMessage, error) {
 	ll, ok := topicMu.Load(topicName)
 	if !ok {
@@ -662,6 +668,7 @@ func (rmq *rocksmq) Consume(topicName string, groupName string, n int) ([]Consum
 	return consumerMessage, nil
 }
 
+// Seek updates the current id to the given msgID
 func (rmq *rocksmq) Seek(topicName string, groupName string, msgID UniqueID) error {
 	/* Step I: Check if key exists */
 	rmq.storeMu.Lock()
@@ -697,6 +704,7 @@ func (rmq *rocksmq) Seek(topicName string, groupName string, msgID UniqueID) err
 	return nil
 }
 
+// SeekToLatest updates current id to the msg id of latest message
 func (rmq *rocksmq) SeekToLatest(topicName, groupName string) error {
 	rmq.storeMu.Lock()
 	defer rmq.storeMu.Unlock()
@@ -717,7 +725,8 @@ func (rmq *rocksmq) SeekToLatest(topicName, groupName string) error {
 	if iter.Valid() {
 		iter.SeekToLast()
 	} else {
-		return fmt.Errorf("RocksMQ: can't get message key of channel %s", topicName)
+		// In this case there are no messages, so shouldn't return error
+		return nil
 	}
 	msgKey := iter.Key()
 	msgID, err := strconv.ParseInt(string(msgKey.Data())[FixedChannelNameLen+1:], 10, 64)
@@ -728,6 +737,7 @@ func (rmq *rocksmq) SeekToLatest(topicName, groupName string) error {
 	return err
 }
 
+// Notify sends a mutex in MsgMutex channel to tell consumers to consume
 func (rmq *rocksmq) Notify(topicName, groupName string) {
 	if vals, ok := rmq.consumers.Load(topicName); ok {
 		for _, v := range vals.([]*Consumer) {
@@ -743,6 +753,7 @@ func (rmq *rocksmq) Notify(topicName, groupName string) {
 	}
 }
 
+// updateAckedInfo update acked informations for retention after consume
 func (rmq *rocksmq) updateAckedInfo(topicName, groupName string, newID UniqueID, msgSize int64) error {
 	ll, ok := topicMu.Load(topicName)
 	if !ok {

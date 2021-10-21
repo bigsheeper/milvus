@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -44,6 +43,8 @@ const (
 const (
 	// MaxRetryNum is the maximum number of times that each task can be retried
 	MaxRetryNum = 5
+	// MaxSendSizeToEtcd is the default limit size of etcd messages that can be sent and received
+	MaxSendSizeToEtcd = 2097152
 )
 
 type taskState int
@@ -88,7 +89,7 @@ type task interface {
 }
 
 type baseTask struct {
-	Condition
+	condition
 	ctx        context.Context
 	cancel     context.CancelFunc
 	result     *commonpb.Status
@@ -107,12 +108,12 @@ type baseTask struct {
 
 func newBaseTask(ctx context.Context, triggerType querypb.TriggerCondition) *baseTask {
 	childCtx, cancel := context.WithCancel(ctx)
-	condition := NewTaskCondition(childCtx)
+	condition := newTaskCondition(childCtx)
 
 	baseTask := &baseTask{
 		ctx:              childCtx,
 		cancel:           cancel,
-		Condition:        condition,
+		condition:        condition,
 		state:            taskUndo,
 		retryCount:       MaxRetryNum,
 		triggerCondition: triggerType,
@@ -1631,6 +1632,9 @@ func shuffleChannelsToQueryNode(dmChannels []string, cluster Cluster, wait bool,
 	}
 }
 
+// shuffleSegmentsToQueryNode shuffle segments to online nodes
+// returned are noded id for each segment, which satisfies:
+//     len(returnedNodeIds) == len(segmentIDs) && segmentIDs[i] is assigned to returnedNodeIds[i]
 func shuffleSegmentsToQueryNode(segmentIDs []UniqueID, cluster Cluster, wait bool, excludeNodeIDs []int64) ([]int64, error) {
 	maxNumSegments := 0
 	nodes := make(map[int64]Node)
@@ -1765,19 +1769,21 @@ func assignInternalTask(ctx context.Context,
 	node2Segments := make(map[int64][]*querypb.LoadSegmentsRequest)
 	sizeCounts := make(map[int64]int)
 	for index, nodeID := range segment2Nodes {
+		sizeOfReq := getSizeOfLoadSegmentReq(loadSegmentRequests[index])
 		if _, ok := node2Segments[nodeID]; !ok {
 			node2Segments[nodeID] = make([]*querypb.LoadSegmentsRequest, 0)
 			node2Segments[nodeID] = append(node2Segments[nodeID], loadSegmentRequests[index])
-			sizeCounts[nodeID] = 0
+			sizeCounts[nodeID] = sizeOfReq
+		} else {
+			if sizeCounts[nodeID]+sizeOfReq > 2097152 {
+				node2Segments[nodeID] = append(node2Segments[nodeID], loadSegmentRequests[index])
+				sizeCounts[nodeID] = sizeOfReq
+			} else {
+				lastReq := node2Segments[nodeID][len(node2Segments[nodeID])-1]
+				lastReq.Infos = append(lastReq.Infos, loadSegmentRequests[index].Infos...)
+				sizeCounts[nodeID] += sizeOfReq
+			}
 		}
-		sizeOfReq := getSizeOfLoadSegmentReq(loadSegmentRequests[index])
-		if sizeCounts[nodeID]+sizeOfReq > 2097152 {
-			node2Segments[nodeID] = append(node2Segments[nodeID], loadSegmentRequests[index])
-			sizeCounts[nodeID] = 0
-		}
-		lastReq := node2Segments[nodeID][len(node2Segments[nodeID])-1]
-		lastReq.Infos = append(lastReq.Infos, loadSegmentRequests[index].Infos...)
-		sizeCounts[nodeID] += sizeOfReq
 
 		if cluster.hasWatchedQueryChannel(parentTask.traceCtx(), nodeID, collectionID) {
 			watchQueryChannelInfo[nodeID] = true
@@ -1861,28 +1867,5 @@ func assignInternalTask(ctx context.Context,
 }
 
 func getSizeOfLoadSegmentReq(req *querypb.LoadSegmentsRequest) int {
-	var totalSize = 0
-	totalSize += int(reflect.ValueOf(*req).Type().Size())
-	for _, info := range req.Infos {
-		totalSize += int(reflect.ValueOf(*info).Type().Size())
-		for _, FieldBinlog := range info.BinlogPaths {
-			totalSize += int(reflect.ValueOf(*FieldBinlog).Type().Size())
-			for _, path := range FieldBinlog.Binlogs {
-				totalSize += len(path)
-			}
-		}
-	}
-
-	totalSize += len(req.Schema.Name) + len(req.Schema.Description) + int(reflect.ValueOf(*req.Schema).Type().Size())
-	for _, fieldSchema := range req.Schema.Fields {
-		totalSize += len(fieldSchema.Name) + len(fieldSchema.Description) + int(reflect.ValueOf(*fieldSchema).Type().Size())
-		for _, typeParam := range fieldSchema.TypeParams {
-			totalSize += len(typeParam.Key) + len(typeParam.Value)
-		}
-		for _, indexParam := range fieldSchema.IndexParams {
-			totalSize += len(indexParam.Key) + len(indexParam.Value)
-		}
-	}
-
-	return totalSize
+	return proto.Size(req)
 }

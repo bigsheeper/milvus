@@ -18,7 +18,6 @@ import (
 	"path"
 	"strconv"
 
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
@@ -44,7 +43,7 @@ type segmentLoader struct {
 
 	dataCoord types.DataCoord
 
-	minioKV kv.BaseKV // minio minioKV
+	minioKV kv.DataKV // minio minioKV
 	etcdKV  *etcdkv.EtcdKV
 
 	indexLoader *indexLoader
@@ -55,41 +54,35 @@ func (loader *segmentLoader) loadSegmentOfConditionHandOff(req *querypb.LoadSegm
 }
 
 func (loader *segmentLoader) loadSegmentOfConditionLoadBalance(req *querypb.LoadSegmentsRequest) error {
-	return loader.loadSegment(req, false)
+	return loader.loadSegment(req)
 }
 
 func (loader *segmentLoader) loadSegmentOfConditionGRPC(req *querypb.LoadSegmentsRequest) error {
-	return loader.loadSegment(req, true)
+	return loader.loadSegment(req)
 }
 
 func (loader *segmentLoader) loadSegmentOfConditionNodeDown(req *querypb.LoadSegmentsRequest) error {
-	return loader.loadSegment(req, true)
+	return loader.loadSegment(req)
 }
 
-func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, onService bool) error {
+func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error {
 	// no segment needs to load, return
 	if len(req.Infos) == 0 {
 		return nil
 	}
 
-	newSegments := make([]*Segment, 0)
+	newSegments := make(map[UniqueID]*Segment)
 	segmentGC := func() {
 		for _, s := range newSegments {
 			deleteSegment(s)
 		}
 	}
-	setSegments := func() error {
-		for _, s := range newSegments {
-			err := loader.historicalReplica.setSegment(s)
-			if err != nil {
-				segmentGC()
-				return err
-			}
-		}
-		return nil
-	}
 
-	// start to load
+	segmentFieldBinLogs := make(map[UniqueID][]*datapb.FieldBinlog)
+	segmentIndexedFieldIDs := make(map[UniqueID][]FieldID)
+	segmentSizes := make(map[UniqueID]int64)
+
+	// prepare and estimate segments size
 	for _, info := range req.Infos {
 		segmentID := info.SegmentID
 		partitionID := info.PartitionID
@@ -97,90 +90,65 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, onSer
 
 		collection, err := loader.historicalReplica.getCollectionByID(collectionID)
 		if err != nil {
-			log.Warn(err.Error())
 			segmentGC()
 			return err
 		}
-		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, onService)
-		err = loader.loadSegmentInternal(collectionID, segment, info)
+		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, true)
+		newSegments[segmentID] = segment
+		fieldBinlog, indexedFieldID, err := loader.getFieldAndIndexInfo(segment, info)
 		if err != nil {
-			deleteSegment(segment)
-			log.Warn(err.Error())
 			segmentGC()
 			return err
 		}
-		if onService {
-			key := fmt.Sprintf("%s/%d", queryCoordSegmentMetaPrefix, segmentID)
-			value, err := loader.etcdKV.Load(key)
-			if err != nil {
-				deleteSegment(segment)
-				log.Warn("error when load segment info from etcd", zap.Any("error", err.Error()))
-				segmentGC()
-				return err
-			}
-			segmentInfo := &querypb.SegmentInfo{}
-			err = proto.Unmarshal([]byte(value), segmentInfo)
-			if err != nil {
-				deleteSegment(segment)
-				log.Warn("error when unmarshal segment info from etcd", zap.Any("error", err.Error()))
-				segmentGC()
-				return err
-			}
-			segmentInfo.SegmentState = querypb.SegmentState_sealed
-			newKey := fmt.Sprintf("%s/%d", queryNodeSegmentMetaPrefix, segmentID)
-			newValue, err := proto.Marshal(segmentInfo)
-			if err != nil {
-				deleteSegment(segment)
-				log.Warn("error when marshal segment info", zap.Error(err))
-				segmentGC()
-				return err
-			}
-			err = loader.etcdKV.Save(newKey, string(newValue))
-			if err != nil {
-				deleteSegment(segment)
-				log.Warn("error when update segment info to etcd", zap.Any("error", err.Error()))
-				segmentGC()
-				return err
-			}
+		segmentSize, err := loader.estimateSegmentSize(segment, fieldBinlog, indexedFieldID)
+		if err != nil {
+			segmentGC()
+			return err
 		}
-		newSegments = append(newSegments, segment)
+		segmentFieldBinLogs[segmentID] = fieldBinlog
+		segmentIndexedFieldIDs[segmentID] = indexedFieldID
+		segmentSizes[segmentID] = segmentSize
 	}
 
-	return setSegments()
-}
-
-func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment *Segment, segmentLoadInfo *querypb.SegmentLoadInfo) error {
-	vectorFieldIDs, err := loader.historicalReplica.getVecFieldIDsByCollectionID(collectionID)
+	// check memory limit
+	err := loader.checkSegmentSize(req.Infos[0].CollectionID, segmentSizes)
 	if err != nil {
+		segmentGC()
 		return err
 	}
-	if len(vectorFieldIDs) <= 0 {
-		return fmt.Errorf("no vector field in collection %d", collectionID)
-	}
 
-	// add VectorFieldInfo for vector fields
-	for _, fieldBinlog := range segmentLoadInfo.BinlogPaths {
-		if funcutil.SliceContain(vectorFieldIDs, fieldBinlog.FieldID) {
-			vectorFieldInfo := newVectorFieldInfo(fieldBinlog)
-			segment.setVectorFieldInfo(fieldBinlog.FieldID, vectorFieldInfo)
+	// start to load
+	for _, info := range req.Infos {
+		segmentID := info.SegmentID
+		if newSegments[segmentID] == nil || segmentFieldBinLogs[segmentID] == nil || segmentIndexedFieldIDs[segmentID] == nil {
+			segmentGC()
+			return errors.New(fmt.Sprintln("unexpected error, cannot find load infos, this error should not happen, collectionID = ", req.Infos[0].CollectionID))
 		}
-	}
-
-	indexedFieldIDs := make([]FieldID, 0)
-	for _, vecFieldID := range vectorFieldIDs {
-		err = loader.indexLoader.setIndexInfo(collectionID, segment, vecFieldID)
+		err = loader.loadSegmentInternal(newSegments[segmentID],
+			segmentFieldBinLogs[segmentID],
+			segmentIndexedFieldIDs[segmentID])
 		if err != nil {
-			log.Warn(err.Error())
-			continue
+			segmentGC()
+			return err
 		}
-		indexedFieldIDs = append(indexedFieldIDs, vecFieldID)
 	}
 
-	// we don't need to load raw data for indexed vector field
-	fieldBinlogs := loader.filterFieldBinlogs(segmentLoadInfo.BinlogPaths, indexedFieldIDs)
+	// set segments
+	for _, s := range newSegments {
+		err := loader.historicalReplica.setSegment(s)
+		if err != nil {
+			segmentGC()
+			return err
+		}
+	}
+	return nil
+}
 
+func (loader *segmentLoader) loadSegmentInternal(segment *Segment,
+	fieldBinLogs []*datapb.FieldBinlog,
+	indexFieldIDs []FieldID) error {
 	log.Debug("loading insert...")
-	err = loader.loadSegmentFieldsData(segment, fieldBinlogs)
+	err := loader.loadSegmentFieldsData(segment, fieldBinLogs)
 	if err != nil {
 		return err
 	}
@@ -190,7 +158,7 @@ func (loader *segmentLoader) loadSegmentInternal(collectionID UniqueID, segment 
 	if err != nil {
 		return err
 	}
-	for _, id := range indexedFieldIDs {
+	for _, id := range indexFieldIDs {
 		log.Debug("loading index...")
 		err = loader.indexLoader.loadIndex(segment, id)
 		if err != nil {
@@ -396,8 +364,8 @@ func (loader *segmentLoader) estimateSegmentSize(segment *Segment,
 			zap.Any("fieldID", fb.FieldID),
 			zap.Any("paths", fb.Binlogs),
 		)
-		for _, path := range fb.Binlogs {
-			logSize, err := storage.EstimateMemorySize(nil, path)
+		for _, binlogPath := range fb.Binlogs {
+			logSize, err := storage.EstimateMemorySize(loader.minioKV, binlogPath)
 			if err != nil {
 				return 0, err
 			}
@@ -413,6 +381,43 @@ func (loader *segmentLoader) estimateSegmentSize(segment *Segment,
 		segmentSize += indexSize
 	}
 	return segmentSize, nil
+}
+
+func (loader *segmentLoader) checkSegmentSize(collectionID UniqueID, segmentSizes map[UniqueID]int64) error {
+	const thresholdFactor = 0.9
+	usedMem, err := getUsedMemory()
+	if err != nil {
+		return err
+	}
+	totalMem, err := getTotalMemory()
+	if err != nil {
+		return err
+	}
+
+	segmentTotalSize := int64(0)
+	for segmentID, size := range segmentSizes {
+		log.Debug("memory stats when load segment",
+			zap.Any("collectionIDs", collectionID),
+			zap.Any("segmentID", segmentID),
+			zap.Any("totalMem", totalMem),
+			zap.Any("usedMem", usedMem),
+			zap.Any("segmentTotalSize", segmentTotalSize),
+			zap.Any("currentSegmentSize", size),
+			zap.Any("thresholdFactor", thresholdFactor),
+		)
+		if int64(usedMem)+segmentTotalSize+size > int64(float64(totalMem)*thresholdFactor) {
+			return errors.New(fmt.Sprintln("load segment failed, OOM if load, "+
+				"collectionID = ", collectionID, ", ",
+				"usedMem = ", usedMem, ", ",
+				"segmentTotalSize = ", segmentTotalSize, ", ",
+				"currentSegmentSize = ", size, ", ",
+				"totalMem = ", totalMem, ", ",
+				"thresholdFactor = ", thresholdFactor,
+			))
+		}
+	}
+
+	return nil
 }
 
 func newSegmentLoader(ctx context.Context, rootCoord types.RootCoord, indexCoord types.IndexCoord, replica ReplicaInterface, etcdKV *etcdkv.EtcdKV) *segmentLoader {

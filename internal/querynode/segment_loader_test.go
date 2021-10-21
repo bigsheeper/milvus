@@ -68,8 +68,8 @@ func TestSegmentLoader_loadSegment(t *testing.T) {
 		err = kv.Remove(key)
 		assert.NoError(t, err)
 
-		err = loader.loadSegment(req, true)
-		assert.Error(t, err)
+		err = loader.loadSegment(req)
+		assert.NoError(t, err)
 	})
 
 	t.Run("test load segment", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestSegmentLoader_loadSegment(t *testing.T) {
 		err = kv.Save(key, string(value))
 		assert.NoError(t, err)
 
-		err = loader.loadSegment(req, true)
+		err = loader.loadSegment(req)
 		assert.NoError(t, err)
 	})
 
@@ -144,7 +144,7 @@ func TestSegmentLoader_loadSegment(t *testing.T) {
 		err = kv.Save(key, string(value))
 		assert.NoError(t, err)
 
-		err = loader.loadSegment(req, true)
+		err = loader.loadSegment(req)
 		assert.Error(t, err)
 	})
 }
@@ -187,7 +187,7 @@ func TestSegmentLoader_notOnService(t *testing.T) {
 			},
 		},
 	}
-	err = loader.loadSegment(req, false)
+	err = loader.loadSegment(req)
 	assert.NoError(t, err)
 }
 
@@ -307,42 +307,7 @@ func TestSegmentLoader_invalid(t *testing.T) {
 			},
 		}
 
-		err = historical.loader.loadSegment(req, true)
-		assert.Error(t, err)
-	})
-
-	t.Run("test no collection 2", func(t *testing.T) {
-		historical, err := genSimpleHistorical(ctx)
-		assert.NoError(t, err)
-
-		err = historical.replica.removeCollection(defaultCollectionID)
-		assert.NoError(t, err)
-
-		err = historical.loader.loadSegmentInternal(defaultCollectionID, nil, nil)
-		assert.Error(t, err)
-	})
-
-	t.Run("test no vec field", func(t *testing.T) {
-		historical, err := genSimpleHistorical(ctx)
-		assert.NoError(t, err)
-
-		err = historical.replica.removeCollection(defaultCollectionID)
-		assert.NoError(t, err)
-
-		schema := &schemapb.CollectionSchema{
-			Name:   defaultCollectionName,
-			AutoID: true,
-			Fields: []*schemapb.FieldSchema{
-				genConstantField(constFieldParam{
-					id:       FieldID(100),
-					dataType: schemapb.DataType_Int8,
-				}),
-			},
-		}
-		err = historical.loader.historicalReplica.addCollection(defaultCollectionID, schema)
-		assert.NoError(t, err)
-
-		err = historical.loader.loadSegmentInternal(defaultCollectionID, nil, nil)
+		err = historical.loader.loadSegment(req)
 		assert.Error(t, err)
 	})
 
@@ -382,7 +347,7 @@ func TestSegmentLoader_invalid(t *testing.T) {
 				},
 			},
 		}
-		err = historical.loader.loadSegment(req, false)
+		err = historical.loader.loadSegment(req)
 		assert.Error(t, err)
 	})
 }

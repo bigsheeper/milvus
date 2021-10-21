@@ -44,7 +44,7 @@ type indexLoader struct {
 	rootCoord  types.RootCoord
 	indexCoord types.IndexCoord
 
-	kv kv.BaseKV // minio kv
+	kv kv.DataKV // minio kv
 }
 
 func (loader *indexLoader) loadIndex(segment *Segment, fieldID FieldID) error {
@@ -150,7 +150,7 @@ func (loader *indexLoader) estimateIndexBinlogSize(segment *Segment, fieldID Fie
 	indexSize := int64(0)
 	indexPaths := segment.getIndexPaths(fieldID)
 	for _, p := range indexPaths {
-		logSize, err := storage.EstimateMemorySize(nil, p)
+		logSize, err := storage.EstimateMemorySize(loader.kv, p)
 		if err != nil {
 			return 0, err
 		}

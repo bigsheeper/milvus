@@ -13,16 +13,10 @@ package querynode
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 
-	"go.uber.org/zap"
-
-	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -102,52 +96,4 @@ func getTotalMemory() (uint64, error) {
 		return metricsinfo.GetContainerMemLimit()
 	}
 	return metricsinfo.GetMemoryCount(), nil
-}
-
-func checkSegmentMemory(segmentLoadInfos []*querypb.SegmentLoadInfo, historicalReplica, streamingReplica ReplicaInterface) error {
-	usedMem, err := getUsedMemory()
-	if err != nil {
-		return err
-	}
-	totalMem, err := getTotalMemory()
-	if err != nil {
-		return err
-	}
-
-	segmentTotalSize := int64(0)
-	for _, segInfo := range segmentLoadInfos {
-		collectionID := segInfo.CollectionID
-		segmentID := segInfo.SegmentID
-
-		col, err := historicalReplica.getCollectionByID(collectionID)
-		if err != nil {
-			return err
-		}
-
-		sizePerRecord, err := typeutil.EstimateSizePerRecord(col.schema)
-		if err != nil {
-			return err
-		}
-
-		segmentSize := int64(sizePerRecord) * segInfo.NumOfRows
-		segmentTotalSize += segmentSize
-
-		log.Debug("memory stats when load segment",
-			zap.Any("collectionIDs", collectionID),
-			zap.Any("segmentID", segmentID),
-			zap.Any("numOfRows", segInfo.NumOfRows),
-			zap.Any("totalMem", totalMem),
-			zap.Any("usedMem", usedMem),
-			zap.Any("segmentTotalSize", segmentTotalSize),
-		)
-		if int64(usedMem)+segmentTotalSize + segmentSize > int64(float64(totalMem) * 0.9) {
-			return errors.New(fmt.Sprintln("load segment failed, OOM if load, "+
-				"collectionID = ", collectionID, ", ",
-				"usedMem = ", usedMem, ", ",
-				"segmentTotalSize(MB) = ", segmentTotalSize, ", ",
-				"totalMem = ", totalMem))
-		}
-	}
-
-	return nil
 }

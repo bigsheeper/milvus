@@ -13,6 +13,7 @@ package querynode
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 
 	"go.uber.org/zap"
 
@@ -69,12 +70,14 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	if err != nil {
 		log.Warn(err.Error())
 	}
-	//log.Debug("update tSafe:",
-	//	zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)),
-	//	zap.Any("collectionID", stNode.collectionID),
-	//	zap.Any("id", id),
-	//	zap.Any("channel", stNode.vChannel),
-	//)
+	gt, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMax)
+	log.Debug("update tSafe:",
+		zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)),
+		zap.Any("ptSafe", gt),
+		zap.Any("collectionID", stNode.collectionID),
+		zap.Any("id", id),
+		zap.Any("channel", stNode.vChannel),
+	)
 
 	//if err := stNode.sendTimeTick(serviceTimeMsg.timeRange.timestampMax); err != nil {
 	//	log.Warn("Error: send time tick into pulsar channel failed", zap.Error(err))

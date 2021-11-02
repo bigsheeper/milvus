@@ -71,10 +71,13 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		log.Warn(err.Error())
 	}
 	gt, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMax)
+	tMin, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMin)
 	log.Debug("update tSafe:",
-		zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)),
-		zap.Any("ptSafe", gt),
 		zap.Any("collectionID", stNode.collectionID),
+		zap.Int64("tSafe", int64(serviceTimeMsg.timeRange.timestampMax)),
+		zap.Any("tMin", tMin),
+		zap.Any("tMax", gt),
+		zap.Any("ptSafe", gt),
 		zap.Any("id", id),
 		zap.Any("channel", stNode.vChannel),
 	)

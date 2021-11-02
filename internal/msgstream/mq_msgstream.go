@@ -717,7 +717,7 @@ func (ms *MqTtMsgStream) bufMsgPackToChannel() {
 					}
 					if v.EndTs() <= currTs {
 						timeTickBuf = append(timeTickBuf, v)
-						//log.Debug("pack msg", zap.Uint64("curr", v.EndTs()), zap.Uint64("currTs", currTs))
+						log.Debug("pack msg******************", zap.Uint64("curr", v.EndTs()), zap.Uint64("currTs", currTs))
 					} else {
 						tempBuffer = append(tempBuffer, v)
 					}

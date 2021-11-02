@@ -224,7 +224,8 @@ func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
 	q.watcherCond.L.Unlock()
 	q.tSafeWatchersMu.RLock()
 	defer q.tSafeWatchersMu.RUnlock()
-	t := Timestamp(math.MaxInt64)
+	t := Timestamp(math.MaxUint64)
+	var c Channel
 	for channel := range q.tSafeWatchers {
 		ts, err := q.streaming.tSafeReplica.getTSafe(channel)
 		if err != nil {
@@ -232,8 +233,15 @@ func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
 		}
 		if ts <= t {
 			t = ts
+			c = channel
 		}
 	}
+	pt, _ := tsoutil.ParseTS(t)
+	log.Debug("wait new tSafe ============",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("channel", c),
+		zap.Any("tp", pt),
+	)
 	return t, nil
 }
 

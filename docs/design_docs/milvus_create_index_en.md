@@ -88,7 +88,7 @@ type CreateIndexReqTask struct {
 }
 ```
 
-5. According to the index type and index parameters, `RootCoord` lists all the `Segments` that need to be indexed on this `Collection`. `RootCoord` would only check those `Segments` which have been flushed at this stage. We will describe how to deal with those newly add segments and growing segments later.
+5. According to the index type and index parameters, `RootCoord` lists all the `Segments` that need to be indexed on this `Collection`. `RootCoord` would only check those `Segments` which have been flushed at this stage. We will describe how to deal with those newly added segments and growing segments later.
 
 6. For each `Segment`, `RootCoord` would start a `Grpc` request to `DataCoord` to get `Binlog` paths of that `Segment`, the `proto` is defined as following
 
@@ -115,7 +115,8 @@ message GetInsertBinlogPathsResponse {
 
 ```
 
-7. After getting the `Segment`'s `Binlog` paths, `RootCoord` would send a `Grpc` request to `IndexCoord`, ask `IndexCoord` to build index on this `Segment`, the `proto` is defined as follow:
+7. After getting the `Segment`'s `Binlog` paths, `RootCoord` would send a `Grpc` request to `IndexCoord`, 
+   ask `IndexCoord` to build index on this `Segment`, the `proto` is defined as the follow:
 
 ```proto
 service IndexCoord {
@@ -142,15 +143,15 @@ message BuildIndexResponse {
 
 ```
 
-8. The execution flow of `BuildIndex` on `IndexCoord` is shown in the flowwing figure
+8. The execution flow of `BuildIndex` on `IndexCoord` is shown in the following figure
 
 ![index_coord](./graphs/milvus_create_index_index_coord.png)
 
-9. `IndexCoord` would wrap the `BuildIndex` request into `IndexAddTask`, then alloc a global unique ID as `IndexBuildID`, and write this `Segment`'s `index mate` into `IndexCoord`'s `metaTable`. When finish these operation, `IndexCoord` would send response to `RootCoord`, the response includes the `IndexBuildID`.
+9. `IndexCoord` would wrap the `BuildIndex` request into `IndexAddTask`, then alloc a global unique ID as `IndexBuildID`, and write this `Segment`'s `index mate` into `IndexCoord`'s `metaTable`. When finish these operations, `IndexCoord` would send response to `RootCoord`, the response includes the `IndexBuildID`.
 
 10. When `RootCoood` receives the `BuildIndexResponse`, it would extract the `IndexBuildID` from the response, update `RootCoord`'s `metaTable`, then send responses to `Proxy`.
 
-11. There is a backgroud service, `assignTaskLoop`, in `IndexCoord`. `assignTaskLoop` would call `GetUnassignedTask` periodically, the default interval is 3s. `GetUnassignedTask` would list these segments whos `index meta` has been updated, but index has not been created yet.
+11. There is a background service, `assignTaskLoop`, in `IndexCoord`. `assignTaskLoop` would call `GetUnassignedTask` periodically, the default interval is 3s. `GetUnassignedTask` would list these segments whos `index meta` has been updated, but index has not been created yet.
 
 12. The previous step has listed the segments whose index has not been created, for each those segments, `IndexCoord` would call `PeekClient` to get an available `IndexNode`, and send `CreateIndex` request to this `IndexNode`. The `proto` is defined as follow.
 

@@ -195,7 +195,7 @@ func TestChannelsTimeTickerImpl_getMinTsStatistics(t *testing.T) {
 			case <-b:
 				return
 			case <-timer.C:
-				stats, err := ticker.getMinTsStatistics()
+				stats, _, err := ticker.getMinTsStatistics()
 				assert.Equal(t, nil, err)
 				for pchan, ts := range stats {
 					log.Debug("TestChannelsTimeTickerImpl_getLastTick",

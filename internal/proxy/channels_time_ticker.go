@@ -33,7 +33,7 @@ type channelsTimeTicker interface {
 	addPChan(pchan pChan) error
 	removePChan(pchan pChan) error
 	getLastTick(pchan pChan) (Timestamp, error)
-	getMinTsStatistics() (map[pChan]Timestamp, error)
+	getMinTsStatistics() (map[pChan]Timestamp, Timestamp, error)
 	getMinTick() Timestamp
 }
 
@@ -48,9 +48,10 @@ type channelsTimeTickerImpl struct {
 	wg                sync.WaitGroup
 	ctx               context.Context
 	cancel            context.CancelFunc
+	defaultTimestamp  Timestamp
 }
 
-func (ticker *channelsTimeTickerImpl) getMinTsStatistics() (map[pChan]Timestamp, error) {
+func (ticker *channelsTimeTickerImpl) getMinTsStatistics() (map[pChan]Timestamp, Timestamp, error) {
 	ticker.statisticsMtx.RLock()
 	defer ticker.statisticsMtx.RUnlock()
 
@@ -60,7 +61,7 @@ func (ticker *channelsTimeTickerImpl) getMinTsStatistics() (map[pChan]Timestamp,
 			ret[k] = v
 		}
 	}
-	return ret, nil
+	return ret, ticker.defaultTimestamp, nil
 }
 
 func (ticker *channelsTimeTickerImpl) initStatistics() {
@@ -87,6 +88,7 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 		log.Warn("Proxy channelsTimeTickerImpl failed to get ts from tso", zap.Error(err))
 		return err
 	}
+	ticker.defaultTimestamp = now
 
 	stats, err := ticker.getStatisticsFunc()
 	if err != nil {

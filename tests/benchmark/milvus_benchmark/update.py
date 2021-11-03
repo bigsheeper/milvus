@@ -21,6 +21,39 @@ def get_token(url):
     return token
 
 
+def get_tags(url, token):
+    headers = {'Content-type': "application/json",
+               "charset": "UTF-8",
+               "Accept": "application/vnd.docker.distribution.manifest.v2+json",
+               "Authorization": "Bearer %s" % token}
+    try:
+        rep = requests.get(url, headers=headers)
+        data = json.loads(rep.text)
+
+        tags = []
+        if 'tags' in data:
+            tags = data["tags"]
+        else:
+            print("Can not get the tag list")
+        return tags
+    except:
+        print("Can not get the tag list")
+        return []
+
+
+def get_master_tags(tags_list):
+    _list = []
+
+    if not isinstance(tags_list, list):
+        print("tags_list is not a list.")
+        return _list
+
+    for tag in tags_list:
+        if "master" in tag and tag != "master-latest":
+            _list.append(tag)
+    return _list
+
+
 def parse_server_tag(server_tag):
     """ paser server tag from server config"""
     # tag format: "8c"/"8c16m"/"8c16m1g"

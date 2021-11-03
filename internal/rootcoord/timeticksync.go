@@ -289,6 +289,10 @@ func (t *timetickSync) SendTimeTickToChannel(chanNames []string, ts typeutil.Tim
 	}
 	msgPack.Msgs = append(msgPack.Msgs, timeTickMsg)
 
+	pts, _ := tsoutil.ParseTS(ts)
+	log.Debug("***************************** time tick",
+		zap.Any("pts", pts),
+	)
 	if err := t.core.dmlChannels.Broadcast(chanNames, &msgPack); err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -44,7 +45,7 @@ type UniqueID = typeutil.UniqueID
 type Timestamp = typeutil.Timestamp
 
 const sendTimeTickMsgInterval = 200 * time.Millisecond
-const channelMgrTickerInterval = 100 * time.Millisecond
+const channelMgrTickerInterval = 10 * time.Millisecond
 
 // make sure Proxy implements types.Proxy
 var _ types.Proxy = (*Proxy)(nil)
@@ -286,6 +287,19 @@ func (node *Proxy) sendChannelsTimeTickLoop() {
 						zap.Any("ErrorCode", status.ErrorCode),
 						zap.Any("Reason", status.Reason))
 					continue
+				}
+				DefaultTimestampP, _ := tsoutil.ParseTS(maxTs)
+				log.Debug("ppppppppppppppppppppppppppppppp mmmmmmmmmmmmm",
+					zap.Any("DefaultTimestampP", DefaultTimestampP),
+					zap.Any("req", req),
+				)
+				for i := 0; i < len(channels); i++ {
+					channel := channels[i]
+					tp, _ := tsoutil.ParseTS(tss[i])
+					log.Debug("pppppppppppppppppppppppppppp tttttttt",
+						zap.Any("t", tp),
+						zap.Any("channel", channel),
+					)
 				}
 			}
 		}

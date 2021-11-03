@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"path/filepath"
 	"sync"
 	"time"
@@ -717,9 +718,19 @@ func (ms *MqTtMsgStream) bufMsgPackToChannel() {
 					}
 					if v.EndTs() <= currTs {
 						timeTickBuf = append(timeTickBuf, v)
-						log.Debug("pack msg******************", zap.Uint64("curr", v.EndTs()), zap.Uint64("currTs", currTs))
 					} else {
 						tempBuffer = append(tempBuffer, v)
+					}
+					if insertMsg, ok := v.(*InsertMsg); ok {
+						lastTimeStamp, _ := tsoutil.ParseTS(ms.lastTimeStamp)
+						currttttt, _ := tsoutil.ParseTS(currTs)
+						vTS, _ := tsoutil.ParseTS(v.EndTs())
+						log.Debug("pack msg****************************************",
+							zap.Any("collectionID", insertMsg.CollectionID),
+							zap.Any("lastTimeStamp", lastTimeStamp),
+							zap.Any("currttttt", currttttt),
+							zap.Any("vTS", vTS),
+						)
 					}
 				}
 				ms.chanMsgBuf[consumer] = tempBuffer
@@ -756,6 +767,32 @@ func (ms *MqTtMsgStream) bufMsgPackToChannel() {
 				Msgs:           timeTickBuf,
 				StartPositions: startMsgPosition,
 				EndPositions:   endMsgPositions,
+			}
+			packBegin, _ := tsoutil.ParseTS(msgPack.BeginTs)
+			packEnd, _ := tsoutil.ParseTS(msgPack.EndTs)
+			if len(msgPack.Msgs) > 0 {
+				msgBegin, _ := tsoutil.ParseTS(msgPack.Msgs[0].BeginTs())
+				msgEnd, _ := tsoutil.ParseTS(msgPack.Msgs[0].EndTs())
+				log.Debug("^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 11111111111111111111",
+					zap.Any("pack begin", packBegin),
+					zap.Any("pack end", packEnd),
+					zap.Any("msgBegin", msgBegin),
+					zap.Any("msgEnd", msgEnd),
+				)
+				if insertMsg, ok := msgPack.Msgs[0].(*InsertMsg); ok {
+					log.Debug("^^^^^^^^^^^^^^^^^^^^ 2222222222222",
+						zap.Any("collectionID", insertMsg.CollectionID),
+						zap.Any("pack begin", packBegin),
+						zap.Any("pack end", packEnd),
+						zap.Any("msgBegin", msgBegin),
+						zap.Any("msgEnd", msgEnd),
+					)
+				}
+			} else {
+				log.Debug("^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 3333333333333333333",
+					zap.Any("pack begin", packBegin),
+					zap.Any("pack end", packEnd),
+				)
 			}
 
 			//log.Debug("send msg pack", zap.Int("len", len(msgPack.Msgs)), zap.Uint64("currTs", currTs))

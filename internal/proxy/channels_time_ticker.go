@@ -94,6 +94,15 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 		return nil
 	}
 
+	if len(stats) > 0 {
+		log.Debug("stats aaaaaaaaaaaaaaaaaaaa",
+			zap.Any("stat", stats),
+		)
+	}
+	log.Debug("stats sssssssssssssssssssss",
+		zap.Any("stat", stats),
+	)
+
 	ticker.statisticsMtx.Lock()
 	defer ticker.statisticsMtx.Unlock()
 

@@ -499,7 +499,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
                                          "ids": [],
                                          "limit": 0})
         # 4. search with data inserted but not load again
-        data = cf.gen_default_dataframe_data(nb=2000)
+        data = cf.gen_default_dataframe_data(nb=10000)
 
         insert_res, _ = collection_w.insert(data)
         print(insert_res.timestamp)

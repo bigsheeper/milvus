@@ -727,7 +727,7 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 		zap.Any("collectionID", it.BaseInsertTask.CollectionName),
 		zap.Any("insertResT", it.result.Timestamp),
 		zap.Any("resTP", resTP),
-		)
+	)
 
 	collectionName := it.BaseInsertTask.CollectionName
 	if err := validateCollectionName(collectionName); err != nil {

@@ -178,7 +178,7 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 		zap.Any("num rows", len(msg.RowIDs)),
 		zap.Any("BeginTs", msg.BeginTs()),
 		zap.Any("pBeginTs", pt),
-		)
+	)
 	if fdmNode.loadType == loadTypeCollection && !collection {
 		log.Debug("filter invalid insert message, collection does not exist",
 			zap.Any("collectionID", msg.CollectionID),

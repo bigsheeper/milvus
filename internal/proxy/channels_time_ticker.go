@@ -130,6 +130,14 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 		}
 	}
 
+	for pchan, value := range stats {
+		_, ok := ticker.currents[pchan]
+		if !ok {
+			ticker.minTsStatistics[pchan] = value.minTs - 1
+			ticker.currents[pchan] = now
+		}
+	}
+
 	return nil
 }
 

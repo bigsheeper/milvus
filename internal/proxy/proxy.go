@@ -45,7 +45,7 @@ type UniqueID = typeutil.UniqueID
 type Timestamp = typeutil.Timestamp
 
 const sendTimeTickMsgInterval = 200 * time.Millisecond
-const channelMgrTickerInterval = 10 * time.Millisecond
+const channelMgrTickerInterval = 100 * time.Millisecond
 
 // make sure Proxy implements types.Proxy
 var _ types.Proxy = (*Proxy)(nil)

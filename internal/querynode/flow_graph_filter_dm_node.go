@@ -13,7 +13,6 @@ package querynode
 
 import (
 	"errors"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
@@ -70,16 +69,6 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			timestampMax: msgStreamMsg.TimestampMax(),
 		},
 	}
-
-	pt, _ := tsoutil.ParseTS(msgStreamMsg.TimestampMin())
-	ptMax, _ := tsoutil.ParseTS(msgStreamMsg.TimestampMax())
-	log.Debug("============================ 000000000000000",
-		zap.Any("collectionID", fdmNode.collectionID),
-		zap.Any("timestampMin", msgStreamMsg.TimestampMin()),
-		zap.Any("timestampMax", msgStreamMsg.TimestampMax()),
-		zap.Any("pt", pt),
-		zap.Any("ptMax", ptMax),
-	)
 
 	for _, msg := range msgStreamMsg.TsMessages() {
 		switch msg.Type() {
@@ -172,13 +161,6 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 	// check if collection and partition exist
 	collection := fdmNode.replica.hasCollection(msg.CollectionID)
 	partition := fdmNode.replica.hasPartition(msg.PartitionID)
-	pt, _ := tsoutil.ParseTS(msg.BeginTs())
-	log.Debug("============================ 1111111111111111",
-		zap.Any("collectionID", msg.CollectionID),
-		zap.Any("num rows", len(msg.RowIDs)),
-		zap.Any("BeginTs", msg.BeginTs()),
-		zap.Any("pBeginTs", pt),
-	)
 	if fdmNode.loadType == loadTypeCollection && !collection {
 		log.Debug("filter invalid insert message, collection does not exist",
 			zap.Any("collectionID", msg.CollectionID),
@@ -251,15 +233,6 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 			zap.Any("partitionID", msg.PartitionID))
 		return nil
 	}
-
-	pt, _ = tsoutil.ParseTS(msg.BeginTs())
-	log.Debug("============================ 222222222222222",
-		zap.Any("collectionID", msg.CollectionID),
-		zap.Any("num rows", len(msg.RowIDs)),
-		zap.Any("num times", len(msg.Timestamps)),
-		zap.Any("BeginTs", msg.BeginTs()),
-		zap.Any("pBeginTs", pt),
-	)
 
 	return msg
 }

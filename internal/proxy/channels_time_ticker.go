@@ -16,8 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 )
 
 // ticker can update ts only when the minTs greater than the ts of ticker, we can use maxTs to update current later
@@ -86,15 +87,6 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 		log.Debug("Proxy channelsTimeTickerImpl failed to getStatistics", zap.Error(err))
 		return nil
 	}
-
-	if len(stats) > 0 {
-		log.Debug("stats aaaaaaaaaaaaaaaaaaaa",
-			zap.Any("stat", stats),
-		)
-	}
-	log.Debug("stats sssssssssssssssssssss",
-		zap.Any("stat", stats),
-	)
 
 	ticker.statisticsMtx.Lock()
 	defer ticker.statisticsMtx.Unlock()

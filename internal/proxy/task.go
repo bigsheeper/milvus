@@ -17,7 +17,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"math"
 	"reflect"
 	"regexp"
@@ -722,13 +721,6 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 		Timestamp: it.EndTs(),
 	}
 
-	resTP, _ := tsoutil.ParseTS(it.result.Timestamp)
-	log.Debug("======================= fffffffffffffffffff",
-		zap.Any("collectionID", it.BaseInsertTask.CollectionName),
-		zap.Any("insertResT", it.result.Timestamp),
-		zap.Any("resTP", resTP),
-	)
-
 	collectionName := it.BaseInsertTask.CollectionName
 	if err := validateCollectionName(collectionName); err != nil {
 		return err
@@ -970,7 +962,6 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 			}
 
 			curMsgSizeMap[key] = curMsgSize
-			//log.Debug("=========================, 111111111111111111111", zap.Any("len rowIDs", len(curMsg.RowIDs)))
 		}
 	}
 	for _, msg := range result {
@@ -979,7 +970,6 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 		}
 	}
 
-	log.Debug("=========================, 2222222222222222222222222", zap.Any("len newPack", len(newPack.Msgs)))
 	return newPack, nil
 }
 
@@ -1039,16 +1029,6 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	ptb, _ := tsoutil.ParseTS(pack.BeginTs)
-	peb, _ := tsoutil.ParseTS(pack.EndTs)
-	log.Debug("=========================, 333333333333333333333333",
-		zap.Any("collectionID", collID),
-		zap.Any("len pack", len(pack.Msgs)),
-		zap.Any("tB", pack.BeginTs),
-		zap.Any("ptb", ptb),
-		zap.Any("tE", pack.EndTs),
-		zap.Any("peb", peb),
-	)
 	err = stream.Produce(pack)
 	if err != nil {
 		it.result.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
@@ -1578,29 +1558,11 @@ func (st *searchTask) PreExecute(ctx context.Context) error {
 		travelTimestamp = st.BeginTs()
 	}
 	guaranteeTimestamp := st.query.GuaranteeTimestamp
-	pgt, _ := tsoutil.ParseTS(guaranteeTimestamp)
-	log.Debug("====================== gggggggg 1111111",
-		zap.Any("collectionID", collID),
-		zap.Any("gt", guaranteeTimestamp),
-		zap.Any("pgt", pgt),
-	)
 	if guaranteeTimestamp == 0 {
 		guaranteeTimestamp = st.BeginTs()
 	}
-	pgt, _ = tsoutil.ParseTS(guaranteeTimestamp)
-	log.Debug("====================== gggggggg 2222222",
-		zap.Any("collectionID", collID),
-		zap.Any("gt", guaranteeTimestamp),
-		zap.Any("pgt", pgt),
-	)
 	st.SearchRequest.TravelTimestamp = travelTimestamp
 	st.SearchRequest.GuaranteeTimestamp = guaranteeTimestamp
-	pgt, _ = tsoutil.ParseTS(st.SearchRequest.GuaranteeTimestamp)
-	log.Debug("====================== gggggggg 3333333",
-		zap.Any("collectionID", collID),
-		zap.Any("gt", st.SearchRequest.GuaranteeTimestamp),
-		zap.Any("pgt", pgt),
-	)
 
 	st.SearchRequest.ResultChannelID = Params.SearchResultChannelNames[0]
 	st.SearchRequest.DbID = 0 // todo
@@ -1659,7 +1621,6 @@ func (st *searchTask) Execute(ctx context.Context) error {
 		Msgs:    make([]msgstream.TsMsg, 1),
 	}
 	msgPack.Msgs[0] = tsMsg
-	log.Debug("===================== sssssssssssssssssss", zap.Any("search gt", st.SearchRequest.GuaranteeTimestamp))
 
 	collectionName := st.query.CollectionName
 	collID, err := globalMetaCache.GetCollectionID(ctx, collectionName)

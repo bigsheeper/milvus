@@ -88,7 +88,6 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 		log.Warn("Proxy channelsTimeTickerImpl failed to get ts from tso", zap.Error(err))
 		return err
 	}
-	ticker.defaultTimestamp = now
 
 	stats, err := ticker.getStatisticsFunc()
 	if err != nil {
@@ -108,16 +107,19 @@ func (ticker *channelsTimeTickerImpl) tick() error {
 	ticker.statisticsMtx.Lock()
 	defer ticker.statisticsMtx.Unlock()
 
+	ticker.defaultTimestamp = now
+
 	ticker.currentsMtx.Lock()
 	defer ticker.currentsMtx.Unlock()
+
 
 	for pchan := range ticker.currents {
 		current := ticker.currents[pchan]
 		stat, ok := stats[pchan]
 
 		if !ok {
-			ticker.minTsStatistics[pchan] = current
-			ticker.currents[pchan] = now
+			delete(ticker.minTsStatistics, pchan)
+			delete(ticker.currents, pchan)
 		} else {
 			if stat.minTs > current {
 				ticker.minTsStatistics[pchan] = stat.minTs - 1
@@ -181,6 +183,7 @@ func (ticker *channelsTimeTickerImpl) close() error {
 	return nil
 }
 
+// deprecated, just for test
 func (ticker *channelsTimeTickerImpl) addPChan(pchan pChan) error {
 	ticker.statisticsMtx.Lock()
 	if _, ok := ticker.minTsStatistics[pchan]; ok {
@@ -200,6 +203,7 @@ func (ticker *channelsTimeTickerImpl) addPChan(pchan pChan) error {
 	return nil
 }
 
+// deprecated, just for test
 func (ticker *channelsTimeTickerImpl) removePChan(pchan pChan) error {
 	ticker.statisticsMtx.Lock()
 
@@ -227,7 +231,7 @@ func (ticker *channelsTimeTickerImpl) getLastTick(pchan pChan) (Timestamp, error
 
 	ts, ok := ticker.minTsStatistics[pchan]
 	if !ok {
-		return 0, fmt.Errorf("pChan %v not found", pchan)
+		return ticker.defaultTimestamp, nil
 	}
 
 	return ts, nil
@@ -237,7 +241,7 @@ func (ticker *channelsTimeTickerImpl) getMinTick() Timestamp {
 	ticker.statisticsMtx.RLock()
 	defer ticker.statisticsMtx.RUnlock()
 
-	minTs := typeutil.ZeroTimestamp
+	minTs := typeutil.MaxTimestamp
 
 	for _, ts := range ticker.minTsStatistics {
 		if ts < minTs {
@@ -245,6 +249,11 @@ func (ticker *channelsTimeTickerImpl) getMinTick() Timestamp {
 		}
 	}
 
+	if minTs > ticker.defaultTimestamp {
+		minTs = ticker.defaultTimestamp
+	}
+
+	// minTs may be zero.
 	return minTs
 }
 

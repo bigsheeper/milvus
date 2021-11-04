@@ -1266,11 +1266,6 @@ func (dct *dropCollectionTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	pchans, _ := dct.chMgr.getChannels(collID)
-	for _, pchan := range pchans {
-		_ = dct.chTicker.removePChan(pchan)
-	}
-
 	_ = dct.chMgr.removeDMLStream(collID)
 	_ = dct.chMgr.removeDQLStream(collID)
 

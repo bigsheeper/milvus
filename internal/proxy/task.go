@@ -2264,7 +2264,7 @@ func mergeRetrieveResults(retrieveResults []*internalpb.RetrieveResults) (*milvu
 	// merge results and remove duplicates
 	for _, rr := range retrieveResults {
 		// skip empty result, it will break merge result
-		if rr == nil || rr.Ids == nil {
+		if rr == nil || rr.Ids == nil || rr.Ids.GetIntId() == nil || len(rr.Ids.GetIntId().Data) == 0 {
 			continue
 		}
 
@@ -2275,7 +2275,7 @@ func mergeRetrieveResults(retrieveResults []*internalpb.RetrieveResults) (*milvu
 		}
 
 		if len(ret.FieldsData) != len(rr.FieldsData) {
-			return nil, fmt.Errorf("mismatch FieldData in RetrieveResults")
+			return nil, fmt.Errorf("mismatch FieldData in proxy RetrieveResults, expect %d get %d", len(ret.FieldsData), len(rr.FieldsData))
 		}
 
 		for i, id := range rr.Ids.GetIntId().GetData() {
@@ -2290,6 +2290,12 @@ func mergeRetrieveResults(retrieveResults []*internalpb.RetrieveResults) (*milvu
 	}
 	if skipDupCnt > 0 {
 		log.Debug("skip duplicated query result", zap.Int64("count", skipDupCnt))
+	}
+
+	if ret == nil {
+		ret = &milvuspb.QueryResults{
+			FieldsData: []*schemapb.FieldData{},
+		}
 	}
 
 	return ret, nil

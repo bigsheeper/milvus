@@ -16,8 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/log"
 	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 )
 
 // ticker can update ts only when the minTs greater than the ts of ticker, we can use maxTs to update current later

@@ -297,6 +297,10 @@ func (m *MockQueryCoord) GetSegmentInfo(ctx context.Context, req *querypb.GetSeg
 	return nil, nil
 }
 
+func (m *MockQueryCoord) LoadBalance(ctx context.Context, req *querypb.LoadBalanceRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
 func (m *MockQueryCoord) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	return nil, nil
 }
@@ -372,6 +376,18 @@ func (m *MockDataCoord) GetFlushedSegments(ctx context.Context, req *datapb.GetF
 }
 
 func (m *MockDataCoord) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) CompleteCompaction(ctx context.Context, req *datapb.CompactionResult) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) ManualCompaction(ctx context.Context, req *datapb.ManualCompactionRequest) (*datapb.ManualCompactionResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) GetCompactionState(ctx context.Context, req *datapb.GetCompactionStateRequest) (*datapb.GetCompactionStateResponse, error) {
 	return nil, nil
 }
 
@@ -534,6 +550,10 @@ func (m *MockProxy) RegisterLink(ctx context.Context, request *milvuspb.Register
 }
 
 func (m *MockProxy) GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) LoadBalance(ctx context.Context, request *milvuspb.LoadBalanceRequest) (*commonpb.Status, error) {
 	return nil, nil
 }
 
@@ -764,6 +784,11 @@ func Test_NewServer(t *testing.T) {
 
 	t.Run("GetMetrics", func(t *testing.T) {
 		_, err := server.GetMetrics(ctx, nil)
+		assert.Nil(t, err)
+	})
+
+	t.Run("LoadBalance", func(t *testing.T) {
+		_, err := server.LoadBalance(ctx, nil)
 		assert.Nil(t, err)
 	})
 

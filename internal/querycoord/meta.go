@@ -64,6 +64,7 @@ type Meta interface {
 	setSegmentInfos(segmentInfos map[UniqueID]*querypb.SegmentInfo) error
 	showSegmentInfos(collectionID UniqueID, partitionIDs []UniqueID) []*querypb.SegmentInfo
 	getSegmentInfoByID(segmentID UniqueID) (*querypb.SegmentInfo, error)
+	getSegmentInfosByNode(nodeID int64) []*querypb.SegmentInfo
 
 	getPartitionStatesByID(collectionID UniqueID, partitionID UniqueID) (*querypb.PartitionStates, error)
 
@@ -382,6 +383,7 @@ func (m *MetaReplica) saveGlobalSealedSegInfos(saves col2SegmentInfos) (col2Seal
 	// generate segment change info according segment info to updated
 	col2SegmentChangeInfos := make(col2SealedSegmentChangeInfos)
 
+	segmentsCompactionFrom := make([]UniqueID, 0)
 	// get segmentInfos to sav
 	for collectionID, onlineInfos := range saves {
 		segmentsChangeInfo := &querypb.SealedSegmentsChangeInfo{
@@ -407,6 +409,20 @@ func (m *MetaReplica) saveGlobalSealedSegInfos(saves col2SegmentInfos) (col2Seal
 				}
 			}
 			segmentsChangeInfo.Infos = append(segmentsChangeInfo.Infos, changeInfo)
+
+			// generate offline segment change info if the loaded segment is compacted from other sealed segments
+			for _, compactionSegmentID := range info.CompactionFrom {
+				compactionSegmentInfo, err := m.getSegmentInfoByID(compactionSegmentID)
+				if err == nil && compactionSegmentInfo.SegmentState == querypb.SegmentState_sealed {
+					segmentsChangeInfo.Infos = append(segmentsChangeInfo.Infos, &querypb.SegmentChangeInfo{
+						OfflineNodeID:   compactionSegmentInfo.NodeID,
+						OfflineSegments: []*querypb.SegmentInfo{compactionSegmentInfo},
+					})
+					segmentsCompactionFrom = append(segmentsCompactionFrom, compactionSegmentID)
+				} else {
+					return nil, fmt.Errorf("saveGlobalSealedSegInfos: the compacted segment %d has not been loaded into memory", compactionSegmentID)
+				}
+			}
 		}
 		col2SegmentChangeInfos[collectionID] = segmentsChangeInfo
 	}
@@ -474,6 +490,15 @@ func (m *MetaReplica) saveGlobalSealedSegInfos(saves col2SegmentInfos) (col2Seal
 		}
 	}
 
+	// remove compacted segment info from etcd
+	for _, segmentID := range segmentsCompactionFrom {
+		segmentKey := fmt.Sprintf("%s/%d", segmentMetaPrefix, segmentID)
+		err := m.client.Remove(segmentKey)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	// save queryChannelInfo and sealedSegmentsChangeInfo to etcd
 	saveKvs := make(map[string]string)
 	for collectionID, queryChannelInfo := range queryChannelInfosMap {
@@ -514,6 +539,9 @@ func (m *MetaReplica) saveGlobalSealedSegInfos(saves col2SegmentInfos) (col2Seal
 			segmentID := info.SegmentID
 			m.segmentInfos[segmentID] = info
 		}
+	}
+	for _, segmentID := range segmentsCompactionFrom {
+		delete(m.segmentInfos, segmentID)
 	}
 	m.segmentMu.Unlock()
 
@@ -713,6 +741,19 @@ func (m *MetaReplica) getSegmentInfoByID(segmentID UniqueID) (*querypb.SegmentIn
 
 	return nil, errors.New("getSegmentInfoByID: can't find segmentID in segmentInfos")
 }
+func (m *MetaReplica) getSegmentInfosByNode(nodeID int64) []*querypb.SegmentInfo {
+	m.segmentMu.RLock()
+	defer m.segmentMu.RUnlock()
+
+	segmentInfos := make([]*querypb.SegmentInfo, 0)
+	for _, info := range m.segmentInfos {
+		if info.NodeID == nodeID {
+			segmentInfos = append(segmentInfos, proto.Clone(info).(*querypb.SegmentInfo))
+		}
+	}
+
+	return segmentInfos
+}
 
 func (m *MetaReplica) getCollectionInfoByID(collectionID UniqueID) (*querypb.CollectionInfo, error) {
 	m.collectionMu.RLock()
@@ -909,6 +950,7 @@ func createQueryChannel(collectionID UniqueID) *querypb.QueryChannelInfo {
 	return info
 }
 
+// Get Query channel info for collection, so far all the collection share the same query channel 0
 func (m *MetaReplica) getQueryChannelInfoByID(collectionID UniqueID) (*querypb.QueryChannelInfo, error) {
 	m.channelMu.Lock()
 	defer m.channelMu.Unlock()

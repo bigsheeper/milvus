@@ -79,6 +79,12 @@ type QueryNode struct {
 	historical *historical
 	streaming  *streaming
 
+	// tSafeReplica
+	tSafeReplica TSafeReplicaInterface
+
+	// dataSyncService
+	dataSyncService *dataSyncService
+
 	// internal services
 	queryService *queryService
 
@@ -136,6 +142,7 @@ func (node *QueryNode) Register() error {
 	return nil
 }
 
+// InitSegcore set init params of segCore, such as chunckRows, SIMD type...
 func (node *QueryNode) InitSegcore() {
 	C.SegcoreInit()
 
@@ -178,13 +185,27 @@ func (node *QueryNode) Init() error {
 			zap.Any("EtcdEndpoints", Params.EtcdEndpoints),
 			zap.Any("MetaRootPath", Params.MetaRootPath),
 		)
+		node.tSafeReplica = newTSafeReplica()
+
+		streamingReplica := newCollectionReplica(node.etcdKV)
+		historicalReplica := newCollectionReplica(node.etcdKV)
 
 		node.historical = newHistorical(node.queryNodeLoopCtx,
+			historicalReplica,
 			node.rootCoord,
 			node.indexCoord,
 			node.msFactory,
-			node.etcdKV)
-		node.streaming = newStreaming(node.queryNodeLoopCtx, node.msFactory, node.etcdKV, node.historical.replica)
+			node.etcdKV,
+			node.tSafeReplica,
+		)
+		node.streaming = newStreaming(node.queryNodeLoopCtx,
+			streamingReplica,
+			node.msFactory,
+			node.etcdKV,
+			node.tSafeReplica,
+		)
+
+		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx, streamingReplica, historicalReplica, node.tSafeReplica, node.msFactory)
 
 		node.InitSegcore()
 
@@ -230,6 +251,7 @@ func (node *QueryNode) Start() error {
 	Params.UpdatedTime = time.Now()
 
 	node.UpdateStateCode(internalpb.StateCode_Healthy)
+	log.Debug("start =========================================================\n *************************************************")
 	return nil
 }
 
@@ -239,6 +261,9 @@ func (node *QueryNode) Stop() error {
 	node.queryNodeLoopCancel()
 
 	// close services
+	if node.dataSyncService != nil {
+		node.dataSyncService.close()
+	}
 	if node.historical != nil {
 		node.historical.close()
 	}

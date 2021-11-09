@@ -13,6 +13,7 @@ package querynode
 
 import (
 	"errors"
+
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 
 	"github.com/opentracing/opentracing-go"
@@ -71,17 +72,9 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		},
 	}
 
-	pt, _ := tsoutil.ParseTS(msgStreamMsg.TimestampMin())
-	ptMax, _ := tsoutil.ParseTS(msgStreamMsg.TimestampMax())
-	log.Debug("============================ 000000000000000",
-		zap.Any("collectionID", fdmNode.collectionID),
-		zap.Any("timestampMin", msgStreamMsg.TimestampMin()),
-		zap.Any("timestampMax", msgStreamMsg.TimestampMax()),
-		zap.Any("pt", pt),
-		zap.Any("ptMax", ptMax),
-	)
-
-	for _, msg := range msgStreamMsg.TsMessages() {
+	for i, msg := range msgStreamMsg.TsMessages() {
+		traceID, _, _ := trace.InfoFromSpan(spans[i])
+		log.Info("Filter invalid message in QueryNode", zap.String("traceID", traceID))
 		switch msg.Type() {
 		case commonpb.MsgType_Insert:
 			resMsg := fdmNode.filterInvalidInsertMessage(msg.(*msgstream.InsertMsg))

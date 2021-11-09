@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/util/mqclient"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/opentracing/opentracing-go"
 	oplog "github.com/opentracing/opentracing-go/log"
@@ -336,8 +337,11 @@ type dqTaskQueue struct {
 }
 
 func (queue *ddTaskQueue) Enqueue(t task) error {
+	log.Debug("get mutex")
 	queue.lock.Lock()
+	log.Debug("get mutex end")
 	defer queue.lock.Unlock()
+	log.Debug("get mutex enqueue")
 	return queue.baseTaskQueue.Enqueue(t)
 }
 
@@ -638,7 +642,8 @@ func (sched *taskScheduler) collectResultLoop() {
 	defer sched.wg.Done()
 
 	queryResultMsgStream, _ := sched.msFactory.NewQueryMsgStream(sched.ctx)
-	queryResultMsgStream.AsConsumer(Params.SearchResultChannelNames, Params.ProxySubName)
+	// proxy didn't need to walk through all the search results in channel, because it no longer has client connections.
+	queryResultMsgStream.AsConsumerWithPosition(Params.SearchResultChannelNames, Params.ProxySubName, mqclient.SubscriptionPositionLatest)
 	log.Debug("Proxy", zap.Strings("SearchResultChannelNames", Params.SearchResultChannelNames),
 		zap.Any("ProxySubName", Params.ProxySubName))
 

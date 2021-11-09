@@ -37,6 +37,8 @@ entity = gen_entities(1, is_normal=True)
 entities = gen_entities(default_nb, is_normal=True)
 raw_vectors, binary_entities = gen_binary_entities(default_nb)
 default_query, _ = gen_search_vectors_params(field_name, entities, default_top_k, nq)
+
+
 # default_binary_query, _ = gen_search_vectors_params(binary_field_name, binary_entities, default_top_k, nq)
 
 
@@ -101,6 +103,12 @@ class TestCollectionSearchInvalid(TestcaseBase):
             pytest.skip("empty is valid for output_fields")
         if request.param is None:
             pytest.skip("None is valid for output_fields")
+        yield request.param
+
+    @pytest.fixture(scope="function", params=ct.get_invalid_ints)
+    def get_invalid_travel_timestamp(self, request):
+        if request.param == 9999999999:
+            pytest.skip("9999999999 is valid for travel timestamp")
         yield request.param
 
     """
@@ -329,7 +337,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
         # 1. initialize with data
         collection_w = self.init_collection_general(prefix)[0]
         # 2. search with invalid limit (topK)
-        log.info("test_search_param_invalid_limit: searching with "
+        log.info("test_search_param_invalid_limit_value: searching with "
                  "invalid limit (topK) = %s" % limit)
         err_msg = "limit %d is too large!" % limit
         if limit == 0:
@@ -686,13 +694,51 @@ class TestCollectionSearchInvalid(TestcaseBase):
         # 1. initialize with data
         collection_w = self.init_collection_general(prefix, True)[0]
         # 2. search
-        log.info("test_search_output_field_vector: Searching collection %s" % collection_w.name)
+        log.info("test_search_output_field_invalid_wildcard: Searching collection %s" % collection_w.name)
         collection_w.search(vectors[:default_nq], default_search_field,
                             default_search_params, default_limit,
                             default_search_exp, output_fields=output_fields,
                             check_task=CheckTasks.err_res,
                             check_items={"err_code": 1,
                                          "err_msg": f"Field {output_fields[-1]} not exist"})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    def test_search_param_invalid_travel_timestamp(self, get_invalid_travel_timestamp):
+        """
+        target: test search with invalid travel timestamp
+        method: search with invalid travel timestamp
+        expected: raise exception and report the error
+        """
+        # 1. initialize with data
+        collection_w = self.init_collection_general(prefix, True, 10)[0]
+        # 2. search with invalid travel timestamp
+        log.info("test_search_param_invalid_travel_timestamp: searching with invalid travel timestamp")
+        invalid_travel_time = get_invalid_travel_timestamp
+        collection_w.search(vectors[:default_nq], default_search_field, default_search_params,
+                            default_limit, default_search_exp,
+                            travel_timestamp=invalid_travel_time,
+                            check_task=CheckTasks.err_res,
+                            check_items={"err_code": 1,
+                                         "err_msg": "`travel_timestamp` value %s is illegal" % invalid_travel_time})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.parametrize("round_decimal", [7, -2, 999, 1.0, None, [1], "string", {}])
+    def test_search_invalid_round_decimal(self, round_decimal):
+        """
+        target: test search with invalid round decimal
+        method: search with invalid round decimal
+        expected: raise exception and report the error
+        """
+        # 1. initialize with data
+        collection_w = self.init_collection_general(prefix, True, nb=10)[0]
+        # 2. search
+        log.info("test_search_invalid_round_decimal: Searching collection %s" % collection_w.name)
+        collection_w.search(vectors[:default_nq], default_search_field,
+                            default_search_params, default_limit,
+                            default_search_exp, round_decimal=round_decimal,
+                            check_task=CheckTasks.err_res,
+                            check_items={"err_code": 1,
+                                         "err_msg": f"`round_decimal` value {round_decimal} is illegal"})
 
 
 class TestCollectionSearch(TestcaseBase):
@@ -742,7 +788,7 @@ class TestCollectionSearch(TestcaseBase):
         collection_w.search(vectors[:nq], default_search_field,
                             default_search_params, default_limit,
                             default_search_exp,
-                            travel_timestamp=time_stamp-1,
+                            travel_timestamp=time_stamp - 1,
                             check_task=CheckTasks.check_search_results,
                             check_items={"nq": nq,
                                          "ids": [],
@@ -871,7 +917,7 @@ class TestCollectionSearch(TestcaseBase):
         collection_w, _, _, insert_ids = \
             self.init_collection_general(prefix, True, auto_id=auto_id, dim=dim)[0:4]
         # 2. search
-        log.info("test_search_normal: searching collection %s" % collection_w.name)
+        log.info("test_search_normal_default_params: searching collection %s" % collection_w.name)
         vectors = [[random.random() for _ in range(dim)] for _ in range(default_nq)]
         collection_w.search(vectors[:default_nq], default_search_field,
                             search_params, default_limit,
@@ -1150,7 +1196,7 @@ class TestCollectionSearch(TestcaseBase):
         collection_w.search(vectors[:nq], default_search_field,
                             default_search_params, limit,
                             default_search_exp, _async=_async,
-                            travel_timestamp=time_stamp+1,
+                            travel_timestamp=time_stamp + 1,
                             check_task=CheckTasks.check_search_results,
                             check_items={"nq": nq,
                                          "ids": insert_ids,
@@ -2053,6 +2099,37 @@ class TestCollectionSearch(TestcaseBase):
         for t in threads:
             t.join()
 
+    @pytest.mark.tags(CaseLabel.L1)
+    @pytest.mark.parametrize("round_decimal", [0, 1, 2, 3, 4, 5, 6])
+    def test_search_round_decimal(self, round_decimal):
+        """
+        target: test search with invalid round decimal
+        method: search with invalid round decimal
+        expected: raise exception and report the error
+        """
+        import math
+        tmp_nb = 500
+        tmp_nq = 1
+        tmp_limit = 5
+        # 1. initialize with data
+        collection_w = self.init_collection_general(prefix, True, nb=tmp_nb)[0]
+        # 2. search
+        log.info("test_search_round_decimal: Searching collection %s" % collection_w.name)
+        res, _ = collection_w.search(vectors[:tmp_nq], default_search_field,
+                                     default_search_params, tmp_limit)
+
+        res_round, _ = collection_w.search(vectors[:tmp_nq], default_search_field,
+                                           default_search_params, tmp_limit, round_decimal=round_decimal)
+
+        abs_tol = pow(10, 1 - round_decimal)
+        # log.debug(f'abs_tol: {abs_tol}')
+        for i in range(tmp_limit):
+            dis_expect = round(res[0][i].distance, round_decimal)
+            dis_actual = res_round[0][i].distance
+            # log.debug(f'actual: {dis_actual}, expect: {dis_expect}')
+            # abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+            assert math.isclose(dis_actual, dis_expect, rel_tol=0, abs_tol=abs_tol)
+
 
 """
 ******************************************************************
@@ -2193,7 +2270,7 @@ class TestSearchBase:
         method: search with the given vectors, check the result
         expected: the length of the result is top_k
         """
-        top_k = 16385 # max top k is 16384
+        top_k = 16385  # max top k is 16384
         nq = get_nq
         entities, ids = init_data(connect, collection)
         query, _ = gen_search_vectors_params(field_name, entities, top_k, nq)
@@ -2442,7 +2519,8 @@ class TestSearchBase:
         get_simple_index["metric_type"] = metric_type
         connect.create_index(collection, field_name, get_simple_index)
         search_param = get_search_param(index_type)
-        query, _ = gen_search_vectors_params(field_name, entities, top_k, nq, metric_type="IP", search_params=search_param)
+        query, _ = gen_search_vectors_params(field_name, entities, top_k, nq, metric_type="IP",
+                                             search_params=search_param)
         connect.load_collection(collection)
         res = connect.search(collection, **query)
         assert check_id_result(res[0], ids[0])

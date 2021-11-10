@@ -356,3 +356,46 @@ func TestSegmentLoader_estimateSegmentSize(t *testing.T) {
 	_, err = loader.estimateSegmentSize(seg, binlog, []FieldID{simpleVecField.id})
 	assert.Error(t, err)
 }
+
+func TestSegmentLoader_testLoadGrowing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	t.Run("test load growing segments", func(t *testing.T) {
+		node, err := genSimpleQueryNode(ctx)
+		assert.NoError(t, err)
+		loader := node.loader
+		assert.NotNil(t, loader)
+
+		collection, err := node.historical.replica.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+
+		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultVChannel, segmentTypeGrowing, true)
+
+		insertMsg, err := genSimpleInsertMsg()
+		assert.NoError(t, err)
+
+		err = loader.loadGrowingSegments(segment, insertMsg.RowIDs, insertMsg.Timestamps, insertMsg.RowData)
+		assert.NoError(t, err)
+	})
+
+	t.Run("test invalid insert data", func(t *testing.T) {
+		node, err := genSimpleQueryNode(ctx)
+		assert.NoError(t, err)
+		loader := node.loader
+		assert.NotNil(t, loader)
+
+		collection, err := node.historical.replica.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+
+		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultVChannel, segmentTypeGrowing, true)
+
+		insertMsg, err := genSimpleInsertMsg()
+		assert.NoError(t, err)
+
+		insertMsg.RowData = nil
+
+		err = loader.loadGrowingSegments(segment, insertMsg.RowIDs, insertMsg.Timestamps, insertMsg.RowData)
+		assert.Error(t, err)
+	})
+}

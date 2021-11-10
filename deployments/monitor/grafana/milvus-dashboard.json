@@ -92,7 +92,7 @@
           "expr": "sum(up{app_kubernetes_io_instance=~\"$instance\", app_kubernetes_io_name=\"$app_name\", namespace=\"$namespace\",app_kubernetes_io_component=\"datacoord\"})*(-1)",
           "format": "time_series",
           "interval": "",
-          "legendFormat": "sss",
+          "legendFormat": "",
           "queryType": "randomWalk",
           "refId": "A"
         }
@@ -3629,7 +3629,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "per-minute rate of flush segments",
+      "description": "per-minute increasing rate of flush_segments requests",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -3732,7 +3732,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "per-minute rate of watch_dm_channels",
+      "description": "per-minute increasing rate of watch_dm_channels requests",
       "fieldConfig": {
         "defaults": {},
         "overrides": []

@@ -386,6 +386,7 @@ func (c *Client) CreateQueryChannel(ctx context.Context, req *querypb.CreateQuer
 	return ret.(*querypb.CreateQueryChannelResponse), err
 }
 
+// GetPartitionStates gets the states of the specified partition.
 func (c *Client) GetPartitionStates(ctx context.Context, req *querypb.GetPartitionStatesRequest) (*querypb.GetPartitionStatesResponse, error) {
 	ret, err := c.recall(func() (interface{}, error) {
 		client, err := c.getGrpcClient()
@@ -401,6 +402,7 @@ func (c *Client) GetPartitionStates(ctx context.Context, req *querypb.GetPartiti
 	return ret.(*querypb.GetPartitionStatesResponse), err
 }
 
+// GetSegmentInfo gets the information of the specified segment from QueryCoord.
 func (c *Client) GetSegmentInfo(ctx context.Context, req *querypb.GetSegmentInfoRequest) (*querypb.GetSegmentInfoResponse, error) {
 	ret, err := c.recall(func() (interface{}, error) {
 		client, err := c.getGrpcClient()
@@ -416,6 +418,7 @@ func (c *Client) GetSegmentInfo(ctx context.Context, req *querypb.GetSegmentInfo
 	return ret.(*querypb.GetSegmentInfoResponse), err
 }
 
+// LoadBalance migrate the sealed segments on the source node to the dst nodes.
 func (c *Client) LoadBalance(ctx context.Context, req *querypb.LoadBalanceRequest) (*commonpb.Status, error) {
 	ret, err := c.recall(func() (interface{}, error) {
 		client, err := c.getGrpcClient()

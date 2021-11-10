@@ -614,6 +614,7 @@ func (node *Proxy) CreatePartition(ctx context.Context, request *milvuspb.Create
 	return cpt.result, nil
 }
 
+// DropPartition drop a partition in specific collection.
 func (node *Proxy) DropPartition(ctx context.Context, request *milvuspb.DropPartitionRequest) (*commonpb.Status, error) {
 	if !node.checkHealthy() {
 		return unhealthyStatus(), nil
@@ -667,6 +668,7 @@ func (node *Proxy) DropPartition(ctx context.Context, request *milvuspb.DropPart
 	return dpt.result, nil
 }
 
+// HasPartition check if partition exist.
 func (node *Proxy) HasPartition(ctx context.Context, request *milvuspb.HasPartitionRequest) (*milvuspb.BoolResponse, error) {
 	if !node.checkHealthy() {
 		return &milvuspb.BoolResponse{
@@ -728,6 +730,7 @@ func (node *Proxy) HasPartition(ctx context.Context, request *milvuspb.HasPartit
 	return hpt.result, nil
 }
 
+// LoadPartitions load specific partitions into query nodes.
 func (node *Proxy) LoadPartitions(ctx context.Context, request *milvuspb.LoadPartitionsRequest) (*commonpb.Status, error) {
 	if !node.checkHealthy() {
 		return unhealthyStatus(), nil

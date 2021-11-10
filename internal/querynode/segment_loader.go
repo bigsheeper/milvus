@@ -249,7 +249,11 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 
 	switch segmentType {
 	case segmentTypeGrowing:
-		return errors.New("TODO: implement")
+		timestamps, ids, rowData, err := storage.TransferColumnBasedInsertDataToRowBased(insertData)
+		if err != nil {
+			return err
+		}
+		return loader.loadGrowingSegments(segment, ids, timestamps, rowData)
 	case segmentTypeSealed:
 		return loader.loadSealedSegments(segment, insertData)
 	default:

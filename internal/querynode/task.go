@@ -287,6 +287,31 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 		zap.Any("collectionID", collectionID),
 		zap.Any("toSeekChannels", toSeekChannels))
 
+	// load growing segments
+	unFlushedSegment := make([]*queryPb.SegmentLoadInfo, 0)
+	for _, info := range w.req.Infos {
+		for _, ufInfo := range info.UnflushedSegments {
+			unFlushedSegment = append(unFlushedSegment, &queryPb.SegmentLoadInfo{
+				SegmentID:    ufInfo.ID,
+				PartitionID:  ufInfo.PartitionID,
+				CollectionID: ufInfo.CollectionID,
+				BinlogPaths:  ufInfo.Binlogs,
+				NumOfRows:    ufInfo.NumOfRows,
+				Statslogs:    ufInfo.Statslogs,
+				Deltalogs:    ufInfo.Deltalogs,
+			})
+		}
+	}
+	req := &queryPb.LoadSegmentsRequest{
+		Infos:        unFlushedSegment,
+		CollectionID: collectionID,
+		Schema:       w.req.Schema,
+	}
+	err = w.node.loader.loadSegment(req, segmentTypeGrowing)
+	if err != nil {
+		return err
+	}
+
 	// start flow graphs
 	if loadPartition {
 		err = w.node.dataSyncService.startPartitionFlowGraph(partitionID, vChannels)
@@ -520,7 +545,7 @@ func (l *loadSegmentsTask) Execute(ctx context.Context) error {
 		}
 	}
 
-	err = l.node.historical.loader.loadSegment(l.req)
+	err = l.node.loader.loadSegment(l.req, segmentTypeSealed)
 	if err != nil {
 		log.Warn(err.Error())
 		return err

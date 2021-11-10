@@ -25,7 +25,10 @@ import (
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	minioKV "github.com/milvus-io/milvus/internal/kv/minio"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
@@ -39,6 +42,7 @@ const (
 // segmentLoader is only responsible for loading the field data from binlog
 type segmentLoader struct {
 	historicalReplica ReplicaInterface
+	streamingReplica  ReplicaInterface
 
 	dataCoord types.DataCoord
 
@@ -48,7 +52,7 @@ type segmentLoader struct {
 	indexLoader *indexLoader
 }
 
-func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error {
+func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, segmentType segmentType) error {
 	// no segment needs to load, return
 	if len(req.Infos) == 0 {
 		return nil
@@ -76,7 +80,7 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error
 			segmentGC()
 			return err
 		}
-		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentTypeSealed, true)
+		segment := newSegment(collection, segmentID, partitionID, collectionID, "", segmentType, true)
 		newSegments[segmentID] = segment
 		fieldBinlog, indexedFieldID, err := loader.getFieldAndIndexInfo(segment, info)
 		if err != nil {
@@ -110,7 +114,8 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error
 		err = loader.loadSegmentInternal(newSegments[segmentID],
 			segmentFieldBinLogs[segmentID],
 			segmentIndexedFieldIDs[segmentID],
-			info)
+			info,
+			segmentType)
 		if err != nil {
 			segmentGC()
 			return err
@@ -118,12 +123,27 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error
 	}
 
 	// set segments
-	for _, s := range newSegments {
-		err := loader.historicalReplica.setSegment(s)
-		if err != nil {
-			segmentGC()
-			return err
+	switch segmentType {
+	case segmentTypeGrowing:
+		for _, s := range newSegments {
+			err := loader.streamingReplica.setSegment(s)
+			if err != nil {
+				segmentGC()
+				return err
+			}
 		}
+	case segmentTypeSealed:
+		for _, s := range newSegments {
+			err := loader.historicalReplica.setSegment(s)
+			if err != nil {
+				segmentGC()
+				return err
+			}
+		}
+	default:
+		err := errors.New(fmt.Sprintln("illegal segment type when load segment, collectionID = ", req.CollectionID))
+		segmentGC()
+		return err
 	}
 	return nil
 }
@@ -131,9 +151,10 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest) error
 func (loader *segmentLoader) loadSegmentInternal(segment *Segment,
 	fieldBinLogs []*datapb.FieldBinlog,
 	indexFieldIDs []FieldID,
-	segmentLoadInfo *querypb.SegmentLoadInfo) error {
+	segmentLoadInfo *querypb.SegmentLoadInfo,
+	segmentType segmentType) error {
 	log.Debug("loading insert...")
-	err := loader.loadSegmentFieldsData(segment, fieldBinLogs)
+	err := loader.loadSegmentFieldsData(segment, fieldBinLogs, segmentType)
 	if err != nil {
 		return err
 	}
@@ -190,7 +211,7 @@ func (loader *segmentLoader) filterFieldBinlogs(fieldBinlogs []*datapb.FieldBinl
 	return result
 }
 
-func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlogs []*datapb.FieldBinlog) error {
+func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlogs []*datapb.FieldBinlog, segmentType segmentType) error {
 	iCodec := storage.InsertCodec{}
 	defer func() {
 		err := iCodec.Close()
@@ -226,6 +247,56 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 		return err
 	}
 
+	switch segmentType {
+	case segmentTypeGrowing:
+		return errors.New("TODO: implement")
+	case segmentTypeSealed:
+		return loader.loadSealedSegments(segment, insertData)
+	default:
+		err := errors.New(fmt.Sprintln("illegal segment type when load segment, collectionID = ", segment.collectionID))
+		return err
+	}
+}
+
+func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
+	ids []UniqueID,
+	timestamps []Timestamp,
+	records []*commonpb.Blob) error {
+	if len(ids) != len(timestamps) || len(timestamps) != len(records) {
+		return errors.New(fmt.Sprintln("illegal insert data when load segment, collectionID = ", segment.collectionID))
+	}
+
+	// 1. do preInsert
+	var numOfRecords = len(ids)
+	offset, err := segment.segmentPreInsert(numOfRecords)
+	if err != nil {
+		return err
+	}
+	log.Debug("insertNode operator", zap.Int("insert size", numOfRecords), zap.Int64("insert offset", offset), zap.Int64("segment id", segment.ID()))
+
+	// 2. update bloom filter
+	tmpInsertMsg := &msgstream.InsertMsg{
+		InsertRequest: internalpb.InsertRequest{
+			CollectionID: segment.collectionID,
+			Timestamps:   timestamps,
+			RowIDs:       ids,
+			RowData:      records,
+		},
+	}
+	pks := getPrimaryKeys(tmpInsertMsg, loader.streamingReplica)
+	segment.updateBloomFilter(pks)
+
+	// 3. do insert
+	err = segment.segmentInsert(offset, &ids, &timestamps, &records)
+	if err != nil {
+		return err
+	}
+	log.Debug("Do insert done in segment loader", zap.Int("len", numOfRecords), zap.Int64("segmentID", segment.ID()))
+
+	return nil
+}
+
+func (loader *segmentLoader) loadSealedSegments(segment *Segment, insertData *storage.InsertData) error {
 	for fieldID, value := range insertData.Data {
 		var numRows []int64
 		var data interface{}
@@ -270,13 +341,12 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 		for _, numRow := range numRows {
 			totalNumRows += numRow
 		}
-		err = segment.segmentLoadFieldData(fieldID, int(totalNumRows), data)
+		err := segment.segmentLoadFieldData(fieldID, int(totalNumRows), data)
 		if err != nil {
 			// TODO: return or continue?
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -460,7 +530,12 @@ func (loader *segmentLoader) checkSegmentSize(collectionID UniqueID, segmentSize
 	return nil
 }
 
-func newSegmentLoader(ctx context.Context, rootCoord types.RootCoord, indexCoord types.IndexCoord, replica ReplicaInterface, etcdKV *etcdkv.EtcdKV) *segmentLoader {
+func newSegmentLoader(ctx context.Context,
+	rootCoord types.RootCoord,
+	indexCoord types.IndexCoord,
+	historicalReplica ReplicaInterface,
+	streamingReplica ReplicaInterface,
+	etcdKV *etcdkv.EtcdKV) *segmentLoader {
 	option := &minioKV.Option{
 		Address:           Params.MinioEndPoint,
 		AccessKeyID:       Params.MinioAccessKeyID,
@@ -475,9 +550,10 @@ func newSegmentLoader(ctx context.Context, rootCoord types.RootCoord, indexCoord
 		panic(err)
 	}
 
-	iLoader := newIndexLoader(ctx, rootCoord, indexCoord, replica)
+	iLoader := newIndexLoader(ctx, rootCoord, indexCoord, historicalReplica)
 	return &segmentLoader{
-		historicalReplica: replica,
+		historicalReplica: historicalReplica,
+		streamingReplica:  streamingReplica,
 
 		minioKV: client,
 		etcdKV:  etcdKV,

@@ -618,6 +618,7 @@ func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest
 	}, nil
 }
 
+// CompleteCompaction completes a compaction with the result
 func (s *Server) CompleteCompaction(ctx context.Context, req *datapb.CompactionResult) (*commonpb.Status, error) {
 	log.Debug("receive complete compaction request", zap.Int64("planID", req.PlanID), zap.Int64("segmentID", req.GetSegmentID()))
 
@@ -649,6 +650,7 @@ func (s *Server) CompleteCompaction(ctx context.Context, req *datapb.CompactionR
 	return resp, nil
 }
 
+// ManualCompaction triggers a compaction for a collection
 func (s *Server) ManualCompaction(ctx context.Context, req *milvuspb.ManualCompactionRequest) (*milvuspb.ManualCompactionResponse, error) {
 	log.Debug("receive manual compaction", zap.Int64("collectionID", req.GetCollectionID()))
 
@@ -683,6 +685,7 @@ func (s *Server) ManualCompaction(ctx context.Context, req *milvuspb.ManualCompa
 	return resp, nil
 }
 
+// GetCompactionState gets the state of a compaction
 func (s *Server) GetCompactionState(ctx context.Context, req *milvuspb.GetCompactionStateRequest) (*milvuspb.GetCompactionStateResponse, error) {
 	log.Debug("receive get compaction state request", zap.Int64("compactionID", req.GetCompactionID()))
 	resp := &milvuspb.GetCompactionStateResponse{
@@ -779,4 +782,35 @@ func getCompactionState(tasks []*compactionTask) (state commonpb.CompactionState
 		state = commonpb.CompactionState_Completed
 	}
 	return
+}
+
+func (s *Server) WatchChannels(ctx context.Context, req *datapb.WatchChannelsRequest) (*datapb.WatchChannelsResponse, error) {
+	log.Debug("receive watch channels request", zap.Any("channels", req.GetChannelNames()))
+	resp := &datapb.WatchChannelsResponse{
+		Status: &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+		},
+	}
+
+	if s.isClosed() {
+		log.Warn("failed to  watch channels request", zap.Any("channels", req.GetChannelNames()),
+			zap.Error(errDataCoordIsUnhealthy(Params.NodeID)))
+		resp.Status.Reason = msgDataCoordIsUnhealthy(Params.NodeID)
+		return resp, nil
+	}
+	for _, channelName := range req.GetChannelNames() {
+		ch := &channel{
+			Name:         channelName,
+			CollectionID: req.GetCollectionID(),
+		}
+		err := s.channelManager.Watch(ch)
+		if err != nil {
+			log.Warn("fail to watch channelName", zap.String("channelName", channelName), zap.Error(err))
+			resp.Status.Reason = err.Error()
+			return resp, nil
+		}
+	}
+	resp.Status.ErrorCode = commonpb.ErrorCode_Success
+
+	return resp, nil
 }

@@ -113,11 +113,14 @@ type ReplicaInterface interface {
 	queryUnlock()
 	// queryRLock guards query and delete segment operations
 	queryRLock()
+	// queryRUnlock guards query and delete segment operations
 	queryRUnlock()
 
 	// getSegmentsMemSize get the memory size in bytes of all the Segments
 	getSegmentsMemSize() int64
+	// freeAll will free all meta info from collectionReplica
 	freeAll()
+	// printReplica prints the collections, partitions and segments in the collectionReplica
 	printReplica()
 }
 

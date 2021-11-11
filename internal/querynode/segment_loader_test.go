@@ -405,8 +405,14 @@ func TestSegmentLoader_testLoadGrowingAndSealed(t *testing.T) {
 	defer cancel()
 
 	schema := genSimpleInsertDataSchema()
+	schema.Fields = append(schema.Fields, &schemapb.FieldSchema{
+		FieldID:      UniqueID(102),
+		Name:         "pk",
+		IsPrimaryKey: true,
+		DataType:     schemapb.DataType_Int64,
+	})
 
-	fieldBinlog, err := saveSimpleBinLog(ctx)
+	fieldBinlog, err := saveBinLog(ctx, defaultCollectionID, defaultPartitionID, defaultSegmentID, defaultMsgLength, schema)
 	assert.NoError(t, err)
 
 	t.Run("test load growing and sealed segments", func(t *testing.T) {
@@ -415,6 +421,8 @@ func TestSegmentLoader_testLoadGrowingAndSealed(t *testing.T) {
 
 		loader := node.loader
 		assert.NotNil(t, loader)
+		loader.indexLoader.indexCoord = nil
+		loader.indexLoader.rootCoord = nil
 
 		segmentID1 := UniqueID(100)
 		req1 := &querypb.LoadSegmentsRequest{

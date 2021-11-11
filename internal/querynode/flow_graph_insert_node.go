@@ -368,7 +368,12 @@ func getPrimaryKeys(msg *msgstream.InsertMsg, streamingReplica ReplicaInterface)
 
 	blobReaders := make([]io.Reader, len(msg.RowData))
 	for i, blob := range msg.RowData {
-		blobReaders[i] = bytes.NewReader(blob.GetValue()[offset : offset+8])
+		if offset+8 < len(blob.GetValue()) {
+			blobReaders[i] = bytes.NewReader(blob.GetValue()[offset : offset+8])
+		} else {
+			log.Error("slice out of range when getPrimaryKey")
+			return nil
+		}
 	}
 	pks := make([]int64, len(blobReaders))
 

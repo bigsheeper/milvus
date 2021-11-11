@@ -307,6 +307,10 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 		CollectionID: collectionID,
 		Schema:       w.req.Schema,
 	}
+	log.Debug("watchDMChannels unFlushed Segments",
+		zap.Any("collectionID", collectionID),
+		zap.Any("unFlushedSegment", unFlushedSegment),
+	)
 	err = w.node.loader.loadSegment(req, segmentTypeGrowing)
 	if err != nil {
 		return err

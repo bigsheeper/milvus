@@ -399,3 +399,73 @@ func TestSegmentLoader_testLoadGrowing(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestSegmentLoader_testLoadGrowingAndSealed(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	schema := genSimpleInsertDataSchema()
+
+	fieldBinlog, err := saveSimpleBinLog(ctx)
+	assert.NoError(t, err)
+
+	t.Run("test load growing and sealed segments", func(t *testing.T) {
+		node, err := genSimpleQueryNode(ctx)
+		assert.NoError(t, err)
+
+		loader := node.loader
+		assert.NotNil(t, loader)
+
+		segmentID1 := UniqueID(100)
+		req1 := &querypb.LoadSegmentsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType: commonpb.MsgType_WatchQueryChannels,
+				MsgID:   rand.Int63(),
+			},
+			DstNodeID:     0,
+			Schema:        schema,
+			LoadCondition: querypb.TriggerCondition_grpcRequest,
+			Infos: []*querypb.SegmentLoadInfo{
+				{
+					SegmentID:    segmentID1,
+					PartitionID:  defaultPartitionID,
+					CollectionID: defaultCollectionID,
+					BinlogPaths:  fieldBinlog,
+				},
+			},
+		}
+
+		err = loader.loadSegment(req1, segmentTypeSealed)
+		assert.NoError(t, err)
+
+		segmentID2 := UniqueID(101)
+		req2 := &querypb.LoadSegmentsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType: commonpb.MsgType_WatchQueryChannels,
+				MsgID:   rand.Int63(),
+			},
+			DstNodeID:     0,
+			Schema:        schema,
+			LoadCondition: querypb.TriggerCondition_grpcRequest,
+			Infos: []*querypb.SegmentLoadInfo{
+				{
+					SegmentID:    segmentID2,
+					PartitionID:  defaultPartitionID,
+					CollectionID: defaultCollectionID,
+					BinlogPaths:  fieldBinlog,
+				},
+			},
+		}
+
+		err = loader.loadSegment(req2, segmentTypeGrowing)
+		assert.NoError(t, err)
+
+		segment1, err := loader.historicalReplica.getSegmentByID(segmentID1)
+		assert.NoError(t, err)
+
+		segment2, err := loader.streamingReplica.getSegmentByID(segmentID2)
+		assert.NoError(t, err)
+
+		assert.Equal(t, segment1.getRowCount(), segment2.getRowCount())
+	})
+}

@@ -58,6 +58,12 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, segme
 		return nil
 	}
 
+	log.Debug("segmentLoader start loading...",
+		zap.Any("collectionID", req.CollectionID),
+		zap.Any("numOfSegments", len(req.Infos)),
+		zap.Any("loadType", segmentType),
+	)
+
 	newSegments := make(map[UniqueID]*Segment)
 	segmentGC := func() {
 		for _, s := range newSegments {
@@ -153,7 +159,13 @@ func (loader *segmentLoader) loadSegmentInternal(segment *Segment,
 	indexFieldIDs []FieldID,
 	segmentLoadInfo *querypb.SegmentLoadInfo,
 	segmentType segmentType) error {
-	log.Debug("loading insert...")
+	log.Debug("loading insert...",
+		zap.Any("collectionID", segment.collectionID),
+		zap.Any("segmentID", segment.ID()),
+		zap.Any("segmentType", segmentType),
+		zap.Any("fieldBinLogs", fieldBinLogs),
+		zap.Any("indexFieldIDs", indexFieldIDs),
+	)
 	err := loader.loadSegmentFieldsData(segment, fieldBinLogs, segmentType)
 	if err != nil {
 		return err
@@ -247,6 +259,14 @@ func (loader *segmentLoader) loadSegmentFieldsData(segment *Segment, fieldBinlog
 		return err
 	}
 
+	for i := range insertData.Infos {
+		log.Debug("segmentLoader deserialize fields",
+			zap.Any("collectionID", segment.collectionID),
+			zap.Any("segmentID", segment.ID()),
+			zap.Any("numRows", insertData.Infos[i].Length),
+		)
+	}
+
 	switch segmentType {
 	case segmentTypeGrowing:
 		timestamps, ids, rowData, err := storage.TransferColumnBasedInsertDataToRowBased(insertData)
@@ -269,6 +289,12 @@ func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
 	if len(ids) != len(timestamps) || len(timestamps) != len(records) {
 		return errors.New(fmt.Sprintln("illegal insert data when load segment, collectionID = ", segment.collectionID))
 	}
+
+	log.Debug("start load growing segments...",
+		zap.Any("collectionID", segment.collectionID),
+		zap.Any("segmentID", segment.ID()),
+		zap.Any("numRows", len(ids)),
+	)
 
 	// 1. do preInsert
 	var numOfRecords = len(ids)
@@ -301,6 +327,11 @@ func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
 }
 
 func (loader *segmentLoader) loadSealedSegments(segment *Segment, insertData *storage.InsertData) error {
+	log.Debug("start load sealed segments...",
+		zap.Any("collectionID", segment.collectionID),
+		zap.Any("segmentID", segment.ID()),
+		zap.Any("numFields", len(insertData.Data)),
+	)
 	for fieldID, value := range insertData.Data {
 		var numRows []int64
 		var data interface{}

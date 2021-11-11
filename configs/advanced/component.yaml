@@ -28,7 +28,7 @@ dataNode:
       maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
   flush:
     # Max buffer size to flush for a single segment.
-    insertBufSize: 16777216 # Bytes, 16 MB
+    insertBufSize: 5242880 # Bytes, 16 MB
 
 proxy:
   timeTickInterval: 200 # ms, the interval that proxy synchronize the time tick

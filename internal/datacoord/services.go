@@ -492,6 +492,10 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 	for _, c := range channels {
 		channelInfo := s.GetVChanPositions(c, collectionID, false)
 		channelInfos = append(channelInfos, channelInfo)
+		log.Debug("datacoord append channelInfo in GetRecoveryInfo",
+			zap.Any("collectionID", collectionID),
+			zap.Any("channelInfo", channelInfo),
+		)
 	}
 
 	resp.Binlogs = binlogs

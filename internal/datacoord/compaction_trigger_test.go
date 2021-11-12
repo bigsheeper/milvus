@@ -17,7 +17,7 @@ type spyCompactionHandler struct {
 }
 
 // execCompactionPlan start to execute plan and return immediately
-func (h *spyCompactionHandler) execCompactionPlan(plan *datapb.CompactionPlan) error {
+func (h *spyCompactionHandler) execCompactionPlan(signal *compactionSignal, plan *datapb.CompactionPlan) error {
 	h.spyChan <- plan
 	return nil
 }
@@ -42,8 +42,8 @@ func (h *spyCompactionHandler) isFull() bool {
 	return false
 }
 
-// get compaction by signal id and return the number of executing/completed/timeout plans
-func (h *spyCompactionHandler) getCompactionBySignalID(signalID int64) (executing int, completed int, timeout int) {
+// get compaction tasks by signal id
+func (h *spyCompactionHandler) getCompactionTasksBySignalID(signalID int64) []*compactionTask {
 	panic("not implemented") // TODO: Implement
 }
 

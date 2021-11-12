@@ -55,6 +55,7 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 		assert.NotNil(t, meta)
 
 		rc.setCollectionID(-2)
+		task.Replica.(*SegmentReplica).collSchema = nil
 		_, _, _, err = task.getSegmentMeta(100)
 		assert.Error(t, err)
 	})
@@ -112,12 +113,22 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 			}
 
 			blobs, err := getDeltaBlobs(
-				100, map[int64]int64{
-					1: 20000,
-					2: 20001,
-					3: 20002,
-					4: 30000,
-					5: 50000,
+				100,
+				[]UniqueID{
+					1,
+					2,
+					3,
+					4,
+					5,
+					1,
+				},
+				[]Timestamp{
+					20000,
+					20001,
+					20002,
+					30000,
+					50000,
+					50000,
 				})
 			require.NoError(t, err)
 
@@ -144,7 +155,10 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 						pk2ts, db, err := task.mergeDeltalogs(test.dBlobs, test.timetravel)
 						assert.NoError(t, err)
 						assert.Equal(t, 3, len(pk2ts))
-						assert.Equal(t, int64(2), db.size)
+						assert.Equal(t, int64(3), db.size)
+						assert.Equal(t, int64(3), db.delData.RowCount)
+						assert.ElementsMatch(t, []UniqueID{1, 4, 5}, db.delData.Pks)
+						assert.ElementsMatch(t, []Timestamp{30000, 50000, 50000}, db.delData.Tss)
 
 					} else {
 
@@ -160,14 +174,17 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 
 		t.Run("Multiple segments with timetravel", func(t *testing.T) {
 			tests := []struct {
-				segIDA UniqueID
-				dataA  map[int64]int64
+				segIDA  UniqueID
+				dataApk []UniqueID
+				dataAts []Timestamp
 
-				segIDB UniqueID
-				dataB  map[int64]int64
+				segIDB  UniqueID
+				dataBpk []UniqueID
+				dataBts []Timestamp
 
-				segIDC UniqueID
-				dataC  map[int64]int64
+				segIDC  UniqueID
+				dataCpk []UniqueID
+				dataCts []Timestamp
 
 				timetravel    Timestamp
 				expectedpk2ts int
@@ -175,30 +192,15 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 				description   string
 			}{
 				{
-					0, nil,
-					100, map[int64]int64{
-						1: 20000,
-						2: 30000,
-						3: 20005},
-					200, map[int64]int64{
-						4: 50000,
-						5: 50001,
-						6: 50002},
+					0, nil, nil,
+					100, []UniqueID{1, 2, 3}, []Timestamp{20000, 30000, 20005},
+					200, []UniqueID{4, 5, 6}, []Timestamp{50000, 50001, 50002},
 					40000, 3, 3, "2 segments with timetravel 40000",
 				},
 				{
-					300, map[int64]int64{
-						10: 20001,
-						20: 40001,
-					},
-					100, map[int64]int64{
-						1: 20000,
-						2: 30000,
-						3: 20005},
-					200, map[int64]int64{
-						4: 50000,
-						5: 50001,
-						6: 50002},
+					300, []UniqueID{10, 20}, []Timestamp{20001, 40001},
+					100, []UniqueID{1, 2, 3}, []Timestamp{20000, 30000, 20005},
+					200, []UniqueID{4, 5, 6}, []Timestamp{50000, 50001, 50002},
 					40000, 4, 4, "3 segments with timetravel 40000",
 				},
 			}
@@ -207,17 +209,17 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 				t.Run(test.description, func(t *testing.T) {
 					dBlobs := make(map[UniqueID][]*Blob)
 					if test.segIDA != UniqueID(0) {
-						d, err := getDeltaBlobs(test.segIDA, test.dataA)
+						d, err := getDeltaBlobs(test.segIDA, test.dataApk, test.dataAts)
 						require.NoError(t, err)
 						dBlobs[test.segIDA] = d
 					}
 					if test.segIDB != UniqueID(0) {
-						d, err := getDeltaBlobs(test.segIDB, test.dataB)
+						d, err := getDeltaBlobs(test.segIDB, test.dataBpk, test.dataBts)
 						require.NoError(t, err)
 						dBlobs[test.segIDB] = d
 					}
 					if test.segIDC != UniqueID(0) {
-						d, err := getDeltaBlobs(test.segIDC, test.dataC)
+						d, err := getDeltaBlobs(test.segIDC, test.dataCpk, test.dataCts)
 						require.NoError(t, err)
 						dBlobs[test.segIDC] = d
 					}
@@ -258,8 +260,12 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 	})
 }
 
-func getDeltaBlobs(segID UniqueID, pk2ts map[int64]int64) ([]*Blob, error) {
-	deltaData := &DeleteData{Data: pk2ts}
+func getDeltaBlobs(segID UniqueID, pks []UniqueID, tss []Timestamp) ([]*Blob, error) {
+	deltaData := &DeleteData{
+		Pks:      pks,
+		Tss:      tss,
+		RowCount: int64(len(pks)),
+	}
 
 	dCodec := storage.NewDeleteCodec()
 	blob, err := dCodec.Serialize(1, 10, segID, deltaData)
@@ -283,7 +289,11 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 
 	t.Run("Test compact invalid", func(t *testing.T) {
 		invalidAlloc := NewAllocatorFactory(-1)
-		emptyTask := &compactionTask{}
+		ctx, cancel := context.WithCancel(context.TODO())
+		emptyTask := &compactionTask{
+			ctx:    ctx,
+			cancel: cancel,
+		}
 		emptySegmentBinlogs := []*datapb.CompactionSegmentBinlogs{}
 
 		plan := &datapb.CompactionPlan{
@@ -309,6 +319,8 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 		plan.SegmentBinlogs = notEmptySegmentBinlogs
 		err = emptyTask.compact()
 		assert.Error(t, err)
+
+		emptyTask.stop()
 	})
 
 	t.Run("Test typeI compact valid", func(t *testing.T) {
@@ -326,9 +338,11 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 
 		iData := genInsertData()
 		meta := NewMetaFactory().GetCollectionMeta(collID, "test_compact_coll_name")
-		dData := &DeleteData{Data: map[int64]int64{
-			1: 20000,
-		}}
+		dData := &DeleteData{
+			Pks:      []UniqueID{1},
+			Tss:      []Timestamp{20000},
+			RowCount: 1,
+		}
 
 		cpaths, err := mockbIO.upload(context.TODO(), segID, partID, []*InsertData{iData}, dData, meta)
 		require.NoError(t, err)
@@ -351,13 +365,25 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 			Channel:          "channelname",
 		}
 
-		task := newCompactionTask(mockbIO, mockbIO, replica, mockfm, alloc, dc, plan)
+		ctx, cancel := context.WithCancel(context.TODO())
+		cancel()
+		canceledTask := newCompactionTask(ctx, mockbIO, mockbIO, replica, mockfm, alloc, dc, plan)
+		err = canceledTask.compact()
+		assert.Error(t, err)
+
+		task := newCompactionTask(context.TODO(), mockbIO, mockbIO, replica, mockfm, alloc, dc, plan)
 		err = task.compact()
 		assert.NoError(t, err)
 
 		updates, err := replica.getSegmentStatisticsUpdates(segID)
 		assert.NoError(t, err)
 		assert.Equal(t, int64(1), updates.GetNumRows())
+
+		id := task.getCollection()
+		assert.Equal(t, UniqueID(1), id)
+
+		planID := task.getPlanID()
+		assert.Equal(t, plan.GetPlanID(), planID)
 
 		// New test, remove all the binlogs in memkv
 		//  Deltas in timetravel range
@@ -407,13 +433,17 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 
 		meta := NewMetaFactory().GetCollectionMeta(collID, "test_compact_coll_name")
 		iData1 := genInsertDataWithRowIDs([2]int64{1, 2})
-		dData1 := &DeleteData{Data: map[int64]int64{
-			1: 20000,
-		}}
+		dData1 := &DeleteData{
+			Pks:      []UniqueID{1},
+			Tss:      []Timestamp{20000},
+			RowCount: 1,
+		}
 		iData2 := genInsertDataWithRowIDs([2]int64{9, 10})
-		dData2 := &DeleteData{Data: map[int64]int64{
-			9: 30000,
-		}}
+		dData2 := &DeleteData{
+			Pks:      []UniqueID{9},
+			Tss:      []Timestamp{30000},
+			RowCount: 1,
+		}
 
 		cpaths1, err := mockbIO.upload(context.TODO(), segID1, partID, []*InsertData{iData1}, dData1, meta)
 		require.NoError(t, err)
@@ -447,7 +477,7 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 		}
 
 		alloc.random = false // generated ID = 19530
-		task := newCompactionTask(mockbIO, mockbIO, replica, mockfm, alloc, dc, plan)
+		task := newCompactionTask(context.TODO(), mockbIO, mockbIO, replica, mockfm, alloc, dc, plan)
 		err = task.compact()
 		assert.NoError(t, err)
 
@@ -514,7 +544,7 @@ type mockFlushManager struct {
 
 var _ flushManager = (*mockFlushManager)(nil)
 
-func (mfm *mockFlushManager) flushBufferData(data *BufferData, segmentID UniqueID, flushed bool, pos *internalpb.MsgPosition) error {
+func (mfm *mockFlushManager) flushBufferData(data *BufferData, segmentID UniqueID, flushed bool, dropped bool, pos *internalpb.MsgPosition) error {
 	return nil
 }
 

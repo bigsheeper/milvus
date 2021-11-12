@@ -23,6 +23,7 @@ import (
 	"github.com/milvus-io/milvus/internal/msgstream"
 )
 
+// loadType is load collection or load partition
 type loadType = int32
 
 const (
@@ -99,6 +100,7 @@ func (dsService *dataSyncService) addCollectionDeltaFlowGraph(collectionID Uniqu
 	}
 }
 
+// getCollectionFlowGraphs returns the collection flowGraph by collectionID
 func (dsService *dataSyncService) getCollectionFlowGraphs(collectionID UniqueID, vChannels []string) (map[Channel]*queryNodeFlowGraph, error) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
@@ -117,6 +119,7 @@ func (dsService *dataSyncService) getCollectionFlowGraphs(collectionID UniqueID,
 	return tmpFGs, nil
 }
 
+// getCollectionDeltaFlowGraphs returns the collection delta flowGraph by collectionID
 func (dsService *dataSyncService) getCollectionDeltaFlowGraphs(collectionID UniqueID, vChannels []string) (map[Channel]*queryNodeFlowGraph, error) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()

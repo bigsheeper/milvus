@@ -254,7 +254,8 @@ func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
 	log.Debug("wait new tSafe ============",
 		zap.Any("collectionID", q.collectionID),
 		zap.Any("channel", c),
-		zap.Any("tp", pt),
+		zap.Any("t", t),
+		zap.Any("t_physical", pt),
 	)
 	return t, nil
 }
@@ -267,6 +268,17 @@ func (q *queryCollection) getServiceableTime() Timestamp {
 	}
 	q.serviceableTimeMutex.RLock()
 	defer q.serviceableTimeMutex.RUnlock()
+
+	sp, _ := tsoutil.ParseTS(q.serviceableTime)
+	final, _ := tsoutil.ParseTS(q.serviceableTime + gracefulTime)
+	log.Debug("queryNode getServiceableTime >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("GracefulTime", Params.GracefulTime),
+		zap.Any("serviceableTime_raw", q.serviceableTime),
+		zap.Any("serviceableTime_final", q.serviceableTime + gracefulTime),
+		zap.Any("serviceableTime_raw_physical", sp),
+		zap.Any("serviceableTime_final_physical", final),
+	)
 	return q.serviceableTime + gracefulTime
 }
 
@@ -274,10 +286,31 @@ func (q *queryCollection) setServiceableTime(t Timestamp) {
 	q.serviceableTimeMutex.Lock()
 	defer q.serviceableTimeMutex.Unlock()
 
+	tp, _ := tsoutil.ParseTS(t)
+	sp, _ := tsoutil.ParseTS(q.serviceableTime)
+	log.Debug("queryNode begin to setServiceableTime",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("GracefulTime", Params.GracefulTime),
+		zap.Any("t", t),
+		zap.Any("currentServiceableTime", q.serviceableTime),
+		zap.Any("t_physical", tp),
+		zap.Any("currentServiceableTime_physical", sp),
+	)
+
 	if t < q.serviceableTime {
 		return
 	}
 	q.serviceableTime = t
+
+	sp, _ = tsoutil.ParseTS(q.serviceableTime)
+	log.Debug("queryNode setServiceableTime done",
+		zap.Any("collectionID", q.collectionID),
+		zap.Any("GracefulTime", Params.GracefulTime),
+		zap.Any("t", t),
+		zap.Any("serviceableTime", q.serviceableTime),
+		zap.Any("t_physical", tp),
+		zap.Any("serviceableTime_physical", sp),
+	)
 }
 
 func (q *queryCollection) consumeQuery() {

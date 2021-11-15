@@ -62,7 +62,7 @@ type queryCollection struct {
 	tSafeUpdate     bool
 	watcherCond     *sync.Cond
 
-	serviceableTimeMutex sync.Mutex // guards serviceableTime
+	serviceableTimeMutex sync.RWMutex // guards serviceableTime
 	serviceableTime      Timestamp
 
 	queryMsgStream       msgstream.MsgStream
@@ -260,9 +260,14 @@ func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
 }
 
 func (q *queryCollection) getServiceableTime() Timestamp {
-	q.serviceableTimeMutex.Lock()
-	defer q.serviceableTimeMutex.Unlock()
-	return q.serviceableTime
+	gracefulTimeInMilliSecond := Params.GracefulTime
+	gracefulTime := typeutil.ZeroTimestamp
+	if gracefulTimeInMilliSecond > 0 {
+		gracefulTime = tsoutil.ComposeTS(gracefulTimeInMilliSecond, 0)
+	}
+	q.serviceableTimeMutex.RLock()
+	defer q.serviceableTimeMutex.RUnlock()
+	return q.serviceableTime + gracefulTime
 }
 
 func (q *queryCollection) setServiceableTime(t Timestamp) {
@@ -272,14 +277,7 @@ func (q *queryCollection) setServiceableTime(t Timestamp) {
 	if t < q.serviceableTime {
 		return
 	}
-
-	gracefulTimeInMilliSecond := Params.GracefulTime
-	if gracefulTimeInMilliSecond > 0 {
-		gracefulTime := tsoutil.ComposeTS(gracefulTimeInMilliSecond, 0)
-		q.serviceableTime = t + gracefulTime
-	} else {
-		q.serviceableTime = t
-	}
+	q.serviceableTime = t
 }
 
 func (q *queryCollection) consumeQuery() {

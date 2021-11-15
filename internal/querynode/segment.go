@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
@@ -310,16 +311,31 @@ func (s *Segment) search(plan *SearchPlan,
 	return &searchResult, nil
 }
 
+// HandleCProto deal with the result proto returned from CGO
+func HandleCProto(cRes *C.CProto, msg proto.Message) error {
+	// Standalone CProto is protobuf created by C side,
+	// Passed from c side
+	// memory is managed manually
+	blob := C.GoBytes(unsafe.Pointer(cRes.proto_blob), C.int32_t(cRes.proto_size))
+	defer C.free(cRes.proto_blob)
+	return proto.Unmarshal(blob, msg)
+}
+
 func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
 	s.segPtrMu.RLock()
 	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
-	resProto := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, C.uint64_t(plan.Timestamp))
+
+	var retrieveResult RetrieveResult
+	ts := C.uint64_t(plan.Timestamp)
+	status := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, ts, &retrieveResult.cRetrieveResult)
+	if err := HandleCStatus(&status, "Retrieve failed"); err != nil {
+		return nil, err
+	}
 	result := new(segcorepb.RetrieveResults)
-	err := HandleCProtoResult(&resProto, result)
-	if err != nil {
+	if err := HandleCProto(&retrieveResult.cRetrieveResult, result); err != nil {
 		return nil, err
 	}
 	return result, nil

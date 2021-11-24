@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -266,10 +267,17 @@ func (node *QueryNode) Start() error {
 	// start services
 	go node.historical.start()
 	go node.watchChangeInfo()
-	go node.statsService.start()
+	// go node.statsService.start()
 
 	Params.CreatedTime = time.Now()
 	Params.UpdatedTime = time.Now()
+
+	go func() {
+		err = http.ListenAndServe("0.0.0.0:8899", nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	node.UpdateStateCode(internalpb.StateCode_Healthy)
 	log.Debug("query node start successfully",

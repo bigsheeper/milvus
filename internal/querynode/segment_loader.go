@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"runtime"
 	"strconv"
 	"sync"
 
@@ -333,6 +334,7 @@ func (loader *segmentLoader) loadSealedSegments(segment *Segment, insertData *st
 		case *storage.BoolFieldData:
 			numRows = fieldData.NumRows
 			data = fieldData.Data
+			runtime.GC()
 		case *storage.Int8FieldData:
 			numRows = fieldData.NumRows
 			data = fieldData.Data

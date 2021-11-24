@@ -13,8 +13,10 @@ package querynode
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -102,56 +104,36 @@ func TestSegmentLoader_loadSegmentFieldsData(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	node, err := genSimpleQueryNode(ctx)
+	assert.NoError(t, err)
+	loader := node.loader
+	assert.NotNil(t, loader)
+
+	fieldUID := genConstantField(uidField)
+	fieldTimestamp := genConstantField(timestampField)
+
+	schema := &schemapb.CollectionSchema{
+		Name:   defaultCollectionName,
+		AutoID: true,
+		Fields: []*schemapb.FieldSchema{},
+	}
+
+	vecFiled := genFloatVectorField(simpleVecField)
+	schema.Fields = append(schema.Fields, vecFiled)
+
+	err = loader.historicalReplica.removeSegment(defaultSegmentID)
+	assert.NoError(t, err)
+
+	col := newCollection(defaultCollectionID, schema)
+	assert.NotNil(t, col)
+
+	schema.Fields = append(schema.Fields, fieldUID)
+	schema.Fields = append(schema.Fields, fieldTimestamp)
+
+	binlog, err := saveBinLog(ctx, defaultCollectionID, defaultPartitionID, defaultSegmentID, 1000000, schema)
+	assert.NoError(t, err)
+
 	runLoadSegmentFieldData := func(dataType schemapb.DataType) {
-		node, err := genSimpleQueryNode(ctx)
-		assert.NoError(t, err)
-		loader := node.loader
-		assert.NotNil(t, loader)
-
-		fieldUID := genConstantField(uidField)
-		fieldTimestamp := genConstantField(timestampField)
-
-		schema := &schemapb.CollectionSchema{
-			Name:   defaultCollectionName,
-			AutoID: true,
-			Fields: []*schemapb.FieldSchema{},
-		}
-
-		constFieldID := FieldID(105)
-		constFieldName := "const-field-test"
-		constField := &schemapb.FieldSchema{
-			FieldID: constFieldID,
-			Name:    constFieldName,
-		}
-
-		switch dataType {
-		case schemapb.DataType_Bool:
-			constField.DataType = schemapb.DataType_Bool
-		case schemapb.DataType_Int8:
-			constField.DataType = schemapb.DataType_Int8
-		case schemapb.DataType_Int16:
-			constField.DataType = schemapb.DataType_Int16
-		case schemapb.DataType_Int32:
-			constField.DataType = schemapb.DataType_Int32
-		case schemapb.DataType_Int64:
-			constField.DataType = schemapb.DataType_Int64
-		case schemapb.DataType_Float:
-			constField.DataType = schemapb.DataType_Float
-		case schemapb.DataType_Double:
-			constField.DataType = schemapb.DataType_Double
-		case schemapb.DataType_FloatVector:
-			constField.DataType = schemapb.DataType_FloatVector
-		case schemapb.DataType_BinaryVector:
-			constField.DataType = schemapb.DataType_BinaryVector
-		}
-
-		schema.Fields = append(schema.Fields, constField)
-
-		err = loader.historicalReplica.removeSegment(defaultSegmentID)
-		assert.NoError(t, err)
-
-		col := newCollection(defaultCollectionID, schema)
-		assert.NotNil(t, col)
 		segment := newSegment(col,
 			defaultSegmentID,
 			defaultPartitionID,
@@ -160,24 +142,23 @@ func TestSegmentLoader_loadSegmentFieldsData(t *testing.T) {
 			segmentTypeSealed,
 			true)
 
-		schema.Fields = append(schema.Fields, fieldUID)
-		schema.Fields = append(schema.Fields, fieldTimestamp)
-
-		binlog, err := saveBinLog(ctx, defaultCollectionID, defaultPartitionID, defaultSegmentID, defaultMsgLength, schema)
-		assert.NoError(t, err)
-
 		err = loader.loadSegmentFieldsData(segment, binlog, segmentTypeSealed)
 		assert.NoError(t, err)
+
+		deleteSegment(segment)
 	}
 
 	t.Run("test bool", func(t *testing.T) {
-		runLoadSegmentFieldData(schemapb.DataType_Bool)
-		runLoadSegmentFieldData(schemapb.DataType_Int8)
-		runLoadSegmentFieldData(schemapb.DataType_Int16)
-		runLoadSegmentFieldData(schemapb.DataType_Int32)
-		runLoadSegmentFieldData(schemapb.DataType_Int64)
-		runLoadSegmentFieldData(schemapb.DataType_Float)
-		runLoadSegmentFieldData(schemapb.DataType_Double)
+		for i := 0; i < 1000; i++ {
+			runLoadSegmentFieldData(schemapb.DataType_FloatVector)
+			time.Sleep(1 * time.Second)
+			fmt.Println("============================")
+			fmt.Println("============================")
+			fmt.Println("============================")
+			mem, err := getUsedMemory()
+			assert.NoError(t, err)
+			fmt.Println(mem / 1024.0 / 1024.0)
+		}
 	})
 }
 

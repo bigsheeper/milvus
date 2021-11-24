@@ -28,7 +28,7 @@ type serviceTimeNode struct {
 	partitionID       UniqueID
 	vChannel          Channel
 	tSafeReplica      TSafeReplicaInterface
-	timeTickMsgStream msgstream.MsgStream
+	//timeTickMsgStream msgstream.MsgStream
 }
 
 func (stNode *serviceTimeNode) Name() string {
@@ -37,7 +37,7 @@ func (stNode *serviceTimeNode) Name() string {
 
 func (stNode *serviceTimeNode) Close() {
 	// `Close` needs to be invoked to close producers
-	stNode.timeTickMsgStream.Close()
+	//stNode.timeTickMsgStream.Close()
 }
 
 func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
@@ -119,15 +119,15 @@ func newServiceTimeNode(ctx context.Context,
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
-	timeTimeMsgStream, err := factory.NewMsgStream(ctx)
-	if err != nil {
-		log.Warn(err.Error())
-	} else {
-		// TODO: use param table
-		timeTickChannel := "query-node-time-tick-0"
-		timeTimeMsgStream.AsProducer([]string{timeTickChannel})
-		log.Debug("query node AsProducer: " + timeTickChannel)
-	}
+	//timeTimeMsgStream, err := factory.NewMsgStream(ctx)
+	//if err != nil {
+	//	log.Warn(err.Error())
+	//} else {
+	//	// TODO: use param table
+	//	timeTickChannel := "query-node-time-tick-0"
+	//	timeTimeMsgStream.AsProducer([]string{timeTickChannel})
+	//	log.Debug("query node AsProducer: " + timeTickChannel)
+	//}
 
 	return &serviceTimeNode{
 		baseNode:          baseNode,
@@ -136,6 +136,6 @@ func newServiceTimeNode(ctx context.Context,
 		partitionID:       partitionID,
 		vChannel:          channel,
 		tSafeReplica:      tSafeReplica,
-		timeTickMsgStream: timeTimeMsgStream,
+		//timeTickMsgStream: timeTimeMsgStream,
 	}
 }

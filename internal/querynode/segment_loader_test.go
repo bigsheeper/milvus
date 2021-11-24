@@ -14,11 +14,9 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -151,10 +149,10 @@ func TestSegmentLoader_loadSegmentFieldsData(t *testing.T) {
 	t.Run("test bool", func(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			runLoadSegmentFieldData(schemapb.DataType_FloatVector)
-			time.Sleep(1 * time.Second)
+			//time.Sleep(1 * time.Second)
 			fmt.Println("============================")
 			fmt.Println("============================")
-			fmt.Println("============================")
+			fmt.Println("============================", i)
 			mem, err := getUsedMemory()
 			assert.NoError(t, err)
 			fmt.Println(mem / 1024.0 / 1024.0)

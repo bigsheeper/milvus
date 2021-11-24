@@ -2167,11 +2167,12 @@ func (node *Proxy) GetPersistentSegmentInfo(ctx context.Context, req *milvuspb.G
 		},
 		SegmentIDs: segments,
 	})
-	log.Debug("GetPersistentSegmentInfo ", zap.Any("infos", infoResp.Infos), zap.Any("status", infoResp.Status))
 	if err != nil {
+		log.Debug("GetPersistentSegmentInfo fail", zap.Error(err))
 		resp.Status.Reason = fmt.Errorf("dataCoord:GetSegmentInfo, err:%w", err).Error()
 		return resp, nil
 	}
+	log.Debug("GetPersistentSegmentInfo ", zap.Int("len(infos)", len(infoResp.Infos)), zap.Any("status", infoResp.Status))
 	if infoResp.Status.ErrorCode != commonpb.ErrorCode_Success {
 		resp.Status.Reason = infoResp.Status.Reason
 		return resp, nil
@@ -2540,6 +2541,7 @@ func (node *Proxy) GetCompactionStateWithPlans(ctx context.Context, req *milvusp
 // GetFlushState gets the flush state of multiple segments
 func (node *Proxy) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStateRequest) (*milvuspb.GetFlushStateResponse, error) {
 	log.Info("received get flush state request", zap.Any("request", req))
+	var err error
 	resp := &milvuspb.GetFlushStateResponse{}
 	if !node.checkHealthy() {
 		resp.Status = unhealthyStatus()
@@ -2547,7 +2549,7 @@ func (node *Proxy) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStat
 		return resp, nil
 	}
 
-	resp, err := node.dataCoord.GetFlushState(ctx, req)
+	resp, err = node.dataCoord.GetFlushState(ctx, req)
 	log.Info("received get flush state response", zap.Any("response", resp))
 	return resp, err
 }

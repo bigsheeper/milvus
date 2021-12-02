@@ -641,6 +641,12 @@ func (scheduler *TaskScheduler) scheduleLoop() {
 				highPriorityTasks, lowPriorityTasks := sortInternalTaskByPriority(childTasks, commonpb.MsgType_LoadSegments)
 				processInternalTaskFn(highPriorityTasks, triggerTask)
 				if triggerTask.getResultInfo().ErrorCode == commonpb.ErrorCode_Success {
+					err = updateSegmentInfoFromTask(scheduler.ctx, triggerTask, scheduler.meta)
+					if err != nil {
+						triggerTask.setResultInfo(err)
+					}
+				}
+				if triggerTask.getResultInfo().ErrorCode == commonpb.ErrorCode_Success {
 					processInternalTaskFn(lowPriorityTasks, triggerTask)
 				}
 				if triggerTask.getResultInfo().ErrorCode == commonpb.ErrorCode_Success {

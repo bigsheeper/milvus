@@ -404,7 +404,8 @@ class TestCompactionOperation(TestcaseBase):
                                                 search_params, ct.default_limit,
                                                 check_task=CheckTasks.err_res,
                                                 check_items={ct.err_code: 1,
-                                                             ct.err_msg: "Metric type of field index isn't the same with search info"})
+                                                             ct.err_msg: "Metric type of field index isn't "
+                                                                         "the same with search info"})
 
         # verify search result
         search_params = {"metric_type": "JACCARD", "params": {"nprobe": 10}}
@@ -721,7 +722,7 @@ class TestCompactionOperation(TestcaseBase):
         assert tmp_nb in search_res[0].ids
         assert len(search_res[0]) == ct.default_limit
 
-    @pytest.mark.tags(CaseLabel.L1)
+    @pytest.mark.tags(CaseLabel.L2)
     def test_compact_threshold_auto_merge(self):
         """
         target: test num (segment_size < 1/2Max) reaches auto-merge threshold 10
@@ -736,7 +737,7 @@ class TestCompactionOperation(TestcaseBase):
         collection_w = self.collection_insert_multi_segments_one_shard(prefix, num_of_segment=threshold)
 
         # Estimated auto-merging takes 30s
-        cost = 30
+        cost = 60
         collection_w.load()
         start = time()
         while True:
@@ -748,7 +749,7 @@ class TestCompactionOperation(TestcaseBase):
                 break
             end = time()
             if end - start > cost:
-                raise BaseException(1, "Ccompact auto-merge more than 30s")
+                raise BaseException(1, "Ccompact auto-merge more than 60s")
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_compact_less_threshold_no_merge(self):

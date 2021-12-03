@@ -34,7 +34,7 @@ minio:
   secretAccessKey: minioadmin # MinIO/S3 encryption string
   useSSL: false # Access to MinIO/S3 with SSL
   bucketName: "a-bucket" # Bucket name in MinIO/S3
-  rootPath: files
+  rootPath: files # The root path where the message is stored in MinIO/S3
 
 # Related configuration of pulsar, used to manage Milvus logs of recent mutation operations, output streaming log, and provide log publish-subscribe services.
 pulsar:
@@ -44,7 +44,7 @@ pulsar:
 
 rocksmq:
   path: /var/lib/milvus/rdb_data # The path where the message is stored in rocksmq
-  rocksmqPageSize: 2147483648 # 2 GB, 2 * 1024 * 1024 * 1024 bytes
+  rocksmqPageSize: 2147483648 # 2 GB, 2 * 1024 * 1024 * 1024 bytes, The size of each page of messages in rocksmq
   retentionTimeInMinutes: 10080 # 7 days, 7 * 24 * 60 minutes, The retention time of the message in rocksmq.
   retentionSizeInMB: 8192 # 8 GB, 8 * 1024 MB, The retention size of the message in rocksmq.
 
@@ -174,7 +174,7 @@ dataCoord:
   segment:
     maxSize: 512 # Maximum size of a segment in MB
     sealProportion: 0.75 # It's the minimum proportion for a segment which can be sealed
-    assignmentExpiration: 2000 # ms
+    assignmentExpiration: 2000 # The time of the assignment expiration in ms 
 
   compaction:
     retentionDuration: 432000 # 5 days in seconds

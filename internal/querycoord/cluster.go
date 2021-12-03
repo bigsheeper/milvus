@@ -238,7 +238,7 @@ func (c *queryNodeCluster) getComponentInfos(ctx context.Context) ([]*internalpb
 	subComponentInfos := make([]*internalpb.ComponentInfo, 0)
 	nodes, err := c.getOnlineNodes()
 	if err != nil {
-		log.Debug("GetComponentInfos: failed get on service nodes", zap.String("error info", err.Error()))
+		log.Debug("getComponentInfos: failed get on service nodes", zap.String("error info", err.Error()))
 		return nil, err
 	}
 	for _, node := range nodes {
@@ -712,7 +712,7 @@ func (c *queryNodeCluster) getOfflineNodes() (map[int64]Node, error) {
 		}
 	}
 	if len(nodes) == 0 {
-		return nil, errors.New("GetOfflineNodes: no queryNode is offline")
+		return nil, errors.New("getOfflineNodes: no queryNode is offline")
 	}
 
 	return nodes, nil
@@ -726,7 +726,7 @@ func (c *queryNodeCluster) isOnline(nodeID int64) (bool, error) {
 		return node.isOnline(), nil
 	}
 
-	return false, fmt.Errorf("IsOnline: query node %d not exist", nodeID)
+	return false, fmt.Errorf("isOnline: query node %d not exist", nodeID)
 }
 
 //func (c *queryNodeCluster) printMeta() {

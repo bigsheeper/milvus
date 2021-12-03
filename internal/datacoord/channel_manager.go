@@ -131,7 +131,9 @@ func (c *ChannelManager) unwatchDroppedChannels() {
 			err := c.remove(nodeChannel.NodeID, ch)
 			if err != nil {
 				log.Warn("unable to remove channel", zap.String("channel", ch.Name), zap.Error(err))
+				continue
 			}
+			c.h.FinishDropChannel(ch.Name)
 		}
 	}
 }
@@ -173,7 +175,7 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 
 func (c *ChannelManager) getNewOnlines(curr []int64, old []int64) []int64 {
 	mold := make(map[int64]struct{})
-	ret := make([]int64, 0)
+	ret := make([]int64, 0, len(curr))
 	for _, n := range old {
 		mold[n] = struct{}{}
 	}
@@ -187,7 +189,7 @@ func (c *ChannelManager) getNewOnlines(curr []int64, old []int64) []int64 {
 
 func (c *ChannelManager) getOfflines(curr []int64, old []int64) []int64 {
 	mcurr := make(map[int64]struct{})
-	ret := make([]int64, 0)
+	ret := make([]int64, 0, len(old))
 	for _, n := range curr {
 		mcurr[n] = struct{}{}
 	}

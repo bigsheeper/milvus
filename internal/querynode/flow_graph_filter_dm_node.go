@@ -29,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/trace"
 )
 
+// filterDmNode is one of the nodes in query node flow graph
 type filterDmNode struct {
 	baseNode
 	loadType     loadType // load collection or load partition
@@ -37,6 +38,7 @@ type filterDmNode struct {
 	replica      ReplicaInterface
 }
 
+// Name returns the name of filterDmNode
 func (fdmNode *filterDmNode) Name() string {
 	return "fdmNode"
 }

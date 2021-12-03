@@ -1,4 +1,4 @@
-from time import sleep
+from time import time, sleep
 
 import pytest
 from pymilvus.grpc_gen.common_pb2 import SegmentState
@@ -340,7 +340,7 @@ class TestCompactionOperation(TestcaseBase):
                 4.search
         expected: Verify segment info and index info
         """
-        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb)
+        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb, is_dup=False)
 
         # create index
         collection_w.create_index(ct.default_float_vec_field_name, ct.default_index)
@@ -404,7 +404,8 @@ class TestCompactionOperation(TestcaseBase):
                                                 search_params, ct.default_limit,
                                                 check_task=CheckTasks.err_res,
                                                 check_items={ct.err_code: 1,
-                                                             ct.err_msg: "Metric type of field index isn't the same with search info"})
+                                                             ct.err_msg: "Metric type of field index isn't "
+                                                                         "the same with search info"})
 
         # verify search result
         search_params = {"metric_type": "JACCARD", "params": {"nprobe": 10}}
@@ -735,13 +736,20 @@ class TestCompactionOperation(TestcaseBase):
         # create collection shard_num=1, insert 10 segments, each with one entity
         collection_w = self.collection_insert_multi_segments_one_shard(prefix, num_of_segment=threshold)
 
-        # todo compaction cost
-        sleep(2)
+        # Estimated auto-merging takes 30s
+        cost = 60
         collection_w.load()
-        segments_info = self.utility_wrap.get_query_segment_info(collection_w.name)[0]
+        start = time()
+        while True:
+            sleep(5)
+            segments_info = self.utility_wrap.get_query_segment_info(collection_w.name)[0]
 
-        # verify segments reaches threshold, auto-merge ten segments into one
-        assert len(segments_info) == 1
+            # verify segments reaches threshold, auto-merge ten segments into one
+            if len(segments_info) == 1:
+                break
+            end = time()
+            if end - start > cost:
+                raise BaseException(1, "Ccompact auto-merge more than 60s")
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_compact_less_threshold_no_merge(self):

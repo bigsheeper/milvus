@@ -84,6 +84,7 @@ const (
 const (
 	buildID   = UniqueID(0)
 	indexID   = UniqueID(0)
+	fieldID   = UniqueID(100)
 	indexName = "query-node-index-0"
 )
 
@@ -1314,7 +1315,7 @@ func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
 
 	node.etcdKV = etcdKV
 
-	node.tSafeReplica = newTSafeReplica()
+	node.tSafeReplica = newTSafeReplica(ctx)
 
 	streaming, err := genSimpleStreaming(ctx, node.tSafeReplica)
 	if err != nil {

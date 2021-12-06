@@ -43,6 +43,7 @@ func (fdmNode *filterDmNode) Name() string {
 	return "fdmNode"
 }
 
+// Operate handles input messages, to filter invalid insert messages
 func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	//log.Debug("Do filterDmNode operation")
 
@@ -103,6 +104,7 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	return []Msg{res}
 }
 
+// filterInvalidDeleteMessage would filter out invalid delete messages
 func (fdmNode *filterDmNode) filterInvalidDeleteMessage(msg *msgstream.DeleteMsg) *msgstream.DeleteMsg {
 	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
 	msg.SetTraceCtx(ctx)
@@ -163,6 +165,7 @@ func (fdmNode *filterDmNode) filterInvalidDeleteMessage(msg *msgstream.DeleteMsg
 	return msg
 }
 
+// filterInvalidInsertMessage would filter out invalid insert messages
 func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg) *msgstream.InsertMsg {
 	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
 	msg.SetTraceCtx(ctx)

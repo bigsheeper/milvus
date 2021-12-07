@@ -20,7 +20,8 @@ pipeline {
                 defaultContainer 'main'
                 yamlFile 'build/ci/jenkins/pod/rte.yaml'
                 customWorkspace '/home/jenkins/agent/workspace'
-                // idleMinutes 120
+                // idle 5 minutes to wait clean up tasks
+                idleMinutes 5
             }
     }
     environment {
@@ -122,7 +123,9 @@ pipeline {
                                                     --skip-test \
                                                     --skip-build \
                                                     --skip-build-image \
-                                                    --install-extra-arg "--set etcd.persistence.storageClass=local-path --set minio.persistence.storageClass=local-path \
+                                                    --install-extra-arg "--set etcd.persistence.storageClass=local-path \
+                                                    --set minio.persistence.storageClass=local-path \
+                                                    --set etcd.metrics.enabled=true \
                                                     --set metrics.serviceMonitor.enabled=true" 
                                                     """
                                                 }

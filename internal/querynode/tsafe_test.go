@@ -12,7 +12,6 @@
 package querynode
 
 import (
-	"context"
 	"sync"
 	"testing"
 
@@ -20,12 +19,10 @@ import (
 )
 
 func TestTSafe_GetAndSet(t *testing.T) {
-	tSafe := newTSafe(context.Background(), "TestTSafe-channel")
-	tSafe.start()
+	tSafe := newTSafe("TestTSafe-channel")
 	watcher := newTSafeWatcher()
 	defer watcher.close()
-	err := tSafe.registerTSafeWatcher(watcher)
-	assert.NoError(t, err)
+	tSafe.registerTSafeWatcher(watcher)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -36,55 +33,23 @@ func TestTSafe_GetAndSet(t *testing.T) {
 		assert.Equal(t, timestamp, Timestamp(1000))
 		wg.Done()
 	}()
-	tSafe.set(UniqueID(1), Timestamp(1000))
+	tSafe.set(Timestamp(1000))
 	wg.Wait()
 }
 
 func TestTSafe_Remove(t *testing.T) {
-	tSafe := newTSafe(context.Background(), "TestTSafe-remove")
-	tSafe.start()
+	tSafe := newTSafe("TestTSafe-remove")
 	watcher := newTSafeWatcher()
 	defer watcher.close()
-	err := tSafe.registerTSafeWatcher(watcher)
-	assert.NoError(t, err)
+	tSafe.registerTSafeWatcher(watcher)
 
-	tSafe.set(UniqueID(1), Timestamp(1000))
-	tSafe.set(UniqueID(2), Timestamp(1001))
+	tSafe.set(Timestamp(1000))
+	tSafe.set(Timestamp(1001))
 
 	<-watcher.watcherChan()
 	timestamp := tSafe.get()
 	assert.Equal(t, timestamp, Timestamp(1000))
 
-	tSafe.removeRecord(UniqueID(1))
 	timestamp = tSafe.get()
 	assert.Equal(t, timestamp, Timestamp(1001))
-}
-
-func TestTSafe_Close(t *testing.T) {
-	tSafe := newTSafe(context.Background(), "TestTSafe-close")
-	tSafe.start()
-	watcher := newTSafeWatcher()
-	defer watcher.close()
-	err := tSafe.registerTSafeWatcher(watcher)
-	assert.NoError(t, err)
-
-	// test set won't panic while close
-	go func() {
-		for i := 0; i <= 100; i++ {
-			tSafe.set(UniqueID(i), Timestamp(1000))
-		}
-	}()
-
-	tSafe.close()
-
-	// wait until channel close
-	for range watcher.watcherChan() {
-
-	}
-
-	tSafe.set(UniqueID(101), Timestamp(1000))
-	tSafe.removeRecord(UniqueID(1))
-	// register TSafe will fail
-	err = tSafe.registerTSafeWatcher(watcher)
-	assert.Error(t, err)
 }

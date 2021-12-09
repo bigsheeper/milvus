@@ -671,8 +671,9 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addPartitionFlowGraph(defaultCollectionID,
+		task.node.dataSyncService.addDMLFlowGraph(defaultCollectionID,
 			defaultPartitionID,
+			loadTypePartition,
 			[]Channel{defaultVChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
@@ -716,8 +717,9 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addPartitionFlowGraph(defaultCollectionID,
+		task.node.dataSyncService.addDMLFlowGraph(defaultCollectionID,
 			defaultPartitionID,
+			loadTypePartition,
 			[]Channel{defaultVChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)

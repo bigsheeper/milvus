@@ -12,14 +12,13 @@
 package querynode
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTSafeReplica_valid(t *testing.T) {
-	replica := newTSafeReplica(context.Background())
+	replica := newTSafeReplica()
 	replica.addTSafe(defaultVChannel)
 
 	watcher := newTSafeWatcher()
@@ -27,36 +26,36 @@ func TestTSafeReplica_valid(t *testing.T) {
 	assert.NoError(t, err)
 
 	timestamp := Timestamp(1000)
-	err = replica.setTSafe(defaultVChannel, defaultCollectionID, timestamp)
+	err = replica.setTSafe(defaultVChannel, timestamp)
 	assert.NoError(t, err)
 	<-watcher.watcherChan()
 	resT, err := replica.getTSafe(defaultVChannel)
 	assert.NoError(t, err)
 	assert.Equal(t, timestamp, resT)
 
-	isRemoved := replica.removeTSafe(defaultVChannel)
-	assert.True(t, isRemoved)
+	replica.removeTSafe(defaultVChannel)
+	_, err = replica.getTSafe(defaultVChannel)
+	assert.Error(t, err)
 }
 
-func TestTSafeReplica_invalid(t *testing.T) {
-	replica := newTSafeReplica(context.Background())
-	replica.addTSafe(defaultVChannel)
-
-	watcher := newTSafeWatcher()
-	err := replica.registerTSafeWatcher(defaultVChannel, watcher)
-	assert.NoError(t, err)
-
-	timestamp := Timestamp(1000)
-	err = replica.setTSafe(defaultVChannel, defaultCollectionID, timestamp)
-	assert.NoError(t, err)
-	<-watcher.watcherChan()
-	resT, err := replica.getTSafe(defaultVChannel)
-	assert.NoError(t, err)
-	assert.Equal(t, timestamp, resT)
-
-	isRemoved := replica.removeTSafe(defaultVChannel)
-	assert.True(t, isRemoved)
-
-	replica.addTSafe(defaultVChannel)
-	replica.addTSafe(defaultVChannel)
-}
+// TODO: delete
+//func TestTSafeReplica_invalid(t *testing.T) {
+//	replica := newTSafeReplica()
+//	replica.addTSafe(defaultVChannel)
+//
+//	watcher := newTSafeWatcher()
+//	err := replica.registerTSafeWatcher(defaultVChannel, watcher)
+//	assert.NoError(t, err)
+//
+//	timestamp := Timestamp(1000)
+//	err = replica.setTSafe(defaultVChannel, timestamp)
+//	assert.NoError(t, err)
+//	<-watcher.watcherChan()
+//	resT, err := replica.getTSafe(defaultVChannel)
+//	assert.NoError(t, err)
+//	assert.Equal(t, timestamp, resT)
+//
+//	replica.removeTSafe(defaultVChannel)
+//	_, err = replica.getTSafe(defaultVChannel)
+//	assert.Error(t, err)
+//}

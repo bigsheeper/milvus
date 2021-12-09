@@ -110,7 +110,6 @@ func newQueryNodeFlowGraph(ctx context.Context,
 }
 
 func newQueryNodeDeltaFlowGraph(ctx context.Context,
-	loadType loadType,
 	collectionID UniqueID,
 	partitionID UniqueID,
 	historicalReplica ReplicaInterface,

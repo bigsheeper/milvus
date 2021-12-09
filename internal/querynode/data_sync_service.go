@@ -51,7 +51,7 @@ type dataSyncService struct {
 }
 
 // addDMLFlowGraph add a flowGraph to dmlFlowGraphs
-func (dsService *dataSyncService) addDMLFlowGraph(collectionID UniqueID, vChannels []string) {
+func (dsService *dataSyncService) addDMLFlowGraph(collectionID UniqueID, partitionID UniqueID, loadType loadType, vChannels []string) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
@@ -59,10 +59,8 @@ func (dsService *dataSyncService) addDMLFlowGraph(collectionID UniqueID, vChanne
 		dsService.dmlFlowGraphs[collectionID] = make(map[Channel]*queryNodeFlowGraph)
 	}
 	for _, vChannel := range vChannels {
-		// DML flow graph doesn't need partition id
-		partitionID := UniqueID(0)
 		newFlowGraph := newQueryNodeFlowGraph(dsService.ctx,
-			loadTypeCollection,
+			loadType,
 			collectionID,
 			partitionID,
 			dsService.streamingReplica,
@@ -88,7 +86,6 @@ func (dsService *dataSyncService) addDeltaFlowGraph(collectionID UniqueID, vChan
 		// delta flow graph doesn't need partition id
 		partitionID := UniqueID(0)
 		newFlowGraph := newQueryNodeDeltaFlowGraph(dsService.ctx,
-			loadTypeCollection,
 			collectionID,
 			partitionID,
 			dsService.historicalReplica,
@@ -214,13 +211,13 @@ func newDataSyncService(ctx context.Context,
 	factory msgstream.Factory) *dataSyncService {
 
 	return &dataSyncService{
-		ctx:                 ctx,
-		dmlFlowGraphs:       make(map[UniqueID]map[Channel]*queryNodeFlowGraph),
-		deltaFlowGraphs:     map[int64]map[string]*queryNodeFlowGraph{},
-		streamingReplica:    streamingReplica,
-		historicalReplica:   historicalReplica,
-		tSafeReplica:        tSafeReplica,
-		msFactory:           factory,
+		ctx:               ctx,
+		dmlFlowGraphs:     make(map[UniqueID]map[Channel]*queryNodeFlowGraph),
+		deltaFlowGraphs:   map[int64]map[string]*queryNodeFlowGraph{},
+		streamingReplica:  streamingReplica,
+		historicalReplica: historicalReplica,
+		tSafeReplica:      tSafeReplica,
+		msFactory:         factory,
 	}
 }
 

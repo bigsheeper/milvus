@@ -225,8 +225,14 @@ func (w *watchDmChannelsTask) PreExecute(ctx context.Context) error {
 func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	collectionID := w.req.CollectionID
 	partitionID := w.req.PartitionID
+
+	var lType loadType
 	// if no partitionID is specified, load type is load collection
-	loadPartition := partitionID != 0
+	if partitionID != 0 {
+		lType = loadTypePartition
+	} else {
+		lType = loadTypeCollection
+	}
 
 	// get all vChannels
 	vChannels := make([]Channel, 0)
@@ -266,27 +272,21 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 			return err
 		}
 	}
-	var l loadType
-	if loadPartition {
-		l = loadTypePartition
-	} else {
-		l = loadTypeCollection
-	}
 	sCol, err := w.node.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
 	}
 	sCol.addVChannels(vChannels)
 	sCol.addPChannels(pChannels)
-	sCol.setLoadType(l)
+	sCol.setLoadType(lType)
 	hCol, err := w.node.historical.replica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
 	}
 	hCol.addVChannels(vChannels)
 	hCol.addPChannels(pChannels)
-	hCol.setLoadType(l)
-	if loadPartition {
+	hCol.setLoadType(lType)
+	if lType == loadTypePartition {
 		sCol.deleteReleasedPartition(partitionID)
 		hCol.deleteReleasedPartition(partitionID)
 		if hasPartitionInStreaming := w.node.streaming.replica.hasPartition(partitionID); !hasPartitionInStreaming {
@@ -382,13 +382,8 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// add flow graph
-	if loadPartition {
-		w.node.dataSyncService.addPartitionFlowGraph(collectionID, partitionID, vChannels)
-		log.Debug("Query node add partition flow graphs", zap.Any("channels", vChannels))
-	} else {
-		w.node.dataSyncService.addDMLFlowGraph(collectionID, vChannels)
-		log.Debug("Query node add collection flow graphs", zap.Any("channels", vChannels))
-	}
+	w.node.dataSyncService.addDMLFlowGraph(collectionID, partitionID, lType, vChannels)
+	log.Debug("Query node add DML flow graphs", zap.Any("channels", vChannels))
 
 	// add tSafe watcher if queryCollection exists
 	qc, err := w.node.queryService.getQueryCollection(collectionID)
@@ -403,17 +398,9 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// channels as consumer
-	var nodeFGs map[Channel]*queryNodeFlowGraph
-	if loadPartition {
-		nodeFGs, err = w.node.dataSyncService.getPartitionFlowGraphs(partitionID, vChannels)
-		if err != nil {
-			return err
-		}
-	} else {
-		nodeFGs, err = w.node.dataSyncService.getDMLFlowGraphs(collectionID, vChannels)
-		if err != nil {
-			return err
-		}
+	nodeFGs, err := w.node.dataSyncService.getDMLFlowGraphs(collectionID, vChannels)
+	if err != nil {
+		return err
 	}
 	for _, channel := range toSubChannels {
 		for _, fg := range nodeFGs {
@@ -491,16 +478,9 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	)
 
 	// start flow graphs
-	if loadPartition {
-		err = w.node.dataSyncService.startPartitionFlowGraph(partitionID, vChannels)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = w.node.dataSyncService.startDMLFlowGraph(collectionID, vChannels)
-		if err != nil {
-			return err
-		}
+	err = w.node.dataSyncService.startDMLFlowGraph(collectionID, vChannels)
+	if err != nil {
+		return err
 	}
 
 	log.Debug("WatchDmChannels done", zap.String("ChannelIDs", fmt.Sprintln(vChannels)))
@@ -823,14 +803,6 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	)
 	if replicaType == replicaStreaming {
 		r.node.dataSyncService.removeDMLFlowGraph(r.req.CollectionID)
-		// remove partition flow graphs which partitions belong to the target collection
-		partitionIDs, err := replica.getPartitionIDs(r.req.CollectionID)
-		if err != nil {
-			return err
-		}
-		for _, partitionID := range partitionIDs {
-			r.node.dataSyncService.removePartitionFlowGraph(partitionID)
-		}
 		// remove all tSafes of the target collection
 		for _, channel := range collection.getVChannels() {
 			log.Debug("Releasing tSafe in releaseCollectionTask...",
@@ -916,32 +888,29 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	// release partitions
 	vChannels := sCol.getVChannels()
 	for _, id := range r.req.PartitionIDs {
-		if _, err := r.node.dataSyncService.getPartitionFlowGraphs(id, vChannels); err == nil {
-			r.node.dataSyncService.removePartitionFlowGraph(id)
-			// remove all tSafes of the target partition
-			for _, channel := range vChannels {
-				log.Debug("Releasing tSafe in releasePartitionTask...",
-					zap.Any("collectionID", r.req.CollectionID),
-					zap.Any("partitionID", id),
-					zap.Any("vChannel", channel),
-				)
-				// no tSafe in tSafeReplica, don't return error
-				isRemoved := r.node.tSafeReplica.removeTSafe(channel)
-				if isRemoved {
-					// no tSafe or tSafe has been removed,
-					// we need to remove the corresponding tSafeWatcher in queryCollection,
-					// and remove the corresponding channel in collection
-					qc, err := r.node.queryService.getQueryCollection(r.req.CollectionID)
-					if err != nil {
-						return err
-					}
-					err = qc.removeTSafeWatcher(channel)
-					if err != nil {
-						return err
-					}
-					sCol.removeVChannel(channel)
-					hCol.removeVChannel(channel)
+		// remove all tSafes of the target partition
+		for _, channel := range vChannels {
+			log.Debug("Releasing tSafe in releasePartitionTask...",
+				zap.Any("collectionID", r.req.CollectionID),
+				zap.Any("partitionID", id),
+				zap.Any("vChannel", channel),
+			)
+			// no tSafe in tSafeReplica, don't return error
+			isRemoved := r.node.tSafeReplica.removeTSafe(channel)
+			if isRemoved {
+				// no tSafe or tSafe has been removed,
+				// we need to remove the corresponding tSafeWatcher in queryCollection,
+				// and remove the corresponding channel in collection
+				qc, err := r.node.queryService.getQueryCollection(r.req.CollectionID)
+				if err != nil {
+					return err
 				}
+				err = qc.removeTSafeWatcher(channel)
+				if err != nil {
+					return err
+				}
+				sCol.removeVChannel(channel)
+				hCol.removeVChannel(channel)
 			}
 		}
 

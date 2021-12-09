@@ -203,6 +203,7 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	return []Msg{res}
 }
 
+// processDeleteMessages would execute delete operations for growing segments
 func processDeleteMessages(replica ReplicaInterface, msg *msgstream.DeleteMsg, delData *deleteData) {
 	var partitionIDs []UniqueID
 	var err error
@@ -243,6 +244,7 @@ func processDeleteMessages(replica ReplicaInterface, msg *msgstream.DeleteMsg, d
 	}
 }
 
+// filterSegmentsByPKs would filter segments by primary keys
 func filterSegmentsByPKs(pks []int64, segment *Segment) ([]int64, error) {
 	if pks == nil {
 		return nil, fmt.Errorf("pks is nil when getSegmentsByPKs")
@@ -263,6 +265,7 @@ func filterSegmentsByPKs(pks []int64, segment *Segment) ([]int64, error) {
 	return res, nil
 }
 
+// insert would execute insert operations for specific growing segment
 func (iNode *insertNode) insert(iData *insertData, segmentID UniqueID, wg *sync.WaitGroup) {
 	log.Debug("QueryNode::iNode::insert", zap.Any("SegmentID", segmentID))
 	var targetSegment, err = iNode.streamingReplica.getSegmentByID(segmentID)

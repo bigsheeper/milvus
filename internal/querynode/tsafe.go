@@ -43,12 +43,6 @@ func (watcher *tSafeWatcher) close() {
 	watcher.closeCh <- struct{}{}
 }
 
-type tSafer interface {
-	get() Timestamp
-	set(t Timestamp)
-	registerTSafeWatcher(t *tSafeWatcher)
-}
-
 type tSafe struct {
 	channel     Channel
 	tSafeMu     sync.Mutex // guards all fields
@@ -56,13 +50,12 @@ type tSafe struct {
 	watcherList []*tSafeWatcher
 }
 
-func newTSafe(channel Channel) tSafer {
-	var t tSafer = &tSafe{
+func newTSafe(channel Channel) *tSafe {
+	return &tSafe{
 		channel:     channel,
 		watcherList: make([]*tSafeWatcher, 0),
 		tSafe:       typeutil.ZeroTimestamp,
 	}
-	return t
 }
 
 func (ts *tSafe) registerTSafeWatcher(t *tSafeWatcher) {

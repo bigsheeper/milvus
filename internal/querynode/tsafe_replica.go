@@ -12,7 +12,6 @@
 package querynode
 
 import (
-	"context"
 	"errors"
 	"sync"
 
@@ -24,24 +23,22 @@ import (
 // TSafeReplicaInterface is the interface wrapper of tSafeReplica
 type TSafeReplicaInterface interface {
 	getTSafe(vChannel Channel) (Timestamp, error)
-	setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) error
+	setTSafe(vChannel Channel, timestamp Timestamp) error
 	addTSafe(vChannel Channel)
-	removeTSafe(vChannel Channel) error
+	removeTSafe(vChannel Channel)
 	registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) error
-	removeRecord(vChannel Channel, partitionID UniqueID) error
 }
 
 // tSafeReplica implements `TSafeReplicaInterface` interface.
 type tSafeReplica struct {
 	mu     sync.Mutex         // guards tSafes
-	tSafes map[Channel]tSafer // map[DMLChannel|deltaChannel]tSafer
-	ctx    context.Context
+	tSafes map[Channel]*tSafe // map[DMLChannel|deltaChannel]*tSafe
 }
 
 func (t *tSafeReplica) getTSafe(vChannel Channel) (Timestamp, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
+	ts, err := t.getTSafePrivate(vChannel)
 	if err != nil {
 		//log.Warn("get tSafe failed",
 		//	zap.Any("channel", vChannel),
@@ -49,22 +46,22 @@ func (t *tSafeReplica) getTSafe(vChannel Channel) (Timestamp, error) {
 		//)
 		return 0, err
 	}
-	return safer.get(), nil
+	return ts.get(), nil
 }
 
-func (t *tSafeReplica) setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) error {
+func (t *tSafeReplica) setTSafe(vChannel Channel, timestamp Timestamp) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
+	ts, err := t.getTSafePrivate(vChannel)
 	if err != nil {
 		//log.Warn("set tSafe failed", zap.Error(err))
 		return err
 	}
-	safer.set(id, timestamp)
+	ts.set(timestamp)
 	return nil
 }
 
-func (t *tSafeReplica) getTSaferPrivate(vChannel Channel) (tSafer, error) {
+func (t *tSafeReplica) getTSafePrivate(vChannel Channel) (*tSafe, error) {
 	if _, ok := t.tSafes[vChannel]; !ok {
 		err := errors.New("cannot found tSafer, vChannel = " + vChannel)
 		//log.Warn(err.Error())
@@ -77,8 +74,7 @@ func (t *tSafeReplica) addTSafe(vChannel Channel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, ok := t.tSafes[vChannel]; !ok {
-		t.tSafes[vChannel] = newTSafe(t.ctx, vChannel)
-		t.tSafes[vChannel].start()
+		t.tSafes[vChannel] = newTSafe(vChannel)
 		log.Debug("add tSafe done",
 			zap.Any("channel", vChannel),
 		)
@@ -89,47 +85,30 @@ func (t *tSafeReplica) addTSafe(vChannel Channel) {
 	}
 }
 
-func (t *tSafeReplica) removeTSafe(vChannel Channel) error {
+func (t *tSafeReplica) removeTSafe(vChannel Channel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
-	if err != nil {
-		return err
-	}
+
 	log.Debug("remove tSafe replica",
 		zap.Any("vChannel", vChannel),
 	)
-	safer.close()
 	delete(t.tSafes, vChannel)
-
-	return nil
-}
-
-func (t *tSafeReplica) removeRecord(vChannel Channel, partitionID UniqueID) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
-	if err != nil {
-		return err
-	}
-	safer.removeRecord(partitionID)
-	return nil
 }
 
 func (t *tSafeReplica) registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	safer, err := t.getTSaferPrivate(vChannel)
+	ts, err := t.getTSafePrivate(vChannel)
 	if err != nil {
 		return err
 	}
-	return safer.registerTSafeWatcher(watcher)
+	ts.registerTSafeWatcher(watcher)
+	return nil
 }
 
-func newTSafeReplica(ctx context.Context) TSafeReplicaInterface {
+func newTSafeReplica() TSafeReplicaInterface {
 	var replica TSafeReplicaInterface = &tSafeReplica{
-		tSafes: make(map[string]tSafer),
-		ctx:    ctx,
+		tSafes: make(map[string]*tSafe),
 	}
 	return replica
 }

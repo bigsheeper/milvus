@@ -277,6 +277,7 @@ func (mt *metaTable) MarkIndexAsDeleted(indexID UniqueID) error {
 	return nil
 }
 
+// GetIndexStates gets the index states from meta table.
 func (mt *metaTable) GetIndexStates(indexBuildIDs []UniqueID) []*indexpb.IndexInfo {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
@@ -301,6 +302,7 @@ func (mt *metaTable) GetIndexStates(indexBuildIDs []UniqueID) []*indexpb.IndexIn
 	return indexStates
 }
 
+// GetIndexFilePathInfo gets the index file paths from meta table.
 func (mt *metaTable) GetIndexFilePathInfo(indexBuildID UniqueID) (*indexpb.IndexFilePathInfo, error) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()

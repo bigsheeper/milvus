@@ -37,6 +37,7 @@ func TestCollection_deleteCollection(t *testing.T) {
 	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
 	assert.Equal(t, collection.ID(), collectionID)
 	deleteCollection(collection)
+	assert.Nil(t, collection)
 }
 
 func TestCollection_schema(t *testing.T) {
@@ -48,6 +49,7 @@ func TestCollection_schema(t *testing.T) {
 	assert.Equal(t, collectionMeta.Schema.Name, schema.Name)
 	assert.Equal(t, len(collectionMeta.Schema.Fields), len(schema.Fields))
 	deleteCollection(collection)
+	assert.Nil(t, collection)
 }
 
 func TestCollection_vChannel(t *testing.T) {

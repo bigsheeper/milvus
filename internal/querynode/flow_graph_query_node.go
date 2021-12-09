@@ -111,7 +111,6 @@ func newQueryNodeFlowGraph(ctx context.Context,
 
 func newQueryNodeDeltaFlowGraph(ctx context.Context,
 	collectionID UniqueID,
-	partitionID UniqueID,
 	historicalReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
 	channel Channel,
@@ -123,13 +122,12 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 		ctx:          ctx1,
 		cancel:       cancel,
 		collectionID: collectionID,
-		partitionID:  partitionID,
 		channel:      channel,
 		flowGraph:    flowgraph.NewTimeTickedFlowGraph(ctx1),
 	}
 
 	var dmStreamNode node = q.newDmInputNode(ctx1, factory)
-	var filterDeleteNode node = newFilteredDeleteNode(historicalReplica, collectionID, partitionID)
+	var filterDeleteNode node = newFilteredDeleteNode(historicalReplica, collectionID)
 	var deleteNode node = newDeleteNode(historicalReplica)
 	var serviceTimeNode node = newServiceTimeNode(ctx1, tSafeReplica, loadTypeCollection, channel, factory)
 

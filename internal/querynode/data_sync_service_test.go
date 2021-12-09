@@ -43,21 +43,21 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	dataSyncService.addDMLFlowGraph(defaultCollectionID, defaultPartitionID, loadTypeCollection, []Channel{defaultVChannel})
 	assert.Len(t, 1, len(dataSyncService.dmlFlowGraphs))
 
-	fg, err := dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
+	fg, err := dataSyncService.getDMLFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(fg))
 
-	fg, err = dataSyncService.getDMLFlowGraphs(UniqueID(1000), []Channel{defaultVChannel})
+	fg, err = dataSyncService.getDMLFlowGraph(UniqueID(1000), []Channel{defaultVChannel})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
-	fg, err = dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{"invalid-vChannel"})
+	fg, err = dataSyncService.getDMLFlowGraph(defaultCollectionID, []Channel{"invalid-vChannel"})
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(fg))
 
-	fg, err = dataSyncService.getDMLFlowGraphs(UniqueID(1000), []Channel{"invalid-vChannel"})
+	fg, err = dataSyncService.getDMLFlowGraph(UniqueID(1000), []Channel{"invalid-vChannel"})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
@@ -67,7 +67,7 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	dataSyncService.removeDMLFlowGraph(defaultCollectionID)
 	assert.Len(t, 0, len(dataSyncService.dmlFlowGraphs))
 
-	fg, err = dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
+	fg, err = dataSyncService.getDMLFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 

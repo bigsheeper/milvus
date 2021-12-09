@@ -398,7 +398,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// channels as consumer
-	nodeFGs, err := w.node.dataSyncService.getDMLFlowGraphs(collectionID, vChannels)
+	nodeFGs, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, vChannels)
 	if err != nil {
 		return err
 	}

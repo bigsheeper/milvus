@@ -122,8 +122,8 @@ func TestDataSyncService_Start(t *testing.T) {
 	assert.Nil(t, err)
 
 	channels := []Channel{"0"}
-	node.dataSyncService.addCollectionFlowGraph(collectionID, channels)
-	err = node.dataSyncService.startCollectionFlowGraph(collectionID, channels)
+	node.dataSyncService.addDMLFlowGraph(collectionID, channels)
+	err = node.dataSyncService.startDMLFlowGraph(collectionID, channels)
 	assert.NoError(t, err)
 
 	<-node.queryNodeLoopCtx.Done()
@@ -150,32 +150,32 @@ func TestDataSyncService_collectionFlowGraphs(t *testing.T) {
 	dataSyncService := newDataSyncService(ctx, streaming, historicalReplica, tSafe, fac)
 	assert.NotNil(t, dataSyncService)
 
-	dataSyncService.addCollectionFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
+	dataSyncService.addDMLFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
 
-	fg, err := dataSyncService.getCollectionFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
+	fg, err := dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(fg))
 
-	fg, err = dataSyncService.getCollectionFlowGraphs(UniqueID(1000), []Channel{defaultVChannel})
+	fg, err = dataSyncService.getDMLFlowGraphs(UniqueID(1000), []Channel{defaultVChannel})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
-	fg, err = dataSyncService.getCollectionFlowGraphs(defaultCollectionID, []Channel{"invalid-vChannel"})
+	fg, err = dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{"invalid-vChannel"})
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(fg))
 
-	fg, err = dataSyncService.getCollectionFlowGraphs(UniqueID(1000), []Channel{"invalid-vChannel"})
+	fg, err = dataSyncService.getDMLFlowGraphs(UniqueID(1000), []Channel{"invalid-vChannel"})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
-	err = dataSyncService.startCollectionFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
+	err = dataSyncService.startDMLFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
 	assert.NoError(t, err)
 
-	dataSyncService.removeCollectionFlowGraph(defaultCollectionID)
+	dataSyncService.removeDMLFlowGraph(defaultCollectionID)
 
-	fg, err = dataSyncService.getCollectionFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
+	fg, err = dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 }

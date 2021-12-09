@@ -1705,9 +1705,9 @@ class TestCollectionSearch(TestcaseBase):
         assert abs(res[0].distances[0] - min(distance_0, distance_1)) <= epsilon
 
     @pytest.mark.tag(CaseLabel.L2)
-    def test_search_without_expression(self, auto_id):
+    def test_search_travel_time_without_expression(self, auto_id):
         """
-        target: test search without expression
+        target: test search using travel time without expression
         method: 1. create connections,collection
                 2. first insert, and return with timestamp1
                 3. second insert, and return with timestamp2
@@ -1741,7 +1741,6 @@ class TestCollectionSearch(TestcaseBase):
         for i in range(len(search_res)):
             assert insert_ids_2[i] not in search_res[i].ids
         # 5. search with insert timestamp2
-        time.sleep(gracefulTime)
         log.info("test_search_without_expression: searching collection %s with time_stamp_2 '%d'"
                  % (collection_w.name, time_stamp_2))
         search_res = collection_w.search(vectors, default_search_field,

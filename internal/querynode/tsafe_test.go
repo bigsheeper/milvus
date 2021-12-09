@@ -16,40 +16,44 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-func TestTSafe_GetAndSet(t *testing.T) {
-	tSafe := newTSafe("TestTSafe-channel")
+func TestTSafe_TSafeWatcher(t *testing.T) {
 	watcher := newTSafeWatcher()
 	defer watcher.close()
-	tSafe.registerTSafeWatcher(watcher)
+	assert.NotNil(t, watcher)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		// wait work
-		<-watcher.watcherChan()
-		timestamp := tSafe.get()
-		assert.Equal(t, timestamp, Timestamp(1000))
+		watcher.notify()
 		wg.Done()
 	}()
-	tSafe.set(Timestamp(1000))
 	wg.Wait()
+
+	// wait notify, expect non-block here
+	<-watcher.watcherChan()
 }
 
-func TestTSafe_Remove(t *testing.T) {
-	tSafe := newTSafe("TestTSafe-remove")
+func TestTSafe_TSafe(t *testing.T) {
+	safe := newTSafe("TestTSafe-channel")
+	assert.NotNil(t, safe)
+
+	timestamp := safe.get()
+	assert.Equal(t, typeutil.ZeroTimestamp, timestamp)
+
 	watcher := newTSafeWatcher()
 	defer watcher.close()
-	tSafe.registerTSafeWatcher(watcher)
+	assert.NotNil(t, watcher)
 
-	tSafe.set(Timestamp(1000))
-	tSafe.set(Timestamp(1001))
+	safe.registerTSafeWatcher(watcher)
+	assert.Len(t, safe.watcherList, 1)
 
-	<-watcher.watcherChan()
-	timestamp := tSafe.get()
-	assert.Equal(t, timestamp, Timestamp(1000))
+	targetTimestamp := Timestamp(1000)
+	safe.set(targetTimestamp)
 
-	timestamp = tSafe.get()
-	assert.Equal(t, timestamp, Timestamp(1001))
+	timestamp = safe.get()
+	assert.Equal(t, targetTimestamp, timestamp)
 }

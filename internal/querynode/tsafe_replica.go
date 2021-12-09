@@ -26,20 +26,15 @@ type TSafeReplicaInterface interface {
 	getTSafe(vChannel Channel) (Timestamp, error)
 	setTSafe(vChannel Channel, id UniqueID, timestamp Timestamp) error
 	addTSafe(vChannel Channel)
-	removeTSafe(vChannel Channel) bool
+	removeTSafe(vChannel Channel) error
 	registerTSafeWatcher(vChannel Channel, watcher *tSafeWatcher) error
 	removeRecord(vChannel Channel, partitionID UniqueID) error
 }
 
-type tSafeRef struct {
-	tSafer tSafer
-	ref    int
-}
-
 // tSafeReplica implements `TSafeReplicaInterface` interface.
 type tSafeReplica struct {
-	mu     sync.Mutex            // guards tSafes
-	tSafes map[Channel]*tSafeRef // map[vChannel]tSafeRef
+	mu     sync.Mutex         // guards tSafes
+	tSafes map[Channel]tSafer // map[DMLChannel|deltaChannel]tSafer
 	ctx    context.Context
 }
 
@@ -75,57 +70,39 @@ func (t *tSafeReplica) getTSaferPrivate(vChannel Channel) (tSafer, error) {
 		//log.Warn(err.Error())
 		return nil, err
 	}
-	return t.tSafes[vChannel].tSafer, nil
+	return t.tSafes[vChannel], nil
 }
 
 func (t *tSafeReplica) addTSafe(vChannel Channel) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, ok := t.tSafes[vChannel]; !ok {
-		t.tSafes[vChannel] = &tSafeRef{
-			tSafer: newTSafe(t.ctx, vChannel),
-			ref:    1,
-		}
-		t.tSafes[vChannel].tSafer.start()
+		t.tSafes[vChannel] = newTSafe(t.ctx, vChannel)
+		t.tSafes[vChannel].start()
 		log.Debug("add tSafe done",
 			zap.Any("channel", vChannel),
-			zap.Any("count", t.tSafes[vChannel].ref),
 		)
 	} else {
-		t.tSafes[vChannel].ref++
 		log.Debug("tSafe has been existed",
 			zap.Any("channel", vChannel),
-			zap.Any("count", t.tSafes[vChannel].ref),
 		)
 	}
 }
 
-func (t *tSafeReplica) removeTSafe(vChannel Channel) bool {
+func (t *tSafeReplica) removeTSafe(vChannel Channel) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if _, ok := t.tSafes[vChannel]; !ok {
-		return false
+	safer, err := t.getTSaferPrivate(vChannel)
+	if err != nil {
+		return err
 	}
-	isRemoved := false
-	t.tSafes[vChannel].ref--
-	log.Debug("reduce tSafe reference count",
+	log.Debug("remove tSafe replica",
 		zap.Any("vChannel", vChannel),
-		zap.Any("count", t.tSafes[vChannel].ref),
 	)
-	if t.tSafes[vChannel].ref == 0 {
-		safer, err := t.getTSaferPrivate(vChannel)
-		if err != nil {
-			log.Warn(err.Error())
-			return false
-		}
-		log.Debug("remove tSafe replica",
-			zap.Any("vChannel", vChannel),
-		)
-		safer.close()
-		delete(t.tSafes, vChannel)
-		isRemoved = true
-	}
-	return isRemoved
+	safer.close()
+	delete(t.tSafes, vChannel)
+
+	return nil
 }
 
 func (t *tSafeReplica) removeRecord(vChannel Channel, partitionID UniqueID) error {
@@ -151,7 +128,7 @@ func (t *tSafeReplica) registerTSafeWatcher(vChannel Channel, watcher *tSafeWatc
 
 func newTSafeReplica(ctx context.Context) TSafeReplicaInterface {
 	var replica TSafeReplicaInterface = &tSafeReplica{
-		tSafes: make(map[string]*tSafeRef),
+		tSafes: make(map[string]tSafer),
 		ctx:    ctx,
 	}
 	return replica

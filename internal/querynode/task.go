@@ -896,7 +896,6 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 				zap.Any("vChannel", channel),
 			)
 			r.node.tSafeReplica.removeTSafe(channel)
-			// TODO: remove queryCollection?
 			// no tSafe or tSafe has been removed,
 			// we need to remove the corresponding tSafeWatcher in queryCollection,
 			// and remove the corresponding channel in collection
@@ -948,7 +947,6 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 				zap.Any("vChannel", channel),
 			)
 			r.node.tSafeReplica.removeTSafe(channel)
-			// TODO: remove queryCollection?
 			// no tSafe or tSafe has been removed,
 			// we need to remove the corresponding tSafeWatcher in queryCollection,
 			// and remove the corresponding channel in collection

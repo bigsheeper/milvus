@@ -122,7 +122,7 @@ func TestDataSyncService_Start(t *testing.T) {
 	assert.Nil(t, err)
 
 	channels := []Channel{"0"}
-	node.dataSyncService.addDMLFlowGraph(collectionID, channels)
+	node.dataSyncService.addDMLFlowGraph(collectionID, UniqueID(0), loadTypeCollection, channels)
 	err = node.dataSyncService.startDMLFlowGraph(collectionID, channels)
 	assert.NoError(t, err)
 
@@ -146,11 +146,11 @@ func TestDataSyncService_collectionFlowGraphs(t *testing.T) {
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
-	tSafe := newTSafeReplica(ctx)
+	tSafe := newTSafeReplica()
 	dataSyncService := newDataSyncService(ctx, streaming, historicalReplica, tSafe, fac)
 	assert.NotNil(t, dataSyncService)
 
-	dataSyncService.addDMLFlowGraph(defaultCollectionID, []Channel{defaultVChannel})
+	dataSyncService.addDMLFlowGraph(defaultCollectionID, defaultPartitionID, loadTypeCollection, []Channel{defaultVChannel})
 
 	fg, err := dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
 	assert.NotNil(t, fg)
@@ -178,80 +178,4 @@ func TestDataSyncService_collectionFlowGraphs(t *testing.T) {
 	fg, err = dataSyncService.getDMLFlowGraphs(defaultCollectionID, []Channel{defaultVChannel})
 	assert.Nil(t, fg)
 	assert.Error(t, err)
-}
-
-func TestDataSyncService_partitionFlowGraphs(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	streaming, err := genSimpleReplica()
-	assert.NoError(t, err)
-
-	historicalReplica, err := genSimpleReplica()
-	assert.NoError(t, err)
-
-	fac, err := genFactory()
-	assert.NoError(t, err)
-
-	tSafe := newTSafeReplica(ctx)
-
-	dataSyncService := newDataSyncService(ctx, streaming, historicalReplica, tSafe, fac)
-	assert.NotNil(t, dataSyncService)
-
-	dataSyncService.addPartitionFlowGraph(defaultPartitionID, defaultPartitionID, []Channel{defaultVChannel})
-
-	fg, err := dataSyncService.getPartitionFlowGraphs(defaultPartitionID, []Channel{defaultVChannel})
-	assert.NotNil(t, fg)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(fg))
-
-	fg, err = dataSyncService.getPartitionFlowGraphs(UniqueID(1000), []Channel{defaultVChannel})
-	assert.Nil(t, fg)
-	assert.Error(t, err)
-
-	fg, err = dataSyncService.getPartitionFlowGraphs(defaultPartitionID, []Channel{"invalid-vChannel"})
-	assert.NotNil(t, fg)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(fg))
-
-	fg, err = dataSyncService.getPartitionFlowGraphs(UniqueID(1000), []Channel{"invalid-vChannel"})
-	assert.Nil(t, fg)
-	assert.Error(t, err)
-
-	err = dataSyncService.startPartitionFlowGraph(defaultPartitionID, []Channel{defaultVChannel})
-	assert.NoError(t, err)
-
-	dataSyncService.removePartitionFlowGraph(defaultPartitionID)
-
-	fg, err = dataSyncService.getPartitionFlowGraphs(defaultPartitionID, []Channel{defaultVChannel})
-	assert.Nil(t, fg)
-	assert.Error(t, err)
-}
-
-func TestDataSyncService_removePartitionFlowGraphs(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	t.Run("test no tSafe", func(t *testing.T) {
-		streaming, err := genSimpleReplica()
-		assert.NoError(t, err)
-
-		historicalReplica, err := genSimpleReplica()
-		assert.NoError(t, err)
-
-		fac, err := genFactory()
-		assert.NoError(t, err)
-
-		tSafe := newTSafeReplica(ctx)
-		tSafe.addTSafe(defaultVChannel)
-
-		dataSyncService := newDataSyncService(ctx, streaming, historicalReplica, tSafe, fac)
-		assert.NotNil(t, dataSyncService)
-
-		dataSyncService.addPartitionFlowGraph(defaultPartitionID, defaultPartitionID, []Channel{defaultVChannel})
-
-		isRemoved := dataSyncService.tSafeReplica.removeTSafe(defaultVChannel)
-		assert.True(t, isRemoved)
-		dataSyncService.removePartitionFlowGraph(defaultPartitionID)
-	})
 }

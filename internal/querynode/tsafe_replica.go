@@ -54,8 +54,7 @@ func (t *tSafeReplica) setTSafe(vChannel Channel, timestamp Timestamp) error {
 	defer t.mu.Unlock()
 	ts, err := t.getTSafePrivate(vChannel)
 	if err != nil {
-		//log.Warn("set tSafe failed", zap.Error(err))
-		return err
+		return errors.New("set tSafe failed, err = " + err.Error())
 	}
 	ts.set(timestamp)
 	return nil

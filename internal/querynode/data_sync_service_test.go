@@ -41,39 +41,37 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	assert.NotNil(t, dataSyncService)
 
 	dataSyncService.addDMLFlowGraphs(defaultCollectionID, defaultPartitionID, loadTypeCollection, []Channel{defaultDMLChannel})
-	assert.Len(t, 1, len(dataSyncService.dmlFlowGraphs))
+	assert.Len(t, dataSyncService.dmlFlowGraphs, 1)
+
+	dataSyncService.addDMLFlowGraphs(defaultCollectionID, defaultPartitionID, loadTypeCollection, []Channel{defaultDMLChannel})
+	assert.Len(t, dataSyncService.dmlFlowGraphs, 1)
 
 	fg, err := dataSyncService.getDMLFlowGraph(defaultCollectionID, defaultDMLChannel)
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 
-	fg, err = dataSyncService.getDMLFlowGraph(UniqueID(1000), defaultDMLChannel)
-	assert.Nil(t, fg)
-	assert.Error(t, err)
-
 	fg, err = dataSyncService.getDMLFlowGraph(defaultCollectionID, "invalid-vChannel")
-	assert.NotNil(t, fg)
-	assert.NoError(t, err)
-
-	fg, err = dataSyncService.getDMLFlowGraph(UniqueID(1000), "invalid-vChannel")
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
 	err = dataSyncService.startDMLFlowGraph(defaultCollectionID, defaultDMLChannel)
 	assert.NoError(t, err)
 
+	err = dataSyncService.startDMLFlowGraph(defaultCollectionID, "invalid-vChannel")
+	assert.Error(t, err)
+
 	dataSyncService.removeDMLFlowGraph(defaultDMLChannel)
-	assert.Len(t, 0, len(dataSyncService.dmlFlowGraphs))
+	assert.Len(t, dataSyncService.dmlFlowGraphs, 0)
 
 	fg, err = dataSyncService.getDMLFlowGraph(defaultCollectionID, defaultDMLChannel)
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
 	dataSyncService.addDMLFlowGraphs(defaultCollectionID, defaultPartitionID, loadTypeCollection, []Channel{defaultDMLChannel})
-	assert.Len(t, 1, len(dataSyncService.dmlFlowGraphs))
+	assert.Len(t, dataSyncService.dmlFlowGraphs, 1)
 
 	dataSyncService.close()
-	assert.Len(t, 0, len(dataSyncService.dmlFlowGraphs))
+	assert.Len(t, dataSyncService.dmlFlowGraphs, 0)
 }
 
 func TestDataSyncService_DeltaFlowGraphs(t *testing.T) {
@@ -94,37 +92,35 @@ func TestDataSyncService_DeltaFlowGraphs(t *testing.T) {
 	assert.NotNil(t, dataSyncService)
 
 	dataSyncService.addDeltaFlowGraphs(defaultCollectionID, []Channel{defaultDeltaChannel})
-	assert.Len(t, 1, len(dataSyncService.deltaFlowGraphs))
+	assert.Len(t, dataSyncService.deltaFlowGraphs, 1)
+
+	dataSyncService.addDeltaFlowGraphs(defaultCollectionID, []Channel{defaultDeltaChannel})
+	assert.Len(t, dataSyncService.deltaFlowGraphs, 1)
 
 	fg, err := dataSyncService.getDeltaFlowGraph(defaultCollectionID, defaultDeltaChannel)
 	assert.NotNil(t, fg)
 	assert.NoError(t, err)
 
-	fg, err = dataSyncService.getDeltaFlowGraph(UniqueID(1000), defaultDeltaChannel)
-	assert.Nil(t, fg)
-	assert.Error(t, err)
-
 	fg, err = dataSyncService.getDeltaFlowGraph(defaultCollectionID, "invalid-vChannel")
-	assert.NotNil(t, fg)
-	assert.NoError(t, err)
-
-	fg, err = dataSyncService.getDeltaFlowGraph(UniqueID(1000), "invalid-vChannel")
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
 	err = dataSyncService.startDeltaFlowGraph(defaultCollectionID, defaultDeltaChannel)
 	assert.NoError(t, err)
 
+	err = dataSyncService.startDeltaFlowGraph(defaultCollectionID, "invalid-vChannel")
+	assert.Error(t, err)
+
 	dataSyncService.removeDeltaFlowGraph(defaultDeltaChannel)
-	assert.Len(t, 0, len(dataSyncService.deltaFlowGraphs))
+	assert.Len(t, dataSyncService.deltaFlowGraphs, 0)
 
 	fg, err = dataSyncService.getDeltaFlowGraph(defaultCollectionID, defaultDeltaChannel)
 	assert.Nil(t, fg)
 	assert.Error(t, err)
 
 	dataSyncService.addDeltaFlowGraphs(defaultCollectionID, []Channel{defaultDMLChannel})
-	assert.Len(t, 1, len(dataSyncService.deltaFlowGraphs))
+	assert.Len(t, dataSyncService.deltaFlowGraphs, 1)
 
 	dataSyncService.close()
-	assert.Len(t, 0, len(dataSyncService.deltaFlowGraphs))
+	assert.Len(t, dataSyncService.deltaFlowGraphs, 0)
 }

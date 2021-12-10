@@ -112,32 +112,32 @@ func genSimpleSealedSegmentsChangeInfoMsg() *msgstream.SealedSegmentsChangeInfoM
 
 func updateTSafe(queryCollection *queryCollection, timestamp Timestamp) error {
 	// register
-	queryCollection.tSafeWatchers[defaultVChannel] = newTSafeWatcher()
-	queryCollection.tSafeWatchers[defaultHistoricalVChannel] = newTSafeWatcher()
-	queryCollection.streaming.tSafeReplica.addTSafe(defaultVChannel)
-	err := queryCollection.streaming.tSafeReplica.registerTSafeWatcher(defaultVChannel, queryCollection.tSafeWatchers[defaultVChannel])
+	queryCollection.tSafeWatchers[defaultDMLChannel] = newTSafeWatcher()
+	queryCollection.tSafeWatchers[defaultDeltaChannel] = newTSafeWatcher()
+	queryCollection.streaming.tSafeReplica.addTSafe(defaultDMLChannel)
+	err := queryCollection.streaming.tSafeReplica.registerTSafeWatcher(defaultDMLChannel, queryCollection.tSafeWatchers[defaultDMLChannel])
 	if err != nil {
 		return err
 	}
-	queryCollection.historical.tSafeReplica.addTSafe(defaultHistoricalVChannel)
-	err = queryCollection.historical.tSafeReplica.registerTSafeWatcher(defaultHistoricalVChannel, queryCollection.tSafeWatchers[defaultHistoricalVChannel])
+	queryCollection.historical.tSafeReplica.addTSafe(defaultDeltaChannel)
+	err = queryCollection.historical.tSafeReplica.registerTSafeWatcher(defaultDeltaChannel, queryCollection.tSafeWatchers[defaultDeltaChannel])
 	if err != nil {
 		return err
 	}
-	err = queryCollection.addTSafeWatcher(defaultVChannel)
+	err = queryCollection.addTSafeWatcher(defaultDMLChannel)
 	if err != nil {
 		return err
 	}
-	err = queryCollection.addTSafeWatcher(defaultHistoricalVChannel)
+	err = queryCollection.addTSafeWatcher(defaultDeltaChannel)
 	if err != nil {
 		return err
 	}
 
-	err = queryCollection.streaming.tSafeReplica.setTSafe(defaultVChannel, timestamp)
+	err = queryCollection.streaming.tSafeReplica.setTSafe(defaultDMLChannel, timestamp)
 	if err != nil {
 		return err
 	}
-	return queryCollection.historical.tSafeReplica.setTSafe(defaultHistoricalVChannel, timestamp)
+	return queryCollection.historical.tSafeReplica.setTSafe(defaultDeltaChannel, timestamp)
 }
 
 func TestQueryCollection_withoutVChannel(t *testing.T) {
@@ -505,14 +505,14 @@ func TestQueryCollection_tSafeWatcher(t *testing.T) {
 	queryCollection, err := genSimpleQueryCollection(ctx, cancel)
 	assert.NoError(t, err)
 
-	err = queryCollection.addTSafeWatcher(defaultVChannel)
+	err = queryCollection.addTSafeWatcher(defaultDMLChannel)
 	assert.NoError(t, err)
 
-	err = queryCollection.removeTSafeWatcher(defaultVChannel)
+	err = queryCollection.removeTSafeWatcher(defaultDMLChannel)
 	assert.NoError(t, err)
 
 	// no tSafe watcher
-	err = queryCollection.removeTSafeWatcher(defaultVChannel)
+	err = queryCollection.removeTSafeWatcher(defaultDMLChannel)
 	assert.Error(t, err)
 }
 

@@ -662,7 +662,7 @@ func TestSegment_segmentLoadDeletedRecord(t *testing.T) {
 		defaultSegmentID,
 		defaultPartitionID,
 		defaultCollectionID,
-		defaultVChannel,
+		defaultDMLChannel,
 		segmentTypeSealed,
 		true)
 	pks := []IntPrimaryKey{1, 2, 3}
@@ -708,7 +708,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -717,7 +717,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -729,7 +729,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -738,7 +738,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -750,7 +750,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -759,7 +759,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -771,7 +771,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -780,7 +780,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -792,7 +792,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -801,7 +801,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -813,7 +813,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -822,7 +822,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -834,7 +834,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			defaultMsgLength)
 		assert.NoError(t, err)
 
@@ -843,7 +843,7 @@ func TestSegment_segmentLoadFieldData(t *testing.T) {
 			defaultCollectionID,
 			defaultPartitionID,
 			defaultSegmentID,
-			defaultVChannel,
+			defaultDMLChannel,
 			0)
 		assert.Error(t, err)
 	})
@@ -1000,7 +1000,7 @@ func TestSegment_BasicMetrics(t *testing.T) {
 		defaultSegmentID,
 		defaultPartitionID,
 		defaultCollectionID,
-		defaultVChannel,
+		defaultDMLChannel,
 		segmentTypeSealed,
 		true)
 
@@ -1059,7 +1059,7 @@ func TestSegment_fillVectorFieldsData(t *testing.T) {
 		defaultSegmentID,
 		defaultPartitionID,
 		defaultCollectionID,
-		defaultVChannel,
+		defaultDMLChannel,
 		segmentTypeSealed,
 		true)
 
@@ -1111,7 +1111,7 @@ func TestSegment_indexParam(t *testing.T) {
 		defaultSegmentID,
 		defaultPartitionID,
 		defaultCollectionID,
-		defaultVChannel,
+		defaultDMLChannel,
 		segmentTypeSealed,
 		true)
 
@@ -1170,7 +1170,7 @@ func TestSegment_updateSegmentIndex(t *testing.T) {
 			defaultSegmentID,
 			defaultPartitionID,
 			defaultCollectionID,
-			defaultVChannel,
+			defaultDMLChannel,
 			segmentTypeSealed,
 			true)
 
@@ -1209,7 +1209,7 @@ func TestSegment_dropSegmentIndex(t *testing.T) {
 			defaultSegmentID,
 			defaultPartitionID,
 			defaultCollectionID,
-			defaultVChannel,
+			defaultDMLChannel,
 			segmentTypeSealed,
 			true)
 
@@ -1225,7 +1225,7 @@ func TestSegment_dropSegmentIndex(t *testing.T) {
 			defaultSegmentID,
 			defaultPartitionID,
 			defaultCollectionID,
-			defaultVChannel,
+			defaultDMLChannel,
 			segmentTypeSealed,
 			true)
 
@@ -1242,7 +1242,7 @@ func TestSegment_dropSegmentIndex(t *testing.T) {
 			defaultSegmentID,
 			defaultPartitionID,
 			defaultCollectionID,
-			defaultVChannel,
+			defaultDMLChannel,
 			segmentTypeSealed,
 			true)
 		segment.setType(segmentTypeIndexing)

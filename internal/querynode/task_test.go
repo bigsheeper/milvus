@@ -260,7 +260,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 		task.req.Infos = []*datapb.VchannelInfo{
 			{
 				CollectionID: defaultCollectionID,
-				ChannelName:  defaultVChannel,
+				ChannelName:  defaultDMLChannel,
 			},
 		}
 		task.req.PartitionID = 0
@@ -279,7 +279,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 		task.req.Infos = []*datapb.VchannelInfo{
 			{
 				CollectionID: defaultCollectionID,
-				ChannelName:  defaultVChannel,
+				ChannelName:  defaultDMLChannel,
 			},
 		}
 		err = task.Execute(ctx)
@@ -297,7 +297,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 		task.req.Infos = []*datapb.VchannelInfo{
 			{
 				CollectionID: defaultCollectionID,
-				ChannelName:  defaultVChannel,
+				ChannelName:  defaultDMLChannel,
 			},
 		}
 		task.req.CollectionID++
@@ -318,9 +318,9 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 	//	task.req.Infos = []*datapb.VchannelInfo{
 	//		{
 	//			CollectionID: defaultCollectionID,
-	//			ChannelName:  defaultVChannel,
+	//			ChannelName:  defaultDMLChannel,
 	//			SeekPosition: &msgstream.MsgPosition{
-	//				ChannelName: defaultVChannel,
+	//				ChannelName: defaultDMLChannel,
 	//				MsgID:       []byte{1, 2, 3},
 	//				MsgGroup:    defaultSubName,
 	//				Timestamp:   0,
@@ -340,11 +340,11 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 			req:  genWatchDMChannelsRequest(),
 			node: node,
 		}
-		tmpChannel := defaultVChannel + "_1"
+		tmpChannel := defaultDMLChannel + "_1"
 		task.req.Infos = []*datapb.VchannelInfo{
 			{
 				CollectionID: defaultCollectionID,
-				ChannelName:  defaultVChannel,
+				ChannelName:  defaultDMLChannel,
 				SeekPosition: &msgstream.MsgPosition{
 					ChannelName: tmpChannel,
 					Timestamp:   0,
@@ -372,11 +372,11 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 			req:  genWatchDMChannelsRequest(),
 			node: node,
 		}
-		tmpChannel := defaultVChannel + "_1"
+		tmpChannel := defaultDMLChannel + "_1"
 		task.req.Infos = []*datapb.VchannelInfo{
 			{
 				CollectionID: defaultCollectionID,
-				ChannelName:  defaultVChannel,
+				ChannelName:  defaultDMLChannel,
 				SeekPosition: &msgstream.MsgPosition{
 					ChannelName: tmpChannel,
 					Timestamp:   0,
@@ -612,7 +612,7 @@ func TestTask_releaseCollectionTask(t *testing.T) {
 
 		col, err := node.historical.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		col.addVDeltaChannels([]Channel{defaultHistoricalVChannel})
+		col.addVDeltaChannels([]Channel{defaultDeltaChannel})
 
 		task := releaseCollectionTask{
 			req:  genReleaseCollectionRequest(),
@@ -671,10 +671,10 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addDMLFlowGraph(defaultCollectionID,
+		task.node.dataSyncService.addDMLFlowGraphs(defaultCollectionID,
 			defaultPartitionID,
 			loadTypePartition,
-			[]Channel{defaultVChannel})
+			[]Channel{defaultDMLChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})
@@ -707,7 +707,7 @@ func TestTask_releasePartitionTask(t *testing.T) {
 		err = node.historical.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		col.addVDeltaChannels([]Channel{defaultHistoricalVChannel})
+		col.addVDeltaChannels([]Channel{defaultDeltaChannel})
 		col.setLoadType(loadTypePartition)
 
 		err = node.queryService.addQueryCollection(defaultCollectionID)
@@ -717,10 +717,10 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addDMLFlowGraph(defaultCollectionID,
+		task.node.dataSyncService.addDMLFlowGraphs(defaultCollectionID,
 			defaultPartitionID,
 			loadTypePartition,
-			[]Channel{defaultVChannel})
+			[]Channel{defaultDMLChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})

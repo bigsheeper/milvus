@@ -46,7 +46,7 @@ func TestStreaming_search(t *testing.T) {
 		res, err := streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.NoError(t, err)
@@ -65,7 +65,7 @@ func TestStreaming_search(t *testing.T) {
 		res, err := streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.NoError(t, err)
@@ -91,7 +91,7 @@ func TestStreaming_search(t *testing.T) {
 		res, err := streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.NoError(t, err)
@@ -117,7 +117,7 @@ func TestStreaming_search(t *testing.T) {
 		_, err = streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.Error(t, err)
@@ -138,7 +138,7 @@ func TestStreaming_search(t *testing.T) {
 		res, err := streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.NoError(t, err)
@@ -162,7 +162,7 @@ func TestStreaming_search(t *testing.T) {
 		_, err = streaming.search(searchReqs,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultVChannel,
+			defaultDMLChannel,
 			plan,
 			Timestamp(0))
 		assert.Error(t, err)

@@ -382,7 +382,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// add flow graph
-	w.node.dataSyncService.addDMLFlowGraph(collectionID, partitionID, lType, vChannels)
+	w.node.dataSyncService.addDMLFlowGraphs(collectionID, partitionID, lType, vChannels)
 	log.Debug("Query node add DML flow graphs", zap.Any("channels", vChannels))
 
 	// add tSafe watcher if queryCollection exists
@@ -398,21 +398,15 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// channels as consumer
-	nodeFGs, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, vChannels)
-	if err != nil {
-		return err
-	}
 	for _, channel := range toSubChannels {
-		for _, fg := range nodeFGs {
-			if fg.channel == channel {
-				// use pChannel to consume
-				err := fg.consumerFlowGraph(VPChannels[channel], consumeSubName)
-				if err != nil {
-					errMsg := "msgStream consume error :" + err.Error()
-					log.Warn(errMsg)
-					return errors.New(errMsg)
-				}
-			}
+		fg, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, channel)
+		if err != nil {
+			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
+		}
+		// use pChannel to consume
+		err = fg.consumerFlowGraph(VPChannels[channel], consumeSubName)
+		if err != nil {
+			return errors.New("watchDmChannelsTask failed, msgStream consume error :" + err.Error())
 		}
 	}
 	log.Debug("as consumer channels",
@@ -421,18 +415,16 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 
 	// seek channel
 	for _, pos := range toSeekChannels {
-		for _, fg := range nodeFGs {
-			if fg.channel == pos.ChannelName {
-				pos.MsgGroup = consumeSubName
-				// use pChannel to seek
-				pos.ChannelName = VPChannels[fg.channel]
-				err := fg.seekQueryNodeFlowGraph(pos)
-				if err != nil {
-					errMsg := "msgStream seek error :" + err.Error()
-					log.Warn(errMsg)
-					return errors.New(errMsg)
-				}
-			}
+		fg, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, pos.ChannelName)
+		if err != nil {
+			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
+		}
+		pos.MsgGroup = consumeSubName
+		// use pChannel to seek
+		pos.ChannelName = VPChannels[fg.channel]
+		err = fg.seekQueryNodeFlowGraph(pos)
+		if err != nil {
+			return errors.New("msgStream seek error :" + err.Error())
 		}
 	}
 	log.Debug("Seek all channel done",
@@ -478,9 +470,11 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	)
 
 	// start flow graphs
-	err = w.node.dataSyncService.startDMLFlowGraph(collectionID, vChannels)
-	if err != nil {
-		return err
+	for _, channel := range vChannels {
+		err = w.node.dataSyncService.startDMLFlowGraph(collectionID, channel)
+		if err != nil {
+			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
+		}
 	}
 
 	log.Debug("WatchDmChannels done", zap.String("ChannelIDs", fmt.Sprintln(vChannels)))
@@ -588,7 +582,7 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 		w.node.tSafeReplica.addTSafe(channel)
 	}
 
-	w.node.dataSyncService.addDeltaFlowGraph(collectionID, vDeltaChannels)
+	w.node.dataSyncService.addDeltaFlowGraphs(collectionID, vDeltaChannels)
 
 	// add tSafe watcher if queryCollection exists
 	qc, err := w.node.queryService.getQueryCollection(collectionID)
@@ -603,22 +597,15 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// channels as consumer
-	var nodeFGs map[Channel]*queryNodeFlowGraph
-	nodeFGs, err = w.node.dataSyncService.getDeltaFlowGraphs(collectionID, vDeltaChannels)
-	if err != nil {
-		return err
-	}
 	for _, channel := range toSubChannels {
-		for _, fg := range nodeFGs {
-			if fg.channel == channel {
-				// use pChannel to consume
-				err := fg.consumerFlowGraphLatest(VPDeltaChannels[channel], consumeSubName)
-				if err != nil {
-					errMsg := "msgStream consume error :" + err.Error()
-					log.Warn(errMsg)
-					return errors.New(errMsg)
-				}
-			}
+		fg, err := w.node.dataSyncService.getDeltaFlowGraph(collectionID, channel)
+		if err != nil {
+			return errors.New("watchDeltaChannelsTask failed, error = " + err.Error())
+		}
+		// use pChannel to consume
+		err = fg.consumerFlowGraphLatest(VPDeltaChannels[channel], consumeSubName)
+		if err != nil {
+			return errors.New("watchDeltaChannelsTask failed, msgStream consume error :" + err.Error())
 		}
 	}
 	log.Debug("as consumer channels",
@@ -630,9 +617,11 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// start flow graphs
-	err = w.node.dataSyncService.startDeltaFlowGraph(collectionID, vDeltaChannels)
-	if err != nil {
-		return err
+	for _, channel := range vDeltaChannels {
+		err = w.node.dataSyncService.startDeltaFlowGraph(collectionID, channel)
+		if err != nil {
+			return errors.New("watchDeltaChannelsTask failed, error = " + err.Error())
+		}
 	}
 
 	log.Debug("WatchDeltaChannels done", zap.String("ChannelIDs", fmt.Sprintln(vDeltaChannels)))
@@ -804,9 +793,9 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	collection.setReleaseTime(r.req.Base.Timestamp)
 
 	if replicaType == replicaStreaming {
-		r.node.dataSyncService.removeDMLFlowGraph(r.req.CollectionID)
-		// remove all tSafes of the target collection
+		// remove all tSafes and flow graphs of the target collection
 		for _, channel := range collection.getVChannels() {
+			r.node.dataSyncService.removeDMLFlowGraph(channel)
 			log.Debug("Releasing tSafe in releaseCollectionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vChannel", channel),
@@ -816,9 +805,9 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 			// so we don't need to remove the tSafeWatcher or channel manually.
 		}
 	} else {
-		r.node.dataSyncService.removeDeltaFlowGraph(r.req.CollectionID)
-		// remove all tSafes of the target collection
+		// remove all tSafes and flow graphs of the target collection
 		for _, channel := range collection.getVDeltaChannels() {
+			r.node.dataSyncService.removeDeltaFlowGraph(channel)
 			log.Debug("Releasing tSafe in releaseCollectionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vDeltaChannel", channel),
@@ -888,8 +877,9 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	// release partitions
 	vChannels := sCol.getVChannels()
 	for _, id := range r.req.PartitionIDs {
-		// remove all tSafes of the target partition
+		// remove all tSafes and flow graphs of the target partition
 		for _, channel := range vChannels {
+			r.node.dataSyncService.removeDMLFlowGraph(channel)
 			log.Debug("Releasing tSafe in releasePartitionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("partitionID", id),
@@ -938,10 +928,10 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	}
 	log.Debug("start release history pids", zap.Any("pids", pids), zap.Any("load type", hCol.getLoadType()))
 	if len(pids) == 0 && hCol.getLoadType() == loadTypePartition {
-		r.node.dataSyncService.removeDeltaFlowGraph(r.req.CollectionID)
 		log.Debug("release delta channels", zap.Any("deltaChannels", hCol.getVDeltaChannels()))
 		vChannels := hCol.getVDeltaChannels()
 		for _, channel := range vChannels {
+			r.node.dataSyncService.removeDeltaFlowGraph(channel)
 			log.Debug("Releasing tSafe in releasePartitionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vChannel", channel),

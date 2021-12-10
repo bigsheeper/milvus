@@ -208,7 +208,7 @@ func (qc *QueryCoord) Start() error {
 	}
 
 	go qc.session.LivenessCheck(qc.loopCtx, func() {
-		log.Error("Query Coord disconnected from etcd, process will exit", zap.Int64("Server Id", qc.session.ServerID))
+		log.Error("QueryCoord disconnected from etcd, process will exit", zap.Int64("Server Id", qc.session.ServerID))
 		if err := qc.Stop(); err != nil {
 			log.Fatal("failed to stop server", zap.Error(err))
 		}
@@ -270,7 +270,7 @@ func NewQueryCoord(ctx context.Context, factory msgstream.Factory) (*QueryCoord,
 // SetRootCoord sets root coordinator's client
 func (qc *QueryCoord) SetRootCoord(rootCoord types.RootCoord) error {
 	if rootCoord == nil {
-		return errors.New("null root coordinator interface")
+		return errors.New("null RootCoord interface")
 	}
 
 	qc.rootCoordClient = rootCoord
@@ -280,7 +280,7 @@ func (qc *QueryCoord) SetRootCoord(rootCoord types.RootCoord) error {
 // SetDataCoord sets data coordinator's client
 func (qc *QueryCoord) SetDataCoord(dataCoord types.DataCoord) error {
 	if dataCoord == nil {
-		return errors.New("null data coordinator interface")
+		return errors.New("null DataCoord interface")
 	}
 
 	qc.dataCoordClient = dataCoord

@@ -298,6 +298,7 @@ func (iNode *insertNode) insert(iData *insertData, segmentID UniqueID, wg *sync.
 	wg.Done()
 }
 
+// delete would execute delete operations for specific growing segment
 func (iNode *insertNode) delete(deleteData *deleteData, segmentID UniqueID, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Debug("QueryNode::iNode::delete", zap.Any("SegmentID", segmentID))
@@ -325,7 +326,7 @@ func (iNode *insertNode) delete(deleteData *deleteData, segmentID UniqueID, wg *
 }
 
 // TODO: remove this function to proper file
-// TODO: why not return error?
+// getPrimaryKeys would get primary keys by insert messages
 func getPrimaryKeys(msg *msgstream.InsertMsg, streamingReplica ReplicaInterface) ([]int64, error) {
 	if len(msg.RowIDs) != len(msg.Timestamps) || len(msg.RowIDs) != len(msg.RowData) {
 		log.Warn("misaligned messages detected")
@@ -401,6 +402,8 @@ func getPrimaryKeys(msg *msgstream.InsertMsg, streamingReplica ReplicaInterface)
 
 	return pks, nil
 }
+
+// newInsertNode returns a new insertNode
 func newInsertNode(streamingReplica ReplicaInterface) *insertNode {
 	maxQueueLength := Params.FlowGraphMaxQueueLength
 	maxParallelism := Params.FlowGraphMaxParallelism

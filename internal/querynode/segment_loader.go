@@ -452,6 +452,73 @@ func (loader *segmentLoader) loadDeltaLogs(segment *Segment, deltaLogs []*datapb
 	return nil
 }
 
+func (loader *segmentLoader) fromDMLCheckPointLoadInsert(ctx context.Context, collectionID int64, position *internalpb.MsgPosition) error {
+	log.Debug("from dml check point load insert", zap.Any("position", position), zap.Any("position msgID", position.MsgID))
+	stream, err := loader.factory.NewMsgStream(ctx)
+	if err != nil {
+		return err
+	}
+	pChannelName := rootcoord.ToPhysicalChannel(position.ChannelName)
+	position.ChannelName = pChannelName
+	stream.AsReader([]string{pChannelName}, fmt.Sprintf("querynode-%d-%d", Params.QueryNodeID, collectionID))
+	err = stream.SeekReaders([]*internalpb.MsgPosition{position})
+	if err != nil {
+		return err
+	}
+
+	delData := &insertData{
+		insertIDs:        make(map[UniqueID][]int64),
+		insertTimestamps: make(map[UniqueID][]Timestamp),
+		insertRecords:    make(map[UniqueID][]*commonpb.Blob),
+		insertOffset:     make(map[UniqueID]int64),
+		insertPKs:        make(map[UniqueID][]int64), //TODO
+	}
+	log.Debug("start read msg from stream reader")
+	for stream.HasNext(pChannelName) {
+		ctx, cancel := context.WithTimeout(ctx, timeoutForEachRead)
+		tsMsg, err := stream.Next(ctx, pChannelName)
+		if err != nil {
+			cancel()
+			return err
+		}
+		if tsMsg == nil {
+			cancel()
+			continue
+		}
+
+		if tsMsg.Type() == commonpb.MsgType_Insert {
+			msg := tsMsg.(*msgstream.InsertMsg)
+			if msg.CollectionID != collectionID {
+				cancel()
+				continue
+			}
+			log.Debug("insert", zap.Any("pk", msg.PrimaryKeys))
+			processDeleteMessages(loader.historicalReplica, msg, delData)
+		}
+		cancel()
+	}
+	log.Debug("All data has been read, there is no more data", zap.String("channel", pChannelName))
+	for segmentID, pks := range delData.deleteIDs {
+		segment, err := loader.historicalReplica.getSegmentByID(segmentID)
+		if err != nil {
+			log.Debug(err.Error())
+			continue
+		}
+		offset := segment.segmentPreDelete(len(pks))
+		delData.deleteOffset[segmentID] = offset
+	}
+
+	wg := sync.WaitGroup{}
+	for segmentID := range delData.deleteOffset {
+		wg.Add(1)
+		go deletePk(loader.historicalReplica, delData, segmentID, &wg)
+	}
+	wg.Wait()
+	stream.Close()
+	log.Debug("from dml check point load done")
+	return nil
+}
+
 func (loader *segmentLoader) FromDmlCPLoadDelete(ctx context.Context, collectionID int64, position *internalpb.MsgPosition) error {
 	log.Debug("from dml check point load delete", zap.Any("position", position), zap.Any("msg id", position.MsgID))
 	stream, err := loader.factory.NewMsgStream(ctx)

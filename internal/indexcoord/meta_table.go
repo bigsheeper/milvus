@@ -320,6 +320,7 @@ func (mt *metaTable) GetIndexFilePathInfo(indexBuildID UniqueID) (*indexpb.Index
 	return ret, nil
 }
 
+// DeleteIndex delete the index meta from meta table.
 func (mt *metaTable) DeleteIndex(indexBuildID UniqueID) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
@@ -331,6 +332,8 @@ func (mt *metaTable) DeleteIndex(indexBuildID UniqueID) {
 	log.Debug("IndexCoord metaTable DeleteIndex", zap.Error(err))
 }
 
+// UpdateRecycleState update the recycle state corresponding the indexBuildID,
+// when the recycle state is true, means the index files has been recycled with lower version.
 func (mt *metaTable) UpdateRecycleState(indexBuildID UniqueID) error {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
@@ -368,6 +371,7 @@ func (mt *metaTable) UpdateRecycleState(indexBuildID UniqueID) error {
 	return nil
 }
 
+// GetUnusedIndexFiles get the index files with lower version or corresponding the indexBuildIDs which has been deleted.
 func (mt *metaTable) GetUnusedIndexFiles(limit int) []Meta {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()

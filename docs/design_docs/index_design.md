@@ -67,11 +67,15 @@ IndexNode is a node that executes index building tasks.
 
 ### 8.3.2 NodeManager
 
-NodeManager is responsible for managing the node information of IndexNode, and contains a priority queue to save the load information of each IndexNode. The load information of IndexNode is based on the number of tasks executed. When the IndexCoord service starts, it first obtains the node information of all current IndexNodes from etcd, and then adds the node information to the NodeManager. After that, the online and offline information of IndexNode node is obtained from watchNodeLoop. Then it will traverse the entire MetaTable, get the load information corresponding to each IndexNode node, and update the priority queue in the NodeManager. When an index building task needs to be allocated, the IndexNode with the lowest load will be selected according to the priority queue to execute the task.
+NodeManager is responsible for managing the node information of IndexNode, and contains a priority queue to save the load information of each IndexNode. 
+The load information of IndexNode is based on the number of tasks executed. When the IndexCoord service starts, it first obtains the node information of all current IndexNodes from etcd, 
+and then adds the node information to the NodeManager. After that, the online and offline information of IndexNode node is obtained from watchNodeLoop. 
+Then it will traverse the entire MetaTable, get the load information corresponding to each IndexNode node, and update the priority queue in the NodeManager. 
+When an index building task needs to be allocated, the IndexNode with the lowest load will be selected according to the priority queue to execute the task.
 
 ### 8.3.3 MetaTable
 
-In order to maintain the status information of the index, we introduced MetaTable to record the status information
+To maintain the status information of the index, we introduced MetaTable to record the status information
 of the index. In order to ensure that the MetaTable information is not lost after IndexCoord is powered off and
 restarted, we write the MetaTable information into etcd. When the IndexCoord service starts, it will first load the
 existing Meta information from etcd, and then monitor the changes of Meta through watchNodeLoop. In order to distinguish

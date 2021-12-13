@@ -150,6 +150,7 @@ func (s *Server) Run() error {
 	return nil
 }
 
+// Stop stops Datanode's grpc service.
 func (s *Server) Stop() error {
 	log.Debug("Datanode stop", zap.String("Address", Params.Address))
 	if s.closer != nil {
@@ -268,6 +269,7 @@ func (s *Server) init() error {
 	return nil
 }
 
+// start starts datanode's grpc service.
 func (s *Server) start() error {
 	if err := s.datanode.Start(); err != nil {
 		return err
@@ -280,10 +282,12 @@ func (s *Server) start() error {
 	return nil
 }
 
+// GetComponentStates gets the component states of Datanode
 func (s *Server) GetComponentStates(ctx context.Context, req *internalpb.GetComponentStatesRequest) (*internalpb.ComponentStates, error) {
 	return s.datanode.GetComponentStates(ctx)
 }
 
+// GetStatisticsChannel gets the statistics channel of Datanode.
 func (s *Server) GetStatisticsChannel(ctx context.Context, req *internalpb.GetStatisticsChannelRequest) (*milvuspb.StringResponse, error) {
 	return s.datanode.GetStatisticsChannel(ctx)
 }
@@ -303,6 +307,7 @@ func (s *Server) FlushSegments(ctx context.Context, req *datapb.FlushSegmentsReq
 	return s.datanode.FlushSegments(ctx, req)
 }
 
+// GetMetrics gets the metrics info of Datanode.
 func (s *Server) GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	return s.datanode.GetMetrics(ctx, request)
 }

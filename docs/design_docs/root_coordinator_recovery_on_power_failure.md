@@ -52,7 +52,7 @@
 ### 2.5 Flushed segment from `data node`
 
 1. Each time the `data node` finishes flushing a segment, it sends the segment id to the `RC` via msgstream.
-2. `RC` needs to fetch binlog from `DC` by id and send request to `IC` to create index on this segment.
+2. `RC` needs to fetch binlog from `DC` by id and send a request to `IC` to create index on this segment.
 3. When the `IC` is called successfully, it will return a build id, and then `RC` will update the build id to the `collection meta` and record the position of the msgstream in etcd.
 4. Step 3 is transactional and the operation will be successful only if the `collection meta` in etcd is updated.
 5. So the `RC` only needs to restore the msgstream to the position when recovering from a power failure.
@@ -64,13 +64,13 @@
 
 ### 2.7 Add virtual channel assignment when creating collection
 
-1. Add a new field, "number of shards" in the `create collection` request. The "num of shards" tells the `RC` to create the number of virtual channel for this collection.
+1. Add a new field, "number of shards" in the `create collection` request. The "num of shards" tells the `RC` to create the number of virtual channels for this collection.
 2. In the current implementation, virtual channels and physical channels have a one-to-one relationship, and the total number of physical channels increases as the number of virtual channels increases; later, the total number of physical channels needs to be fixed, and multiple virtual channels share one physical channel.
 3. The name of the virtual channel is globally unique, and the `collection meta` records the correspondence between the virtual channel and the physical channel.
 
 ### Add processing of time synchronization signals from proxy node
 
-1. A virtual channel can be inserted by multiple proxies, so the timestamp in the virtual channel is not increase monotonically.
+1. A virtual channel can be inserted by multiple proxies, so the timestamp in the virtual channel does not increase monotonically.
 2. All proxies report the timestamp of all the virtual channels to the `RC` periodically.
 3. The `RC` collects the timestamps from the proxies on each virtual channel and gets the minimum one as the timestamp of that virtual channel, and then inserts the timestamp into the virtual channel.
 4. The proxy reports the timestamp to the `RC` via grpc.

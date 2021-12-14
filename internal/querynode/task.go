@@ -650,7 +650,14 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 		zap.Any("toSubChannels", toSubChannels))
 
 	for _, info := range w.req.Infos {
-		w.node.loader.FromDmlCPLoadDelete(w.ctx, collectionID, info.SeekPosition)
+		err = w.node.loader.FromDmlCPLoadDelete(w.ctx, collectionID, info.SeekPosition)
+		if err != nil {
+			return err
+		}
+		err = w.node.loader.fromDMLCheckPointLoadInsert(w.ctx, collectionID, info.SeekPosition)
+		if err != nil {
+			return err
+		}
 	}
 
 	// start flow graphs

@@ -453,7 +453,9 @@ func (loader *segmentLoader) loadDeltaLogs(segment *Segment, deltaLogs []*datapb
 }
 
 func (loader *segmentLoader) fromDMLCheckPointLoadInsert(ctx context.Context, collectionID int64, position *internalpb.MsgPosition) error {
-	log.Debug("from dml check point load insert", zap.Any("position", position), zap.Any("position msgID", position.MsgID))
+	log.Debug("from dml check point load insert ...",
+		zap.Any("collectionID", collectionID),
+	)
 	stream, err := loader.factory.NewMsgStream(ctx)
 	if err != nil {
 		return err
@@ -466,56 +468,62 @@ func (loader *segmentLoader) fromDMLCheckPointLoadInsert(ctx context.Context, co
 		return err
 	}
 
-	delData := &insertData{
+	iData := insertData{
 		insertIDs:        make(map[UniqueID][]int64),
 		insertTimestamps: make(map[UniqueID][]Timestamp),
 		insertRecords:    make(map[UniqueID][]*commonpb.Blob),
-		insertOffset:     make(map[UniqueID]int64),
-		insertPKs:        make(map[UniqueID][]int64), //TODO
 	}
-	log.Debug("start read msg from stream reader")
 	for stream.HasNext(pChannelName) {
-		ctx, cancel := context.WithTimeout(ctx, timeoutForEachRead)
-		tsMsg, err := stream.Next(ctx, pChannelName)
+		err = func() error {
+			ctx1, cancel := context.WithTimeout(ctx, timeoutForEachRead)
+			defer cancel()
+			tsMsg, err := stream.Next(ctx1, pChannelName)
+			if err != nil {
+				return err
+			}
+			if tsMsg == nil {
+				return nil
+			}
+
+			if tsMsg.Type() == commonpb.MsgType_Insert {
+				msg := tsMsg.(*msgstream.InsertMsg)
+				// TODO: partitionID
+				resMsg := filterInvalidInsertMessage(collectionID, UniqueID(0), msg, loader.streamingReplica, loadTypeCollection)
+				if resMsg != nil {
+					segmentID := resMsg.SegmentID
+					// check if segment exists, if not, create this segment
+					if !loader.streamingReplica.hasSegment(segmentID) {
+						err = loader.streamingReplica.addSegment(segmentID, resMsg.PartitionID, resMsg.CollectionID, resMsg.ShardName, segmentTypeGrowing, true)
+						if err != nil {
+							return err
+						}
+					}
+					// append insert data
+					iData.insertIDs[segmentID] = append(iData.insertIDs[segmentID], resMsg.RowIDs...)
+					iData.insertTimestamps[segmentID] = append(iData.insertTimestamps[segmentID], resMsg.Timestamps...)
+					iData.insertRecords[segmentID] = append(iData.insertRecords[segmentID], resMsg.RowData...)
+				}
+			}
+			return nil
+		}()
 		if err != nil {
-			cancel()
 			return err
 		}
-		if tsMsg == nil {
-			cancel()
-			continue
-		}
-
-		if tsMsg.Type() == commonpb.MsgType_Insert {
-			msg := tsMsg.(*msgstream.InsertMsg)
-			if msg.CollectionID != collectionID {
-				cancel()
-				continue
-			}
-			log.Debug("insert", zap.Any("pk", msg.PrimaryKeys))
-			processDeleteMessages(loader.historicalReplica, msg, delData)
-		}
-		cancel()
 	}
-	log.Debug("All data has been read, there is no more data", zap.String("channel", pChannelName))
-	for segmentID, pks := range delData.deleteIDs {
-		segment, err := loader.historicalReplica.getSegmentByID(segmentID)
+	for segmentID := range iData.insertIDs {
+		segment, err := loader.streamingReplica.getSegmentByID(segmentID)
 		if err != nil {
-			log.Debug(err.Error())
-			continue
+			return err
 		}
-		offset := segment.segmentPreDelete(len(pks))
-		delData.deleteOffset[segmentID] = offset
+		err = loader.loadGrowingSegments(segment, iData.insertIDs[segmentID], iData.insertTimestamps[segmentID], iData.insertRecords[segmentID])
+		if err != nil {
+			return err
+		}
 	}
 
-	wg := sync.WaitGroup{}
-	for segmentID := range delData.deleteOffset {
-		wg.Add(1)
-		go deletePk(loader.historicalReplica, delData, segmentID, &wg)
-	}
-	wg.Wait()
-	stream.Close()
-	log.Debug("from dml check point load done")
+	log.Debug("from dml check point load insert done",
+		zap.Any("collectionID", collectionID),
+	)
 	return nil
 }
 

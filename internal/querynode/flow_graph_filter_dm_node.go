@@ -83,11 +83,7 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		log.Info("Filter invalid message in QueryNode", zap.String("traceID", traceID))
 		switch msg.Type() {
 		case commonpb.MsgType_Insert:
-			resMsg := filterInvalidInsertMessage(fdmNode.collectionID,
-				fdmNode.partitionID,
-				msg.(*msgstream.InsertMsg),
-				fdmNode.replica,
-				fdmNode.loadType)
+			resMsg := fdmNode.filterInvalidInsertMessage(msg.(*msgstream.InsertMsg))
 			if resMsg != nil {
 				iMsg.insertMessages = append(iMsg.insertMessages, resMsg)
 			}
@@ -170,21 +166,21 @@ func (fdmNode *filterDmNode) filterInvalidDeleteMessage(msg *msgstream.DeleteMsg
 }
 
 // filterInvalidInsertMessage would filter out invalid insert messages
-func filterInvalidInsertMessage(collectionID UniqueID, partitionID UniqueID, msg *msgstream.InsertMsg, replica ReplicaInterface, loadType loadType) *msgstream.InsertMsg {
+func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg) *msgstream.InsertMsg {
 	sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
 	msg.SetTraceCtx(ctx)
 	defer sp.Finish()
 	// check if collection and partition exist
-	collection := replica.hasCollection(msg.CollectionID)
-	partition := replica.hasPartition(msg.PartitionID)
-	if loadType == loadTypeCollection && !collection {
+	collection := fdmNode.replica.hasCollection(msg.CollectionID)
+	partition := fdmNode.replica.hasPartition(msg.PartitionID)
+	if fdmNode.loadType == loadTypeCollection && !collection {
 		log.Debug("filter invalid insert message, collection does not exist",
 			zap.Any("collectionID", msg.CollectionID),
 			zap.Any("partitionID", msg.PartitionID))
 		return nil
 	}
 
-	if loadType == loadTypePartition && !partition {
+	if fdmNode.loadType == loadTypePartition && !partition {
 		log.Debug("filter invalid insert message, partition does not exist",
 			zap.Any("collectionID", msg.CollectionID),
 			zap.Any("partitionID", msg.PartitionID))
@@ -192,7 +188,7 @@ func filterInvalidInsertMessage(collectionID UniqueID, partitionID UniqueID, msg
 	}
 
 	// check if the collection from message is target collection
-	if msg.CollectionID != collectionID {
+	if msg.CollectionID != fdmNode.collectionID {
 		//log.Debug("filter invalid insert message, collection is not the target collection",
 		//	zap.Any("collectionID", msg.CollectionID),
 		//	zap.Any("partitionID", msg.PartitionID))
@@ -200,7 +196,7 @@ func filterInvalidInsertMessage(collectionID UniqueID, partitionID UniqueID, msg
 	}
 
 	// if the flow graph type is partition, check if the partition is target partition
-	if loadType == loadTypePartition && msg.PartitionID != partitionID {
+	if fdmNode.loadType == loadTypePartition && msg.PartitionID != fdmNode.partitionID {
 		log.Debug("filter invalid insert message, partition is not the target partition",
 			zap.Any("collectionID", msg.CollectionID),
 			zap.Any("partitionID", msg.PartitionID))
@@ -208,8 +204,8 @@ func filterInvalidInsertMessage(collectionID UniqueID, partitionID UniqueID, msg
 	}
 
 	// check if partition has been released
-	if loadType == loadTypeCollection {
-		col, err := replica.getCollectionByID(msg.CollectionID)
+	if fdmNode.loadType == loadTypeCollection {
+		col, err := fdmNode.replica.getCollectionByID(msg.CollectionID)
 		if err != nil {
 			log.Warn(err.Error())
 			return nil
@@ -223,7 +219,7 @@ func filterInvalidInsertMessage(collectionID UniqueID, partitionID UniqueID, msg
 	// Check if the segment is in excluded segments,
 	// messages after seekPosition may contain the redundant data from flushed slice of segment,
 	// so we need to compare the endTimestamp of received messages and position's timestamp.
-	excludedSegments, err := replica.getExcludedSegments(collectionID)
+	excludedSegments, err := fdmNode.replica.getExcludedSegments(fdmNode.collectionID)
 	if err != nil {
 		log.Warn(err.Error())
 		return nil

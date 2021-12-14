@@ -21,6 +21,7 @@ import (
 	"errors"
 	"math"
 	"math/rand"
+	"path"
 	"strconv"
 
 	"github.com/golang/protobuf/proto"
@@ -645,6 +646,15 @@ func genSimpleCommonBlob() ([]*commonpb.Blob, error) {
 	return genCommonBlob(defaultMsgLength, schema)
 }
 
+// joinIDPath joins ids to path format.
+func joinIDPath(ids ...UniqueID) string {
+	idStr := make([]string, 0, len(ids))
+	for _, id := range ids {
+		idStr = append(idStr, strconv.FormatInt(id, 10))
+	}
+	return path.Join(idStr...)
+}
+
 func saveBinLog(ctx context.Context,
 	collectionID UniqueID,
 	partitionID UniqueID,
@@ -672,7 +682,7 @@ func saveBinLog(ctx context.Context,
 			return nil, err
 		}
 
-		key := JoinIDPath(collectionID, partitionID, segmentID, fieldID)
+		key := joinIDPath(collectionID, partitionID, segmentID, fieldID)
 		kvs[key] = string(blob.Value[:])
 		fieldBinlog = append(fieldBinlog, &datapb.FieldBinlog{
 			FieldID: fieldID,

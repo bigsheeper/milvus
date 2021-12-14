@@ -183,11 +183,10 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 func readFlowGraph(ctx context.Context,
 	collectionID UniqueID,
 	streamingReplica ReplicaInterface,
-	channel Channel,
 	position *internalpb.MsgPosition,
 	factory msgstream.Factory) error {
 
-	rNode, err := newReaderNode(ctx, collectionID, channel, position, factory)
+	rNode, err := newReaderNode(ctx, collectionID, position, factory)
 	if err != nil {
 		return err
 	}
@@ -203,14 +202,13 @@ func readFlowGraph(ctx context.Context,
 
 func newReaderNode(ctx context.Context,
 	collectionID UniqueID,
-	channel Channel,
 	position *internalpb.MsgPosition,
 	factory msgstream.Factory) (*flowgraph.ReaderNode, error) {
 	stream, err := factory.NewMsgStream(ctx)
 	if err != nil {
 		return nil, err
 	}
-	pChannelName := rootcoord.ToPhysicalChannel(channel)
+	pChannelName := rootcoord.ToPhysicalChannel(position.ChannelName)
 	position.ChannelName = pChannelName
 	stream.AsReader([]string{pChannelName}, fmt.Sprintf("querynode-%d-%d", Params.QueryNodeID, collectionID))
 	err = stream.SeekReaders([]*internalpb.MsgPosition{position})
@@ -220,7 +218,7 @@ func newReaderNode(ctx context.Context,
 
 	maxQueueLength := Params.FlowGraphMaxQueueLength
 	maxParallelism := Params.FlowGraphMaxParallelism
-	return flowgraph.NewReaderNode(ctx, stream, channel, "readerNode", maxQueueLength, maxParallelism), nil
+	return flowgraph.NewReaderNode(ctx, stream, pChannelName, "readerNode", maxQueueLength, maxParallelism), nil
 }
 
 func (q *queryNodeFlowGraph) newDmInputNode(ctx context.Context, factory msgstream.Factory) *flowgraph.InputNode {

@@ -28,7 +28,6 @@ import (
 
 type serviceTimeNode struct {
 	baseNode
-	loadType          loadType
 	vChannel          Channel
 	tSafeReplica      TSafeReplicaInterface
 	timeTickMsgStream msgstream.MsgStream
@@ -105,7 +104,6 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 
 func newServiceTimeNode(ctx context.Context,
 	tSafeReplica TSafeReplicaInterface,
-	loadType loadType,
 	channel Channel,
 	factory msgstream.Factory) *serviceTimeNode {
 
@@ -128,7 +126,6 @@ func newServiceTimeNode(ctx context.Context,
 
 	return &serviceTimeNode{
 		baseNode:          baseNode,
-		loadType:          loadType,
 		vChannel:          channel,
 		tSafeReplica:      tSafeReplica,
 		timeTickMsgStream: timeTimeMsgStream,

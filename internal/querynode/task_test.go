@@ -760,7 +760,7 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addDMLFlowGraphs(defaultCollectionID,
+		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID,
 			defaultPartitionID,
 			loadTypePartition,
 			[]Channel{defaultDMLChannel})
@@ -806,7 +806,7 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addDMLFlowGraphs(defaultCollectionID,
+		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID,
 			defaultPartitionID,
 			loadTypePartition,
 			[]Channel{defaultDMLChannel})

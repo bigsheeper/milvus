@@ -386,7 +386,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// add flow graph
-	w.node.dataSyncService.addDMLFlowGraphs(collectionID, partitionID, lType, vChannels)
+	w.node.dataSyncService.addFlowGraphsForDMLChannels(collectionID, partitionID, lType, vChannels)
 	log.Debug("Query node add DML flow graphs", zap.Any("channels", vChannels))
 
 	// add tSafe watcher if queryCollection exists
@@ -403,7 +403,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 
 	// channels as consumer
 	for _, channel := range toSubChannels {
-		fg, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, channel)
+		fg, err := w.node.dataSyncService.getFlowGraphByDMLChannel(collectionID, channel)
 		if err != nil {
 			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
 		}
@@ -419,7 +419,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 
 	// seek channel
 	for _, pos := range toSeekChannels {
-		fg, err := w.node.dataSyncService.getDMLFlowGraph(collectionID, pos.ChannelName)
+		fg, err := w.node.dataSyncService.getFlowGraphByDMLChannel(collectionID, pos.ChannelName)
 		if err != nil {
 			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
 		}
@@ -475,7 +475,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 
 	// start flow graphs
 	for _, channel := range vChannels {
-		err = w.node.dataSyncService.startDMLFlowGraph(collectionID, channel)
+		err = w.node.dataSyncService.startFlowGraphByDMLChannel(collectionID, channel)
 		if err != nil {
 			return errors.New("watchDmChannelsTask failed, error = " + err.Error())
 		}
@@ -586,7 +586,7 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 		w.node.tSafeReplica.addTSafe(channel)
 	}
 
-	w.node.dataSyncService.addDeltaFlowGraphs(collectionID, vDeltaChannels)
+	w.node.dataSyncService.addFlowGraphsForDeltaChannels(collectionID, vDeltaChannels)
 
 	// add tSafe watcher if queryCollection exists
 	qc, err := w.node.queryService.getQueryCollection(collectionID)
@@ -602,7 +602,7 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 
 	// channels as consumer
 	for _, channel := range toSubChannels {
-		fg, err := w.node.dataSyncService.getDeltaFlowGraph(collectionID, channel)
+		fg, err := w.node.dataSyncService.getFlowGraphByDeltaChannel(collectionID, channel)
 		if err != nil {
 			return errors.New("watchDeltaChannelsTask failed, error = " + err.Error())
 		}
@@ -622,7 +622,7 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 
 	// start flow graphs
 	for _, channel := range vDeltaChannels {
-		err = w.node.dataSyncService.startDeltaFlowGraph(collectionID, channel)
+		err = w.node.dataSyncService.startFlowGraphForDeltaChannel(collectionID, channel)
 		if err != nil {
 			return errors.New("watchDeltaChannelsTask failed, error = " + err.Error())
 		}
@@ -799,7 +799,7 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	if replicaType == replicaStreaming {
 		// remove all tSafes and flow graphs of the target collection
 		for _, channel := range collection.getVChannels() {
-			r.node.dataSyncService.removeDMLFlowGraph(channel)
+			r.node.dataSyncService.removeFlowGraphByDMLChannel(channel)
 			log.Debug("Releasing tSafe in releaseCollectionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vChannel", channel),
@@ -811,7 +811,7 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	} else {
 		// remove all tSafes and flow graphs of the target collection
 		for _, channel := range collection.getVDeltaChannels() {
-			r.node.dataSyncService.removeDeltaFlowGraph(channel)
+			r.node.dataSyncService.removeFlowGraphByDeltaChannel(channel)
 			log.Debug("Releasing tSafe in releaseCollectionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vDeltaChannel", channel),
@@ -883,7 +883,7 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	for _, id := range r.req.PartitionIDs {
 		// remove all tSafes and flow graphs of the target partition
 		for _, channel := range vChannels {
-			r.node.dataSyncService.removeDMLFlowGraph(channel)
+			r.node.dataSyncService.removeFlowGraphByDMLChannel(channel)
 			log.Debug("Releasing tSafe in releasePartitionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("partitionID", id),
@@ -935,7 +935,7 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 		log.Debug("release delta channels", zap.Any("deltaChannels", hCol.getVDeltaChannels()))
 		vChannels := hCol.getVDeltaChannels()
 		for _, channel := range vChannels {
-			r.node.dataSyncService.removeDeltaFlowGraph(channel)
+			r.node.dataSyncService.removeFlowGraphByDeltaChannel(channel)
 			log.Debug("Releasing tSafe in releasePartitionTask...",
 				zap.Any("collectionID", r.req.CollectionID),
 				zap.Any("vChannel", channel),

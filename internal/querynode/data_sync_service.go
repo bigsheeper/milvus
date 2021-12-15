@@ -40,9 +40,9 @@ const (
 type dataSyncService struct {
 	ctx context.Context
 
-	mu              sync.Mutex                      // guards FlowGraphs
-	dmlFlowGraphs   map[Channel]*queryNodeFlowGraph // map[collectionID]flowGraphs
-	deltaFlowGraphs map[Channel]*queryNodeFlowGraph // map[collectionID]flowGraphs
+	mu                      sync.Mutex // guards FlowGraphs
+	dmlChannel2FlowGraphs   map[Channel]*queryNodeFlowGraph
+	deltaChannel2FlowGraphs map[Channel]*queryNodeFlowGraph
 
 	streamingReplica  ReplicaInterface
 	historicalReplica ReplicaInterface
@@ -50,25 +50,23 @@ type dataSyncService struct {
 	msFactory         msgstream.Factory
 }
 
-// addDMLFlowGraphs add a flowGraph to dmlFlowGraphs
-func (dsService *dataSyncService) addDMLFlowGraphs(collectionID UniqueID, partitionID UniqueID, loadType loadType, vChannels []string) {
+// addFlowGraphsForDMLChannels add a flowGraph to dmlChannel2FlowGraphs
+func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID UniqueID, partitionID UniqueID, loadType loadType, vChannels []string) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
 	for _, vChannel := range vChannels {
-		if _, ok := dsService.dmlFlowGraphs[vChannel]; ok {
+		if _, ok := dsService.dmlChannel2FlowGraphs[vChannel]; ok {
 			log.Warn("dml flow graph has been existed", zap.Any("Channel", vChannel))
 			continue
 		}
 		newFlowGraph := newQueryNodeFlowGraph(dsService.ctx,
-			loadType,
 			collectionID,
-			partitionID,
 			dsService.streamingReplica,
 			dsService.tSafeReplica,
 			vChannel,
 			dsService.msFactory)
-		dsService.dmlFlowGraphs[vChannel] = newFlowGraph
+		dsService.dmlChannel2FlowGraphs[vChannel] = newFlowGraph
 		log.Debug("add DML flow graph",
 			zap.Any("collectionID", collectionID),
 			zap.Any("partitionID", partitionID),
@@ -76,13 +74,13 @@ func (dsService *dataSyncService) addDMLFlowGraphs(collectionID UniqueID, partit
 	}
 }
 
-// addDeltaFlowGraphs add a flowGraph to deltaFlowGraphs
-func (dsService *dataSyncService) addDeltaFlowGraphs(collectionID UniqueID, vChannels []string) {
+// addFlowGraphsForDeltaChannels add a flowGraph to deltaChannel2FlowGraphs
+func (dsService *dataSyncService) addFlowGraphsForDeltaChannels(collectionID UniqueID, vChannels []string) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
 	for _, vChannel := range vChannels {
-		if _, ok := dsService.deltaFlowGraphs[vChannel]; ok {
+		if _, ok := dsService.deltaChannel2FlowGraphs[vChannel]; ok {
 			log.Warn("delta flow graph has been existed", zap.Any("Channel", vChannel))
 			continue
 		}
@@ -93,87 +91,87 @@ func (dsService *dataSyncService) addDeltaFlowGraphs(collectionID UniqueID, vCha
 			dsService.tSafeReplica,
 			vChannel,
 			dsService.msFactory)
-		dsService.deltaFlowGraphs[vChannel] = newFlowGraph
+		dsService.deltaChannel2FlowGraphs[vChannel] = newFlowGraph
 		log.Debug("add delta flow graph",
 			zap.Any("collectionID", collectionID),
 			zap.Any("channel", vChannel))
 	}
 }
 
-// getDMLFlowGraph returns the DML flowGraph by collectionID
-func (dsService *dataSyncService) getDMLFlowGraph(collectionID UniqueID, channel Channel) (*queryNodeFlowGraph, error) {
+// getFlowGraphByDMLChannel returns the DML flowGraph by collectionID
+func (dsService *dataSyncService) getFlowGraphByDMLChannel(collectionID UniqueID, channel Channel) (*queryNodeFlowGraph, error) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.dmlFlowGraphs[channel]; !ok {
+	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; !ok {
 		return nil, errors.New("DML flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
 	}
 
 	// TODO: return clone?
-	return dsService.dmlFlowGraphs[channel], nil
+	return dsService.dmlChannel2FlowGraphs[channel], nil
 }
 
-// getDeltaFlowGraph returns the delta flowGraph by collectionID
-func (dsService *dataSyncService) getDeltaFlowGraph(collectionID UniqueID, channel Channel) (*queryNodeFlowGraph, error) {
+// getFlowGraphByDeltaChannel returns the delta flowGraph by collectionID
+func (dsService *dataSyncService) getFlowGraphByDeltaChannel(collectionID UniqueID, channel Channel) (*queryNodeFlowGraph, error) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.deltaFlowGraphs[channel]; !ok {
+	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; !ok {
 		return nil, errors.New("delta flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
 	}
 
 	// TODO: return clone?
-	return dsService.deltaFlowGraphs[channel], nil
+	return dsService.deltaChannel2FlowGraphs[channel], nil
 }
 
-// startDMLFlowGraph starts the DML flow graph by collectionID
-func (dsService *dataSyncService) startDMLFlowGraph(collectionID UniqueID, channel Channel) error {
+// startFlowGraphByDMLChannel starts the DML flow graph by collectionID
+func (dsService *dataSyncService) startFlowGraphByDMLChannel(collectionID UniqueID, channel Channel) error {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.dmlFlowGraphs[channel]; !ok {
+	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; !ok {
 		return errors.New("DML flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
 	}
 	log.Debug("start DML flow graph", zap.Any("channel", channel))
-	dsService.dmlFlowGraphs[channel].flowGraph.Start()
+	dsService.dmlChannel2FlowGraphs[channel].flowGraph.Start()
 	return nil
 }
 
-// startDeltaFlowGraph would start the delta flow graph by collectionID
-func (dsService *dataSyncService) startDeltaFlowGraph(collectionID UniqueID, channel Channel) error {
+// startFlowGraphForDeltaChannel would start the delta flow graph by collectionID
+func (dsService *dataSyncService) startFlowGraphForDeltaChannel(collectionID UniqueID, channel Channel) error {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.deltaFlowGraphs[channel]; !ok {
+	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; !ok {
 		return errors.New("delta flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
 	}
 	log.Debug("start delta flow graph", zap.Any("channel", channel))
-	dsService.deltaFlowGraphs[channel].flowGraph.Start()
+	dsService.deltaChannel2FlowGraphs[channel].flowGraph.Start()
 	return nil
 }
 
-// removeDMLFlowGraph would remove the DML flow graph by collectionID
-func (dsService *dataSyncService) removeDMLFlowGraph(channel Channel) {
+// removeFlowGraphByDMLChannel would remove the DML flow graph by collectionID
+func (dsService *dataSyncService) removeFlowGraphByDMLChannel(channel Channel) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.dmlFlowGraphs[channel]; ok {
+	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; ok {
 		// close flow graph
-		dsService.dmlFlowGraphs[channel].close()
+		dsService.dmlChannel2FlowGraphs[channel].close()
 	}
-	delete(dsService.dmlFlowGraphs, channel)
+	delete(dsService.dmlChannel2FlowGraphs, channel)
 }
 
-// removeDeltaFlowGraph would remove the delta delta flow graph by collectionID
-func (dsService *dataSyncService) removeDeltaFlowGraph(channel Channel) {
+// removeFlowGraphByDeltaChannel would remove the delta delta flow graph by collectionID
+func (dsService *dataSyncService) removeFlowGraphByDeltaChannel(channel Channel) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.deltaFlowGraphs[channel]; ok {
+	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; ok {
 		// close flow graph
-		dsService.deltaFlowGraphs[channel].close()
+		dsService.deltaChannel2FlowGraphs[channel].close()
 	}
-	delete(dsService.deltaFlowGraphs, channel)
+	delete(dsService.deltaChannel2FlowGraphs, channel)
 }
 
 // newDataSyncService returns a new dataSyncService
@@ -184,30 +182,30 @@ func newDataSyncService(ctx context.Context,
 	factory msgstream.Factory) *dataSyncService {
 
 	return &dataSyncService{
-		ctx:               ctx,
-		dmlFlowGraphs:     make(map[Channel]*queryNodeFlowGraph),
-		deltaFlowGraphs:   make(map[Channel]*queryNodeFlowGraph),
-		streamingReplica:  streamingReplica,
-		historicalReplica: historicalReplica,
-		tSafeReplica:      tSafeReplica,
-		msFactory:         factory,
+		ctx:                     ctx,
+		dmlChannel2FlowGraphs:   make(map[Channel]*queryNodeFlowGraph),
+		deltaChannel2FlowGraphs: make(map[Channel]*queryNodeFlowGraph),
+		streamingReplica:        streamingReplica,
+		historicalReplica:       historicalReplica,
+		tSafeReplica:            tSafeReplica,
+		msFactory:               factory,
 	}
 }
 
 // close would close and remove all flow graphs in dataSyncService
 func (dsService *dataSyncService) close() {
 	// close DML flow graphs
-	for _, nodeFG := range dsService.dmlFlowGraphs {
+	for _, nodeFG := range dsService.dmlChannel2FlowGraphs {
 		if nodeFG != nil {
 			nodeFG.flowGraph.Close()
 		}
 	}
-	dsService.dmlFlowGraphs = make(map[Channel]*queryNodeFlowGraph)
+	dsService.dmlChannel2FlowGraphs = make(map[Channel]*queryNodeFlowGraph)
 	// close delta flow graphs
-	for _, nodeFG := range dsService.deltaFlowGraphs {
+	for _, nodeFG := range dsService.deltaChannel2FlowGraphs {
 		if nodeFG != nil {
 			nodeFG.flowGraph.Close()
 		}
 	}
-	dsService.deltaFlowGraphs = make(map[Channel]*queryNodeFlowGraph)
+	dsService.deltaChannel2FlowGraphs = make(map[Channel]*queryNodeFlowGraph)
 }

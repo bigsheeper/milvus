@@ -38,9 +38,7 @@ func TestQueryNodeFlowGraph_consumerFlowGraph(t *testing.T) {
 	assert.NoError(t, err)
 
 	fg := newQueryNodeFlowGraph(ctx,
-		loadTypeCollection,
 		defaultCollectionID,
-		defaultPartitionID,
 		streamingReplica,
 		tSafe,
 		defaultDMLChannel,
@@ -65,9 +63,7 @@ func TestQueryNodeFlowGraph_seekQueryNodeFlowGraph(t *testing.T) {
 	tSafe := newTSafeReplica()
 
 	fg := newQueryNodeFlowGraph(ctx,
-		loadTypeCollection,
 		defaultCollectionID,
-		defaultPartitionID,
 		streamingReplica,
 		tSafe,
 		defaultDMLChannel,

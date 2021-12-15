@@ -38,7 +38,6 @@ func TestServiceTimeNode_Operate(t *testing.T) {
 
 		node := newServiceTimeNode(ctx,
 			tSafe,
-			loadTypeCollection,
 			defaultDMLChannel,
 			fac)
 		return node
@@ -58,7 +57,6 @@ func TestServiceTimeNode_Operate(t *testing.T) {
 
 	t.Run("test operate of loadTypePartition", func(t *testing.T) {
 		node := genServiceTimeNode()
-		node.loadType = loadTypePartition
 		msg := &serviceTimeMsg{
 			timeRange: TimeRange{
 				timestampMin: 0,

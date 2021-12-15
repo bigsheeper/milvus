@@ -14,26 +14,25 @@ package flowgraph
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 )
 
 const (
-	testChannelName = "flow-graph-unittest-channel-0"
-	msgLength       = 10
-	readPosition    = 5
+	msgLength    = 10
+	readPosition = 5
 )
 
 var Params paramtable.BaseTable
+var testChannelName = funcutil.RandomString(8)
 
 func TestMain(m *testing.M) {
 	Params.Init()
@@ -57,62 +56,95 @@ func genFactory() (msgstream.Factory, error) {
 	return msFactory, nil
 }
 
-func prepareToRead(ctx context.Context) (*internalpb.MsgPosition, error) {
+func getProducer(producerChannels []string) (msgstream.MsgStream, error) {
 	msFactory, err := genFactory()
 	if err != nil {
 		return nil, err
 	}
-	stream, err := msFactory.NewMsgStream(ctx)
+
+	stream, err := msFactory.NewMsgStream(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	stream.AsProducer([]string{testChannelName})
 	stream.Start()
+	stream.AsProducer(producerChannels)
+	return stream, nil
+}
 
+func getReader(consumerChannels []string, subName string) (msgstream.MsgStream, error) {
+	msFactory, err := genFactory()
+	if err != nil {
+		return nil, err
+	}
+
+	stream, err := msFactory.NewMsgStream(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	stream.Start()
+	stream.AsReader(consumerChannels, subName)
+	return stream, nil
+}
+
+func getInsertMsg(reqID int64) msgstream.TsMsg {
+	hashValue := uint32(reqID)
+	time := uint64(reqID)
+	baseMsg := msgstream.BaseMsg{
+		BeginTimestamp: 0,
+		EndTimestamp:   0,
+		HashValues:     []uint32{hashValue},
+	}
+
+	insertRequest := internalpb.InsertRequest{
+		Base: &commonpb.MsgBase{
+			MsgType:   commonpb.MsgType_Insert,
+			MsgID:     reqID,
+			Timestamp: time,
+			SourceID:  reqID,
+		},
+		CollectionName: "Collection",
+		PartitionName:  "Partition",
+		SegmentID:      1,
+		ShardName:      "0",
+		Timestamps:     []Timestamp{time},
+		RowIDs:         []int64{1},
+		RowData:        []*commonpb.Blob{{}},
+	}
+	insertMsg := &msgstream.InsertMsg{
+		BaseMsg:       baseMsg,
+		InsertRequest: insertRequest,
+	}
+	return insertMsg
+}
+
+func prepareToRead(ctx context.Context) (*internalpb.MsgPosition, error) {
 	msgPack := &msgstream.MsgPack{}
+	inputStream, err := getProducer([]string{testChannelName})
+	if err != nil {
+		return nil, err
+	}
+	defer inputStream.Close()
+
 	for i := 0; i < msgLength; i++ {
-		insertMsg := &msgstream.InsertMsg{
-			BaseMsg: msgstream.BaseMsg{
-				HashValues: []uint32{},
-			},
-			InsertRequest: internalpb.InsertRequest{
-				Base: &commonpb.MsgBase{
-					MsgType: commonpb.MsgType_Insert,
-				},
-			},
-		}
+		insertMsg := getInsertMsg(int64(i))
 		msgPack.Msgs = append(msgPack.Msgs, insertMsg)
 	}
 
-	err = stream.Produce(msgPack)
+	err = inputStream.Produce(msgPack)
 	if err != nil {
 		return nil, err
 	}
-	time.Sleep(2 * time.Second)
-	fmt.Println("produce done!!!!!!!!!!")
 
-	aaa,err := msFactory.NewTtMsgStream(ctx)
-	if err != nil {
-		panic(err)
-	}
-	aaa.AsConsumer([]string{testChannelName}, "ut-sub-name-0")
-	aaa.Start()
-	pack := aaa.Consume()
-	if len(pack.Msgs) == 0 {
-		panic("aaa")
-	}
-	fmt.Println("ddddaaaaaaaaaaaaaaaaa")
-
-	readStream, err := msFactory.NewMsgStream(ctx)
+	readStream, err := getReader([]string{testChannelName}, "ut-sub-name-0")
 	if err != nil {
 		return nil, err
 	}
-	readStream.AsReader([]string{testChannelName}, "ut-sub-name-0")
+	defer readStream.Close()
 	var seekPosition *internalpb.MsgPosition
 	for i := 0; i < msgLength; i++ {
 		hasNext := readStream.HasNext(testChannelName)
 		if !hasNext {
-			return nil, errors.New("read failed")
+			return nil, errors.New("has next failed")
 		}
 		result, err := readStream.Next(ctx, testChannelName)
 		if err != nil {
@@ -132,18 +164,15 @@ func TestReaderNode(t *testing.T) {
 	position, err := prepareToRead(ctx)
 	assert.NoError(t, err)
 
-	msFactory, err := genFactory()
+	readStream, err := getReader([]string{testChannelName}, "ut-sub-name-1")
 	assert.NoError(t, err)
+	defer readStream.Close()
 
-	stream, err := msFactory.NewMsgStream(ctx)
-	assert.NoError(t, err)
-
-	stream.AsReader([]string{testChannelName}, "ut-sub-name-1")
-	err = stream.SeekReaders([]*internalpb.MsgPosition{position})
+	err = readStream.SeekReaders([]*internalpb.MsgPosition{position})
 	assert.NoError(t, err)
 
 	nodeName := "readerNode"
-	readerNode := NewReaderNode(ctx, stream, testChannelName, nodeName, 1024, 1024)
+	readerNode := NewReaderNode(ctx, readStream, testChannelName, nodeName, 1024, 1024)
 	assert.NotNil(t, readerNode)
 
 	isInputNode := readerNode.IsInputNode()

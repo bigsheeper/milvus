@@ -35,8 +35,8 @@ import (
 )
 
 // Meta is used to record the state of the index.
-// revision: The number of times IndexMeta has been changed in ETCD. It's the same as Event.Kv.Version in ETCD.
-// indexMeta:A structure that records the state of the index defined by proto.
+// revision: The number of times IndexMeta has been changed in etcd. It's the same as Event.Kv.Version in etcd.
+// indexMeta: A structure that records the state of the index defined by proto.
 type Meta struct {
 	indexMeta *indexpb.IndexMeta
 	revision  int64
@@ -420,6 +420,7 @@ func (mt *metaTable) GetUnassignedTasks(onlineNodeIDs []int64) []Meta {
 	return metas
 }
 
+// HasSameReq determine whether there are same indexing tasks.
 func (mt *metaTable) HasSameReq(req *indexpb.BuildIndexRequest) (bool, UniqueID) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()

@@ -2,7 +2,7 @@
 import copy
 import time
 from pymilvus import (
-    connections, FieldSchema, CollectionSchema, DataType,
+    FieldSchema, CollectionSchema, DataType,
     Collection, list_collections,
 )
 
@@ -43,15 +43,6 @@ def gen_search_param(index_type, metric_type="L2"):
         print("Invalid index_type.")
         raise Exception("Invalid index_type.")
     return search_params
-
-
-# def list_containers():
-#     client = docker.from_env()
-#     containers = client.containers.list()
-#     for c in containers:
-#         if "milvus" in c.name:
-#             print(c.image)
-
 
 def get_collections():
     print(f"\nList collections...")

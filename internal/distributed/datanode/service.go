@@ -94,6 +94,7 @@ func (s *Server) startGrpc() error {
 	return err
 }
 
+// startGrpcLoop starts the grep loop of datanode component.
 func (s *Server) startGrpcLoop(listener net.Listener) {
 	defer s.wg.Done()
 	var kaep = keepalive.EnforcementPolicy{
@@ -137,6 +138,7 @@ func (s *Server) SetDataCoordInterface(ds types.DataCoord) error {
 	return s.datanode.SetDataCoord(ds)
 }
 
+// Run initializes and starts Datanode's grpc service.
 func (s *Server) Run() error {
 	if err := s.init(); err != nil {
 		return err
@@ -186,6 +188,7 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// init initializes Datanode's grpc service.
 func (s *Server) init() error {
 	ctx := context.Background()
 	Params.Init()

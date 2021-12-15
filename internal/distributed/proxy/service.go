@@ -172,12 +172,6 @@ func (s *Server) init() error {
 	log.Debug("proxy", zap.Int("proxy port", Params.Port))
 	log.Debug("proxy", zap.String("proxy address", Params.Address))
 
-	err = s.proxy.Register()
-	if err != nil {
-		log.Debug("Proxy Register etcd failed ", zap.Error(err))
-		return err
-	}
-
 	s.wg.Add(1)
 	go s.startGrpcLoop(Params.Port)
 	// wait for grpc server loop start
@@ -264,7 +258,16 @@ func (s *Server) init() error {
 }
 
 func (s *Server) start() error {
-	return s.proxy.Start()
+	err := s.proxy.Start()
+	if err != nil {
+		log.Error("Proxy start failed", zap.Error(err))
+	}
+	err = s.proxy.Register()
+	if err != nil {
+		log.Error("Proxy register service failed ", zap.Error(err))
+		return err
+	}
+	return nil
 }
 
 // Stop stop the Proxy Server
@@ -332,16 +335,17 @@ func (s *Server) LoadCollection(ctx context.Context, request *milvuspb.LoadColle
 	return s.proxy.LoadCollection(ctx, request)
 }
 
+// ReleaseCollection notifies Proxy to release a collection's data
 func (s *Server) ReleaseCollection(ctx context.Context, request *milvuspb.ReleaseCollectionRequest) (*commonpb.Status, error) {
 	return s.proxy.ReleaseCollection(ctx, request)
 }
 
-// ReleaseCollection notifies Proxy to release a collection's data
+// DescribeCollection notifies Proxy to describe a collection
 func (s *Server) DescribeCollection(ctx context.Context, request *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error) {
 	return s.proxy.DescribeCollection(ctx, request)
 }
 
-// ReleaseCollection notifies Proxy to release a collection's data
+// GetCollectionStatistics notifies Proxy to get a collection's Statistics
 func (s *Server) GetCollectionStatistics(ctx context.Context, request *milvuspb.GetCollectionStatisticsRequest) (*milvuspb.GetCollectionStatisticsResponse, error) {
 	return s.proxy.GetCollectionStatistics(ctx, request)
 }
@@ -350,10 +354,12 @@ func (s *Server) ShowCollections(ctx context.Context, request *milvuspb.ShowColl
 	return s.proxy.ShowCollections(ctx, request)
 }
 
+// CreatePartition notifies Proxy to create a partition
 func (s *Server) CreatePartition(ctx context.Context, request *milvuspb.CreatePartitionRequest) (*commonpb.Status, error) {
 	return s.proxy.CreatePartition(ctx, request)
 }
 
+// DropPartition notifies Proxy to drop a partition
 func (s *Server) DropPartition(ctx context.Context, request *milvuspb.DropPartitionRequest) (*commonpb.Status, error) {
 	return s.proxy.DropPartition(ctx, request)
 }
@@ -362,6 +368,7 @@ func (s *Server) HasPartition(ctx context.Context, request *milvuspb.HasPartitio
 	return s.proxy.HasPartition(ctx, request)
 }
 
+// LoadPartitions notifies Proxy to load the partitions data
 func (s *Server) LoadPartitions(ctx context.Context, request *milvuspb.LoadPartitionsRequest) (*commonpb.Status, error) {
 	return s.proxy.LoadPartitions(ctx, request)
 }

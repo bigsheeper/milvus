@@ -486,7 +486,7 @@ class TestCompactionOperation(TestcaseBase):
                 3.load and search
         expected: Verify search result
         """
-        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb)
+        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb, is_dup=False)
 
         # compact
         collection_w.compact()
@@ -573,7 +573,6 @@ class TestCompactionOperation(TestcaseBase):
                                             travel_timestamp=tt)
         assert 0 in search_one[0].ids
 
-    @pytest.mark.xfail(reason="Issue 12450")
     @pytest.mark.tags(CaseLabel.L3)
     def test_compact_delete_outside_time_travel(self):
         """
@@ -602,6 +601,7 @@ class TestCompactionOperation(TestcaseBase):
         sleep(60)
 
         collection_w.compact()
+        collection_w.wait_for_compaction_completed()
         collection_w.load()
 
         # search with travel_time tt

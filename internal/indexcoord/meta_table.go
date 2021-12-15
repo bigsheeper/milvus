@@ -35,8 +35,8 @@ import (
 )
 
 // Meta is used to record the state of the index.
-// revision: The number of times IndexMeta has been changed in ETCD. It's the same as Event.Kv.Version in ETCD.
-// indexMeta:A structure that records the state of the index defined by proto.
+// revision: The number of times IndexMeta has been changed in etcd. It's the same as Event.Kv.Version in etcd.
+// indexMeta: A structure that records the state of the index defined by proto.
 type Meta struct {
 	indexMeta *indexpb.IndexMeta
 	revision  int64
@@ -389,6 +389,7 @@ func (mt *metaTable) GetUnusedIndexFiles(limit int) []Meta {
 	return metas
 }
 
+// GetUnassignedTasks get the unassigned tasks.
 func (mt *metaTable) GetUnassignedTasks(onlineNodeIDs []int64) []Meta {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()
@@ -419,6 +420,7 @@ func (mt *metaTable) GetUnassignedTasks(onlineNodeIDs []int64) []Meta {
 	return metas
 }
 
+// HasSameReq determine whether there are same indexing tasks.
 func (mt *metaTable) HasSameReq(req *indexpb.BuildIndexRequest) (bool, UniqueID) {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
@@ -483,6 +485,8 @@ func (mt *metaTable) HasSameReq(req *indexpb.BuildIndexRequest) (bool, UniqueID)
 	return false, -1
 }
 
+// LoadMetaFromETCD load the meta of specified indexBuildID from ETCD.
+// If the version of meta in memory is greater equal to the version in ETCD, no need to reload.
 func (mt *metaTable) LoadMetaFromETCD(indexBuildID int64, revision int64) bool {
 	mt.lock.Lock()
 	defer mt.lock.Unlock()
@@ -514,6 +518,7 @@ func (mt *metaTable) LoadMetaFromETCD(indexBuildID int64, revision int64) bool {
 	return true
 }
 
+// GetNodeTaskStats get task stats of IndexNode.
 func (mt *metaTable) GetNodeTaskStats() map[UniqueID]int {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()
@@ -528,6 +533,7 @@ func (mt *metaTable) GetNodeTaskStats() map[UniqueID]int {
 	return nodePriority
 }
 
+// GetIndexMetaByIndexBuildID get the index meta of the specified indexBuildID.
 func (mt *metaTable) GetIndexMetaByIndexBuildID(indexBuildID UniqueID) *indexpb.IndexMeta {
 	mt.lock.RLock()
 	defer mt.lock.RUnlock()

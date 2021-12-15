@@ -1,13 +1,18 @@
-// Copyright (C) 2019-2020 Zilliz. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied. See the License for the specific language governing permissions and limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package querynode
 
@@ -31,11 +36,11 @@ func TestTask_AddQueryChannel(t *testing.T) {
 
 	genAddQueryChanelRequest := func() *querypb.AddQueryChannelRequest {
 		return &querypb.AddQueryChannelRequest{
-			Base:             genCommonMsgBase(commonpb.MsgType_LoadCollection),
-			NodeID:           0,
-			CollectionID:     defaultCollectionID,
-			RequestChannelID: genQueryChannel(),
-			ResultChannelID:  genQueryResultChannel(),
+			Base:               genCommonMsgBase(commonpb.MsgType_LoadCollection),
+			NodeID:             0,
+			CollectionID:       defaultCollectionID,
+			QueryChannel:       genQueryChannel(),
+			QueryResultChannel: genQueryResultChannel(),
 		}
 	}
 
@@ -492,9 +497,8 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 	genLoadEmptySegmentsRequest := func() *querypb.LoadSegmentsRequest {
 		schema := genSimpleSegCoreSchema()
 		req := &querypb.LoadSegmentsRequest{
-			Base:          genCommonMsgBase(commonpb.MsgType_LoadSegments),
-			Schema:        schema,
-			LoadCondition: querypb.TriggerCondition_grpcRequest,
+			Base:   genCommonMsgBase(commonpb.MsgType_LoadSegments),
+			Schema: schema,
 		}
 		return req
 	}
@@ -533,9 +537,8 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 		assert.NoError(t, err)
 
 		req := &querypb.LoadSegmentsRequest{
-			Base:          genCommonMsgBase(commonpb.MsgType_LoadSegments),
-			Schema:        schema,
-			LoadCondition: querypb.TriggerCondition_grpcRequest,
+			Base:   genCommonMsgBase(commonpb.MsgType_LoadSegments),
+			Schema: schema,
 			Infos: []*querypb.SegmentLoadInfo{
 				{
 					SegmentID:    defaultSegmentID,
@@ -588,7 +591,6 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 				CollectionID: defaultCollectionID + 1,
 			},
 		}
-		task.req.LoadCondition = querypb.TriggerCondition_nodeDown
 		err = task.Execute(ctx)
 		assert.Error(t, err)
 	})
@@ -617,7 +619,6 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 				NumOfRows:    totalRAM / int64(sizePerRecord),
 			},
 		}
-		task.req.LoadCondition = querypb.TriggerCondition_handoff
 		err = task.Execute(ctx)
 		assert.Error(t, err)
 	})

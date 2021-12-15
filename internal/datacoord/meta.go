@@ -90,7 +90,7 @@ func (m *meta) AddCollection(collection *datapb.CollectionInfo) {
 	m.collections[collection.ID] = collection
 }
 
-// GetCollection get collection info with provided collection id from local cache
+// GetCollection returns collection info with provided collection id from local cache
 func (m *meta) GetCollection(collectionID UniqueID) *datapb.CollectionInfo {
 	m.RLock()
 	defer m.RUnlock()
@@ -108,7 +108,7 @@ type chanPartSegments struct {
 	segments    []*SegmentInfo
 }
 
-// GetSegmentsChanPart get segments organized in Channel-Parition dimension with selector applied
+// GetSegmentsChanPart returns segments organized in Channel-Parition dimension with selector applied
 func (m *meta) GetSegmentsChanPart(selector SegmentInfoSelector) []*chanPartSegments {
 	m.RLock()
 	defer m.RUnlock()
@@ -142,7 +142,7 @@ func (m *meta) GetSegmentsChanPart(selector SegmentInfoSelector) []*chanPartSegm
 func (m *meta) GetNumRowsOfCollection(collectionID UniqueID) int64 {
 	m.RLock()
 	defer m.RUnlock()
-	var ret int64 = 0
+	var ret int64
 	segments := m.segments.GetSegments()
 	for _, segment := range segments {
 		if isSegmentHealthy(segment) && segment.GetCollectionID() == collectionID {
@@ -595,7 +595,7 @@ func (m *meta) GetSegmentsIDOfPartition(collectionID, partitionID UniqueID) []Un
 func (m *meta) GetNumRowsOfPartition(collectionID UniqueID, partitionID UniqueID) int64 {
 	m.RLock()
 	defer m.RUnlock()
-	var ret int64 = 0
+	var ret int64
 	segments := m.segments.GetSegments()
 	for _, segment := range segments {
 		if isSegmentHealthy(segment) && segment.CollectionID == collectionID && segment.PartitionID == partitionID {
@@ -892,8 +892,8 @@ func (m *meta) saveSegmentInfo(segment *SegmentInfo) error {
 			SegmentID:           segment.ID,
 			CollectionID:        segment.CollectionID,
 			PartitionID:         segment.PartitionID,
-			ChannelID:           segment.InsertChannel,
-			SegmentState:        querypb.SegmentState_sealed,
+			DmChannel:           segment.InsertChannel,
+			SegmentState:        commonpb.SegmentState_Sealed,
 			CreatedByCompaction: segment.GetCreatedByCompaction(),
 			CompactionFrom:      segment.GetCompactionFrom(),
 		}

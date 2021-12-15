@@ -9,7 +9,6 @@ from yaml.representer import SafeRepresenter
 # from yaml import full_load, dump
 import yaml
 import tableprint as tp
-# from pprint import pprint
 import config
 
 logger = logging.getLogger("milvus_benchmark.utils")
@@ -129,7 +128,7 @@ def get_deploy_mode(deploy_params):
             deploy_mode = config.DEFUALT_DEPLOY_MODE
         elif "deploy_mode" in milvus_params:
             deploy_mode = milvus_params["deploy_mode"]
-            if deploy_mode not in [config.SINGLE_DEPLOY_MODE, config.CLUSTER_DEPLOY_MODE]:
+            if deploy_mode not in [config.SINGLE_DEPLOY_MODE, config.CLUSTER_DEPLOY_MODE, config.CLUSTER_3RD_DEPLOY_MODE]:
                 raise Exception("Invalid deploy mode: %s" % deploy_mode)
     return deploy_mode
 
@@ -197,6 +196,7 @@ def search_param_analysis(vector_query, filter_query):
         logger.error("[search_param_analysis] vector not dict or len != 1: %s" % str(vector))
         return False
 
+    expression = None
     if isinstance(filter_query, list) and len(filter_query) != 0 and "range" in filter_query[0]:
         filter_range = filter_query[0]["range"]
         if isinstance(filter_range, dict) and len(filter_range) == 1:
@@ -215,9 +215,9 @@ def search_param_analysis(vector_query, filter_query):
         else:
             logger.error("[search_param_analysis] filter_range not dict or len != 1: %s" % str(filter_range))
             return False
-    else:
+    # else:
         # logger.debug("[search_param_analysis] range not in filter_query: %s" % str(filter_query))
-        expression = None
+        # expression = None
 
     result = {
         "data": data,

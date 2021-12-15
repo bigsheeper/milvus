@@ -22,8 +22,10 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 )
 
+// EventTypeCode represents event type by code
 type EventTypeCode int8
 
+// EventTypeCode definitions
 const (
 	DescriptorEventType EventTypeCode = iota
 	InsertEventType
@@ -36,6 +38,7 @@ const (
 	EventTypeEnd
 )
 
+// String returns the string representation
 func (code EventTypeCode) String() string {
 	codes := map[EventTypeCode]string{
 		DescriptorEventType:       "DescriptorEventType",
@@ -106,6 +109,7 @@ func ReadDescriptorEvent(buffer io.Reader) (*descriptorEvent, error) {
 	}, nil
 }
 
+// EventWriter abstracts event writer
 type EventWriter interface {
 	PayloadWriterInterface
 	// Finish set meta in header and no data can be added to event writer

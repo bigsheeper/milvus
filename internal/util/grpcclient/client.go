@@ -66,6 +66,7 @@ func (c *ClientBase) SetNewGrpcClientFunc(f func(cc *grpc.ClientConn) interface{
 	c.newGrpcClient = f
 }
 
+// GetGrpcClient returns grpc client
 func (c *ClientBase) GetGrpcClient(ctx context.Context) (interface{}, error) {
 	c.grpcClientMtx.RLock()
 
@@ -186,6 +187,7 @@ func (c *ClientBase) callOnce(ctx context.Context, caller func(client interface{
 	return ret, err2
 }
 
+// Call does a grpc call
 func (c *ClientBase) Call(ctx context.Context, caller func(client interface{}) (interface{}, error)) (interface{}, error) {
 	if !funcutil.CheckCtxValid(ctx) {
 		return nil, ctx.Err()
@@ -226,6 +228,7 @@ func (c *ClientBase) ReCall(ctx context.Context, caller func(client interface{})
 	return ret, err
 }
 
+// Close close the client connection
 func (c *ClientBase) Close() error {
 	c.grpcClientMtx.Lock()
 	defer c.grpcClientMtx.Unlock()

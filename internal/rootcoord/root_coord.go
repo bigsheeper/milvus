@@ -912,24 +912,42 @@ func (c *Core) ExpireMetaCache(ctx context.Context, collNames []string, ts typeu
 
 // Register register rootcoord at etcd
 func (c *Core) Register() error {
+	c.session.Register()
+	go c.session.LivenessCheck(c.ctx, func() {
+		log.Error("Root Coord disconnected from etcd, process will exit", zap.Int64("Server Id", c.session.ServerID))
+		if err := c.Stop(); err != nil {
+			log.Fatal("failed to stop server", zap.Error(err))
+		}
+		// manually send signal to starter goroutine
+		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	})
+	return nil
+}
+
+func (c *Core) initSession() error {
 	c.session = sessionutil.NewSession(c.ctx, Params.MetaRootPath, Params.EtcdEndpoints)
 	if c.session == nil {
 		return fmt.Errorf("session is nil, the etcd client connection may have failed")
 	}
 	c.session.Init(typeutil.RootCoordRole, Params.Address, true)
-	Params.SetLogger(typeutil.UniqueID(-1))
+	Params.SetLogger(c.session.ServerID)
 	return nil
 }
 
 // Init initialize routine
 func (c *Core) Init() error {
-	var initError error = nil
+	var initError error
 	if c.kvBaseCreate == nil {
 		c.kvBaseCreate = func(root string) (kv.TxnKV, error) {
 			return etcdkv.NewEtcdKV(Params.EtcdEndpoints, root)
 		}
 	}
 	c.initOnce.Do(func() {
+		if err := c.initSession(); err != nil {
+			initError = err
+			log.Error("RootCoord init session failed", zap.Error(err))
+			return
+		}
 		connectEtcdFn := func() error {
 			if c.etcdCli, initError = clientv3.New(clientv3.Config{Endpoints: Params.EtcdEndpoints, DialTimeout: 5 * time.Second}); initError != nil {
 				log.Error("RootCoord failed to new Etcd client", zap.Any("reason", initError))
@@ -1053,9 +1071,9 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 		return err
 	}
 
-	var invalidateCache bool
+	invalidateCache := false
 	var ts typeutil.Timestamp
-	var dbName, collName string
+	var collName string
 
 	switch ddOp.Type {
 	// TODO remove create collection resend
@@ -1065,81 +1083,76 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
-		collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0)
-		if err != nil {
-			return err
+		if _, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0); err != nil {
+			if _, err = c.SendDdCreateCollectionReq(ctx, &ddReq, ddReq.PhysicalChannelNames); err != nil {
+				return err
+			}
+		} else {
+			log.Debug("collection has been created, skip re-send CreateCollection",
+				zap.String("collection name", collName))
 		}
-		if _, err = c.SendDdCreateCollectionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
-			return err
-		}
-		invalidateCache = false
 	case DropCollectionDDType:
 		var ddReq = internalpb.DropCollectionRequest{}
 		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp
-		dbName, collName = ddReq.DbName, ddReq.CollectionName
-		collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0)
-		if err != nil {
-			return err
+		collName = ddReq.CollectionName
+		if collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0); err == nil {
+			if err = c.SendDdDropCollectionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
+				return err
+			}
+			invalidateCache = true
+		} else {
+			log.Debug("collection has been removed, skip re-send DropCollection",
+				zap.String("collection name", collName))
 		}
-		if err = c.SendDdDropCollectionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
-			return err
-		}
-		invalidateCache = true
 	case CreatePartitionDDType:
 		var ddReq = internalpb.CreatePartitionRequest{}
 		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp
-		dbName, collName = ddReq.DbName, ddReq.CollectionName
+		collName = ddReq.CollectionName
 		collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0)
 		if err != nil {
 			return err
 		}
-		if _, err = c.MetaTable.GetPartitionByName(collInfo.ID, ddReq.PartitionName, 0); err == nil {
-			return fmt.Errorf("partition %s already created", ddReq.PartitionName)
+		if _, err = c.MetaTable.GetPartitionByName(collInfo.ID, ddReq.PartitionName, 0); err != nil {
+			if err = c.SendDdCreatePartitionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
+				return err
+			}
+			invalidateCache = true
+		} else {
+			log.Debug("partition has been created, skip re-send CreatePartition",
+				zap.String("collection name", collName), zap.String("partition name", ddReq.PartitionName))
 		}
-		if err = c.SendDdCreatePartitionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
-			return err
-		}
-		invalidateCache = true
 	case DropPartitionDDType:
 		var ddReq = internalpb.DropPartitionRequest{}
 		if err = proto.Unmarshal(ddOp.Body, &ddReq); err != nil {
 			return err
 		}
 		ts = ddReq.Base.Timestamp
-		dbName, collName = ddReq.DbName, ddReq.CollectionName
+		collName = ddReq.CollectionName
 		collInfo, err := c.MetaTable.GetCollectionByName(ddReq.CollectionName, 0)
 		if err != nil {
 			return err
 		}
-		if _, err = c.MetaTable.GetPartitionByName(collInfo.ID, ddReq.PartitionName, 0); err != nil {
-			return err
+		if _, err = c.MetaTable.GetPartitionByName(collInfo.ID, ddReq.PartitionName, 0); err == nil {
+			if err = c.SendDdDropPartitionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
+				return err
+			}
+			invalidateCache = true
+		} else {
+			log.Debug("partition has been removed, skip re-send DropPartition",
+				zap.String("collection name", collName), zap.String("partition name", ddReq.PartitionName))
 		}
-		if err = c.SendDdDropPartitionReq(ctx, &ddReq, collInfo.PhysicalChannelNames); err != nil {
-			return err
-		}
-		invalidateCache = true
 	default:
 		return fmt.Errorf("invalid DdOperation %s", ddOp.Type)
 	}
 
 	if invalidateCache {
-		req := proxypb.InvalidateCollMetaCacheRequest{
-			Base: &commonpb.MsgBase{
-				MsgType:   0, //TODO, msg type
-				MsgID:     0, //TODO, msg id
-				Timestamp: ts,
-				SourceID:  c.session.ServerID,
-			},
-			DbName:         dbName,
-			CollectionName: collName,
-		}
-		c.proxyClientManager.InvalidateCollectionMetaCache(c.ctx, &req)
+		c.ExpireMetaCache(ctx, []string{collName}, ts)
 	}
 
 	// Update DDOperation in etcd
@@ -1171,14 +1184,6 @@ func (c *Core) Start() error {
 		go c.tsLoop()
 		go c.chanTimeTick.startWatch(&c.wg)
 		go c.checkFlushedSegmentsLoop()
-		go c.session.LivenessCheck(c.ctx, func() {
-			log.Error("Root Coord disconnected from etcd, process will exit", zap.Int64("Server Id", c.session.ServerID))
-			if err := c.Stop(); err != nil {
-				log.Fatal("failed to stop server", zap.Error(err))
-			}
-			// manually send signal to starter goroutine
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-		})
 		Params.CreatedTime = time.Now()
 		Params.UpdatedTime = time.Now()
 

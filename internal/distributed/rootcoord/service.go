@@ -153,12 +153,7 @@ func (s *Server) init() error {
 
 	log.Debug("init params done")
 
-	err := s.rootCoord.Register()
-	if err != nil {
-		return err
-	}
-
-	err = s.startGrpc()
+	err := s.startGrpc(Params.Port)
 	if err != nil {
 		return err
 	}
@@ -209,15 +204,15 @@ func (s *Server) init() error {
 	return s.rootCoord.Init()
 }
 
-func (s *Server) startGrpc() error {
+func (s *Server) startGrpc(port int) error {
 	s.wg.Add(1)
-	go s.startGrpcLoop(Params.Port)
+	go s.startGrpcLoop(port)
 	// wait for grpc server loop start
 	err := <-s.grpcErrChan
 	return err
 }
 
-func (s *Server) startGrpcLoop(grpcPort int) {
+func (s *Server) startGrpcLoop(port int) {
 	defer s.wg.Done()
 	var kaep = keepalive.EnforcementPolicy{
 		MinTime:             5 * time.Second, // If a client pings more than once every 5 seconds, terminate the connection
@@ -228,8 +223,8 @@ func (s *Server) startGrpcLoop(grpcPort int) {
 		Time:    60 * time.Second, // Ping the client if it is idle for 60 seconds to ensure the connection is still active
 		Timeout: 10 * time.Second, // Wait 10 second for the ping ack before assuming the connection is dead
 	}
-	log.Debug("start grpc ", zap.Int("port", grpcPort))
-	lis, err := net.Listen("tcp", ":"+strconv.Itoa(grpcPort))
+	log.Debug("start grpc ", zap.Int("port", port))
+	lis, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		log.Error("GrpcServer:failed to listen", zap.String("error", err.Error()))
 		s.grpcErrChan <- err
@@ -258,6 +253,11 @@ func (s *Server) startGrpcLoop(grpcPort int) {
 func (s *Server) start() error {
 	log.Debug("RootCoord Core start ...")
 	if err := s.rootCoord.Start(); err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	if err := s.rootCoord.Register(); err != nil {
+		log.Error("RootCoord registers service failed", zap.Error(err))
 		return err
 	}
 	return nil

@@ -55,6 +55,10 @@ import (
 // make sure IndexCoord implements types.IndexCoord
 var _ types.IndexCoord = (*IndexCoord)(nil)
 
+const (
+	indexSizeFactor = 6
+)
+
 // IndexCoord is a component responsible for scheduling index construction tasks and maintaining index status.
 // IndexCoord accepts requests from rootcoord to build indexes, delete indexes, and query index information.
 // IndexCoord is responsible for assigning IndexBuildID to the request to build the index, and forwarding the
@@ -116,22 +120,42 @@ func NewIndexCoord(ctx context.Context) (*IndexCoord, error) {
 
 // Register register IndexCoord role at etcd.
 func (i *IndexCoord) Register() error {
+	i.session.Register()
+	go i.session.LivenessCheck(i.loopCtx, func() {
+		log.Error("Index Coord disconnected from etcd, process will exit", zap.Int64("Server Id", i.session.ServerID))
+		if err := i.Stop(); err != nil {
+			log.Fatal("failed to stop server", zap.Error(err))
+		}
+		// manually send signal to starter goroutine
+		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	})
+	return nil
+}
+
+func (i *IndexCoord) initSession() error {
 	i.session = sessionutil.NewSession(i.loopCtx, Params.MetaRootPath, Params.EtcdEndpoints)
 	if i.session == nil {
 		return errors.New("failed to initialize session")
 	}
 	i.session.Init(typeutil.IndexCoordRole, Params.Address, true)
-	Params.SetLogger(typeutil.UniqueID(-1))
+	Params.SetLogger(i.session.ServerID)
 	return nil
 }
 
 // Init initializes the IndexCoord component.
 func (i *IndexCoord) Init() error {
-	var initErr error = nil
+	var initErr error
 	Params.InitOnce()
 	i.initOnce.Do(func() {
-		log.Debug("IndexCoord", zap.Strings("etcd endpoints", Params.EtcdEndpoints))
 		i.UpdateStateCode(internalpb.StateCode_Initializing)
+		log.Debug("IndexCoord init", zap.Any("stateCode", i.stateCode.Load().(internalpb.StateCode)))
+
+		err := i.initSession()
+		if err != nil {
+			log.Error(err.Error())
+			initErr = err
+			return
+		}
 
 		connectEtcdFn := func() error {
 			etcdKV, err := etcdkv.NewEtcdKV(Params.EtcdEndpoints, Params.MetaRootPath)
@@ -146,7 +170,7 @@ func (i *IndexCoord) Init() error {
 			return err
 		}
 		log.Debug("IndexCoord try to connect etcd")
-		err := retry.Do(i.loopCtx, connectEtcdFn, retry.Attempts(300))
+		err = retry.Do(i.loopCtx, connectEtcdFn, retry.Attempts(300))
 		if err != nil {
 			log.Error("IndexCoord try to connect etcd failed", zap.Error(err))
 			initErr = err
@@ -229,7 +253,7 @@ func (i *IndexCoord) Init() error {
 
 // Start starts the IndexCoord component.
 func (i *IndexCoord) Start() error {
-	var startErr error = nil
+	var startErr error
 	i.startOnce.Do(func() {
 		i.loopWg.Add(1)
 		go i.tsLoop()
@@ -245,15 +269,6 @@ func (i *IndexCoord) Start() error {
 
 		i.loopWg.Add(1)
 		go i.watchMetaLoop()
-
-		go i.session.LivenessCheck(i.loopCtx, func() {
-			log.Error("Index Coord disconnected from etcd, process will exit", zap.Int64("Server Id", i.session.ServerID))
-			if err := i.Stop(); err != nil {
-				log.Fatal("failed to stop server", zap.Error(err))
-			}
-			// manually send signal to starter goroutine
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-		})
 
 		startErr = i.sched.Start()
 
@@ -528,7 +543,7 @@ func (i *IndexCoord) GetIndexFilePaths(ctx context.Context, req *indexpb.GetInde
 	log.Debug("IndexCoord GetIndexFilePaths", zap.Int64s("IndexBuildIds", req.IndexBuildIDs))
 	sp, _ := trace.StartSpanFromContextWithOperationName(ctx, "IndexCoord-BuildIndex")
 	defer sp.Finish()
-	var indexPaths []*indexpb.IndexFilePathInfo = nil
+	var indexPaths []*indexpb.IndexFilePathInfo
 
 	for _, indexID := range req.IndexBuildIDs {
 		indexPathInfo, err := i.metaTable.GetIndexFilePathInfo(indexID)

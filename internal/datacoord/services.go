@@ -55,9 +55,9 @@ func (s *Server) GetTimeTickChannel(ctx context.Context) (*milvuspb.StringRespon
 func (s *Server) GetStatisticsChannel(ctx context.Context) (*milvuspb.StringResponse, error) {
 	return &milvuspb.StringResponse{
 		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    "no statistics channel",
 		},
-		Value: Params.StatisticsChannelName,
 	}, nil
 }
 
@@ -613,7 +613,7 @@ func (s *Server) GetFlushedSegments(ctx context.Context, req *datapb.GetFlushedS
 	}
 	collectionID := req.GetCollectionID()
 	partitionID := req.GetPartitionID()
-	log.Debug("GetFlushedSegment",
+	log.Debug("received get flushed segments request",
 		zap.Int64("collectionID", collectionID),
 		zap.Int64("partitionID", partitionID))
 	if s.isClosed() {
@@ -643,9 +643,9 @@ func (s *Server) GetFlushedSegments(ctx context.Context, req *datapb.GetFlushedS
 // GetMetrics returns DataCoord metrics info
 // it may include SystemMetrics, Topology metrics, etc.
 func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
-	log.Debug("DataCoord.GetMetrics",
-		zap.Int64("node_id", Params.NodeID),
-		zap.String("req", req.Request))
+	log.Debug("received get metrics request",
+		zap.Int64("nodeID", Params.NodeID),
+		zap.String("request", req.Request))
 
 	if s.isClosed() {
 		log.Warn("DataCoord.GetMetrics failed",
@@ -751,7 +751,7 @@ func (s *Server) CompleteCompaction(ctx context.Context, req *datapb.CompactionR
 
 // ManualCompaction triggers a compaction for a collection
 func (s *Server) ManualCompaction(ctx context.Context, req *milvuspb.ManualCompactionRequest) (*milvuspb.ManualCompactionResponse, error) {
-	log.Debug("receive manual compaction", zap.Int64("collectionID", req.GetCollectionID()))
+	log.Debug("received manual compaction", zap.Int64("collectionID", req.GetCollectionID()))
 
 	resp := &milvuspb.ManualCompactionResponse{
 		Status: &commonpb.Status{
@@ -793,7 +793,7 @@ func (s *Server) ManualCompaction(ctx context.Context, req *milvuspb.ManualCompa
 
 // GetCompactionState gets the state of a compaction
 func (s *Server) GetCompactionState(ctx context.Context, req *milvuspb.GetCompactionStateRequest) (*milvuspb.GetCompactionStateResponse, error) {
-	log.Debug("receive get compaction state request", zap.Int64("compactionID", req.GetCompactionID()))
+	log.Debug("received get compaction state request", zap.Int64("compactionID", req.GetCompactionID()))
 	resp := &milvuspb.GetCompactionStateResponse{
 		Status: &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -827,7 +827,7 @@ func (s *Server) GetCompactionState(ctx context.Context, req *milvuspb.GetCompac
 
 // GetCompactionStateWithPlans returns the compaction state of given plan
 func (s *Server) GetCompactionStateWithPlans(ctx context.Context, req *milvuspb.GetCompactionPlansRequest) (*milvuspb.GetCompactionPlansResponse, error) {
-	log.Debug("received GetCompactionStateWithPlans request", zap.Int64("compactionID", req.GetCompactionID()))
+	log.Debug("received the request to get compaction state with plans", zap.Int64("compactionID", req.GetCompactionID()))
 
 	resp := &milvuspb.GetCompactionPlansResponse{
 		Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_UnexpectedError},
@@ -951,10 +951,10 @@ func (s *Server) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStateR
 	}
 
 	if len(unflushed) != 0 {
-		log.Debug("unflushed segment ids", zap.Int64s("segment ids", unflushed), zap.Int("len", len(unflushed)))
+		log.Debug("[flush state] unflushed segment ids", zap.Int64s("segment ids", unflushed), zap.Int("len", len(unflushed)))
 		resp.Flushed = false
 	} else {
-		log.Debug("all segment is flushed", zap.Int64s("segment ids", req.GetSegmentIDs()))
+		log.Debug("[flush state] all segment is flushed", zap.Int64s("segment ids", req.GetSegmentIDs()))
 		resp.Flushed = true
 	}
 

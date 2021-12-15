@@ -56,13 +56,13 @@ func genFactory() (msgstream.Factory, error) {
 	return msFactory, nil
 }
 
-func getProducer(producerChannels []string) (msgstream.MsgStream, error) {
+func getProducer(ctx context.Context, producerChannels []string) (msgstream.MsgStream, error) {
 	msFactory, err := genFactory()
 	if err != nil {
 		return nil, err
 	}
 
-	stream, err := msFactory.NewMsgStream(context.Background())
+	stream, err := msFactory.NewMsgStream(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +71,13 @@ func getProducer(producerChannels []string) (msgstream.MsgStream, error) {
 	return stream, nil
 }
 
-func getReader(consumerChannels []string, subName string) (msgstream.MsgStream, error) {
+func getReader(ctx context.Context, consumerChannels []string, subName string) (msgstream.MsgStream, error) {
 	msFactory, err := genFactory()
 	if err != nil {
 		return nil, err
 	}
 
-	stream, err := msFactory.NewMsgStream(context.Background())
+	stream, err := msFactory.NewMsgStream(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func getInsertMsg(reqID int64) msgstream.TsMsg {
 
 func prepareToRead(ctx context.Context) (*internalpb.MsgPosition, error) {
 	msgPack := &msgstream.MsgPack{}
-	inputStream, err := getProducer([]string{testChannelName})
+	inputStream, err := getProducer(ctx, []string{testChannelName})
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func prepareToRead(ctx context.Context) (*internalpb.MsgPosition, error) {
 		return nil, err
 	}
 
-	readStream, err := getReader([]string{testChannelName}, "ut-sub-name-0")
+	readStream, err := getReader(ctx, []string{testChannelName}, "ut-sub-name-0")
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func TestReaderNode(t *testing.T) {
 	position, err := prepareToRead(ctx)
 	assert.NoError(t, err)
 
-	readStream, err := getReader([]string{testChannelName}, "ut-sub-name-1")
+	readStream, err := getReader(ctx, []string{testChannelName}, "ut-sub-name-1")
 	assert.NoError(t, err)
 	defer readStream.Close()
 

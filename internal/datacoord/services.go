@@ -55,9 +55,9 @@ func (s *Server) GetTimeTickChannel(ctx context.Context) (*milvuspb.StringRespon
 func (s *Server) GetStatisticsChannel(ctx context.Context) (*milvuspb.StringResponse, error) {
 	return &milvuspb.StringResponse{
 		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    "no statistics channel",
 		},
-		Value: Params.StatisticsChannelName,
 	}, nil
 }
 
@@ -827,7 +827,7 @@ func (s *Server) GetCompactionState(ctx context.Context, req *milvuspb.GetCompac
 
 // GetCompactionStateWithPlans returns the compaction state of given plan
 func (s *Server) GetCompactionStateWithPlans(ctx context.Context, req *milvuspb.GetCompactionPlansRequest) (*milvuspb.GetCompactionPlansResponse, error) {
-	log.Debug("received GetCompactionStateWithPlans request", zap.Int64("compactionID", req.GetCompactionID()))
+	log.Debug("received the request to get compaction state with plans", zap.Int64("compactionID", req.GetCompactionID()))
 
 	resp := &milvuspb.GetCompactionPlansResponse{
 		Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_UnexpectedError},
@@ -951,10 +951,10 @@ func (s *Server) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStateR
 	}
 
 	if len(unflushed) != 0 {
-		log.Debug("unflushed segment ids", zap.Int64s("segment ids", unflushed), zap.Int("len", len(unflushed)))
+		log.Debug("[flush state] unflushed segment ids", zap.Int64s("segment ids", unflushed), zap.Int("len", len(unflushed)))
 		resp.Flushed = false
 	} else {
-		log.Debug("all segment is flushed", zap.Int64s("segment ids", req.GetSegmentIDs()))
+		log.Debug("[flush state] all segment is flushed", zap.Int64s("segment ids", req.GetSegmentIDs()))
 		resp.Flushed = true
 	}
 

@@ -35,14 +35,17 @@ func newIndexInfo() *indexInfo {
 	}
 }
 
+// setIndexName sets the name of index
 func (info *indexInfo) setIndexName(name string) {
 	info.indexName = name
 }
 
+// setIndexID sets the id of index
 func (info *indexInfo) setIndexID(id UniqueID) {
 	info.indexID = id
 }
 
+// setBuildID sets the build id of index
 func (info *indexInfo) setBuildID(id UniqueID) {
 	info.buildID = id
 }

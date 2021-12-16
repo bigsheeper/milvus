@@ -446,7 +446,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 	ctx, cancel := context.WithCancel(qc.loopCtx)
 	defer cancel()
 	defer qc.loopWg.Done()
-	log.Debug("query coordinator start load balance segment loop")
+	log.Debug("QueryCoord start load balance segment loop")
 
 	timer := time.NewTicker(time.Duration(Params.BalanceIntervalSeconds) * time.Second)
 
@@ -613,7 +613,7 @@ func chooseSegmentToBalance(sourceNodeID int64, dstNodeID int64,
 	}
 
 	if memoryInsufficient {
-		return nil, errors.New("all query nodes has insufficient memory")
+		return nil, errors.New("all QueryNode has insufficient memory")
 	}
 
 	return selectedSegmentInfo, nil

@@ -38,6 +38,7 @@ func TestServiceTimeNode_Operate(t *testing.T) {
 
 		node := newServiceTimeNode(ctx,
 			tSafe,
+			defaultCollectionID,
 			defaultDMLChannel,
 			fac)
 		return node

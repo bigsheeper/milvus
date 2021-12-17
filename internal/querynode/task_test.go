@@ -224,7 +224,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 		req := &querypb.WatchDmChannelsRequest{
 			Base:         genCommonMsgBase(commonpb.MsgType_WatchDmChannels),
 			CollectionID: defaultCollectionID,
-			PartitionID:  defaultPartitionID,
+			PartitionIDs: []UniqueID{defaultPartitionID},
 			Schema:       schema,
 		}
 		return req
@@ -268,7 +268,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 				ChannelName:  defaultDMLChannel,
 			},
 		}
-		task.req.PartitionID = 0
+		task.req.PartitionIDs = []UniqueID{0}
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})
@@ -306,7 +306,7 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 			},
 		}
 		task.req.CollectionID++
-		task.req.PartitionID++
+		task.req.PartitionIDs[0]++
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})
@@ -760,10 +760,7 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID,
-			defaultPartitionID,
-			loadTypePartition,
-			[]Channel{defaultDMLChannel})
+		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})
@@ -806,10 +803,7 @@ func TestTask_releasePartitionTask(t *testing.T) {
 			req:  genReleasePartitionsRequest(),
 			node: node,
 		}
-		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID,
-			defaultPartitionID,
-			loadTypePartition,
-			[]Channel{defaultDMLChannel})
+		task.node.dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
 		err = task.Execute(ctx)
 		assert.NoError(t, err)
 	})

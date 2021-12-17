@@ -136,7 +136,7 @@ func (dsService *dataSyncService) startFlowGraphByDMLChannel(collectionID Unique
 	log.Debug("start DML flow graph",
 		zap.Any("collectionID", collectionID),
 		zap.Any("channel", channel),
-		)
+	)
 	dsService.dmlChannel2FlowGraphs[channel].flowGraph.Start()
 	return nil
 }
@@ -157,28 +157,32 @@ func (dsService *dataSyncService) startFlowGraphForDeltaChannel(collectionID Uni
 	return nil
 }
 
-// removeFlowGraphByDMLChannel would remove the DML flow graph by collectionID
-func (dsService *dataSyncService) removeFlowGraphByDMLChannel(channel Channel) {
+// removeFlowGraphsByDMLChannels would remove the DML flow graph by collectionID
+func (dsService *dataSyncService) removeFlowGraphsByDMLChannels(channels []Channel) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; ok {
-		// close flow graph
-		dsService.dmlChannel2FlowGraphs[channel].close()
+	for _, channel := range channels {
+		if _, ok := dsService.dmlChannel2FlowGraphs[channel]; ok {
+			// close flow graph
+			dsService.dmlChannel2FlowGraphs[channel].close()
+		}
+		delete(dsService.dmlChannel2FlowGraphs, channel)
 	}
-	delete(dsService.dmlChannel2FlowGraphs, channel)
 }
 
-// removeFlowGraphByDeltaChannel would remove the delta delta flow graph by collectionID
-func (dsService *dataSyncService) removeFlowGraphByDeltaChannel(channel Channel) {
+// removeFlowGraphsByDeltaChannels would remove the delta delta flow graph by collectionID
+func (dsService *dataSyncService) removeFlowGraphsByDeltaChannels(channels []Channel) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
-	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; ok {
-		// close flow graph
-		dsService.deltaChannel2FlowGraphs[channel].close()
+	for _, channel := range channels {
+		if _, ok := dsService.deltaChannel2FlowGraphs[channel]; ok {
+			// close flow graph
+			dsService.deltaChannel2FlowGraphs[channel].close()
+		}
+		delete(dsService.deltaChannel2FlowGraphs, channel)
 	}
-	delete(dsService.deltaChannel2FlowGraphs, channel)
 }
 
 // newDataSyncService returns a new dataSyncService

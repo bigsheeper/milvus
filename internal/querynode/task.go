@@ -770,6 +770,8 @@ func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 	)
 
 	// remove query collection
+	// queryCollection and Collection would be deleted in releaseCollection,
+	// so we don't need to remove the tSafeWatcher or channel manually.
 	r.node.queryService.stopQueryCollection(r.req.CollectionID)
 
 	err := r.releaseReplica(r.node.streaming.replica, replicaStreaming)
@@ -798,36 +800,24 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	log.Debug("set release time", zap.Any("collectionID", r.req.CollectionID))
 	collection.setReleaseTime(r.req.Base.Timestamp)
 
-	var channels []string
+	// remove all flow graphs of the target collection
+	var channels []Channel
 	if replicaType == replicaStreaming {
 		channels = collection.getVChannels()
-	} else {
-			channels =
-		}
-		{
-		// remove all tSafes and flow graphs of the target collection
-		for _, channel := range collection.getVChannels() {
-			r.node.dataSyncService.removeFlowGraphByDMLChannel(channel)
-			log.Debug("Releasing tSafe in releaseCollectionTask...",
-				zap.Any("collectionID", r.req.CollectionID),
-				zap.Any("vChannel", channel),
-			)
-			r.node.tSafeReplica.removeTSafe(channel)
-			// queryCollection and Collection would be deleted in releaseCollection,
-			// so we don't need to remove the tSafeWatcher or channel manually.
-		}
+		r.node.dataSyncService.removeFlowGraphsByDMLChannels(channels)
 	} else {
 		// remove all tSafes and flow graphs of the target collection
-		for _, channel := range collection.getVDeltaChannels() {
-			r.node.dataSyncService.removeFlowGraphByDeltaChannel(channel)
-			log.Debug("Releasing tSafe in releaseCollectionTask...",
-				zap.Any("collectionID", r.req.CollectionID),
-				zap.Any("vDeltaChannel", channel),
-			)
-			r.node.tSafeReplica.removeTSafe(channel)
-			// queryCollection and Collection would be deleted in releaseCollection,
-			// so we don't need to remove the tSafeWatcher or channel manually.
-		}
+		channels = collection.getVDeltaChannels()
+		r.node.dataSyncService.removeFlowGraphsByDeltaChannels(channels)
+	}
+
+	// remove all tSafes of the target collection
+	for _, channel := range channels {
+		log.Debug("Releasing tSafe in releaseCollectionTask...",
+			zap.Any("collectionID", r.req.CollectionID),
+			zap.Any("vDeltaChannel", channel),
+		)
+		r.node.tSafeReplica.removeTSafe(channel)
 	}
 
 	// remove excludedSegments record
@@ -886,33 +876,7 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	}
 	log.Debug("start release partition", zap.Any("collectionID", r.req.CollectionID))
 
-	// release partitions
-	vChannels := sCol.getVChannels()
 	for _, id := range r.req.PartitionIDs {
-		// remove all tSafes and flow graphs of the target partition
-		for _, channel := range vChannels {
-			r.node.dataSyncService.removeFlowGraphByDMLChannel(channel)
-			log.Debug("Releasing tSafe in releasePartitionTask...",
-				zap.Any("collectionID", r.req.CollectionID),
-				zap.Any("partitionID", id),
-				zap.Any("vChannel", channel),
-			)
-			r.node.tSafeReplica.removeTSafe(channel)
-			// no tSafe or tSafe has been removed,
-			// we need to remove the corresponding tSafeWatcher in queryCollection,
-			// and remove the corresponding channel in collection
-			qc, err := r.node.queryService.getQueryCollection(r.req.CollectionID)
-			if err != nil {
-				return err
-			}
-			err = qc.removeTSafeWatcher(channel)
-			if err != nil {
-				return err
-			}
-			sCol.removeVChannel(channel)
-			hCol.removeVChannel(channel)
-		}
-
 		// remove partition from streaming and historical
 		hasPartitionInHistorical := r.node.historical.replica.hasPartition(id)
 		if hasPartitionInHistorical {
@@ -934,39 +898,6 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 		hCol.addReleasedPartition(id)
 		sCol.addReleasedPartition(id)
 	}
-	pids, err := r.node.historical.replica.getPartitionIDs(r.req.CollectionID)
-	if err != nil {
-		return err
-	}
-	log.Debug("start release history pids", zap.Any("pids", pids), zap.Any("load type", hCol.getLoadType()))
-	if len(pids) == 0 && hCol.getLoadType() == loadTypePartition {
-		log.Debug("release delta channels", zap.Any("deltaChannels", hCol.getVDeltaChannels()))
-		vChannels := hCol.getVDeltaChannels()
-		for _, channel := range vChannels {
-			r.node.dataSyncService.removeFlowGraphByDeltaChannel(channel)
-			log.Debug("Releasing tSafe in releasePartitionTask...",
-				zap.Any("collectionID", r.req.CollectionID),
-				zap.Any("vChannel", channel),
-			)
-			r.node.tSafeReplica.removeTSafe(channel)
-			// no tSafe or tSafe has been removed,
-			// we need to remove the corresponding tSafeWatcher in queryCollection,
-			// and remove the corresponding channel in collection
-			qc, err := r.node.queryService.getQueryCollection(r.req.CollectionID)
-			if err != nil {
-				return err
-			}
-			err = qc.removeTSafeWatcher(channel)
-			if err != nil {
-				return err
-			}
-			sCol.removeVDeltaChannel(channel)
-			hCol.removeVDeltaChannel(channel)
-		}
-	}
-
-	// release global segment info
-	r.node.historical.removeGlobalSegmentIDsByPartitionIds(r.req.PartitionIDs)
 
 	log.Debug("Release partition task done",
 		zap.Any("collectionID", r.req.CollectionID),

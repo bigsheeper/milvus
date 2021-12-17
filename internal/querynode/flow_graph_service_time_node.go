@@ -28,6 +28,7 @@ import (
 
 type serviceTimeNode struct {
 	baseNode
+	collectionID      UniqueID
 	vChannel          Channel
 	tSafeReplica      TSafeReplicaInterface
 	timeTickMsgStream msgstream.MsgStream
@@ -63,7 +64,10 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	// update service time
 	err := stNode.tSafeReplica.setTSafe(stNode.vChannel, serviceTimeMsg.timeRange.timestampMax)
 	if err != nil {
-		log.Error(err.Error())
+		log.Error("serviceTimeNode setTSafe failed",
+			zap.Any("collectionID", stNode.collectionID),
+			zap.Error(err),
+		)
 	}
 	//p, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMax)
 	//log.Debug("update tSafe:",
@@ -104,6 +108,7 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 
 func newServiceTimeNode(ctx context.Context,
 	tSafeReplica TSafeReplicaInterface,
+	collectionID UniqueID,
 	channel Channel,
 	factory msgstream.Factory) *serviceTimeNode {
 
@@ -126,6 +131,7 @@ func newServiceTimeNode(ctx context.Context,
 
 	return &serviceTimeNode{
 		baseNode:          baseNode,
+		collectionID:      collectionID,
 		vChannel:          channel,
 		tSafeReplica:      tSafeReplica,
 		timeTickMsgStream: timeTimeMsgStream,

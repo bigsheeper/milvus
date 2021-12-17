@@ -228,11 +228,11 @@ func (w *watchDmChannelsTask) PreExecute(ctx context.Context) error {
 
 func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	collectionID := w.req.CollectionID
-	partitionID := w.req.PartitionID
+	partitionIDs := w.req.GetPartitionIDs()
 
 	var lType loadType
 	// if no partitionID is specified, load type is load collection
-	if partitionID != 0 {
+	if len(partitionIDs) != 0 {
 		lType = loadTypePartition
 	} else {
 		lType = loadTypeCollection
@@ -291,18 +291,20 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	hCol.addPChannels(pChannels)
 	hCol.setLoadType(lType)
 	if lType == loadTypePartition {
-		sCol.deleteReleasedPartition(partitionID)
-		hCol.deleteReleasedPartition(partitionID)
-		if hasPartitionInStreaming := w.node.streaming.replica.hasPartition(partitionID); !hasPartitionInStreaming {
-			err := w.node.streaming.replica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
+		for _, partitionID := range partitionIDs {
+			sCol.deleteReleasedPartition(partitionID)
+			hCol.deleteReleasedPartition(partitionID)
+			if hasPartitionInStreaming := w.node.streaming.replica.hasPartition(partitionID); !hasPartitionInStreaming {
+				err := w.node.streaming.replica.addPartition(collectionID, partitionID)
+				if err != nil {
+					return err
+				}
 			}
-		}
-		if hasPartitionInHistorical := w.node.historical.replica.hasPartition(partitionID); !hasPartitionInHistorical {
-			err := w.node.historical.replica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
+			if hasPartitionInHistorical := w.node.historical.replica.hasPartition(partitionID); !hasPartitionInHistorical {
+				err := w.node.historical.replica.addPartition(collectionID, partitionID)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -386,7 +388,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	}
 
 	// add flow graph
-	w.node.dataSyncService.addFlowGraphsForDMLChannels(collectionID, partitionID, lType, vChannels)
+	w.node.dataSyncService.addFlowGraphsForDMLChannels(collectionID, vChannels)
 	log.Debug("Query node add DML flow graphs", zap.Any("channels", vChannels))
 
 	// add tSafe watcher if queryCollection exists
@@ -796,7 +798,13 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	log.Debug("set release time", zap.Any("collectionID", r.req.CollectionID))
 	collection.setReleaseTime(r.req.Base.Timestamp)
 
+	var channels []string
 	if replicaType == replicaStreaming {
+		channels = collection.getVChannels()
+	} else {
+			channels =
+		}
+		{
 		// remove all tSafes and flow graphs of the target collection
 		for _, channel := range collection.getVChannels() {
 			r.node.dataSyncService.removeFlowGraphByDMLChannel(channel)

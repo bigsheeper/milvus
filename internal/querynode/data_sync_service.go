@@ -18,7 +18,6 @@ package querynode
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -51,13 +50,16 @@ type dataSyncService struct {
 }
 
 // addFlowGraphsForDMLChannels add a flowGraph to dmlChannel2FlowGraphs
-func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID UniqueID, partitionID UniqueID, loadType loadType, vChannels []string) {
+func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID UniqueID, vChannels []string) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
 	for _, vChannel := range vChannels {
 		if _, ok := dsService.dmlChannel2FlowGraphs[vChannel]; ok {
-			log.Warn("dml flow graph has been existed", zap.Any("Channel", vChannel))
+			log.Warn("dml flow graph has been existed",
+				zap.Any("collectionID", collectionID),
+				zap.Any("Channel", vChannel),
+			)
 			continue
 		}
 		newFlowGraph := newQueryNodeFlowGraph(dsService.ctx,
@@ -69,7 +71,6 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 		dsService.dmlChannel2FlowGraphs[vChannel] = newFlowGraph
 		log.Debug("add DML flow graph",
 			zap.Any("collectionID", collectionID),
-			zap.Any("partitionID", partitionID),
 			zap.Any("channel", vChannel))
 	}
 }
@@ -104,7 +105,7 @@ func (dsService *dataSyncService) getFlowGraphByDMLChannel(collectionID UniqueID
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; !ok {
-		return nil, errors.New("DML flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
+		return nil, fmt.Errorf("DML flow graph doesn't existed, collectionID = %d", collectionID)
 	}
 
 	// TODO: return clone?
@@ -117,7 +118,7 @@ func (dsService *dataSyncService) getFlowGraphByDeltaChannel(collectionID Unique
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; !ok {
-		return nil, errors.New("delta flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
+		return nil, fmt.Errorf("delta flow graph doesn't existed, collectionID = %d", collectionID)
 	}
 
 	// TODO: return clone?
@@ -130,9 +131,12 @@ func (dsService *dataSyncService) startFlowGraphByDMLChannel(collectionID Unique
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.dmlChannel2FlowGraphs[channel]; !ok {
-		return errors.New("DML flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
+		return fmt.Errorf("DML flow graph doesn't existed, collectionID = %d", collectionID)
 	}
-	log.Debug("start DML flow graph", zap.Any("channel", channel))
+	log.Debug("start DML flow graph",
+		zap.Any("collectionID", collectionID),
+		zap.Any("channel", channel),
+		)
 	dsService.dmlChannel2FlowGraphs[channel].flowGraph.Start()
 	return nil
 }
@@ -143,9 +147,12 @@ func (dsService *dataSyncService) startFlowGraphForDeltaChannel(collectionID Uni
 	defer dsService.mu.Unlock()
 
 	if _, ok := dsService.deltaChannel2FlowGraphs[channel]; !ok {
-		return errors.New("delta flow graph doesn't existed, collectionID = " + fmt.Sprintln(collectionID))
+		return fmt.Errorf("delta flow graph doesn't existed, collectionID = %d", collectionID)
 	}
-	log.Debug("start delta flow graph", zap.Any("channel", channel))
+	log.Debug("start delta flow graph",
+		zap.Any("collectionID", collectionID),
+		zap.Any("channel", channel),
+	)
 	dsService.deltaChannel2FlowGraphs[channel].flowGraph.Start()
 	return nil
 }

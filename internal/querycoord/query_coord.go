@@ -138,7 +138,7 @@ func (qc *QueryCoord) Init() error {
 			initError = err
 			return
 		}
-		log.Debug("query coordinator try to connect etcd")
+		log.Debug("QueryCoord try to connect etcd")
 		initError = retry.Do(qc.loopCtx, connectEtcdFn, retry.Attempts(300))
 		if initError != nil {
 			log.Debug("query coordinator try to connect etcd failed", zap.Error(initError))
@@ -446,7 +446,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 	ctx, cancel := context.WithCancel(qc.loopCtx)
 	defer cancel()
 	defer qc.loopWg.Done()
-	log.Debug("query coordinator start load balance segment loop")
+	log.Debug("QueryCoord start load balance segment loop")
 
 	timer := time.NewTicker(time.Duration(Params.BalanceIntervalSeconds) * time.Second)
 
@@ -457,7 +457,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 		case <-timer.C:
 			onlineNodes, err := qc.cluster.onlineNodes()
 			if err != nil {
-				log.Warn("loadBalanceSegmentLoop: there are no online query node to balance")
+				log.Warn("loadBalanceSegmentLoop: there are no online QueryNode to balance")
 				continue
 			}
 			// get mem info of online nodes from cluster
@@ -480,7 +480,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 				for _, segmentInfo := range segmentInfos {
 					leastInfo, err := qc.cluster.getSegmentInfoByID(ctx, segmentInfo.SegmentID)
 					if err != nil {
-						log.Warn("loadBalanceSegmentLoop: get segment info from query node failed", zap.Int64("nodeID", nodeID), zap.Error(err))
+						log.Warn("loadBalanceSegmentLoop: get segment info from QueryNode failed", zap.Int64("nodeID", nodeID), zap.Error(err))
 						delete(onlineNodes, nodeID)
 						updateSegmentInfoDone = false
 						break
@@ -578,7 +578,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 			} else {
 				// no enough memory on query nodes to balance, then notify proxy to stop insert
 				//TODO:: xige-16
-				log.Error("loadBalanceSegmentLoop: query node has insufficient memory, stop inserting data")
+				log.Error("loadBalanceSegmentLoop: QueryNode has insufficient memory, stop inserting data")
 			}
 		}
 	}
@@ -613,7 +613,7 @@ func chooseSegmentToBalance(sourceNodeID int64, dstNodeID int64,
 	}
 
 	if memoryInsufficient {
-		return nil, errors.New("all query nodes has insufficient memory")
+		return nil, errors.New("all QueryNode has insufficient memory")
 	}
 
 	return selectedSegmentInfo, nil

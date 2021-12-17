@@ -1354,7 +1354,7 @@ func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
 
 	node.etcdKV = etcdKV
 
-	node.tSafeReplica = newTSafeReplica(ctx)
+	node.tSafeReplica = newTSafeReplica()
 
 	streaming, err := genSimpleStreaming(ctx, node.tSafeReplica)
 	if err != nil {

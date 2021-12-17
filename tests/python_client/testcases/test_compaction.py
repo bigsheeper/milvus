@@ -486,7 +486,7 @@ class TestCompactionOperation(TestcaseBase):
                 3.load and search
         expected: Verify search result
         """
-        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb)
+        collection_w = self.collection_insert_multi_segments_one_shard(prefix, nb_of_segment=ct.default_nb, is_dup=False)
 
         # compact
         collection_w.compact()
@@ -775,7 +775,7 @@ class TestCompactionOperation(TestcaseBase):
                 break
             end = time()
             if end - start > cost:
-                raise BaseException(1, "Ccompact auto-merge more than 60s")
+                raise BaseException(1, "Compact auto-merge more than 60s")
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_compact_less_threshold_no_merge(self):

@@ -35,26 +35,32 @@ func newIndexInfo() *indexInfo {
 	}
 }
 
+// setIndexName sets the name of index
 func (info *indexInfo) setIndexName(name string) {
 	info.indexName = name
 }
 
+// setIndexID sets the id of index
 func (info *indexInfo) setIndexID(id UniqueID) {
 	info.indexID = id
 }
 
+// setBuildID sets the build id of index
 func (info *indexInfo) setBuildID(id UniqueID) {
 	info.buildID = id
 }
 
+// setFieldID sets the field id of index
 func (info *indexInfo) setFieldID(id UniqueID) {
 	info.fieldID = id
 }
 
+// setIndexPaths sets the index paths
 func (info *indexInfo) setIndexPaths(paths []string) {
 	info.indexPaths = paths
 }
 
+// setIndexParams sets the params of index, such as indexType, metricType and so on
 func (info *indexInfo) setIndexParams(params map[string]string) {
 	info.indexParams = params
 }

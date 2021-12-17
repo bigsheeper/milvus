@@ -2,11 +2,11 @@
 
 ## 1. Basic idea
 
-1. `RC` (Root Coordinator) reads meta from etcd when it starts.
-2. `RC` needs to store the `position` of the msgstream into etcd every time it consumes the msgstream.
-3. `RC` reads the `position` of msgstream from etcd when it starts up, then it seeks to the specified `position` and re-consumes the msgstream.
+1. `RootCoord` (Root Coordinator) reads meta from etcd when it starts.
+2. `RootCoord` needs to store the `position` of the msgstream into etcd every time it consumes the msgstream.
+3. `RootCoord` reads the `position` of msgstream from etcd when it starts up, then it seeks to the specified `position` and re-consumes the msgstream.
 4. Ensure that all messages from the msgstream are processed in an idempotent fashion, so that repeated consumption of the same message does not cause system inconsistencies.
-5. `RC` registers itself in etcd and finds out if the dependent `DC(Data Coordinator)` and `IC(Index Coordinator)` are online via etcd.
+5. `RootCoord` registers itself in etcd and finds out if the dependent `DataCoord(Data Coordinator)` and `IndexCoord(Index Coordinator)` are online via etcd.
 
 ## 2. Specific tasks
 
@@ -82,10 +82,10 @@
 1. `RC` needs to register itself with etcd when it starts.
 2. The registration should include IP address, port, its own id, global incremental timestamp.
 
-### 2.10 Remove the code related to proxy service
+### 2.10 Remove the code related to Proxy service
 
-1. The `proxy service` related code will be removed.
-2. The job of time synchronization which is done by the `proxy service` is partially simplified and handed over to the `RC` (subsection 2.8).
+1. `Proxy service` related code will be removed.
+2. The job of time synchronization which is done by `Proxy service` is partially simplified and handed over to the `RC` (subsection 2.8).
 
 ### 2.11 Query collection meta based on timeline
 

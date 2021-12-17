@@ -17,6 +17,7 @@
 package querynode
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -49,24 +50,27 @@ func (watcher *tSafeWatcher) close() {
 }
 
 type tSafe struct {
-	channel     Channel
-	tSafeMu     sync.Mutex // guards all fields
-	tSafe       Timestamp
-	watcherList []*tSafeWatcher
+	channel Channel
+	tSafeMu sync.Mutex // guards all fields
+	tSafe   Timestamp
+	watcher *tSafeWatcher
 }
 
 func newTSafe(channel Channel) *tSafe {
 	return &tSafe{
-		channel:     channel,
-		watcherList: make([]*tSafeWatcher, 0),
-		tSafe:       typeutil.ZeroTimestamp,
+		channel: channel,
+		tSafe:   typeutil.ZeroTimestamp,
 	}
 }
 
-func (ts *tSafe) registerTSafeWatcher(t *tSafeWatcher) {
+func (ts *tSafe) registerTSafeWatcher(t *tSafeWatcher) error {
 	ts.tSafeMu.Lock()
 	defer ts.tSafeMu.Unlock()
-	ts.watcherList = append(ts.watcherList, t)
+	if ts.watcher != nil {
+		return fmt.Errorf("tSafeWatcher has been existed, channel = %s", ts.channel)
+	}
+	ts.watcher = t
+	return nil
 }
 
 func (ts *tSafe) get() Timestamp {
@@ -79,8 +83,8 @@ func (ts *tSafe) set(t Timestamp) {
 	ts.tSafeMu.Lock()
 	defer ts.tSafeMu.Unlock()
 	ts.tSafe = t
-	for _, watcher := range ts.watcherList {
-		watcher.notify()
+	if ts.watcher != nil {
+		ts.watcher.notify()
 	}
 	//log.Debug("set tSafe done",
 	//	zap.Any("channel", ts.channel),

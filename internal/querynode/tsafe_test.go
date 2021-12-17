@@ -53,8 +53,9 @@ func TestTSafe_TSafe(t *testing.T) {
 	defer watcher.close()
 	assert.NotNil(t, watcher)
 
-	safe.registerTSafeWatcher(watcher)
-	assert.Len(t, safe.watcherList, 1)
+	err := safe.registerTSafeWatcher(watcher)
+	assert.NotNil(t, safe.watcher)
+	assert.NoError(t, err)
 
 	targetTimestamp := Timestamp(1000)
 	safe.set(targetTimestamp)

@@ -63,12 +63,9 @@ const (
 	defaultNProb          = 10
 	defaultMetricType     = "JACCARD"
 
-	defaultKVRootPath   = "query-node-unittest"
 	defaultDMLChannel   = "query-node-unittest-DML-0"
 	defaultDeltaChannel = "query-node-unittest-delta-channel-0"
-	//defaultQueryChannel       = "query-node-unittest-query-channel-0"
-	//defaultQueryResultChannel = "query-node-unittest-query-result-channel-0"
-	defaultSubName = "query-node-unittest-sub-name-0"
+	defaultSubName      = "query-node-unittest-sub-name-0"
 )
 
 const (

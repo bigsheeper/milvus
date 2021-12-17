@@ -114,26 +114,8 @@ func updateTSafe(queryCollection *queryCollection, timestamp Timestamp) error {
 	// register
 	queryCollection.tSafeWatchers[defaultDMLChannel] = newTSafeWatcher()
 	queryCollection.tSafeWatchers[defaultDeltaChannel] = newTSafeWatcher()
-	queryCollection.streaming.tSafeReplica.addTSafe(defaultDMLChannel)
-	err := queryCollection.streaming.tSafeReplica.registerTSafeWatcher(defaultDMLChannel, queryCollection.tSafeWatchers[defaultDMLChannel])
-	if err != nil {
-		return err
-	}
-	queryCollection.historical.tSafeReplica.addTSafe(defaultDeltaChannel)
-	err = queryCollection.historical.tSafeReplica.registerTSafeWatcher(defaultDeltaChannel, queryCollection.tSafeWatchers[defaultDeltaChannel])
-	if err != nil {
-		return err
-	}
-	err = queryCollection.addTSafeWatcher(defaultDMLChannel)
-	if err != nil {
-		return err
-	}
-	err = queryCollection.addTSafeWatcher(defaultDeltaChannel)
-	if err != nil {
-		return err
-	}
 
-	err = queryCollection.streaming.tSafeReplica.setTSafe(defaultDMLChannel, timestamp)
+	err := queryCollection.streaming.tSafeReplica.setTSafe(defaultDMLChannel, timestamp)
 	if err != nil {
 		return err
 	}

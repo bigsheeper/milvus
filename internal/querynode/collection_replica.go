@@ -58,8 +58,6 @@ type ReplicaInterface interface {
 	removeCollection(collectionID UniqueID) error
 	// getCollectionByID gets the collection which id is collectionID
 	getCollectionByID(collectionID UniqueID) (*Collection, error)
-	// hasCollection checks if collectionReplica has the collection which id is collectionID
-	hasCollection(collectionID UniqueID) bool
 	// getCollectionNum returns num of collections in collectionReplica
 	getCollectionNum() int
 	// getPartitionIDs returns partition ids of collection
@@ -78,8 +76,6 @@ type ReplicaInterface interface {
 	removePartition(partitionID UniqueID) error
 	// getPartitionByID returns the partition which id is partitionID
 	getPartitionByID(partitionID UniqueID) (*Partition, error)
-	// hasPartition returns true if collectionReplica has the partition, false otherwise
-	hasPartition(partitionID UniqueID) bool
 	// getPartitionNum returns num of partitions
 	getPartitionNum() int
 	// getSegmentIDs returns segment ids
@@ -96,8 +92,6 @@ type ReplicaInterface interface {
 	removeSegment(segmentID UniqueID) error
 	// getSegmentByID returns the segment which id is segmentID
 	getSegmentByID(segmentID UniqueID) (*Segment, error)
-	// hasSegment returns true if collectionReplica has the segment, false otherwise
-	hasSegment(segmentID UniqueID) bool
 	// getSegmentNum returns num of segments in collectionReplica
 	getSegmentNum() int
 	//  getSegmentStatistics returns the statistics of segments in collectionReplica
@@ -203,13 +197,13 @@ func (colReplica *collectionReplica) addCollection(collectionID UniqueID, schema
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
 
-	if ok := colReplica.hasCollectionPrivate(collectionID); ok {
-		return errors.New("collection has been loaded, id %d" + strconv.FormatInt(collectionID, 10))
+	if ok := colReplica.hasCollectionPrivate(collectionID); !ok {
+		var newCollection = newCollection(collectionID, schema)
+		colReplica.collections[collectionID] = newCollection
+		return nil
 	}
 
-	var newCollection = newCollection(collectionID, schema)
-	colReplica.collections[collectionID] = newCollection
-
+	log.Warn("collection has been existed", zap.Any("collectionID", collectionID))
 	return nil
 }
 
@@ -256,13 +250,6 @@ func (colReplica *collectionReplica) getCollectionByIDPrivate(collectionID Uniqu
 	}
 
 	return collection, nil
-}
-
-// hasCollection checks if collectionReplica has the collection which id is collectionID
-func (colReplica *collectionReplica) hasCollection(collectionID UniqueID) bool {
-	colReplica.mu.RLock()
-	defer colReplica.mu.RUnlock()
-	return colReplica.hasCollectionPrivate(collectionID)
 }
 
 // hasCollectionPrivate is the private function in collectionReplica, to check collection in collectionReplica
@@ -392,6 +379,10 @@ func (colReplica *collectionReplica) addPartitionPrivate(collectionID UniqueID, 
 		var newPartition = newPartition(collectionID, partitionID)
 		colReplica.partitions[partitionID] = newPartition
 	}
+	log.Warn("partition has been existed",
+		zap.Any("collectionID", collectionID),
+		zap.Any("partitionID", partitionID),
+	)
 	return nil
 }
 
@@ -443,13 +434,6 @@ func (colReplica *collectionReplica) getPartitionByIDPrivate(partitionID UniqueI
 	}
 
 	return partition, nil
-}
-
-// hasPartition returns true if collectionReplica has the partition, false otherwise
-func (colReplica *collectionReplica) hasPartition(partitionID UniqueID) bool {
-	colReplica.mu.RLock()
-	defer colReplica.mu.RUnlock()
-	return colReplica.hasPartitionPrivate(partitionID)
 }
 
 // hasPartitionPrivate is the private function in collectionReplica, to check if collectionReplica has the partition
@@ -512,23 +496,23 @@ func (colReplica *collectionReplica) addSegment(segmentID UniqueID, partitionID 
 	if err != nil {
 		return err
 	}
-	seg := newSegment(collection, segmentID, partitionID, collectionID, vChannelID, segType, onService)
-	return colReplica.addSegmentPrivate(segmentID, partitionID, seg)
-}
-
-// addSegmentPrivate is private function in collectionReplica, to add a new segment to collectionReplica
-func (colReplica *collectionReplica) addSegmentPrivate(segmentID UniqueID, partitionID UniqueID, segment *Segment) error {
 	partition, err := colReplica.getPartitionByIDPrivate(partitionID)
 	if err != nil {
 		return err
 	}
 
-	if colReplica.hasSegmentPrivate(segmentID) {
+	if !colReplica.hasSegmentPrivate(segmentID) {
+		partition.addSegmentID(segmentID)
+		segment := newSegment(collection, segmentID, partitionID, collectionID, vChannelID, segType, onService)
+		colReplica.segments[segmentID] = segment
 		return nil
 	}
-	partition.addSegmentID(segmentID)
-	colReplica.segments[segmentID] = segment
 
+	log.Warn("segment already exists",
+		zap.Any("collectionID", collectionID),
+		zap.Any("partitionID", partitionID),
+		zap.Any("segmentID", segmentID),
+	)
 	return nil
 }
 
@@ -536,11 +520,35 @@ func (colReplica *collectionReplica) addSegmentPrivate(segmentID UniqueID, parti
 func (colReplica *collectionReplica) setSegment(segment *Segment) error {
 	colReplica.mu.Lock()
 	defer colReplica.mu.Unlock()
-	_, err := colReplica.getCollectionByIDPrivate(segment.collectionID)
+	if segment == nil {
+		return fmt.Errorf("nil segment when setSegment")
+	}
+
+	collectionID := segment.collectionID
+	partitionID := segment.partitionID
+	segmentID := segment.segmentID
+
+	_, err := colReplica.getCollectionByIDPrivate(collectionID)
 	if err != nil {
 		return err
 	}
-	return colReplica.addSegmentPrivate(segment.segmentID, segment.partitionID, segment)
+	partition, err := colReplica.getPartitionByIDPrivate(partitionID)
+	if err != nil {
+		return err
+	}
+
+	if !colReplica.hasSegmentPrivate(segmentID) {
+		partition.addSegmentID(segmentID)
+		colReplica.segments[segmentID] = segment
+		return nil
+	}
+
+	log.Warn("segment already exists",
+		zap.Any("collectionID", collectionID),
+		zap.Any("partitionID", partitionID),
+		zap.Any("segmentID", segmentID),
+	)
+	return nil
 }
 
 // removeSegment removes a segment from collectionReplica
@@ -583,13 +591,6 @@ func (colReplica *collectionReplica) getSegmentByIDPrivate(segmentID UniqueID) (
 	}
 
 	return segment, nil
-}
-
-// hasSegment returns true if collectionReplica has the segment, false otherwise
-func (colReplica *collectionReplica) hasSegment(segmentID UniqueID) bool {
-	colReplica.mu.RLock()
-	defer colReplica.mu.RUnlock()
-	return colReplica.hasSegmentPrivate(segmentID)
 }
 
 // hasSegmentPrivate is private function in collectionReplica, to check if collectionReplica has the segment

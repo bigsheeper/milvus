@@ -115,12 +115,10 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		}
 
 		// check if segment exists, if not, create this segment
-		if !iNode.streamingReplica.hasSegment(task.SegmentID) {
-			err := iNode.streamingReplica.addSegment(task.SegmentID, task.PartitionID, task.CollectionID, task.ShardName, segmentTypeGrowing, true)
-			if err != nil {
-				log.Warn(err.Error())
-				continue
-			}
+		err = iNode.streamingReplica.addSegment(task.SegmentID, task.PartitionID, task.CollectionID, task.ShardName, segmentTypeGrowing, true)
+		if err != nil {
+			log.Warn(err.Error())
+			continue
 		}
 
 		iData.insertIDs[task.SegmentID] = append(iData.insertIDs[task.SegmentID], task.RowIDs...)

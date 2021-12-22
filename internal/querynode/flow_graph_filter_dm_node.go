@@ -119,7 +119,7 @@ func (fdmNode *filterDmNode) filterInvalidDeleteMessage(msg *msgstream.DeleteMsg
 		return nil
 	}
 	if col.getLoadType() == loadTypePartition {
-		if !fdmNode.replica.hasPartition(msg.PartitionID) {
+		if _, err = fdmNode.replica.getPartitionByID(msg.PartitionID); err != nil {
 			log.Debug("filter invalid delete message, partition does not exist",
 				zap.Any("collectionID", msg.CollectionID),
 				zap.Any("partitionID", msg.PartitionID))
@@ -177,7 +177,7 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 		return nil
 	}
 	if col.getLoadType() == loadTypePartition {
-		if !fdmNode.replica.hasPartition(msg.PartitionID) {
+		if _, err = fdmNode.replica.getPartitionByID(msg.PartitionID); err != nil {
 			log.Debug("filter invalid insert message, partition does not exist",
 				zap.Any("collectionID", msg.CollectionID),
 				zap.Any("partitionID", msg.PartitionID))

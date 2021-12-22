@@ -263,18 +263,14 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	)
 
 	// init replica
-	if hasCollectionInStreaming := w.node.streaming.replica.hasCollection(collectionID); !hasCollectionInStreaming {
-		err := w.node.streaming.replica.addCollection(collectionID, w.req.Schema)
-		if err != nil {
-			return err
-		}
+	err := w.node.streaming.replica.addCollection(collectionID, w.req.Schema)
+	if err != nil {
+		return err
 	}
 	// init replica
-	if hasCollectionInHistorical := w.node.historical.replica.hasCollection(collectionID); !hasCollectionInHistorical {
-		err := w.node.historical.replica.addCollection(collectionID, w.req.Schema)
-		if err != nil {
-			return err
-		}
+	err = w.node.historical.replica.addCollection(collectionID, w.req.Schema)
+	if err != nil {
+		return err
 	}
 	sCol, err := w.node.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
@@ -294,17 +290,13 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 		for _, partitionID := range partitionIDs {
 			sCol.deleteReleasedPartition(partitionID)
 			hCol.deleteReleasedPartition(partitionID)
-			if hasPartitionInStreaming := w.node.streaming.replica.hasPartition(partitionID); !hasPartitionInStreaming {
-				err := w.node.streaming.replica.addPartition(collectionID, partitionID)
-				if err != nil {
-					return err
-				}
+			err = w.node.streaming.replica.addPartition(collectionID, partitionID)
+			if err != nil {
+				return err
 			}
-			if hasPartitionInHistorical := w.node.historical.replica.hasPartition(partitionID); !hasPartitionInHistorical {
-				err := w.node.historical.replica.addPartition(collectionID, partitionID)
-				if err != nil {
-					return err
-				}
+			err = w.node.historical.replica.addPartition(collectionID, partitionID)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -539,9 +531,6 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 		zap.Any("collectionID", collectionID),
 	)
 
-	if hasCollectionInHistorical := w.node.historical.replica.hasCollection(collectionID); !hasCollectionInHistorical {
-		return fmt.Errorf("cannot find collection with collectionID, %d", collectionID)
-	}
 	hCol, err := w.node.historical.replica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
@@ -559,9 +548,6 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 	hCol.addVDeltaChannels(vDeltaChannels)
 	hCol.addPDeltaChannels(pDeltaChannels)
 
-	if hasCollectionInStreaming := w.node.streaming.replica.hasCollection(collectionID); !hasCollectionInStreaming {
-		return fmt.Errorf("cannot find collection with collectionID, %d", collectionID)
-	}
 	sCol, err := w.node.streaming.replica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
@@ -669,33 +655,21 @@ func (l *loadSegmentsTask) Execute(ctx context.Context) error {
 	for _, info := range l.req.Infos {
 		collectionID := info.CollectionID
 		partitionID := info.PartitionID
-		hasCollectionInHistorical := l.node.historical.replica.hasCollection(collectionID)
-		hasPartitionInHistorical := l.node.historical.replica.hasPartition(partitionID)
-		if !hasCollectionInHistorical {
-			err = l.node.historical.replica.addCollection(collectionID, l.req.Schema)
-			if err != nil {
-				return err
-			}
+		err = l.node.historical.replica.addCollection(collectionID, l.req.Schema)
+		if err != nil {
+			return err
 		}
-		if !hasPartitionInHistorical {
-			err = l.node.historical.replica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
-			}
+		err = l.node.historical.replica.addPartition(collectionID, partitionID)
+		if err != nil {
+			return err
 		}
-		hasCollectionInStreaming := l.node.streaming.replica.hasCollection(collectionID)
-		hasPartitionInStreaming := l.node.streaming.replica.hasPartition(partitionID)
-		if !hasCollectionInStreaming {
-			err = l.node.streaming.replica.addCollection(collectionID, l.req.Schema)
-			if err != nil {
-				return err
-			}
+		err = l.node.streaming.replica.addCollection(collectionID, l.req.Schema)
+		if err != nil {
+			return err
 		}
-		if !hasPartitionInStreaming {
-			err = l.node.streaming.replica.addPartition(collectionID, partitionID)
-			if err != nil {
-				return err
-			}
+		err = l.node.streaming.replica.addPartition(collectionID, partitionID)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -876,21 +850,15 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 
 	for _, id := range r.req.PartitionIDs {
 		// remove partition from streaming and historical
-		hasPartitionInHistorical := r.node.historical.replica.hasPartition(id)
-		if hasPartitionInHistorical {
-			err := r.node.historical.replica.removePartition(id)
-			if err != nil {
-				// not return, try to release all partitions
-				log.Warn(err.Error())
-			}
+		err = r.node.historical.replica.removePartition(id)
+		if err != nil {
+			// don't return, try to release all partitions
+			log.Warn(err.Error())
 		}
-		hasPartitionInStreaming := r.node.streaming.replica.hasPartition(id)
-		if hasPartitionInStreaming {
-			err := r.node.streaming.replica.removePartition(id)
-			if err != nil {
-				// not return, try to release all partitions
-				log.Warn(err.Error())
-			}
+		err = r.node.streaming.replica.removePartition(id)
+		if err != nil {
+			// don't return, try to release all partitions
+			log.Warn(err.Error())
 		}
 
 		hCol.addReleasedPartition(id)

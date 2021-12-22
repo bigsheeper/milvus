@@ -62,20 +62,6 @@ func TestCollectionReplica_getCollectionByID(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestCollectionReplica_hasCollection(t *testing.T) {
-	node := newQueryNodeMock()
-	collectionID := UniqueID(0)
-	initTestMeta(t, node, collectionID, 0)
-
-	hasCollection := node.historical.replica.hasCollection(collectionID)
-	assert.Equal(t, hasCollection, true)
-	hasCollection = node.historical.replica.hasCollection(UniqueID(1))
-	assert.Equal(t, hasCollection, false)
-
-	err := node.Stop()
-	assert.NoError(t, err)
-}
-
 //----------------------------------------------------------------------------------------------------- partition
 func TestCollectionReplica_getPartitionNum(t *testing.T) {
 	node := newQueryNodeMock()
@@ -150,22 +136,6 @@ func TestCollectionReplica_getPartitionByTag(t *testing.T) {
 		assert.NotNil(t, partition)
 	}
 	err := node.Stop()
-	assert.NoError(t, err)
-}
-
-func TestCollectionReplica_hasPartition(t *testing.T) {
-	node := newQueryNodeMock()
-	collectionID := UniqueID(0)
-	initTestMeta(t, node, collectionID, 0)
-
-	collectionMeta := genTestCollectionMeta(collectionID, false)
-	err := node.historical.replica.addPartition(collectionID, collectionMeta.PartitionIDs[0])
-	assert.NoError(t, err)
-	hasPartition := node.historical.replica.hasPartition(defaultPartitionID)
-	assert.Equal(t, hasPartition, true)
-	hasPartition = node.historical.replica.hasPartition(defaultPartitionID + 1)
-	assert.Equal(t, hasPartition, false)
-	err = node.Stop()
 	assert.NoError(t, err)
 }
 
@@ -248,29 +218,6 @@ func TestCollectionReplica_getSegmentInfosByColID(t *testing.T) {
 	assert.Equal(t, 4, len(targetSeg))
 
 	err = node.Stop()
-	assert.NoError(t, err)
-}
-
-func TestCollectionReplica_hasSegment(t *testing.T) {
-	node := newQueryNodeMock()
-	collectionID := UniqueID(0)
-	initTestMeta(t, node, collectionID, 0)
-
-	const segmentNum = 3
-
-	for i := 0; i < segmentNum; i++ {
-		err := node.historical.replica.addSegment(UniqueID(i), defaultPartitionID, collectionID, "", segmentTypeGrowing, true)
-		assert.NoError(t, err)
-		targetSeg, err := node.historical.replica.getSegmentByID(UniqueID(i))
-		assert.NoError(t, err)
-		assert.Equal(t, targetSeg.segmentID, UniqueID(i))
-		hasSeg := node.historical.replica.hasSegment(UniqueID(i))
-		assert.Equal(t, hasSeg, true)
-		hasSeg = node.historical.replica.hasSegment(UniqueID(i + 100))
-		assert.Equal(t, hasSeg, false)
-	}
-
-	err := node.Stop()
 	assert.NoError(t, err)
 }
 

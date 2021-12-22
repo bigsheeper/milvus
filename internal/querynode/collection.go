@@ -362,3 +362,45 @@ func deleteCollection(collection *Collection) {
 
 	collection = nil
 }
+
+func (c *Collection) clone() *Collection {
+	if c == nil {
+		return nil
+	}
+	
+	cc := &Collection{
+		collectionPtr :
+		id            :
+		partitionIDs  :
+		schema       :
+
+		channelMu      :
+		vChannels      :
+		pChannels      :
+		vDeltaChannels :
+		pDeltaChannels :
+
+		loadType :
+
+		releaseMu          :
+		releasedPartitions :
+		releaseTime        :
+
+		ID: :,
+		RaftAttributes: RaftAttributes{
+			IsLearner: m.IsLearner,
+		},
+		Attributes: Attributes{
+			Name: m.Name,
+		},
+	}
+	if m.PeerURLs != nil {
+		mm.PeerURLs = make([]string, len(m.PeerURLs))
+		copy(mm.PeerURLs, m.PeerURLs)
+	}
+	if m.ClientURLs != nil {
+		mm.ClientURLs = make([]string, len(m.ClientURLs))
+		copy(mm.ClientURLs, m.ClientURLs)
+	}
+	return mm
+}

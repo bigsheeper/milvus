@@ -14,6 +14,7 @@
 #include "common/Types.h"
 #include "common/type_c.h"
 #include "log/Log.h"
+#include <malloc.h>
 
 #include "segcore/Collection.h"
 #include "segcore/SegmentGrowingImpl.h"
@@ -48,6 +49,7 @@ DeleteSegment(CSegmentInterface c_segment) {
     // TODO: use dynamic cast, and return c status
     auto s = (milvus::segcore::SegmentInterface*)c_segment;
     delete s;
+    malloc_trim(0);
 }
 
 void

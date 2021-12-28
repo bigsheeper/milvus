@@ -66,6 +66,7 @@ type queryCollection struct {
 	collectionID UniqueID
 	historical   *historical
 	streaming    *streaming
+	tSafeReplica TSafeReplicaInterface
 
 	unsolvedMsgMu sync.Mutex // guards unsolvedMsg
 	unsolvedMsg   []queryMsg
@@ -94,6 +95,7 @@ func newQueryCollection(releaseCtx context.Context,
 	collectionID UniqueID,
 	historical *historical,
 	streaming *streaming,
+	tSafeReplica TSafeReplicaInterface,
 	factory msgstream.Factory,
 	localChunkManager storage.ChunkManager,
 	remoteChunkManager storage.ChunkManager,
@@ -114,6 +116,7 @@ func newQueryCollection(releaseCtx context.Context,
 		collectionID: collectionID,
 		historical:   historical,
 		streaming:    streaming,
+		tSafeReplica: tSafeReplica,
 
 		tSafeWatchers: make(map[Channel]*tSafeWatcher),
 		tSafeUpdate:   false,
@@ -198,7 +201,7 @@ func (q *queryCollection) addTSafeWatcher(vChannel Channel) error {
 		return nil
 	}
 	q.tSafeWatchers[vChannel] = newTSafeWatcher()
-	err := q.streaming.tSafeReplica.registerTSafeWatcher(vChannel, q.tSafeWatchers[vChannel])
+	err := q.tSafeReplica.registerTSafeWatcher(vChannel, q.tSafeWatchers[vChannel])
 	if err != nil {
 		return err
 	}
@@ -274,7 +277,7 @@ func (q *queryCollection) waitNewTSafe() (Timestamp, error) {
 	defer q.tSafeWatchersMu.RUnlock()
 	t := Timestamp(math.MaxInt64)
 	for channel := range q.tSafeWatchers {
-		ts, err := q.streaming.tSafeReplica.getTSafe(channel)
+		ts, err := q.tSafeReplica.getTSafe(channel)
 		if err != nil {
 			return 0, err
 		}

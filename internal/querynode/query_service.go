@@ -36,8 +36,9 @@ type queryService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	historical *historical
-	streaming  *streaming
+	historical   *historical
+	streaming    *streaming
+	tSafeReplica TSafeReplicaInterface
 
 	queryCollectionMu sync.Mutex // guards queryCollections
 	queryCollections  map[UniqueID]*queryCollection
@@ -52,6 +53,7 @@ type queryService struct {
 func newQueryService(ctx context.Context,
 	historical *historical,
 	streaming *streaming,
+	tSafeReplica TSafeReplicaInterface,
 	factory msgstream.Factory) *queryService {
 
 	queryServiceCtx, queryServiceCancel := context.WithCancel(ctx)
@@ -85,8 +87,9 @@ func newQueryService(ctx context.Context,
 		ctx:    queryServiceCtx,
 		cancel: queryServiceCancel,
 
-		historical: historical,
-		streaming:  streaming,
+		historical:   historical,
+		streaming:    streaming,
+		tSafeReplica: tSafeReplica,
 
 		queryCollections: make(map[UniqueID]*queryCollection),
 
@@ -125,6 +128,7 @@ func (q *queryService) addQueryCollection(collectionID UniqueID) error {
 		collectionID,
 		q.historical,
 		q.streaming,
+		q.tSafeReplica,
 		q.factory,
 		q.localChunkManager,
 		q.remoteChunkManager,

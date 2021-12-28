@@ -888,11 +888,7 @@ func TestSegment_ConcurrentOperation(t *testing.T) {
 
 func TestSegment_indexInfoTest(t *testing.T) {
 	t.Run("Test_valid", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		tSafe := newTSafeReplica()
-		h, err := genSimpleHistorical(ctx, tSafe)
+		h, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		seg, err := h.replica.getSegmentByID(defaultSegmentID)
@@ -941,11 +937,7 @@ func TestSegment_indexInfoTest(t *testing.T) {
 	})
 
 	t.Run("Test_invalid", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		tSafe := newTSafeReplica()
-		h, err := genSimpleHistorical(ctx, tSafe)
+		h, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		seg, err := h.replica.getSegmentByID(defaultSegmentID)

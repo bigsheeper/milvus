@@ -17,7 +17,6 @@
 package querynode
 
 import (
-	"context"
 	"math"
 	"testing"
 
@@ -49,11 +48,7 @@ func TestPlan_Plan(t *testing.T) {
 }
 
 func TestPlan_createSearchPlanByExpr(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	tSafe := newTSafeReplica()
-	historical, err := genSimpleHistorical(ctx, tSafe)
+	historical, err := genSimpleHistorical()
 	assert.NoError(t, err)
 
 	col, err := historical.replica.getCollectionByID(defaultCollectionID)

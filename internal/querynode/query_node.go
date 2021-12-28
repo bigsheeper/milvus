@@ -211,20 +211,8 @@ func (node *QueryNode) Init() error {
 		)
 		node.tSafeReplica = newTSafeReplica()
 
-		streamingReplica := newCollectionReplica(node.etcdKV)
-		historicalReplica := newCollectionReplica(node.etcdKV)
-
-		node.historical = newHistorical(node.queryNodeLoopCtx,
-			historicalReplica,
-			node.etcdKV,
-			node.tSafeReplica,
-		)
-		node.streaming = newStreaming(node.queryNodeLoopCtx,
-			streamingReplica,
-			node.msFactory,
-			node.etcdKV,
-			node.tSafeReplica,
-		)
+		node.historical = newHistorical(node.etcdKV)
+		node.streaming = newStreaming()
 
 		node.loader = newSegmentLoader(node.queryNodeLoopCtx,
 			node.rootCoord,
@@ -234,8 +222,15 @@ func (node *QueryNode) Init() error {
 			node.etcdKV,
 			node.msFactory)
 
-		node.statsService = newStatsService(node.queryNodeLoopCtx, node.historical.replica, node.loader.indexLoader.fieldStatsChan, node.msFactory)
-		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx, streamingReplica, historicalReplica, node.tSafeReplica, node.msFactory)
+		node.statsService = newStatsService(node.queryNodeLoopCtx,
+			node.historical.replica,
+			node.loader.indexLoader.fieldStatsChan,
+			node.msFactory)
+		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx,
+			node.streaming.replica,
+			node.historical.replica,
+			node.tSafeReplica,
+			node.msFactory)
 
 		node.InitSegcore()
 
@@ -276,15 +271,15 @@ func (node *QueryNode) Start() error {
 	node.queryService = newQueryService(node.queryNodeLoopCtx,
 		node.historical,
 		node.streaming,
+		node.tSafeReplica,
 		node.msFactory)
 
 	// start task scheduler
 	go node.scheduler.Start()
 
 	// start services
-	go node.historical.start()
 	go node.watchChangeInfo()
-	go node.statsService.start()
+	// go node.statsService.start()
 
 	Params.QueryNodeCfg.CreatedTime = time.Now()
 	Params.QueryNodeCfg.UpdatedTime = time.Now()

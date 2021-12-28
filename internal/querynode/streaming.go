@@ -17,45 +17,28 @@
 package querynode
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
 
-	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 )
 
 // streaming is in charge of streaming data in query node
 type streaming struct {
-	ctx context.Context
-
-	replica      ReplicaInterface
-	tSafeReplica TSafeReplicaInterface
-
-	msFactory msgstream.Factory
+	replica ReplicaInterface
 }
 
-func newStreaming(ctx context.Context, replica ReplicaInterface, factory msgstream.Factory, etcdKV *etcdkv.EtcdKV, tSafeReplica TSafeReplicaInterface) *streaming {
-
+func newStreaming() *streaming {
 	return &streaming{
-		replica:      replica,
-		tSafeReplica: tSafeReplica,
+		replica: newCollectionReplica(),
 	}
 }
 
-func (s *streaming) start() {
-	// TODO: start stats
-}
-
 func (s *streaming) close() {
-	// TODO: stop stats
-
-	// free collectionReplica
 	s.replica.freeAll()
 }
 

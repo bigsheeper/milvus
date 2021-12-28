@@ -30,8 +30,7 @@ func TestServiceTimeNode_Operate(t *testing.T) {
 	defer cancel()
 
 	genServiceTimeNode := func() *serviceTimeNode {
-		tSafe := newTSafeReplica()
-		tSafe.addTSafe(defaultDMLChannel)
+		tSafe := genSimpleTSafeReplica()
 
 		fac, err := genFactory()
 		assert.NoError(t, err)

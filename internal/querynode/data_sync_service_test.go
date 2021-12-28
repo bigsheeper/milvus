@@ -36,7 +36,7 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
-	tSafe := newTSafeReplica()
+	tSafe := genSimpleTSafeReplica()
 	dataSyncService := newDataSyncService(ctx, streamingReplica, historicalReplica, tSafe, fac)
 	assert.NotNil(t, dataSyncService)
 
@@ -87,7 +87,7 @@ func TestDataSyncService_DeltaFlowGraphs(t *testing.T) {
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
-	tSafe := newTSafeReplica()
+	tSafe := genSimpleTSafeReplica()
 	dataSyncService := newDataSyncService(ctx, streamingReplica, historicalReplica, tSafe, fac)
 	assert.NotNil(t, dataSyncService)
 

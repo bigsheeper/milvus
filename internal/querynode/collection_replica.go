@@ -36,7 +36,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
-	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -139,8 +138,6 @@ type collectionReplica struct {
 
 	queryMu          sync.RWMutex
 	excludedSegments map[UniqueID][]*datapb.SegmentInfo // map[collectionID]segmentIDs
-
-	etcdKV *etcdkv.EtcdKV
 }
 
 // queryLock guards query and delete operations
@@ -680,7 +677,7 @@ func (colReplica *collectionReplica) freeAll() {
 }
 
 // newCollectionReplica returns a new ReplicaInterface
-func newCollectionReplica(etcdKv *etcdkv.EtcdKV) ReplicaInterface {
+func newCollectionReplica() ReplicaInterface {
 	collections := make(map[UniqueID]*Collection)
 	partitions := make(map[UniqueID]*Partition)
 	segments := make(map[UniqueID]*Segment)
@@ -692,7 +689,6 @@ func newCollectionReplica(etcdKv *etcdkv.EtcdKV) ReplicaInterface {
 		segments:    segments,
 
 		excludedSegments: excludedSegments,
-		etcdKV:           etcdKv,
 	}
 
 	return replica

@@ -17,7 +17,6 @@
 package querynode
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -34,10 +33,7 @@ import (
 
 // historical is in charge of historical data in query node
 type historical struct {
-	ctx context.Context
-
-	replica      ReplicaInterface
-	tSafeReplica TSafeReplicaInterface
+	replica ReplicaInterface
 
 	mu                   sync.Mutex // guards globalSealedSegments
 	globalSealedSegments map[UniqueID]*querypb.SegmentInfo
@@ -46,21 +42,12 @@ type historical struct {
 }
 
 // newHistorical returns a new historical
-func newHistorical(ctx context.Context,
-	replica ReplicaInterface,
-	etcdKV *etcdkv.EtcdKV,
-	tSafeReplica TSafeReplicaInterface) *historical {
-
+func newHistorical(etcdKV *etcdkv.EtcdKV) *historical {
 	return &historical{
-		ctx:                  ctx,
-		replica:              replica,
+		replica:              newCollectionReplica(),
 		globalSealedSegments: make(map[UniqueID]*querypb.SegmentInfo),
 		etcdKV:               etcdKV,
-		tSafeReplica:         tSafeReplica,
 	}
-}
-
-func (h *historical) start() {
 }
 
 // close would release all resources in historical

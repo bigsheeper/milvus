@@ -17,19 +17,14 @@
 package querynode
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHistorical_Search(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	t.Run("test search", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()
@@ -40,8 +35,7 @@ func TestHistorical_Search(t *testing.T) {
 	})
 
 	t.Run("test no collection - search partitions", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()
@@ -55,8 +49,7 @@ func TestHistorical_Search(t *testing.T) {
 	})
 
 	t.Run("test no collection - search all collection", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()
@@ -70,8 +63,7 @@ func TestHistorical_Search(t *testing.T) {
 	})
 
 	t.Run("test load partition and partition has been released", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()
@@ -89,8 +81,7 @@ func TestHistorical_Search(t *testing.T) {
 	})
 
 	t.Run("test no partition in collection", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()
@@ -106,8 +97,7 @@ func TestHistorical_Search(t *testing.T) {
 	})
 
 	t.Run("test load collection partition released in collection", func(t *testing.T) {
-		tSafe := newTSafeReplica()
-		his, err := genSimpleHistorical(ctx, tSafe)
+		his, err := genSimpleHistorical()
 		assert.NoError(t, err)
 
 		plan, searchReqs, err := genSimpleSearchPlanAndRequests()

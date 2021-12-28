@@ -45,13 +45,14 @@ import (
 )
 
 func genSimpleQueryCollection(ctx context.Context, cancel context.CancelFunc) (*queryCollection, error) {
-	tSafe := newTSafeReplica()
-	historical, err := genSimpleHistorical(ctx, tSafe)
+	tSafeReplica := genSimpleTSafeReplica()
+
+	historical, err := genSimpleHistorical()
 	if err != nil {
 		return nil, err
 	}
 
-	streaming, err := genSimpleStreaming(ctx, tSafe)
+	streaming, err := genSimpleStreaming()
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +76,7 @@ func genSimpleQueryCollection(ctx context.Context, cancel context.CancelFunc) (*
 		defaultCollectionID,
 		historical,
 		streaming,
+		tSafeReplica,
 		fac,
 		localCM,
 		remoteCM,
@@ -115,15 +117,14 @@ func updateTSafe(queryCollection *queryCollection, timestamp Timestamp) error {
 	queryCollection.tSafeWatchers[defaultDMLChannel] = newTSafeWatcher()
 	queryCollection.tSafeWatchers[defaultDeltaChannel] = newTSafeWatcher()
 
-	err := queryCollection.streaming.tSafeReplica.setTSafe(defaultDMLChannel, timestamp)
+	err := queryCollection.tSafeReplica.setTSafe(defaultDMLChannel, timestamp)
 	if err != nil {
 		return err
 	}
-	return queryCollection.historical.tSafeReplica.setTSafe(defaultDeltaChannel, timestamp)
+	return queryCollection.tSafeReplica.setTSafe(defaultDeltaChannel, timestamp)
 }
 
 func TestQueryCollection_withoutVChannel(t *testing.T) {
-	ctx := context.Background()
 	m := map[string]interface{}{
 		"PulsarAddress":  Params.QueryNodeCfg.PulsarAddress,
 		"ReceiveBufSize": 1024,
@@ -135,10 +136,8 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	schema := genTestCollectionSchema(0, false, 2)
-	historicalReplica := newCollectionReplica(etcdKV)
-	tsReplica := newTSafeReplica()
-	streamingReplica := newCollectionReplica(etcdKV)
-	historical := newHistorical(context.Background(), historicalReplica, etcdKV, tsReplica)
+	tsReplica := genSimpleTSafeReplica()
+	historical := newHistorical(etcdKV)
 
 	//add a segment to historical data
 	err = historical.replica.addCollection(0, schema)
@@ -164,14 +163,14 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	//create a streaming
-	streaming := newStreaming(ctx, streamingReplica, factory, etcdKV, tsReplica)
+	streaming := newStreaming()
 	err = streaming.replica.addCollection(0, schema)
 	assert.Nil(t, err)
 	err = streaming.replica.addPartition(0, 1)
 	assert.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	queryCollection, err := newQueryCollection(ctx, cancel, 0, historical, streaming, factory, nil, nil, false)
+	queryCollection, err := newQueryCollection(ctx, cancel, 0, historical, streaming, tsReplica, factory, nil, nil, false)
 	assert.NoError(t, err)
 
 	producerChannels := []string{"testResultChannel"}

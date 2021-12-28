@@ -860,13 +860,9 @@ func genSimpleSealedSegment() (*Segment, error) {
 }
 
 func genSimpleReplica() (ReplicaInterface, error) {
-	kv, err := genEtcdKV()
-	if err != nil {
-		return nil, err
-	}
-	r := newCollectionReplica(kv)
+	r := newCollectionReplica()
 	schema := genSimpleSegCoreSchema()
-	err = r.addCollection(defaultCollectionID, schema)
+	err := r.addCollection(defaultCollectionID, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -882,16 +878,12 @@ func genSimpleSegmentLoader(ctx context.Context, historicalReplica ReplicaInterf
 	return newSegmentLoader(ctx, newMockRootCoord(), newMockIndexCoord(), historicalReplica, streamingReplica, kv, msgstream.NewPmsFactory()), nil
 }
 
-func genSimpleHistorical(ctx context.Context, tSafeReplica TSafeReplicaInterface) (*historical, error) {
+func genSimpleHistorical() (*historical, error) {
 	kv, err := genEtcdKV()
 	if err != nil {
 		return nil, err
 	}
-	replica, err := genSimpleReplica()
-	if err != nil {
-		return nil, err
-	}
-	h := newHistorical(ctx, replica, kv, tSafeReplica)
+	h := newHistorical(kv)
 	r, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
@@ -912,24 +904,11 @@ func genSimpleHistorical(ctx context.Context, tSafeReplica TSafeReplicaInterface
 	col.addVChannels([]Channel{
 		defaultDeltaChannel,
 	})
-	h.tSafeReplica.addTSafe(defaultDeltaChannel)
 	return h, nil
 }
 
-func genSimpleStreaming(ctx context.Context, tSafeReplica TSafeReplicaInterface) (*streaming, error) {
-	kv, err := genEtcdKV()
-	if err != nil {
-		return nil, err
-	}
-	fac, err := genFactory()
-	if err != nil {
-		return nil, err
-	}
-	replica, err := genSimpleReplica()
-	if err != nil {
-		return nil, err
-	}
-	s := newStreaming(ctx, replica, fac, kv, tSafeReplica)
+func genSimpleStreaming() (*streaming, error) {
+	s := newStreaming()
 	r, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
@@ -951,8 +930,14 @@ func genSimpleStreaming(ctx context.Context, tSafeReplica TSafeReplicaInterface)
 	col.addVChannels([]Channel{
 		defaultDMLChannel,
 	})
-	s.tSafeReplica.addTSafe(defaultDMLChannel)
 	return s, nil
+}
+
+func genSimpleTSafeReplica() TSafeReplicaInterface {
+	tSafeReplica := newTSafeReplica()
+	tSafeReplica.addTSafe(defaultDMLChannel)
+	tSafeReplica.addTSafe(defaultDeltaChannel)
+	return tSafeReplica
 }
 
 // ---------- unittest util functions ----------
@@ -1305,14 +1290,14 @@ func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
 
 	node.etcdKV = etcdKV
 
-	node.tSafeReplica = newTSafeReplica()
+	node.tSafeReplica = genSimpleTSafeReplica()
 
-	streaming, err := genSimpleStreaming(ctx, node.tSafeReplica)
+	streaming, err := genSimpleStreaming()
 	if err != nil {
 		return nil, err
 	}
 
-	historical, err := genSimpleHistorical(ctx, node.tSafeReplica)
+	historical, err := genSimpleHistorical()
 	if err != nil {
 		return nil, err
 	}
@@ -1330,7 +1315,7 @@ func genSimpleQueryNode(ctx context.Context) (*QueryNode, error) {
 	// start task scheduler
 	go node.scheduler.Start()
 
-	qs := newQueryService(ctx, node.historical, node.streaming, node.msFactory)
+	qs := newQueryService(ctx, node.historical, node.streaming, node.tSafeReplica, node.msFactory)
 	defer qs.close()
 	node.queryService = qs
 

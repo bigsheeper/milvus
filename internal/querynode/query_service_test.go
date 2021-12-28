@@ -149,6 +149,7 @@ func TestSearch_Search(t *testing.T) {
 	node.queryService = newQueryService(node.queryNodeLoopCtx,
 		node.historical,
 		node.streaming,
+		node.tSafeReplica,
 		msFactory)
 
 	// load segment
@@ -192,6 +193,7 @@ func TestSearch_SearchMultiSegments(t *testing.T) {
 	node.queryService = newQueryService(node.queryNodeLoopCtx,
 		node.historical,
 		node.streaming,
+		node.tSafeReplica,
 		msFactory)
 	node.queryService.addQueryCollection(collectionID)
 	//err = node.queryService.addQueryCollection(collectionID)
@@ -226,18 +228,19 @@ func TestQueryService_addQueryCollection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tSafe := newTSafeReplica()
-	his, err := genSimpleHistorical(ctx, tSafe)
+	tSafeReplica := genSimpleTSafeReplica()
+
+	his, err := genSimpleHistorical()
 	assert.NoError(t, err)
 
-	str, err := genSimpleStreaming(ctx, tSafe)
+	str, err := genSimpleStreaming()
 	assert.NoError(t, err)
 
 	fac, err := genFactory()
 	assert.NoError(t, err)
 
 	// start search service
-	qs := newQueryService(ctx, his, str, fac)
+	qs := newQueryService(ctx, his, str, tSafeReplica, fac)
 	assert.NotNil(t, qs)
 
 	err = qs.addQueryCollection(defaultCollectionID)

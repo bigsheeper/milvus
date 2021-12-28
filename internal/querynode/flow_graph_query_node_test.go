@@ -18,6 +18,7 @@ package querynode
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,11 +44,11 @@ func TestQueryNodeFlowGraph_consumerFlowGraph(t *testing.T) {
 		tSafe,
 		defaultDMLChannel,
 		fac)
+	defer fg.close()
+	commonpb.MsgType_Insert.String()
 
 	err = fg.consumerFlowGraph(defaultDMLChannel, defaultSubName)
 	assert.NoError(t, err)
-
-	fg.close()
 }
 
 func TestQueryNodeFlowGraph_seekQueryNodeFlowGraph(t *testing.T) {
@@ -68,6 +69,7 @@ func TestQueryNodeFlowGraph_seekQueryNodeFlowGraph(t *testing.T) {
 		tSafe,
 		defaultDMLChannel,
 		fac)
+	defer fg.close()
 
 	position := &internalpb.MsgPosition{
 		ChannelName: defaultDMLChannel,
@@ -77,6 +79,4 @@ func TestQueryNodeFlowGraph_seekQueryNodeFlowGraph(t *testing.T) {
 	}
 	err = fg.seekQueryNodeFlowGraph(position)
 	assert.Error(t, err)
-
-	fg.close()
 }

@@ -24,7 +24,6 @@
 #include "index/knowhere/knowhere/index/vector_index/IndexIVFPQ.h"
 #include "pb/milvus.pb.h"
 #include "pb/plan.pb.h"
-#include "query/ExprImpl.h"
 #include "segcore/Collection.h"
 #include "segcore/reduce_c.h"
 #include "test_utils/DataGen.h"
@@ -193,14 +192,14 @@ TEST(CApiTest, GetCollectionNameTest) {
 
 TEST(CApiTest, SegmentTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
     DeleteCollection(collection);
     DeleteSegment(segment);
 }
 
 TEST(CApiTest, InsertTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -218,7 +217,7 @@ TEST(CApiTest, InsertTest) {
 
 TEST(CApiTest, DeleteTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     long delete_row_ids[] = {100000, 100001, 100002};
     unsigned long delete_timestamps[] = {0, 0, 0};
@@ -234,7 +233,7 @@ TEST(CApiTest, DeleteTest) {
 
 TEST(CApiTest, SearchTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -285,11 +284,11 @@ TEST(CApiTest, SearchTest) {
     timestamps.push_back(1);
 
     CSearchResult search_result;
-    auto res = Search(segment, plan, placeholderGroup, N + ts_offset, &search_result, -1);
+    auto res = Search(segment, plan, placeholderGroup, N + ts_offset, &search_result);
     ASSERT_EQ(res.error_code, Success);
 
     CSearchResult search_result2;
-    auto res2 = Search(segment, plan, placeholderGroup, ts_offset, &search_result2, -1);
+    auto res2 = Search(segment, plan, placeholderGroup, ts_offset, &search_result2);
     ASSERT_EQ(res2.error_code, Success);
 
     DeleteSearchPlan(plan);
@@ -302,7 +301,7 @@ TEST(CApiTest, SearchTest) {
 
 TEST(CApiTest, SearchTestWithExpr) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -342,7 +341,7 @@ TEST(CApiTest, SearchTestWithExpr) {
     timestamps.push_back(1);
 
     CSearchResult search_result;
-    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &search_result, -1);
+    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &search_result);
     ASSERT_EQ(res.error_code, Success);
 
     DeleteSearchPlan(plan);
@@ -352,47 +351,9 @@ TEST(CApiTest, SearchTestWithExpr) {
     DeleteSegment(segment);
 }
 
-TEST(CApiTest, RetrieveTestWithExpr) {
-    auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
-
-    int N = 10000;
-    auto [raw_data, timestamps, uids] = generate_data(N);
-    auto line_sizeof = (sizeof(int) + sizeof(float) * DIM);
-
-    int64_t offset;
-    PreInsert(segment, N, &offset);
-
-    auto ins_res = Insert(segment, offset, N, uids.data(), timestamps.data(), raw_data.data(), (int)line_sizeof, N);
-    ASSERT_EQ(ins_res.error_code, Success);
-
-    auto schema = ((milvus::segcore::Collection*)collection)->get_schema();
-    auto plan = std::make_unique<query::RetrievePlan>(*schema);
-
-    // create retrieve plan "age in [0]"
-    auto term_expr = std::make_unique<query::TermExprImpl<int64_t>>();
-    term_expr->field_offset_ = FieldOffset(1);
-    term_expr->data_type_ = DataType::INT32;
-    term_expr->terms_.emplace_back(0);
-
-    plan->plan_node_ = std::make_unique<query::RetrievePlanNode>();
-    plan->plan_node_->predicate_ = std::move(term_expr);
-    std::vector<FieldOffset> target_offsets{FieldOffset(0), FieldOffset(1)};
-    plan->field_offsets_ = target_offsets;
-
-    CRetrieveResult retrieve_result;
-    auto res = Retrieve(segment, plan.release(), timestamps[0], &retrieve_result);
-    ASSERT_EQ(res.error_code, Success);
-
-    DeleteRetrievePlan(plan.release());
-    DeleteRetrieveResult(&retrieve_result);
-    DeleteCollection(collection);
-    DeleteSegment(segment);
-}
-
 TEST(CApiTest, GetMemoryUsageInBytesTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto old_memory_usage_size = GetMemoryUsageInBytes(segment);
     // std::cout << "old_memory_usage_size = " << old_memory_usage_size << std::endl;
@@ -418,7 +379,7 @@ TEST(CApiTest, GetMemoryUsageInBytesTest) {
 
 TEST(CApiTest, GetDeletedCountTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     long delete_row_ids[] = {100000, 100001, 100002};
     unsigned long delete_timestamps[] = {0, 0, 0};
@@ -438,7 +399,7 @@ TEST(CApiTest, GetDeletedCountTest) {
 
 TEST(CApiTest, GetRowCountTest) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -464,7 +425,7 @@ TEST(CApiTest, GetRowCountTest) {
 //        "\u003e\ncreate_time: 1600416765\nsegment_ids: 6873737669791618215\npartition_tags: \"default\"\n";
 //
 //    auto collection = NewCollection(schema_string.data());
-//    auto segment = NewSegment(collection, Growing, -1);
+//    auto segment = NewSegment(collection, 0, Growing);
 //    DeleteCollection(collection);
 //    DeleteSegment(segment);
 //}
@@ -534,7 +495,7 @@ CheckSearchResultDuplicate(const std::vector<CSearchResult>& results) {
 
 TEST(CApiTest, ReduceRemoveDuplicates) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -581,9 +542,9 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
     {
         std::vector<CSearchResult> results;
         CSearchResult res1, res2;
-        status = Search(segment, plan, placeholderGroup, timestamps[0], &res1, -1);
+        status = Search(segment, plan, placeholderGroup, timestamps[0], &res1);
         assert(status.error_code == Success);
-        status = Search(segment, plan, placeholderGroup, timestamps[0], &res2, -1);
+        status = Search(segment, plan, placeholderGroup, timestamps[0], &res2);
         assert(status.error_code == Success);
         results.push_back(res1);
         results.push_back(res2);
@@ -598,11 +559,11 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
     {
         std::vector<CSearchResult> results;
         CSearchResult res1, res2, res3;
-        status = Search(segment, plan, placeholderGroup, timestamps[0], &res1, -1);
+        status = Search(segment, plan, placeholderGroup, timestamps[0], &res1);
         assert(status.error_code == Success);
-        status = Search(segment, plan, placeholderGroup, timestamps[0], &res2, -1);
+        status = Search(segment, plan, placeholderGroup, timestamps[0], &res2);
         assert(status.error_code == Success);
-        status = Search(segment, plan, placeholderGroup, timestamps[0], &res3, -1);
+        status = Search(segment, plan, placeholderGroup, timestamps[0], &res3);
         assert(status.error_code == Success);
         results.push_back(res1);
         results.push_back(res2);
@@ -625,7 +586,7 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
 
 TEST(CApiTest, Reduce) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -672,9 +633,9 @@ TEST(CApiTest, Reduce) {
     std::vector<CSearchResult> results;
     CSearchResult res1;
     CSearchResult res2;
-    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &res1, -1);
+    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &res1);
     assert(res.error_code == Success);
-    res = Search(segment, plan, placeholderGroup, timestamps[0], &res2, -1);
+    res = Search(segment, plan, placeholderGroup, timestamps[0], &res2);
     assert(res.error_code == Success);
     results.push_back(res1);
     results.push_back(res2);
@@ -708,7 +669,7 @@ TEST(CApiTest, Reduce) {
 
 TEST(CApiTest, ReduceSearchWithExpr) {
     auto collection = NewCollection(get_default_schema_config());
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     int N = 10000;
     auto [raw_data, timestamps, uids] = generate_data(N);
@@ -749,9 +710,9 @@ TEST(CApiTest, ReduceSearchWithExpr) {
     std::vector<CSearchResult> results;
     CSearchResult res1;
     CSearchResult res2;
-    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &res1, -1);
+    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &res1);
     assert(res.error_code == Success);
-    res = Search(segment, plan, placeholderGroup, timestamps[0], &res2, -1);
+    res = Search(segment, plan, placeholderGroup, timestamps[0], &res2);
     assert(res.error_code == Success);
     results.push_back(res1);
     results.push_back(res2);
@@ -881,7 +842,7 @@ TEST(CApiTest, Indexing_Without_Predicate) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -930,7 +891,7 @@ TEST(CApiTest, Indexing_Without_Predicate) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -956,8 +917,8 @@ TEST(CApiTest, Indexing_Without_Predicate) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -979,7 +940,7 @@ TEST(CApiTest, Indexing_Without_Predicate) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_raw_index_json = SearchResultToJson(*search_result_on_raw_index);
@@ -1005,7 +966,7 @@ TEST(CApiTest, Indexing_Expr_Without_Predicate) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -1049,7 +1010,7 @@ TEST(CApiTest, Indexing_Expr_Without_Predicate) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1075,8 +1036,8 @@ TEST(CApiTest, Indexing_Expr_Without_Predicate) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1098,7 +1059,7 @@ TEST(CApiTest, Indexing_Expr_Without_Predicate) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_raw_index_json = SearchResultToJson(*search_result_on_raw_index);
@@ -1124,7 +1085,7 @@ TEST(CApiTest, Indexing_With_float_Predicate_Range) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -1185,7 +1146,7 @@ TEST(CApiTest, Indexing_With_float_Predicate_Range) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1212,8 +1173,8 @@ TEST(CApiTest, Indexing_With_float_Predicate_Range) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1235,14 +1196,15 @@ TEST(CApiTest, Indexing_With_float_Predicate_Range) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1261,7 +1223,7 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Range) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = 1000 * 1000;
     auto dataset = DataGen(schema, N);
@@ -1336,7 +1298,7 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Range) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1363,8 +1325,8 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Range) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1386,14 +1348,15 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Range) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 420000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 420000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1412,7 +1375,7 @@ TEST(CApiTest, Indexing_With_float_Predicate_Term) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -1471,7 +1434,7 @@ TEST(CApiTest, Indexing_With_float_Predicate_Term) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1498,8 +1461,8 @@ TEST(CApiTest, Indexing_With_float_Predicate_Term) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1521,14 +1484,15 @@ TEST(CApiTest, Indexing_With_float_Predicate_Term) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1547,7 +1511,7 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Term) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = 1000 * 1000;
     auto dataset = DataGen(schema, N);
@@ -1615,7 +1579,7 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Term) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1642,8 +1606,8 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Term) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1665,14 +1629,15 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Term) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 420000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 420000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1691,7 +1656,7 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Range) {
     std::string schema_string = generate_collection_schema("JACCARD", DIM, true);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = 1000 * 1000;
     auto dataset = DataGen(schema, N);
@@ -1751,7 +1716,7 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Range) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -1779,8 +1744,8 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Range) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1802,14 +1767,15 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Range) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 420000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 420000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1828,7 +1794,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Range) {
     std::string schema_string = generate_collection_schema("JACCARD", DIM, true);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -1901,7 +1867,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Range) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     ASSERT_TRUE(res_before_load_index.error_code == Success) << res_before_load_index.error_msg;
 
     // load index to segment
@@ -1929,8 +1895,8 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Range) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -1952,14 +1918,15 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Range) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -1978,7 +1945,7 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Term) {
     std::string schema_string = generate_collection_schema("JACCARD", DIM, true);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -2037,7 +2004,7 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Term) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -2065,8 +2032,8 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Term) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -2088,7 +2055,7 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Term) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     std::vector<CSearchResult> results;
@@ -2099,8 +2066,9 @@ TEST(CApiTest, Indexing_With_binary_Predicate_Term) {
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -2119,7 +2087,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
     std::string schema_string = generate_collection_schema("JACCARD", DIM, true);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Growing, -1);
+    auto segment = NewSegment(collection, 0, Growing);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -2186,7 +2154,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
     Timestamp time = 10000000;
 
     CSearchResult c_search_result_on_smallIndex;
-    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex, -1);
+    auto res_before_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_smallIndex);
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
@@ -2214,8 +2182,8 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
     }
 
     auto search_result_on_raw_index = (SearchResult*)c_search_result_on_smallIndex;
-    search_result_on_raw_index->ids_ = vec_ids;
-    search_result_on_raw_index->distances_ = vec_dis;
+    search_result_on_raw_index->internal_seg_offsets_ = vec_ids;
+    search_result_on_raw_index->result_distances_ = vec_dis;
 
     auto binary_set = indexing->Serialize(conf);
     void* c_load_index_info = nullptr;
@@ -2237,7 +2205,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     std::vector<CSearchResult> results;
@@ -2248,8 +2216,9 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
-        ASSERT_EQ(search_result_on_bigIndex.distances_[offset], search_result_on_raw_index->distances_[offset]);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.result_distances_[offset],
+                  search_result_on_raw_index->result_distances_[offset]);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -2287,7 +2256,7 @@ TEST(CApiTest, SealedSegmentTest) {
                                   >
                                 >)";
     auto collection = NewCollection(schema_tmp_conf);
-    auto segment = NewSegment(collection, Sealed, -1);
+    auto segment = NewSegment(collection, 0, Sealed);
 
     int N = 10000;
     std::default_random_engine e(67);
@@ -2314,7 +2283,7 @@ TEST(CApiTest, SealedSegment_search_float_Predicate_Range) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Sealed, -1);
+    auto segment = NewSegment(collection, 0, Sealed);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -2444,13 +2413,13 @@ TEST(CApiTest, SealedSegment_search_float_Predicate_Range) {
     auto sealed_segment = SealedCreator(schema, dataset, *(LoadIndexInfo*)c_load_index_info);
     CSearchResult c_search_result_on_bigIndex;
     auto res_after_load_index =
-        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+        Search(sealed_segment.get(), plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);
@@ -2466,7 +2435,7 @@ TEST(CApiTest, SealedSegment_search_without_predicates) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Sealed, -1);
+    auto segment = NewSegment(collection, 0, Sealed);
 
     auto N = ROW_COUNT;
     uint64_t ts_offset = 1000;
@@ -2538,12 +2507,12 @@ TEST(CApiTest, SealedSegment_search_without_predicates) {
     std::vector<CPlaceholderGroup> placeholderGroups;
     placeholderGroups.push_back(placeholderGroup);
     CSearchResult search_result;
-    auto res = Search(segment, plan, placeholderGroup, N + ts_offset, &search_result, -1);
+    auto res = Search(segment, plan, placeholderGroup, N + ts_offset, &search_result);
     std::cout << res.error_msg << std::endl;
     ASSERT_EQ(res.error_code, Success);
 
     CSearchResult search_result2;
-    auto res2 = Search(segment, plan, placeholderGroup, ts_offset, &search_result2, -1);
+    auto res2 = Search(segment, plan, placeholderGroup, ts_offset, &search_result);
     ASSERT_EQ(res2.error_code, Success);
 
     DeleteSearchPlan(plan);
@@ -2560,7 +2529,7 @@ TEST(CApiTest, SealedSegment_search_float_With_Expr_Predicate_Range) {
     std::string schema_string = generate_collection_schema("L2", DIM, false);
     auto collection = NewCollection(schema_string.c_str());
     auto schema = ((segcore::Collection*)collection)->get_schema();
-    auto segment = NewSegment(collection, Sealed, -1);
+    auto segment = NewSegment(collection, 0, Sealed);
 
     auto N = ROW_COUNT;
     auto dataset = DataGen(schema, N);
@@ -2704,13 +2673,13 @@ TEST(CApiTest, SealedSegment_search_float_With_Expr_Predicate_Range) {
     assert(status.error_code == Success);
 
     CSearchResult c_search_result_on_bigIndex;
-    auto res_after_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_bigIndex, -1);
+    auto res_after_load_index = Search(segment, plan, placeholderGroup, time, &c_search_result_on_bigIndex);
     assert(res_after_load_index.error_code == Success);
 
     auto search_result_on_bigIndex = (*(SearchResult*)c_search_result_on_bigIndex);
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * TOPK;
-        ASSERT_EQ(search_result_on_bigIndex.ids_[offset], 42000 + i);
+        ASSERT_EQ(search_result_on_bigIndex.internal_seg_offsets_[offset], 42000 + i);
     }
 
     DeleteLoadIndexInfo(c_load_index_info);

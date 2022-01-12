@@ -42,7 +42,6 @@ find_package( Threads REQUIRED )
 if ( MILVUS_BUILD_TESTS )
     add_subdirectory( gtest )
     add_subdirectory( google_benchmark )
-    add_subdirectory( profiler )
 endif()
 
 
@@ -55,5 +54,5 @@ if ( MILVUS_WITH_OPENTRACING )
 endif()
 
 add_subdirectory( protobuf )
-add_subdirectory( boost_ext )
 add_subdirectory( fiu )
+add_subdirectory( boost_ext )

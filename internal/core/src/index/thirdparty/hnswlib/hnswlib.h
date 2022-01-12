@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <string.h>
+#include <faiss/utils/ConcurrentBitset.h>
 #include <faiss/utils/BitsetView.h>
 
 namespace hnswlib {

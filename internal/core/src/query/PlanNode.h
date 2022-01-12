@@ -10,18 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #pragma once
-
-#include <any>
 #include <memory>
-#include <optional>
 #include <vector>
+#include <any>
 #include <string>
-
+#include <optional>
 #include "Expr.h"
 #include "utils/Json.h"
-
 namespace milvus::query {
-
 class PlanNodeVisitor;
 
 // Base of all Nodes

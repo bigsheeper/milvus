@@ -32,32 +32,31 @@ constexpr int64_t M_BYTE = 1024 * 1024;
 
 std::string
 KnowhereConfig::SetSimdType(const SimdType simd_type) {
-    if (simd_type == SimdType::AUTO) {
+    if (simd_type == SimdType::AVX512) {
         faiss::faiss_use_avx512 = true;
-        faiss::faiss_use_avx2 = true;
-        faiss::faiss_use_sse4_2 = true;
-        LOG_KNOWHERE_DEBUG_ << "FAISS expect simdType::AUTO";
-    } else if (simd_type == SimdType::AVX512) {
-        faiss::faiss_use_avx512 = true;
-        faiss::faiss_use_avx2 = true;
-        faiss::faiss_use_sse4_2 = true;
-        LOG_KNOWHERE_DEBUG_ << "FAISS expect simdType::AVX512";
+        faiss::faiss_use_avx2 = false;
+        faiss::faiss_use_sse = false;
     } else if (simd_type == SimdType::AVX2) {
         faiss::faiss_use_avx512 = false;
         faiss::faiss_use_avx2 = true;
-        faiss::faiss_use_sse4_2 = true;
-        LOG_KNOWHERE_DEBUG_ << "FAISS expect simdType::AVX2";
-    } else if (simd_type == SimdType::SSE4_2) {
+        faiss::faiss_use_sse = false;
+    } else if (simd_type == SimdType::SSE) {
         faiss::faiss_use_avx512 = false;
         faiss::faiss_use_avx2 = false;
-        faiss::faiss_use_sse4_2 = true;
-        LOG_KNOWHERE_DEBUG_ << "FAISS expect simdType::SSE4_2";
+        faiss::faiss_use_sse = true;
+    } else {
+        faiss::faiss_use_avx512 = true;
+        faiss::faiss_use_avx2 = true;
+        faiss::faiss_use_sse = true;
     }
 
     std::string cpu_flag;
-    faiss::hook_init(cpu_flag);
-    LOG_KNOWHERE_DEBUG_ << "FAISS hook " << cpu_flag;
-    return cpu_flag;
+    if (faiss::hook_init(cpu_flag)) {
+        LOG_KNOWHERE_DEBUG_ << "FAISS hook " << cpu_flag;
+        return cpu_flag;
+    }
+
+    KNOWHERE_THROW_MSG("FAISS hook fail, CPU not supported!");
 }
 
 void
@@ -110,7 +109,7 @@ KnowhereConfig::InitGPUResource(const std::vector<int64_t>& gpu_ids) {
 
 void
 KnowhereConfig::FreeGPUResource() {
-    knowhere::FaissGpuResourceMgr::GetInstance().Free();  // Release gpu resources.
+    knowhere::FaissGpuResourceMgr::GetInstance().Free();  // free gpu resource.
 }
 #endif
 

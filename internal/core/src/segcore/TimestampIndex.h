@@ -10,15 +10,12 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #pragma once
-
-#include <boost/dynamic_bitset.hpp>
+#include <common/Schema.h>
 #include <vector>
+#include <boost/dynamic_bitset.hpp>
 #include <utility>
 
-#include "common/Schema.h"
-
 namespace milvus::segcore {
-
 class TimestampIndex {
  public:
     void

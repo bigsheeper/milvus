@@ -19,6 +19,7 @@
 #include "NGT/Common.h"
 #include "NGT/Node.h"
 #include "NGT/defines.h"
+#include "faiss/utils/ConcurrentBitset.h"
 #include "faiss/utils/BitsetView.h"
 
 #include <sstream>

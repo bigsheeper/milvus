@@ -15,9 +15,8 @@ extern "C" {
 
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "common/type_c.h"
 #include "segcore/collection_c.h"
+#include "common/type_c.h"
 
 typedef void* CSearchPlan;
 typedef void* CPlaceholderGroup;

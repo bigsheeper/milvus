@@ -14,7 +14,6 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <mutex>
 
 #include "knowhere/index/IndexType.h"
 #include "knowhere/index/vector_index/ConfAdapter.h"
@@ -46,7 +45,6 @@ class AdapterMgr {
  protected:
     bool init_ = false;
     std::unordered_map<IndexType, std::function<ConfAdapterPtr()>> collection_;
-    std::once_flag once_;
 };
 
 }  // namespace knowhere

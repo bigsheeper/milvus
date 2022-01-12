@@ -23,6 +23,7 @@
 #include <faiss/DirectMap.h>
 #include <faiss/Clustering.h>
 #include <faiss/utils/Heap.h>
+#include <faiss/utils/ConcurrentBitset.h>
 #include <faiss/common.h>
 
 namespace faiss {
@@ -91,7 +92,7 @@ struct IndexIVFStats {
 
 struct InvertedListScanner;
 
-/** Index based on an inverted file (IVF)
+/** Index based on a inverted file (IVF)
  *
  * In the inverted file, the quantizer (an Index instance) provides a
  * quantization index for each vector to be added. The quantization

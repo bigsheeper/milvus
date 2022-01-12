@@ -33,14 +33,14 @@ const valueEnum ClusterRoleMap{
 
 enum SimdType {
     AUTO = 1,
-    SSE4_2,
+    SSE,
     AVX2,
     AVX512,
 };
 
 const valueEnum SimdMap{
     {"auto", SimdType::AUTO},
-    {"sse4_2", SimdType::SSE4_2},
+    {"sse", SimdType::SSE},
     {"avx2", SimdType::AVX2},
     {"avx512", SimdType::AVX512},
 };

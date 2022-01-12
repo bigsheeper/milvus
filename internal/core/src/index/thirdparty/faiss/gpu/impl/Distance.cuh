@@ -11,6 +11,7 @@
 #include <faiss/gpu/utils/DeviceTensor.cuh>
 #include <faiss/gpu/utils/Float16.cuh>
 #include <faiss/gpu/impl/GeneralDistance.cuh>
+#include <faiss/utils/ConcurrentBitset.h>
 
 namespace faiss { namespace gpu {
 

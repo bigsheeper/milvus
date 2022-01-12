@@ -9,16 +9,16 @@
 #include <faiss/impl/ScalarQuantizerDC.h>
 #include <faiss/impl/ScalarQuantizerDC_avx.h>
 #include <faiss/impl/ScalarQuantizerDC_avx512.h>
-#include <faiss/utils/distances_simd.h>
-#include <faiss/utils/distances_simd_avx.h>
-#include <faiss/utils/distances_simd_avx512.h>
+#include <faiss/utils/distances.h>
+#include <faiss/utils/distances_avx.h>
+#include <faiss/utils/distances_avx512.h>
 #include <faiss/utils/instruction_set.h>
 
 namespace faiss {
 
 bool faiss_use_avx512 = true;
 bool faiss_use_avx2 = true;
-bool faiss_use_sse4_2 = true;
+bool faiss_use_sse = true;
 
 /* set default to AVX */
 fvec_func_ptr fvec_inner_product = fvec_inner_product_avx;
@@ -32,28 +32,34 @@ sq_sel_inv_list_scanner_func_ptr sq_sel_inv_list_scanner = sq_select_inverted_li
 
 /*****************************************************************************/
 
-bool cpu_support_avx512() {
+bool support_avx512() {
+    if (!faiss_use_avx512) return false;
+
     InstructionSet& instruction_set_inst = InstructionSet::GetInstance();
     return (instruction_set_inst.AVX512F() &&
             instruction_set_inst.AVX512DQ() &&
             instruction_set_inst.AVX512BW());
 }
 
-bool cpu_support_avx2() {
+bool support_avx2() {
+    if (!faiss_use_avx2) return false;
+
     InstructionSet& instruction_set_inst = InstructionSet::GetInstance();
     return (instruction_set_inst.AVX2());
 }
 
-bool cpu_support_sse4_2() {
+bool support_sse() {
+    if (!faiss_use_sse) return false;
+
     InstructionSet& instruction_set_inst = InstructionSet::GetInstance();
     return (instruction_set_inst.SSE42());
 }
 
-void hook_init(std::string& cpu_flag) {
+bool hook_init(std::string& cpu_flag) {
     static std::mutex hook_mutex;
     std::lock_guard<std::mutex> lock(hook_mutex);
 
-    if (faiss_use_avx512 && cpu_support_avx512()) {
+    if (support_avx512()) {
         /* for IVFFLAT */
         fvec_inner_product = fvec_inner_product_avx512;
         fvec_L2sqr = fvec_L2sqr_avx512;
@@ -66,7 +72,7 @@ void hook_init(std::string& cpu_flag) {
         sq_sel_inv_list_scanner = sq_select_inverted_list_scanner_avx512;
 
         cpu_flag = "AVX512";
-    } else if (faiss_use_avx2 && cpu_support_avx2()) {
+    } else if (support_avx2()) {
         /* for IVFFLAT */
         fvec_inner_product = fvec_inner_product_avx;
         fvec_L2sqr = fvec_L2sqr_avx;
@@ -79,7 +85,7 @@ void hook_init(std::string& cpu_flag) {
         sq_sel_inv_list_scanner = sq_select_inverted_list_scanner_avx;
 
         cpu_flag = "AVX2";
-    } else if (faiss_use_sse4_2 && cpu_support_sse4_2()) {
+    } else if (support_sse()) {
         /* for IVFFLAT */
         fvec_inner_product = fvec_inner_product_sse;
         fvec_L2sqr = fvec_L2sqr_sse;
@@ -91,21 +97,13 @@ void hook_init(std::string& cpu_flag) {
         sq_sel_quantizer = sq_select_quantizer_ref;
         sq_sel_inv_list_scanner = sq_select_inverted_list_scanner_ref;
 
-        cpu_flag = "SSE4_2";
+        cpu_flag = "SSE42";
     } else {
-        /* for IVFFLAT */
-        fvec_inner_product = fvec_inner_product_ref;
-        fvec_L2sqr = fvec_L2sqr_ref;
-        fvec_L1 = fvec_L1_ref;
-        fvec_Linf = fvec_Linf_ref;
-
-        /* for IVFSQ */
-        sq_get_distance_computer = sq_get_distance_computer_ref;
-        sq_sel_quantizer = sq_select_quantizer_ref;
-        sq_sel_inv_list_scanner = sq_select_inverted_list_scanner_ref;
-
-        cpu_flag = "REF";
+        cpu_flag = "UNSUPPORTED";
+        return false;
     }
+
+    return true;
 }
 
 } // namespace faiss

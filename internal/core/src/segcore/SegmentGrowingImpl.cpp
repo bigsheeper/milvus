@@ -10,8 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include <algorithm>
+#include <iostream>
 #include <numeric>
 #include <queue>
+#include <random>
 #include <thread>
 #include <boost/iterator/counting_iterator.hpp>
 
@@ -287,8 +289,8 @@ SegmentGrowingImpl::vector_search(int64_t vec_count,
                                   SearchResult& output) const {
     auto& sealed_indexing = this->get_sealed_indexing_record();
     if (sealed_indexing.is_ready(search_info.field_offset_)) {
-        query::SearchOnSealed(this->get_schema(), sealed_indexing, search_info, query_data, query_count, bitset, output,
-                              id_);
+        query::SearchOnSealed(this->get_schema(), sealed_indexing, search_info, query_data, query_count, bitset,
+                              output);
     } else {
         SearchOnGrowing(*this, vec_count, search_info, query_data, query_count, bitset, output);
     }

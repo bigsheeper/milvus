@@ -9,21 +9,22 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
-#include <exception>
 #include <map>
+#include <exception>
 #include <google/protobuf/text_format.h>
 
-#include "exceptions/EasyAssert.h"
 #include "pb/index_cgo_msg.pb.h"
-#include "indexbuilder/IndexWrapper.h"
-#include "indexbuilder/utils.h"
-#include "knowhere/common/Timer.h"
-#include "knowhere/common/Utils.h"
-#include "knowhere/index/vector_index/ConfAdapterMgr.h"
 #include "knowhere/index/vector_index/VecIndexFactory.h"
 #include "knowhere/index/vector_index/helpers/IndexParameter.h"
+#include "exceptions/EasyAssert.h"
+#include "IndexWrapper.h"
+#include "indexbuilder/utils.h"
+#include "index/knowhere/knowhere/index/vector_index/ConfAdapterMgr.h"
+#include "index/knowhere/knowhere/common/Timer.h"
+#include "index/knowhere/knowhere/common/Utils.h"
 
-namespace milvus::indexbuilder {
+namespace milvus {
+namespace indexbuilder {
 
 IndexWrapper::IndexWrapper(const char* serialized_type_params, const char* serialized_index_params) {
     type_params_ = std::string(serialized_type_params);
@@ -242,7 +243,7 @@ IndexWrapper::Serialize() {
         binarySet.Append(RAW_DATA, raw_data, raw_data_.size());
         auto slice_size = get_index_file_slice_size();
         // https://github.com/milvus-io/milvus/issues/6421
-        // Disassemble will only divide the raw vectors, other keys were already divided
+        // Disassemble will only divide the raw vectors, other keys was already divided
         knowhere::Disassemble(slice_size * 1024 * 1024, binarySet);
     }
 
@@ -278,7 +279,7 @@ IndexWrapper::Load(const char* serialized_sliced_blob_buffer, int32_t size) {
     milvus::knowhere::BinarySet binarySet;
     for (auto i = 0; i < blob_buffer.datas_size(); i++) {
         const auto& binary = blob_buffer.datas(i);
-        auto deleter = [&](uint8_t*) {};  // avoid repeated destruction
+        auto deleter = [&](uint8_t*) {};  // avoid repeated deconstruction
         auto bptr = std::make_shared<milvus::knowhere::Binary>();
         bptr->data = std::shared_ptr<uint8_t[]>((uint8_t*)binary.value().c_str(), deleter);
         bptr->size = binary.value().length();
@@ -383,4 +384,5 @@ IndexWrapper::LoadRawData() {
     }
 }
 
-}  // namespace milvus::indexbuilder
+}  // namespace indexbuilder
+}  // namespace milvus

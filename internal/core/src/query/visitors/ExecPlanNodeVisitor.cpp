@@ -9,18 +9,20 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
-#include <utility>
-#include <boost_ext/dynamic_bitset_ext.hpp>
-
-#include "query/PlanImpl.h"
-#include "query/generated/ExecPlanNodeVisitor.h"
-#include "query/generated/ExecExprVisitor.h"
-#include "query/SubSearchResult.h"
-#include "segcore/SegmentGrowing.h"
 #include "utils/Json.h"
+#include "query/PlanImpl.h"
+#include "segcore/SegmentGrowing.h"
+#include <utility>
+#include "query/generated/ExecPlanNodeVisitor.h"
+#include "segcore/SegmentGrowingImpl.h"
+#include "query/generated/ExecExprVisitor.h"
+#include "query/SearchOnGrowing.h"
+#include "query/SearchOnSealed.h"
+#include "boost_ext/dynamic_bitset_ext.hpp"
 
 namespace milvus::query {
 
+#if 1
 namespace impl {
 // THIS CONTAINS EXTRA BODY FOR VISITOR
 // WILL BE USED BY GENERATOR UNDER suvlim/core_gen/
@@ -58,6 +60,7 @@ class ExecPlanNodeVisitor : PlanNodeVisitor {
     std::optional<RetType> ret_;
 };
 }  // namespace impl
+#endif
 
 static SearchResult
 empty_search_result(int64_t num_queries, int64_t topk, int64_t round_decimal, MetricType metric_type) {
@@ -65,8 +68,8 @@ empty_search_result(int64_t num_queries, int64_t topk, int64_t round_decimal, Me
     SubSearchResult result(num_queries, topk, metric_type, round_decimal);
     final_result.num_queries_ = num_queries;
     final_result.topk_ = topk;
-    final_result.ids_ = std::move(result.mutable_ids());
-    final_result.distances_ = std::move(result.mutable_distances());
+    final_result.internal_seg_offsets_ = std::move(result.mutable_labels());
+    final_result.result_distances_ = std::move(result.mutable_values());
     return final_result;
 }
 
@@ -109,7 +112,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         view = BitsetView((uint8_t*)boost_ext::get_data(bitset_holder), bitset_holder.size());
     }
 
-    auto final_bitset = segment->get_filtered_bitmap(view, active_count, timestamp_);
+    auto final_bitset = segment->get_filtered_bitmap(view, active_count, MAX_TIMESTAMP);
 
     segment->vector_search(active_count, node.search_info_, src_data, num_queries, MAX_TIMESTAMP, final_bitset, ret);
 
@@ -145,7 +148,7 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
         view = BitsetView((uint8_t*)boost_ext::get_data(bitset_holder), bitset_holder.size());
     }
 
-    auto final_bitset = segment->get_filtered_bitmap(view, active_count, timestamp_);
+    auto final_bitset = segment->get_filtered_bitmap(view, active_count, MAX_TIMESTAMP);
 
     auto seg_offsets = std::move(segment->search_ids(final_bitset, MAX_TIMESTAMP));
     ret.result_offsets_.assign((int64_t*)seg_offsets.data(), (int64_t*)seg_offsets.data() + seg_offsets.size());

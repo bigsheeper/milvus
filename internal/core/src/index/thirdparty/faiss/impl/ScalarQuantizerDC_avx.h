@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <faiss/impl/ScalarQuantizer.h>
+#include <faiss/impl/ScalarQuantizerOp.h>
 #include <faiss/MetricType.h>
 
 namespace faiss {

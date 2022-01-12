@@ -13,7 +13,6 @@
 
 #include <map>
 #include <string>
-
 #include "common/Types.h"
 #include "exceptions/EasyAssert.h"
 #include "utils/Json.h"

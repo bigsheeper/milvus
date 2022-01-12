@@ -33,6 +33,7 @@
 #include <omp.h>
 
 #include <faiss/utils/Heap.h>
+#include <faiss/utils/distances_avx.h>
 #include <faiss/utils/utils.h>
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
@@ -293,7 +294,7 @@ void bitvecs2fvecs (
 }
 
 
-/* Reverse bit (NOT an optimized function, only used for print purpose) */
+/* Reverse bit (NOT a optimized function, only used for print purpose) */
 static uint64_t uint64_reverse_bits (uint64_t b)
 {
     int i;
@@ -407,7 +408,7 @@ void hamming_range_search_template (
 
 #pragma omp for
         for (size_t j = 0; j < nb; j++) {
-            if (bitset.empty() || !bitset.test((int64_t)j)) {
+            if (bitset.empty() || !bitset.test((ConcurrentBitset::id_type_t)j)) {
                 int dis = hc.compute (yi + j * code_size);
                 if (dis < radius) {
                     qres.add(dis, j);

@@ -10,6 +10,7 @@
 
 #include <faiss/Index.h>
 #include <faiss/gpu/utils/MemorySpace.h>
+#include <faiss/utils/ConcurrentBitset.h>
 
 namespace faiss { namespace gpu {
 

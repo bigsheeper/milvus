@@ -10,11 +10,16 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include "SearchOnGrowing.h"
+#include <knowhere/index/vector_index/adapter/VectorAdapter.h>
+#include <knowhere/index/vector_index/VecIndexFactory.h>
+#include "segcore/Reduce.h"
+
+#include <faiss/utils/distances.h>
+#include "utils/Utils.h"
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnIndex.h"
 
 namespace milvus::query {
-
 Status
 FloatSearch(const segcore::SegmentGrowingImpl& segment,
             const query::SearchInfo& info,
@@ -62,7 +67,7 @@ FloatSearch(const segcore::SegmentGrowingImpl& segment,
             auto sub_qr = SearchOnIndex(search_dataset, *indexing, search_conf, sub_view);
 
             // convert chunk uid to segment uid
-            for (auto& x : sub_qr.mutable_ids()) {
+            for (auto& x : sub_qr.mutable_labels()) {
                 if (x != -1) {
                     x += chunk_id * size_per_chunk;
                 }
@@ -88,7 +93,7 @@ FloatSearch(const segcore::SegmentGrowingImpl& segment,
         auto sub_qr = FloatSearchBruteForce(search_dataset, chunk.data(), size_per_chunk, sub_view);
 
         // convert chunk uid to segment uid
-        for (auto& x : sub_qr.mutable_ids()) {
+        for (auto& x : sub_qr.mutable_labels()) {
             if (x != -1) {
                 x += chunk_id * vec_size_per_chunk;
             }
@@ -96,8 +101,8 @@ FloatSearch(const segcore::SegmentGrowingImpl& segment,
         final_qr.merge(sub_qr);
     }
     current_chunk_id = max_chunk;
-    results.distances_ = std::move(final_qr.mutable_distances());
-    results.ids_ = std::move(final_qr.mutable_ids());
+    results.result_distances_ = std::move(final_qr.mutable_values());
+    results.internal_seg_offsets_ = std::move(final_qr.mutable_labels());
     results.topk_ = topk;
     results.num_queries_ = num_queries;
 
@@ -150,7 +155,7 @@ BinarySearch(const segcore::SegmentGrowingImpl& segment,
         auto sub_result = BinarySearchBruteForce(search_dataset, chunk.data(), nsize, sub_view);
 
         // convert chunk uid to segment uid
-        for (auto& x : sub_result.mutable_ids()) {
+        for (auto& x : sub_result.mutable_labels()) {
             if (x != -1) {
                 x += chunk_id * vec_size_per_chunk;
             }
@@ -159,8 +164,8 @@ BinarySearch(const segcore::SegmentGrowingImpl& segment,
     }
 
     final_result.round_values();
-    results.distances_ = std::move(final_result.mutable_distances());
-    results.ids_ = std::move(final_result.mutable_ids());
+    results.result_distances_ = std::move(final_result.mutable_values());
+    results.internal_seg_offsets_ = std::move(final_result.mutable_labels());
     results.topk_ = topk;
     results.num_queries_ = num_queries;
 

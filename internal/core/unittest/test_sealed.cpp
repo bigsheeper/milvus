@@ -69,11 +69,12 @@ TEST(Sealed, without_predicate) {
     auto ph_group_raw = CreatePlaceholderGroupFromBlob(num_queries, 16, query_ptr);
     auto ph_group = ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
 
+    SearchResult sr;
     Timestamp time = 1000000;
     std::vector<const PlaceholderGroup*> ph_group_arr = {ph_group.get()};
 
-    auto sr = segment->Search(plan.get(), *ph_group, time);
-    auto pre_result = SearchResultToJson(*sr);
+    sr = segment->Search(plan.get(), *ph_group, time);
+    auto pre_result = SearchResultToJson(sr);
     auto indexing = std::make_shared<knowhere::IVF>();
 
     auto conf = knowhere::Config{{knowhere::meta::DIM, dim},
@@ -99,9 +100,9 @@ TEST(Sealed, without_predicate) {
     std::vector<int64_t> vec_ids(ids, ids + topK * num_queries);
     std::vector<float> vec_dis(dis, dis + topK * num_queries);
 
-    sr->ids_ = vec_ids;
-    sr->distances_ = vec_dis;
-    auto ref_result = SearchResultToJson(*sr);
+    sr.internal_seg_offsets_ = vec_ids;
+    sr.result_distances_ = vec_dis;
+    auto ref_result = SearchResultToJson(sr);
 
     LoadIndexInfo load_info;
     load_info.field_id = fake_id.get();
@@ -111,7 +112,7 @@ TEST(Sealed, without_predicate) {
     auto sealed_segment = SealedCreator(schema, dataset, load_info);
     sr = sealed_segment->Search(plan.get(), *ph_group, time);
 
-    auto post_result = SearchResultToJson(*sr);
+    auto post_result = SearchResultToJson(sr);
     std::cout << "ref_result" << std::endl;
     std::cout << ref_result.dump(1) << std::endl;
     std::cout << "post_result" << std::endl;
@@ -170,10 +171,12 @@ TEST(Sealed, with_predicate) {
     auto ph_group_raw = CreatePlaceholderGroupFromBlob(num_queries, 16, query_ptr);
     auto ph_group = ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
 
+    SearchResult sr;
     Timestamp time = 10000000;
     std::vector<const PlaceholderGroup*> ph_group_arr = {ph_group.get()};
 
-    auto sr = segment->Search(plan.get(), *ph_group, time);
+    sr = segment->Search(plan.get(), *ph_group, time);
+    auto pre_sr = sr;
     auto indexing = std::make_shared<knowhere::IVF>();
 
     auto conf = knowhere::Config{{knowhere::meta::DIM, dim},
@@ -202,10 +205,11 @@ TEST(Sealed, with_predicate) {
     auto sealed_segment = SealedCreator(schema, dataset, load_info);
     sr = sealed_segment->Search(plan.get(), *ph_group, time);
 
+    auto post_sr = sr;
     for (int i = 0; i < num_queries; ++i) {
         auto offset = i * topK;
-        ASSERT_EQ(sr->ids_[offset], 42000 + i);
-        ASSERT_EQ(sr->distances_[offset], 0.0);
+        ASSERT_EQ(post_sr.internal_seg_offsets_[offset], 42000 + i);
+        ASSERT_EQ(post_sr.result_distances_[offset], 0.0);
     }
 }
 
@@ -287,14 +291,14 @@ TEST(Sealed, LoadFieldData) {
     }
 
     auto sr = segment->Search(plan.get(), *ph_group, time);
-    auto json = SearchResultToJson(*sr);
+    auto json = SearchResultToJson(sr);
     std::cout << json.dump(1);
 
     segment->DropIndex(fakevec_id);
     ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));
     segment->LoadIndex(vec_info);
     auto sr2 = segment->Search(plan.get(), *ph_group, time);
-    auto json2 = SearchResultToJson(*sr);
+    auto json2 = SearchResultToJson(sr);
     ASSERT_EQ(json.dump(-2), json2.dump(-2));
     segment->DropFieldData(double_id);
     ASSERT_ANY_THROW(segment->Search(plan.get(), *ph_group, time));

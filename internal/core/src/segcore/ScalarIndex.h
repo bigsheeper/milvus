@@ -10,14 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #pragma once
-
-#include <memory>
-#include <string>
-#include <utility>
-#include <vector>
-
+#include "exceptions/EasyAssert.h"
 #include "common/Types.h"
 #include "pb/schema.pb.h"
+
+#include <memory>
+#include <vector>
+#include <string>
+#include <utility>
 
 namespace milvus::segcore {
 
@@ -61,5 +61,4 @@ class ScalarIndexVector : public ScalarIndexBase {
  private:
     std::vector<std::pair<T, SegOffset>> mapping_;
 };
-
 }  // namespace milvus::segcore

@@ -1,14 +1,3 @@
-# Copyright (C) 2019-2020 Zilliz. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
-# with the License. You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software distributed under the License
-# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-# or implied. See the License for the specific language governing permissions and limitations under the License
-
 add_compile_options( -O3 -fPIC -Wno-error -fopenmp )
 
 if ( NOT KNOWHERE_VERBOSE_THIRDPARTY_BUILD )
@@ -48,6 +37,10 @@ if ( KNOWHERE_BUILD_TESTS )
 endif()
 
 
+if(NOT TARGET fiu)
+    add_subdirectory(fiu)
+endif()
+
 # ****************************** Thirdparty NGT ***************************************
 add_subdirectory(NGT)
 
@@ -81,7 +74,7 @@ macro(build_faiss)
             "CXX=${FAISS_CXX_COMPILER}"
             "NVCC=${FAISS_CUDA_COMPILER}"
             "CFLAGS=${EP_C_FLAGS}"
-            "CXXFLAGS=${EP_CXX_FLAGS} -msse4.2 -O3"
+            "CXXFLAGS=${EP_CXX_FLAGS} -mf16c -O3"
             --without-python)
 
     message(STATUS "${FAISS_CONFIGURE_ARGS}")
@@ -111,8 +104,7 @@ macro(build_faiss)
     endif ()
 
     message(STATUS "Building FAISS with configure args -${FAISS_CONFIGURE_ARGS}")
-	
-    #Notice: there will not set LDFLAGS value
+
     if (DEFINED ENV{FAISS_SOURCE_URL})
         set(FAISS_SOURCE_URL "$ENV{FAISS_SOURCE_URL}")
         externalproject_add(faiss_ep

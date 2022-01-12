@@ -25,11 +25,11 @@ extern "C" {
 
 typedef void* CSegmentInterface;
 typedef void* CSearchResult;
-typedef CProto CRetrieveResult;
+typedef void* CRetrieveResult;
 
 //////////////////////////////    common interfaces    //////////////////////////////
 CSegmentInterface
-NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id);
+NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type);
 
 void
 DeleteSegment(CSegmentInterface c_segment);
@@ -42,14 +42,10 @@ Search(CSegmentInterface c_segment,
        CSearchPlan c_plan,
        CPlaceholderGroup c_placeholder_group,
        uint64_t timestamp,
-       CSearchResult* result,
-       int64_t segment_id);
+       CSearchResult* result);
 
-void
-DeleteRetrieveResult(CRetrieveResult* retrieve_result);
-
-CStatus
-Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp, CRetrieveResult* result);
+CProtoResult
+Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp);
 
 int64_t
 GetMemoryUsageInBytes(CSegmentInterface c_segment);

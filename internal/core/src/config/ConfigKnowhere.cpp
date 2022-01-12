@@ -1,27 +1,20 @@
-// Licensed to the LF AI & Data foundation under one
-// or more contributor license agreements. See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership. The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
+// Copyright (C) 2019-2020 Zilliz. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include <mutex>
-
-#include "ConfigKnowhere.h"
 #include "exceptions/EasyAssert.h"
-#include "easyloggingpp/easylogging++.h"
-#include "faiss/FaissHook.h"
-#include "log/Log.h"
 #include "knowhere/archive/KnowhereConfig.h"
+#include "easyloggingpp/easylogging++.h"
+#include "ConfigKnowhere.h"
+#include "faiss/FaissHook.h"
 
 namespace milvus {
 namespace config {
@@ -32,6 +25,7 @@ void
 KnowhereInitImpl() {
     auto init = []() {
         namespace eg = milvus::engine;
+        eg::KnowhereConfig::SetSimdType(eg::KnowhereConfig::SimdType::AUTO);
         eg::KnowhereConfig::SetBlasThreshold(16384);
         eg::KnowhereConfig::SetEarlyStopThreshold(0);
         eg::KnowhereConfig::SetLogHandler();
@@ -52,17 +46,12 @@ KnowhereSetSimdType(const char* value) {
         simd_type = milvus::engine::KnowhereConfig::SimdType::AVX512;
     } else if (strcmp(value, "avx2") == 0) {
         simd_type = milvus::engine::KnowhereConfig::SimdType::AVX2;
-    } else if (strcmp(value, "avx") == 0 || strcmp(value, "sse4_2") == 0) {
-        simd_type = milvus::engine::KnowhereConfig::SimdType::SSE4_2;
+    } else if (strcmp(value, "sse") == 0) {
+        simd_type = milvus::engine::KnowhereConfig::SimdType::SSE;
     } else {
         PanicInfo("invalid SIMD type: " + std::string(value));
     }
-    try {
-        return milvus::engine::KnowhereConfig::SetSimdType(simd_type);
-    } catch (std::exception& e) {
-        LOG_SERVER_ERROR_ << e.what();
-        PanicInfo(e.what());
-    }
+    return milvus::engine::KnowhereConfig::SetSimdType(simd_type);
 }
 
 }  // namespace config

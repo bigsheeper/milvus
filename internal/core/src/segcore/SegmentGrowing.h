@@ -10,19 +10,19 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #pragma once
-
-#include <memory>
 #include <vector>
 
-#include "common/LoadInfo.h"
-#include "common/Schema.h"
 #include "common/Types.h"
-#include "query/Plan.h"
+#include "common/Schema.h"
+#include <memory>
+
 #include "query/deprecated/GeneralQuery.h"
+#include "query/Plan.h"
+#include "common/LoadInfo.h"
 #include "segcore/SegmentInterface.h"
 
-namespace milvus::segcore {
-
+namespace milvus {
+namespace segcore {
 using SearchResult = milvus::SearchResult;
 struct RowBasedRawData {
     void* raw_data;      // schema
@@ -34,6 +34,9 @@ struct ColumnBasedRawData {
     std::vector<aligned_vector<uint8_t>> columns_;
     int64_t count;
 };
+
+int
+TestABI();
 
 class SegmentGrowing : public SegmentInternalInterface {
  public:
@@ -70,4 +73,14 @@ class SegmentGrowing : public SegmentInternalInterface {
 
 using SegmentGrowingPtr = std::unique_ptr<SegmentGrowing>;
 
-}  // namespace milvus::segcore
+SegmentGrowingPtr
+CreateGrowingSegment(SchemaPtr schema, const SegcoreConfig& segcore_config);
+
+inline SegmentGrowingPtr
+CreateGrowingSegment(SchemaPtr schema) {
+    auto seg_conf = SegcoreConfig::default_config();
+    return CreateGrowingSegment(schema, seg_conf);
+}
+
+}  // namespace segcore
+}  // namespace milvus

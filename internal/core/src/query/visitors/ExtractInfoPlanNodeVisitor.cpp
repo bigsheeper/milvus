@@ -15,6 +15,7 @@
 
 namespace milvus::query {
 
+#if 1
 namespace impl {
 // THIS CONTAINS EXTRA BODY FOR VISITOR
 // WILL BE USED BY GENERATOR UNDER suvlim/core_gen/
@@ -27,6 +28,7 @@ class ExtractInfoPlanNodeVisitor : PlanNodeVisitor {
     ExtractedPlanInfo& plan_info_;
 };
 }  // namespace impl
+#endif
 
 void
 ExtractInfoPlanNodeVisitor::visit(FloatVectorANNS& node) {

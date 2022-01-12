@@ -9,16 +9,15 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
-#include <string>
+#include "SearchBruteForce.h"
 #include <vector>
+#include <common/Types.h>
+#include <boost/dynamic_bitset.hpp>
+#include <queue>
+#include "SubSearchResult.h"
 
 #include <faiss/utils/distances.h>
 #include <faiss/utils/BinaryDistance.h>
-
-#include "SearchBruteForce.h"
-#include "SubSearchResult.h"
-#include "common/Types.h"
-#include "segcore/Utils.h"
 
 namespace milvus::query {
 
@@ -58,9 +57,7 @@ raw_search(MetricType metric_type,
         // only matched ids will be chosen, not to use heap
         binary_distance_knn_mc(metric_type, x, xb, n, ntotal, k, code_size, D, labels, bitset);
     } else {
-        std::string msg =
-            std::string("binary search not support metric type: ") + segcore::MetricTypeToString(metric_type);
-        PanicInfo(msg);
+        PanicInfo("unsupported");
     }
 }
 
@@ -75,14 +72,14 @@ BinarySearchBruteForceFast(MetricType metric_type,
                            const uint8_t* query_data,
                            const faiss::BitsetView& bitset) {
     SubSearchResult sub_result(num_queries, topk, metric_type, round_decimal);
-    float* result_distances = sub_result.get_distances();
-    idx_t* result_ids = sub_result.get_ids();
+    float* result_distances = sub_result.get_values();
+    idx_t* result_labels = sub_result.get_labels();
 
     int64_t code_size = dim / 8;
     const idx_t block_size = size_per_chunk;
 
     raw_search(metric_type, binary_chunk, size_per_chunk, code_size, num_queries, query_data, topk, result_distances,
-               result_ids, bitset);
+               result_labels, bitset);
     sub_result.round_values();
     return sub_result;
 }
@@ -102,12 +99,12 @@ FloatSearchBruteForce(const dataset::SearchDataset& dataset,
     auto chunk_data = reinterpret_cast<const float*>(chunk_data_raw);
 
     if (metric_type == MetricType::METRIC_L2) {
-        faiss::float_maxheap_array_t buf{(size_t)num_queries, (size_t)topk, sub_qr.get_ids(), sub_qr.get_distances()};
+        faiss::float_maxheap_array_t buf{(size_t)num_queries, (size_t)topk, sub_qr.get_labels(), sub_qr.get_values()};
         faiss::knn_L2sqr(query_data, chunk_data, dim, num_queries, size_per_chunk, &buf, bitset);
         sub_qr.round_values();
         return sub_qr;
     } else {
-        faiss::float_minheap_array_t buf{(size_t)num_queries, (size_t)topk, sub_qr.get_ids(), sub_qr.get_distances()};
+        faiss::float_minheap_array_t buf{(size_t)num_queries, (size_t)topk, sub_qr.get_labels(), sub_qr.get_values()};
         faiss::knn_inner_product(query_data, chunk_data, dim, num_queries, size_per_chunk, &buf, bitset);
         sub_qr.round_values();
         return sub_qr;

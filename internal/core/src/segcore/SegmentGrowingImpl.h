@@ -11,29 +11,29 @@
 
 #pragma once
 
-#include <deque>
-#include <memory>
-#include <shared_mutex>
-#include <string>
 #include <tbb/concurrent_priority_queue.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_vector.h>
-#include <vector>
-#include <utility>
+
+#include <shared_mutex>
+#include <knowhere/index/vector_index/VecIndex.h>
+#include <query/PlanNode.h>
 
 #include "AckResponder.h"
-#include "ConcurrentVector.h"
-#include "DeletedRecord.h"
-#include "FieldIndexing.h"
-#include "InsertRecord.h"
 #include "SealedIndexingRecord.h"
-#include "SegmentGrowing.h"
-
-#include "exceptions/EasyAssert.h"
-#include "knowhere/index/vector_index/VecIndex.h"
-#include "query/PlanNode.h"
+#include "ConcurrentVector.h"
+#include "segcore/SegmentGrowing.h"
 #include "query/deprecated/GeneralQuery.h"
 #include "utils/Status.h"
+#include "segcore/DeletedRecord.h"
+#include "exceptions/EasyAssert.h"
+#include "FieldIndexing.h"
+#include "InsertRecord.h"
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <deque>
 
 namespace milvus::segcore {
 
@@ -154,14 +154,13 @@ class SegmentGrowingImpl : public SegmentGrowing {
 
  public:
     friend std::unique_ptr<SegmentGrowing>
-    CreateGrowingSegment(SchemaPtr schema, const SegcoreConfig& segcore_config, int64_t segment_id);
+    CreateGrowingSegment(SchemaPtr schema, const SegcoreConfig& segcore_config);
 
-    explicit SegmentGrowingImpl(SchemaPtr schema, const SegcoreConfig& segcore_config, int64_t segment_id)
+    explicit SegmentGrowingImpl(SchemaPtr schema, const SegcoreConfig& segcore_config)
         : segcore_config_(segcore_config),
           schema_(std::move(schema)),
           record_(*schema_, segcore_config.get_chunk_rows()),
-          indexing_record_(*schema_, segcore_config_),
-          id_(segment_id) {
+          indexing_record_(*schema_, segcore_config_) {
     }
 
     void
@@ -225,17 +224,9 @@ class SegmentGrowingImpl : public SegmentGrowing {
     SealedIndexingRecord sealed_indexing_record_;
 
     tbb::concurrent_unordered_multimap<idx_t, int64_t> uid2offset_;
-    int64_t id_;
 
  private:
     bool enable_small_index_ = true;
 };
-
-inline SegmentGrowingPtr
-CreateGrowingSegment(SchemaPtr schema,
-                     int64_t segment_id = -1,
-                     const SegcoreConfig& conf = SegcoreConfig::default_config()) {
-    return std::make_unique<SegmentGrowingImpl>(schema, conf, segment_id);
-}
 
 }  // namespace milvus::segcore

@@ -11,6 +11,7 @@
 #define FAISS_INDEX_H
 
 #include <faiss/MetricType.h>
+#include <faiss/utils/ConcurrentBitset.h>
 #include <faiss/utils/BitsetView.h>
 #include <cstdio>
 #include <typeinfo>

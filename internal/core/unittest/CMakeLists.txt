@@ -35,9 +35,6 @@ set(MILVUS_TEST_FILES
         test_span.cpp
         test_timestamp_index.cpp
         test_reduce_c.cpp
-        test_conf_adapter_mgr.cpp
-        test_similarity_corelation.cpp
-        test_utils.cpp
         )
 
 add_executable(all_tests
@@ -72,4 +69,3 @@ target_link_libraries(all_tests
 
 install(TARGETS all_tests DESTINATION unittest)
 install(TARGETS index_builder_test DESTINATION unittest)
-

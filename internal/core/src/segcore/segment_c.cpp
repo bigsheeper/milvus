@@ -9,37 +9,43 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
-#include "common/CGoHelper.h"
-#include "common/LoadInfo.h"
-#include "common/Types.h"
-#include "common/type_c.h"
-#include "log/Log.h"
+#include <cstring>
+#include <cstdint>
 
+#include "segcore/SegmentGrowing.h"
+#include "segcore/SegmentSealed.h"
 #include "segcore/Collection.h"
-#include "segcore/SegmentGrowingImpl.h"
-#include "segcore/SegmentSealedImpl.h"
-#include "segcore/SimilarityCorelation.h"
 #include "segcore/segment_c.h"
+#include "common/LoadInfo.h"
+#include "common/type_c.h"
+#include <knowhere/index/vector_index/VecIndex.h>
+#include <knowhere/index/vector_index/adapter/VectorAdapter.h>
+#include "common/Types.h"
+#include "common/CGoHelper.h"
+#include <iostream>
 
 //////////////////////////////    common interfaces    //////////////////////////////
 CSegmentInterface
-NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id) {
+NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type) {
     auto col = (milvus::segcore::Collection*)collection;
 
     std::unique_ptr<milvus::segcore::SegmentInterface> segment;
     switch (seg_type) {
+        case Invalid:
+            std::cout << "invalid segment type" << std::endl;
+            break;
         case Growing:
-            segment = milvus::segcore::CreateGrowingSegment(col->get_schema(), segment_id);
+            segment = milvus::segcore::CreateGrowingSegment(col->get_schema());
             break;
         case Sealed:
         case Indexing:
-            segment = milvus::segcore::CreateSealedSegment(col->get_schema(), segment_id);
+            segment = milvus::segcore::CreateSealedSegment(col->get_schema());
             break;
         default:
-            LOG_SEGCORE_ERROR_ << "invalid segment type " << (int32_t)seg_type;
-            break;
+            std::cout << "invalid segment type" << std::endl;
     }
 
+    // std::cout << "create segment " << segment_id << std::endl;
     return (void*)segment.release();
 }
 
@@ -47,6 +53,8 @@ void
 DeleteSegment(CSegmentInterface c_segment) {
     // TODO: use dynamic cast, and return c status
     auto s = (milvus::segcore::SegmentInterface*)c_segment;
+
+    // std::cout << "delete segment " << std::endl;
     delete s;
 }
 
@@ -61,52 +69,19 @@ Search(CSegmentInterface c_segment,
        CSearchPlan c_plan,
        CPlaceholderGroup c_placeholder_group,
        uint64_t timestamp,
-       CSearchResult* result,
-       int64_t segment_id) {
-    const std::string log_prefix = "[TODO: remove] debug #14077, segment_id = " + std::to_string(segment_id) + ", ";
-    std::cout << log_prefix << "cgo::Search searching..., timestamp = " << timestamp << ", segmentPtr = " << c_segment
-              << ", planPtr = " << c_plan << ", resultPtr = " << result << std::endl;
+       CSearchResult* result) {
+    auto search_result = std::make_unique<milvus::SearchResult>();
     try {
         auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-        std::cout << log_prefix << "cgo::Search init segment done" << std::endl;
         auto plan = (milvus::query::Plan*)c_plan;
-        std::cout << log_prefix << "cgo::Search init plan done" << std::endl;
         auto phg_ptr = reinterpret_cast<const milvus::query::PlaceholderGroup*>(c_placeholder_group);
-        std::cout << log_prefix << "cgo::Search init placeHolderGroup done" << std::endl;
-        auto search_result = segment->Search(plan, *phg_ptr, timestamp);
-        std::cout << log_prefix << "cgo::Search done" << std::endl;
-        if (!milvus::segcore::PositivelyRelated(plan->plan_node_->search_info_.metric_type_)) {
-            for (auto& dis : search_result->distances_) {
+        *search_result = segment->Search(plan, *phg_ptr, timestamp);
+        if (plan->plan_node_->search_info_.metric_type_ != milvus::MetricType::METRIC_INNER_PRODUCT) {
+            for (auto& dis : search_result->result_distances_) {
                 dis *= -1;
             }
         }
-        std::cout << log_prefix << "cgo::Search PositivelyRelated done" << std::endl;
         *result = search_result.release();
-        std::cout << log_prefix << "cgo::Search result release done" << std::endl;
-        return milvus::SuccessCStatus();
-    } catch (std::exception& e) {
-        return milvus::FailureCStatus(UnexpectedError, e.what());
-    }
-}
-
-void
-DeleteRetrieveResult(CRetrieveResult* retrieve_result) {
-    std::free((void*)(retrieve_result->proto_blob));
-}
-
-CStatus
-Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp, CRetrieveResult* result) {
-    try {
-        auto segment = (const milvus::segcore::SegmentInterface*)c_segment;
-        auto plan = (const milvus::query::RetrievePlan*)c_plan;
-        auto retrieve_result = segment->Retrieve(plan, timestamp);
-
-        auto size = retrieve_result->ByteSize();
-        void* buffer = malloc(size);
-        retrieve_result->SerializePartialToArray(buffer, size);
-
-        result->proto_blob = buffer;
-        result->proto_size = size;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
@@ -261,5 +236,17 @@ DropSealedSegmentIndex(CSegmentInterface c_segment, int64_t field_id) {
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
+}
+
+CProtoResult
+Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp) {
+    try {
+        auto segment = (const milvus::segcore::SegmentInterface*)c_segment;
+        auto plan = (const milvus::query::RetrievePlan*)c_plan;
+        auto result = segment->Retrieve(plan, timestamp);
+        return milvus::AllocCProtoResult(*result);
+    } catch (std::exception& e) {
+        return CProtoResult{milvus::FailureCStatus(UnexpectedError, e.what())};
     }
 }

@@ -74,19 +74,25 @@ template <typename VectorType>
 void
 ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     // TODO: optimize here, remove the dynamic cast
+    std::string log_prefix = "[TODO: remove] debug #14077, ";
     assert(!ret_.has_value());
     auto segment = dynamic_cast<const segcore::SegmentInternalInterface*>(&segment_);
+    std::cout << log_prefix << "VectorVisitorImpl get segment done" << std::endl;
     AssertInfo(segment, "support SegmentSmallIndex Only");
     RetType ret;
     auto& ph = placeholder_group_.at(0);
+    std::cout << log_prefix << "VectorVisitorImpl get placeholder_group_ done" << std::endl;
     auto src_data = ph.get_blob<EmbeddedType<VectorType>>();
+    std::cout << log_prefix << "VectorVisitorImpl get src_data done" << std::endl;
     auto num_queries = ph.num_of_queries_;
 
     boost::dynamic_bitset<> bitset_holder;
     BitsetView view;
+    std::cout << log_prefix << "VectorVisitorImpl init bitset_holder and view done" << std::endl;
     // TODO: add API to unify row_count
     // auto row_count = segment->get_row_count();
     auto active_count = segment->get_active_count(timestamp_);
+    std::cout << log_prefix << "VectorVisitorImpl get active_count done" << std::endl;
 
     // skip all calculation
     if (active_count == 0) {
@@ -99,19 +105,25 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         ExecExprVisitor::RetType expr_ret =
             ExecExprVisitor(*segment, active_count, timestamp_).call_child(*node.predicate_.value());
         bitset_holder = std::move(expr_ret);
+        std::cout << log_prefix << "VectorVisitorImpl move bitset_holder done" << std::endl;
     } else {
         bitset_holder.resize(active_count, true);
+        std::cout << log_prefix << "VectorVisitorImpl resize bitset_holder done" << std::endl;
     }
     segment->mask_with_timestamps(bitset_holder, timestamp_);
+    std::cout << log_prefix << "VectorVisitorImpl mask_with_timestamps done" << std::endl;
 
     if (!bitset_holder.empty()) {
         bitset_holder.flip();
         view = BitsetView((uint8_t*)boost_ext::get_data(bitset_holder), bitset_holder.size());
+        std::cout << log_prefix << "VectorVisitorImpl get_data done" << std::endl;
     }
 
     auto final_bitset = segment->get_filtered_bitmap(view, active_count, timestamp_);
+    std::cout << log_prefix << "VectorVisitorImpl get_filtered_bitmap done" << std::endl;
 
     segment->vector_search(active_count, node.search_info_, src_data, num_queries, MAX_TIMESTAMP, final_bitset, ret);
+    std::cout << log_prefix << "VectorVisitorImpl vector_search done" << std::endl;
 
     ret_ = ret;
 }

@@ -173,12 +173,9 @@ func (s *streaming) search(searchReqs []*searchRequest, collID UniqueID, partIDs
 		}
 
 		var err2 error
-		var wg sync.WaitGroup
 		for _, segID := range segIDs {
 			segID2 := segID
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			func() {
 				seg, err := s.replica.getSegmentByID(segID2)
 				if err != nil {
 					log.Warn(err.Error())
@@ -218,7 +215,6 @@ func (s *streaming) search(searchReqs []*searchRequest, collID UniqueID, partIDs
 			}()
 
 		}
-		wg.Wait()
 		if err2 != nil {
 			return searchResults, searchSegmentIDs, searchPartIDs, err2
 		}

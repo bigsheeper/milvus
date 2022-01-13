@@ -163,12 +163,9 @@ func (h *historical) search(searchReqs []*searchRequest, collID UniqueID, partID
 		}
 
 		var err2 error
-		var wg sync.WaitGroup
 		for _, segID := range segIDs {
 			segID2 := segID
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			func() {
 				seg, err := h.replica.getSegmentByID(segID2)
 				if err != nil {
 					err2 = err
@@ -188,9 +185,7 @@ func (h *historical) search(searchReqs []*searchRequest, collID UniqueID, partID
 				searchSegmentIDs = append(searchSegmentIDs, seg.segmentID)
 				segmentLock.Unlock()
 			}()
-
 		}
-		wg.Wait()
 		if err2 != nil {
 			return searchResults, searchSegmentIDs, searchPartIDs, err2
 		}

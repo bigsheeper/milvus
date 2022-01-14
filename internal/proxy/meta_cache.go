@@ -45,7 +45,9 @@ type Cache interface {
 	GetPartitionID(ctx context.Context, collectionName string, partitionName string) (typeutil.UniqueID, error)
 	// GetPartitions get all partitions' id of specific collection.
 	GetPartitions(ctx context.Context, collectionName string) (map[string]typeutil.UniqueID, error)
+	// GetPartitionInfo get partition's info.
 	GetPartitionInfo(ctx context.Context, collectionName string, partitionName string) (*partitionInfo, error)
+	// GetCollectionSchema get collection's schema.
 	GetCollectionSchema(ctx context.Context, collectionName string) (*schemapb.CollectionSchema, error)
 	RemoveCollection(ctx context.Context, collectionName string)
 	RemovePartition(ctx context.Context, collectionName string, partitionName string)
@@ -64,6 +66,9 @@ type partitionInfo struct {
 	createdTimestamp    uint64
 	createdUtcTimestamp uint64
 }
+
+// make sure MetaCache implements Cache.
+var _ Cache = (*MetaCache)(nil)
 
 // MetaCache implements Cache, provides collection meta cache based on internal RootCoord
 type MetaCache struct {

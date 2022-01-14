@@ -142,7 +142,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "per-minute increasing rate of create_collection requests",
+      "description": "per-minute increasing rate of create_collection requests.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -245,7 +245,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "per-minute increasing rate of show_collections requests",
+      "description": "per-minute increasing rate of show_collections requests.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -348,7 +348,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "prometheus",
-      "description": "per-minute increasing rate of describe_collection requests",
+      "description": "per-minute increasing rate of describe_collection requests.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -3622,7 +3622,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Go Memory mallocs rate",
+      "title": "Go Memory mallocs rate.",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -3666,7 +3666,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "Number of allocated heap objects",
+      "description": "Number of allocated heap objects.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -3764,7 +3764,7 @@
       "dashLength": 10,
       "dashes": false,
       "datasource": "$datasource",
-      "description": "Rate of bytes allocated, even if freed",
+      "description": "Rate of bytes allocated, even if freed.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []

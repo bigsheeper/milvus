@@ -144,14 +144,21 @@ func (q *queryCollection) start() {
 	go q.doUnsolvedQueryMsg()
 }
 
-func (q *queryCollection) close() {
+func (q *queryCollection) close() error {
 	if q.queryMsgStream != nil {
-		q.queryMsgStream.Close()
+		err := q.queryMsgStream.Close()
+		if err != nil {
+			return err
+		}
 	}
 	if q.queryResultMsgStream != nil {
-		q.queryResultMsgStream.Close()
+		err := q.queryResultMsgStream.Close()
+		if err != nil {
+			return err
+		}
 	}
 	q.globalSegmentManager.close()
+	return nil
 }
 
 // registerCollectionTSafe registers tSafe watcher if vChannels exists

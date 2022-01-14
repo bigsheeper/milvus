@@ -265,7 +265,8 @@ type simpleMockMsgStream struct {
 func (ms *simpleMockMsgStream) Start() {
 }
 
-func (ms *simpleMockMsgStream) Close() {
+func (ms *simpleMockMsgStream) Close() error {
+	return nil
 }
 
 func (ms *simpleMockMsgStream) Chan() <-chan *msgstream.MsgPack {

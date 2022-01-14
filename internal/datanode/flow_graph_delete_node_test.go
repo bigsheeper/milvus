@@ -122,7 +122,8 @@ func TestFlowGraphDeleteNode_newDeleteNode(te *testing.T) {
 
 			assert.NotNil(t, dn)
 			assert.Equal(t, "deleteNode-"+dn.channelName, dn.Name())
-			dn.Close()
+			err = dn.Close()
+			assert.NoError(t, err)
 		})
 	}
 }

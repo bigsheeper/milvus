@@ -47,7 +47,10 @@ func TestInputNode(t *testing.T) {
 		inStream: msgStream,
 		name:     nodeName,
 	}
-	defer inputNode.Close()
+	defer func() {
+		err = inputNode.Close()
+		assert.NoError(t, err)
+	}()
 
 	isInputNode := inputNode.IsInputNode()
 	assert.True(t, isInputNode)

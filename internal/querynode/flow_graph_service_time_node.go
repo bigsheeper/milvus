@@ -42,9 +42,12 @@ func (stNode *serviceTimeNode) Name() string {
 }
 
 // Close would close serviceTimeNode
-func (stNode *serviceTimeNode) Close() {
+func (stNode *serviceTimeNode) Close() error {
 	// `Close` needs to be invoked to close producers
-	stNode.timeTickMsgStream.Close()
+	err := stNode.timeTickMsgStream.Close()
+	if err != nil {
+		log.Error("close serviceTimeNode failed", zap.Error(err))
+	}
 }
 
 // Operate handles input messages, to execute insert operations

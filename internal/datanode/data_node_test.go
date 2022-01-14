@@ -214,7 +214,10 @@ func TestDataNode(t *testing.T) {
 			assert.NoError(t, err)
 			insertStream.AsProducer([]string{dmChannelName})
 			insertStream.Start()
-			defer insertStream.Close()
+			defer func() {
+				err = insertStream.Close()
+				assert.NoError(t, err)
+			}()
 
 			err = insertStream.Broadcast(&timeTickMsgPack)
 			assert.NoError(t, err)

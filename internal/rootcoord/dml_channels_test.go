@@ -133,7 +133,7 @@ type FailMsgStream struct {
 }
 
 func (ms *FailMsgStream) Start()                                       {}
-func (ms *FailMsgStream) Close()                                       {}
+func (ms *FailMsgStream) Close() error                                 { return nil }
 func (ms *FailMsgStream) Chan() <-chan *msgstream.MsgPack              { return nil }
 func (ms *FailMsgStream) AsProducer(channels []string)                 {}
 func (ms *FailMsgStream) AsConsumer(channels []string, subName string) {}

@@ -54,7 +54,7 @@ type RepackFunc func(msgs []TsMsg, hashKeys [][]int32) (map[int32]*MsgPack, erro
 // MsgStream is an interface that can be used to produce and consume message on message queue
 type MsgStream interface {
 	Start()
-	Close()
+	Close() error
 	Chan() <-chan *MsgPack
 	AsProducer(channels []string)
 	AsConsumer(channels []string, subName string)

@@ -60,8 +60,8 @@ func (mm *mockMsgStreamFactory) NewQueryMsgStream(ctx context.Context) (msgstrea
 type mockTtMsgStream struct {
 }
 
-func (mtm *mockTtMsgStream) Start() {}
-func (mtm *mockTtMsgStream) Close() {}
+func (mtm *mockTtMsgStream) Start()       {}
+func (mtm *mockTtMsgStream) Close() error { return nil }
 func (mtm *mockTtMsgStream) Chan() <-chan *msgstream.MsgPack {
 	return make(chan *msgstream.MsgPack, 100)
 }

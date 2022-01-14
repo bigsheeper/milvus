@@ -392,7 +392,10 @@ func (mgr *singleTypeChannelsMgr) createMsgStream(collectionID UniqueID) error {
 		stream.SetRepackFunc(mgr.repackFunc)
 	}
 	runtime.SetFinalizer(stream, func(stream msgstream.MsgStream) {
-		stream.Close()
+		err = stream.Close()
+		if err != nil {
+			log.Error("proxy singleTypeChannelsMgr close message stream failed", zap.Error(err))
+		}
 	})
 	mgr.addStream(id, stream)
 

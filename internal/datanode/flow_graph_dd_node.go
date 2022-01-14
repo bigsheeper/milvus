@@ -259,10 +259,11 @@ func (ddn *ddNode) sendDeltaTimeTick(ts Timestamp) error {
 	return nil
 }
 
-func (ddn *ddNode) Close() {
+func (ddn *ddNode) Close() error {
 	if ddn.deltaMsgStream != nil {
-		ddn.deltaMsgStream.Close()
+		return ddn.deltaMsgStream.Close()
 	}
+	return nil
 }
 
 func newDDNode(ctx context.Context, collID UniqueID, vchanInfo *datapb.VchannelInfo,

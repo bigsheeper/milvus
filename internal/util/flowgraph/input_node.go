@@ -17,12 +17,10 @@
 package flowgraph
 
 import (
-	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/msgstream"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/opentracing/opentracing-go"
 	oplog "github.com/opentracing/opentracing-go/log"
-	"go.uber.org/zap"
 )
 
 // InputNode is the entry point of flowgragh
@@ -43,11 +41,8 @@ func (inNode *InputNode) Start() {
 }
 
 // Close implements node
-func (inNode *InputNode) Close() {
-	inNode.inStream.Close()
-	log.Debug("message stream closed",
-		zap.String("node name", inNode.name),
-	)
+func (inNode *InputNode) Close() error {
+	return inNode.inStream.Close()
 }
 
 // Name returns node name

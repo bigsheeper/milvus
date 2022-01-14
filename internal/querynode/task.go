@@ -778,9 +778,12 @@ func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 	// remove query collection
 	// queryCollection and Collection would be deleted in releaseCollection,
 	// so we don't need to remove the tSafeWatcher or channel manually.
-	r.node.queryService.stopQueryCollection(r.req.CollectionID)
+	err := r.node.queryService.stopQueryCollection(r.req.CollectionID)
+	if err != nil {
+		return fmt.Errorf("release collection failed when stopQueryCollection, collectionID = %d, err = %s", r.req.CollectionID, err)
+	}
 
-	err := r.releaseReplica(r.node.streaming.replica, replicaStreaming)
+	err = r.releaseReplica(r.node.streaming.replica, replicaStreaming)
 	if err != nil {
 		return fmt.Errorf("release collection failed, collectionID = %d, err = %s", r.req.CollectionID, err)
 	}

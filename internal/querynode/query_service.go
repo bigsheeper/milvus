@@ -102,7 +102,10 @@ func (q *queryService) close() {
 	log.Debug("search service closed")
 	q.queryCollectionMu.Lock()
 	for collectionID, sc := range q.queryCollections {
-		sc.close()
+		err := sc.close()
+		if err != nil {
+			log.Error("queryService close failed", zap.Error(err))
+		}
 		sc.cancel()
 		delete(q.queryCollections, collectionID)
 	}
@@ -154,17 +157,21 @@ func (q *queryService) getQueryCollection(collectionID UniqueID) (*queryCollecti
 	return nil, errors.New(fmt.Sprintln("queryCollection not exists, collectionID = ", collectionID))
 }
 
-func (q *queryService) stopQueryCollection(collectionID UniqueID) {
+func (q *queryService) stopQueryCollection(collectionID UniqueID) error {
 	q.queryCollectionMu.Lock()
 	defer q.queryCollectionMu.Unlock()
 	sc, ok := q.queryCollections[collectionID]
 	if !ok {
 		log.Warn("stopQueryCollection failed, collection doesn't exist", zap.Int64("collectionID", collectionID))
-		return
+		return nil
 	}
-	sc.close()
+	err := sc.close()
+	if err != nil {
+		return err
+	}
 	sc.cancel()
 	// for not blocking waitNewTsafe, which will block doUnsolvedMsg quit.
 	sc.watcherCond.Broadcast()
 	delete(q.queryCollections, collectionID)
+	return nil
 }

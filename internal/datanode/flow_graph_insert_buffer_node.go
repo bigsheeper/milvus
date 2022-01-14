@@ -145,12 +145,13 @@ func (ibNode *insertBufferNode) Name() string {
 	return "ibNode-" + ibNode.channelName
 }
 
-func (ibNode *insertBufferNode) Close() {
+func (ibNode *insertBufferNode) Close() error {
 	ibNode.ttMerger.close()
 
 	if ibNode.timeTickStream != nil {
-		ibNode.timeTickStream.Close()
+		return ibNode.timeTickStream.Close()
 	}
+	return nil
 }
 
 func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
@@ -164,7 +165,10 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 	fgMsg, ok := in[0].(*flowGraphMsg)
 	if !ok {
 		log.Warn("type assertion failed for flowGraphMsg")
-		ibNode.Close()
+		err := ibNode.Close()
+		if err != nil {
+			log.Error("close insertBufferNode failed", zap.Error(err))
+		}
 		return []Msg{}
 	}
 

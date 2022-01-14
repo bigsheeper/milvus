@@ -41,7 +41,7 @@ type Node interface {
 	Operate(in []Msg) []Msg
 	IsInputNode() bool
 	Start()
-	Close()
+	Close() error
 }
 
 // BaseNode defines some common node attributes and behavior
@@ -123,11 +123,15 @@ func (nodeCtx *nodeCtx) work() {
 }
 
 // Close handles cleanup logic and notify worker to quit
-func (nodeCtx *nodeCtx) Close() {
+func (nodeCtx *nodeCtx) Close() error {
 	// close Node
-	nodeCtx.node.Close()
+	err := nodeCtx.node.Close()
+	if err != nil {
+		return err
+	}
 	// notify worker
 	close(nodeCtx.closeCh)
+	return nil
 }
 
 // deliverMsg tries to put the Msg to specified downstream channel
@@ -237,4 +241,4 @@ func (node *BaseNode) IsInputNode() bool {
 func (node *BaseNode) Start() {}
 
 // Close implementing Node, base node does nothing when stops
-func (node *BaseNode) Close() {}
+func (node *BaseNode) Close() error { return nil}

@@ -464,7 +464,12 @@ func (s *Server) startDataNodeTtLoop(ctx context.Context) {
 
 		defer logutil.LogPanic()
 		defer s.serverLoopWg.Done()
-		defer ttMsgStream.Close()
+		defer func() {
+			err = ttMsgStream.Close()
+			if err != nil {
+				log.Error("DataCoord failed to close ttMsgStream", zap.Error(err))
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():

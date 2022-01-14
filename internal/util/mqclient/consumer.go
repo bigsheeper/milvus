@@ -87,5 +87,5 @@ type Consumer interface {
 	Ack(Message)
 
 	// Close consumer
-	Close()
+	Close() error
 }

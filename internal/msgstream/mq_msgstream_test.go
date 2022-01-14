@@ -75,7 +75,10 @@ func (f *fixture) setup() []parameters {
 	}
 	etcdEndpoints := strings.Split(endpoints, ",")
 	etcdCli, err := etcd.GetRemoteEtcdClient(etcdEndpoints)
-	defer etcdCli.Close()
+	defer func() {
+		err = etcdCli.Close()
+		assert.NoError(f.t, err)
+	}()
 	if err != nil {
 		log.Fatalf("New clientv3 error = %v", err)
 	}
@@ -369,8 +372,10 @@ func TestStream_PulsarMsgStream_Insert(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_Delete(t *testing.T) {
@@ -390,8 +395,10 @@ func TestStream_PulsarMsgStream_Delete(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_Search(t *testing.T) {
@@ -412,8 +419,10 @@ func TestStream_PulsarMsgStream_Search(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_SearchResult(t *testing.T) {
@@ -433,8 +442,10 @@ func TestStream_PulsarMsgStream_SearchResult(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_TimeTick(t *testing.T) {
@@ -454,8 +465,10 @@ func TestStream_PulsarMsgStream_TimeTick(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_BroadCast(t *testing.T) {
@@ -476,8 +489,10 @@ func TestStream_PulsarMsgStream_BroadCast(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("broadcast error = %v", err))
 
 	receiveMsg(outputStream, len(consumerChannels)*len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_RepackFunc(t *testing.T) {
@@ -497,8 +512,10 @@ func TestStream_PulsarMsgStream_RepackFunc(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_InsertRepackFunc(t *testing.T) {
@@ -553,8 +570,10 @@ func TestStream_PulsarMsgStream_InsertRepackFunc(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(output, len(msgPack.Msgs)*2)
-	(*inputStream).Close()
-	(*outputStream).Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_DeleteRepackFunc(t *testing.T) {
@@ -606,8 +625,10 @@ func TestStream_PulsarMsgStream_DeleteRepackFunc(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(output, len(msgPack.Msgs)*1)
-	(*inputStream).Close()
-	(*outputStream).Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarMsgStream_DefaultRepackFunc(t *testing.T) {
@@ -639,8 +660,10 @@ func TestStream_PulsarMsgStream_DefaultRepackFunc(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("produce error = %v", err))
 
 	receiveMsg(output, len(msgPack.Msgs))
-	(*inputStream).Close()
-	(*outputStream).Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarTtMsgStream_Insert(t *testing.T) {
@@ -672,8 +695,10 @@ func TestStream_PulsarTtMsgStream_Insert(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("broadcast error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack1.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarTtMsgStream_NoSeek(t *testing.T) {
@@ -726,7 +751,8 @@ func TestStream_PulsarTtMsgStream_NoSeek(t *testing.T) {
 	t.Log(o1.BeginTs)
 	t.Log(o2.BeginTs)
 	t.Log(o3.BeginTs)
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	outputStream = getPulsarTtOutputStream(pulsarAddress, consumerChannels, consumerSubName)
 	p1 := outputStream.Consume()
@@ -735,7 +761,8 @@ func TestStream_PulsarTtMsgStream_NoSeek(t *testing.T) {
 	t.Log(p1.BeginTs)
 	t.Log(p2.BeginTs)
 	t.Log(p3.BeginTs)
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	assert.Equal(t, o1.BeginTs, p1.BeginTs)
 	assert.Equal(t, o2.BeginTs, p2.BeginTs)
@@ -827,7 +854,8 @@ func TestStream_PulsarTtMsgStream_Seek(t *testing.T) {
 	assert.Equal(t, receivedMsg4.StartPositions[0].Timestamp, uint64(15))
 	assert.Equal(t, receivedMsg4.EndPositions[0].Timestamp, uint64(20))
 
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	outputStream = getPulsarTtOutputStreamAndSeek(pulsarAddress, receivedMsg3.StartPositions)
 
@@ -851,8 +879,10 @@ func TestStream_PulsarTtMsgStream_Seek(t *testing.T) {
 		assert.Equal(t, msg.BeginTs(), uint64(19))
 	}
 
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_PulsarTtMsgStream_UnMarshalHeader(t *testing.T) {
@@ -885,8 +915,10 @@ func TestStream_PulsarTtMsgStream_UnMarshalHeader(t *testing.T) {
 	require.NoErrorf(t, err, fmt.Sprintf("broadcast error = %v", err))
 
 	receiveMsg(outputStream, len(msgPack1.Msgs))
-	inputStream.Close()
-	outputStream.Close()
+	err = inputStream.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func createRandMsgPacks(msgsInPack int, numOfMsgPack int, deltaTs int) []*MsgPack {
@@ -998,9 +1030,12 @@ func TestStream_PulsarTtMsgStream_1(t *testing.T) {
 	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
 	assert.Equal(t, (cnt1 + cnt2), msgCount)
 
-	inputStream1.Close()
-	inputStream2.Close()
-	outputStream.Close()
+	err := inputStream1.Close()
+	assert.NoError(t, err)
+	err = inputStream2.Close()
+	assert.NoError(t, err)
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 //
@@ -1058,7 +1093,8 @@ func TestStream_PulsarTtMsgStream_2(t *testing.T) {
 			}
 			log.Println("================")
 		}
-		outputStream.Close()
+		err := outputStream.Close()
+		assert.NoError(t, err)
 		return len(rcvMsgPacks[msgCount].Msgs)
 	}
 
@@ -1070,8 +1106,10 @@ func TestStream_PulsarTtMsgStream_2(t *testing.T) {
 	cnt2 := (len(msgPacks2)/2 - 1) * len(msgPacks2[0].Msgs)
 	assert.Equal(t, (cnt1 + cnt2), msgCount)
 
-	inputStream1.Close()
-	inputStream2.Close()
+	err := inputStream1.Close()
+	assert.NoError(t, err)
+	err = inputStream2.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_MqMsgStream_Seek(t *testing.T) {
@@ -1100,7 +1138,8 @@ func TestStream_MqMsgStream_Seek(t *testing.T) {
 			seekPosition = result.EndPositions[0]
 		}
 	}
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	factory := ProtoUDFactory{}
 	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
@@ -1113,8 +1152,8 @@ func TestStream_MqMsgStream_Seek(t *testing.T) {
 		result := outputStream2.Consume()
 		assert.Equal(t, result.Msgs[0].ID(), int64(i))
 	}
-	outputStream2.Close()
-
+	err = outputStream2.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_MqMsgStream_SeekInvalidMessage(t *testing.T) {
@@ -1125,9 +1164,13 @@ func TestStream_MqMsgStream_SeekInvalidMessage(t *testing.T) {
 
 	msgPack := &MsgPack{}
 	inputStream := getPulsarInputStream(pulsarAddress, producerChannels)
-	defer inputStream.Close()
 	outputStream := getPulsarOutputStream(pulsarAddress, consumerChannels, funcutil.RandomString(8))
-	defer outputStream.Close()
+	defer func() {
+		err := inputStream.Close()
+		assert.NoError(t, err)
+		err = outputStream.Close()
+		assert.NoError(t, err)
+	}()
 	for i := 0; i < 10; i++ {
 		insertMsg := getTsMsg(commonpb.MsgType_Insert, int64(i))
 		msgPack.Msgs = append(msgPack.Msgs, insertMsg)
@@ -1146,7 +1189,10 @@ func TestStream_MqMsgStream_SeekInvalidMessage(t *testing.T) {
 	pulsarClient, _ := mqclient.GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
 	outputStream2, _ := NewMqMsgStream(context.Background(), 100, 100, pulsarClient, factory.NewUnmarshalDispatcher())
 	outputStream2.AsConsumer(consumerChannels, funcutil.RandomString(8))
-	defer outputStream2.Close()
+	defer func() {
+		err = outputStream2.Close()
+		assert.NoError(t, err)
+	}()
 	messageID, _ := pulsar.DeserializeMessageID(seekPosition.MsgID)
 	// try to seek to not written position
 	patchMessageID(&messageID, 13)
@@ -1197,7 +1243,8 @@ func TestStream_RMqMsgStream_SeekInvalidMessage(t *testing.T) {
 		assert.Equal(t, result.Msgs[0].ID(), int64(i))
 		seekPosition = result.EndPositions[0]
 	}
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	factory := ProtoUDFactory{}
 	rmqClient2, _ := mqclient.NewRmqClient(client.ClientOptions{Server: rocksmq.Rmq})
@@ -1270,7 +1317,8 @@ func TestStream_MqMsgStream_SeekLatest(t *testing.T) {
 		result := outputStream2.Consume()
 		assert.Equal(t, result.Msgs[0].ID(), int64(i))
 	}
-	outputStream2.Close()
+	err = outputStream2.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_MqMsgStream_Reader(t *testing.T) {
@@ -1282,7 +1330,10 @@ func TestStream_MqMsgStream_Reader(t *testing.T) {
 
 	msgPack := &MsgPack{}
 	inputStream := getPulsarInputStream(pulsarAddress, producerChannels)
-	defer inputStream.Close()
+	defer func() {
+		err := inputStream.Close()
+		assert.NoError(t, err)
+	}()
 
 	n := 10
 	p := 5
@@ -1296,7 +1347,10 @@ func TestStream_MqMsgStream_Reader(t *testing.T) {
 	assert.Nil(t, err)
 
 	readStream := getPulsarReader(pulsarAddress, readerChannels)
-	defer readStream.Close()
+	defer func() {
+		err = readStream.Close()
+		assert.NoError(t, err)
+	}()
 	var seekPosition *internalpb.MsgPosition
 	for i := 0; i < n; i++ {
 		hasNext := readStream.HasNext(c)
@@ -1317,7 +1371,10 @@ func TestStream_MqMsgStream_Reader(t *testing.T) {
 	assert.Nil(t, result)
 
 	readStream2 := getPulsarReader(pulsarAddress, readerChannels)
-	defer readStream2.Close()
+	defer func() {
+		err = readStream2.Close()
+		assert.NoError(t, err)
+	}()
 	readStream2.SeekReaders([]*internalpb.MsgPosition{seekPosition})
 
 	for i := p; i < 10; i++ {
@@ -1363,10 +1420,16 @@ func initRmq(name string) *etcdkv.EtcdKV {
 
 func Close(rocksdbName string, intputStream, outputStream MsgStream, etcdKV *etcdkv.EtcdKV) {
 	rocksmq.CloseRocksMQ()
-	intputStream.Close()
-	outputStream.Close()
+	err := intputStream.Close()
+	if err != nil {
+		panic(err)
+	}
+	err = outputStream.Close()
+	if err != nil {
+		panic(err)
+	}
 	etcdKV.Close()
-	err := os.RemoveAll(rocksdbName)
+	err = os.RemoveAll(rocksdbName)
 	_ = os.RemoveAll(rocksdbName + "_meta_kv")
 	log.Println(err)
 }
@@ -1555,7 +1618,8 @@ func TestStream_RmqTtMsgStream_Seek(t *testing.T) {
 	assert.Equal(t, receivedMsg4.StartPositions[0].Timestamp, uint64(15))
 	assert.Equal(t, receivedMsg4.EndPositions[0].Timestamp, uint64(20))
 
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 
 	factory := ProtoUDFactory{}
 
@@ -1641,7 +1705,8 @@ func TestStream_BroadcastMark(t *testing.T) {
 	_, err = outputStream.BroadcastMark(&msgPack1)
 	assert.NotNil(t, err)
 
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 func TestStream_ProduceMark(t *testing.T) {
@@ -1708,7 +1773,8 @@ func TestStream_ProduceMark(t *testing.T) {
 	_, err = outputStream.ProduceMark(&msgPack1)
 	assert.NotNil(t, err)
 
-	outputStream.Close()
+	err = outputStream.Close()
+	assert.NoError(t, err)
 }
 
 var _ TsMsg = (*MarshalFailTsMsg)(nil)

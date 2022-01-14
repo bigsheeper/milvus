@@ -462,7 +462,12 @@ func (loader *segmentLoader) FromDmlCPLoadDelete(ctx context.Context, collection
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
+	defer func() {
+		err = stream.Close()
+		if err != nil {
+			log.Error("close message stream failed when FromDmlCPLoadDelete", zap.Error(err))
+		}
+	}()
 	pChannelName := rootcoord.ToPhysicalChannel(position.ChannelName)
 	position.ChannelName = pChannelName
 	stream.AsReader([]string{pChannelName}, fmt.Sprintf("querynode-%d-%d", Params.QueryNodeCfg.QueryNodeID, collectionID))

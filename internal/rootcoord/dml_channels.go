@@ -177,7 +177,10 @@ func (d *dmlChannels) removeChannels(names ...string) {
 		if dms.refcnt > 0 {
 			dms.refcnt--
 			if dms.refcnt == 0 {
-				dms.ms.Close()
+				err := dms.ms.Close()
+				if err != nil {
+					log.Error("close dml message stream failed when removeChannels", zap.Error(err))
+				}
 			}
 		}
 		dms.mutex.Unlock()

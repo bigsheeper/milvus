@@ -1065,7 +1065,10 @@ func TestDataNodeTtChannel(t *testing.T) {
 		assert.Nil(t, err)
 		ttMsgStream.AsProducer([]string{Params.DataCoordCfg.TimeTickChannelName})
 		ttMsgStream.Start()
-		defer ttMsgStream.Close()
+		defer func() {
+			err = ttMsgStream.Close()
+			assert.NoError(t, err)
+		}()
 		info := &NodeInfo{
 			Address: "localhost:7777",
 			NodeID:  0,
@@ -1133,7 +1136,10 @@ func TestDataNodeTtChannel(t *testing.T) {
 		assert.Nil(t, err)
 		ttMsgStream.AsProducer([]string{Params.DataCoordCfg.TimeTickChannelName})
 		ttMsgStream.Start()
-		defer ttMsgStream.Close()
+		defer func() {
+			err = ttMsgStream.Close()
+			assert.NoError(t, err)
+		}()
 		info := &NodeInfo{
 			Address: "localhost:7777",
 			NodeID:  0,
@@ -1215,7 +1221,10 @@ func TestDataNodeTtChannel(t *testing.T) {
 		assert.Nil(t, err)
 		ttMsgStream.AsProducer([]string{Params.DataCoordCfg.TimeTickChannelName})
 		ttMsgStream.Start()
-		defer ttMsgStream.Close()
+		defer func() {
+			err = ttMsgStream.Close()
+			assert.NoError(t, err)
+		}()
 		node := &NodeInfo{
 			NodeID:  0,
 			Address: "localhost:7777",

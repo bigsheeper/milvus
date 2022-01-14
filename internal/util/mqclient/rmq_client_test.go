@@ -111,7 +111,10 @@ func TestRmqClient_Subscribe(t *testing.T) {
 
 	consumerOpts.Topic = topic
 	consumer, err = client.Subscribe(consumerOpts)
-	defer consumer.Close()
+	defer func() {
+		err = consumer.Close()
+		assert.NoError(t, err)
+	}()
 	assert.Nil(t, err)
 	assert.NotNil(t, consumer)
 	assert.Equal(t, consumer.Subscription(), subName)

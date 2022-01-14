@@ -89,13 +89,18 @@ func (fg *TimeTickedFlowGraph) Start() {
 }
 
 // Close closes all nodes in flowgraph
-func (fg *TimeTickedFlowGraph) Close() {
+func (fg *TimeTickedFlowGraph) Close() error {
+	var err error
 	fg.stopOnce.Do(func() {
 		for _, v := range fg.nodeCtx {
 			// maybe need to stop in order
-			v.Close()
+			err2 := v.Close()
+			if err2 != nil {
+				err = err2
+			}
 		}
 	})
+	return err
 }
 
 // NewTimeTickedFlowGraph create timetick flowgraph

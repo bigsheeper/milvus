@@ -85,7 +85,8 @@ func (rc *RmqConsumer) Ack(message Message) {
 }
 
 // Close is used to free the resources of this consumer
-func (rc *RmqConsumer) Close() {
+func (rc *RmqConsumer) Close() error {
 	close(rc.closeCh)
 	rc.wg.Wait()
+	return nil
 }

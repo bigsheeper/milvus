@@ -1188,7 +1188,6 @@ func produceSimpleSearchMsg(ctx context.Context, queryChannel Channel) error {
 	}
 	stream.AsProducer([]string{queryChannel})
 	stream.Start()
-	defer stream.Close()
 	msg, err := genSimpleSearchMsg()
 	if err != nil {
 		return err
@@ -1201,7 +1200,7 @@ func produceSimpleSearchMsg(ctx context.Context, queryChannel Channel) error {
 		return err
 	}
 	log.Debug("[query node unittest] produce search message done")
-	return nil
+	return stream.Close()
 }
 
 func produceSimpleRetrieveMsg(ctx context.Context, queryChannel Channel) error {
@@ -1211,7 +1210,6 @@ func produceSimpleRetrieveMsg(ctx context.Context, queryChannel Channel) error {
 	}
 	stream.AsProducer([]string{queryChannel})
 	stream.Start()
-	defer stream.Close()
 	msg, err := genSimpleRetrieveMsg()
 	if err != nil {
 		return err
@@ -1224,7 +1222,7 @@ func produceSimpleRetrieveMsg(ctx context.Context, queryChannel Channel) error {
 		return err
 	}
 	log.Debug("[query node unittest] produce retrieve message done")
-	return nil
+	return stream.Close()
 }
 
 func initConsumer(ctx context.Context, queryResultChannel Channel) (msgstream.MsgStream, error) {

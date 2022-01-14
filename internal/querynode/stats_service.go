@@ -82,7 +82,10 @@ func (sService *statsService) start() {
 
 func (sService *statsService) close() {
 	if sService.statsStream != nil {
-		sService.statsStream.Close()
+		err := sService.statsStream.Close()
+		if err != nil {
+			log.Error("close statsService failed", zap.Error(err))
+		}
 	}
 }
 

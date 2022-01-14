@@ -212,7 +212,7 @@ func (ms *mqMsgStream) Start() {
 	}
 }
 
-func (ms *mqMsgStream) Close() {
+func (ms *mqMsgStream) Close() error {
 	ms.streamCancel()
 	ms.wait.Wait()
 
@@ -223,7 +223,10 @@ func (ms *mqMsgStream) Close() {
 	}
 	for _, consumer := range ms.consumers {
 		if consumer != nil {
-			consumer.Close()
+			err := consumer.Close()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -233,6 +236,7 @@ func (ms *mqMsgStream) Close() {
 		}
 	}
 	ms.client.Close()
+	return nil
 }
 
 func (ms *mqMsgStream) ComputeProduceChannelIndexes(tsMsgs []TsMsg) [][]int32 {
@@ -753,7 +757,7 @@ func (ms *MqTtMsgStream) Start() {
 }
 
 // Close will stop goroutine and free internal producers and consumers
-func (ms *MqTtMsgStream) Close() {
+func (ms *MqTtMsgStream) Close() error {
 	ms.streamCancel()
 	close(ms.syncConsumer)
 	ms.wait.Wait()
@@ -765,7 +769,10 @@ func (ms *MqTtMsgStream) Close() {
 	}
 	for _, consumer := range ms.consumers {
 		if consumer != nil {
-			consumer.Close()
+			err := consumer.Close()
+			if err != nil {
+				return nil
+			}
 		}
 	}
 	for _, reader := range ms.readers {
@@ -774,6 +781,7 @@ func (ms *MqTtMsgStream) Close() {
 		}
 	}
 	ms.client.Close()
+	return nil
 }
 
 func (ms *MqTtMsgStream) bufMsgPackToChannel() {

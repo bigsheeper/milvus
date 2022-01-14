@@ -237,7 +237,8 @@ func TestQueryCollection_withoutVChannel(t *testing.T) {
 	assert.Nil(t, err)
 
 	queryCollection.cancel()
-	queryCollection.close()
+	err = queryCollection.close()
+	assert.NoError(t, err)
 	historical.close()
 	streaming.close()
 }

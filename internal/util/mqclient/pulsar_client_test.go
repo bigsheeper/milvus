@@ -92,7 +92,10 @@ func Consume1(ctx context.Context, t *testing.T, pc *pulsarClient, topic string,
 	})
 	assert.Nil(t, err)
 	assert.NotNil(t, consumer)
-	defer consumer.Close()
+	defer func() {
+		err = consumer.Close()
+		assert.NoError(t, err)
+	}()
 
 	log.Info("Consume1 start")
 
@@ -130,7 +133,10 @@ func Consume2(ctx context.Context, t *testing.T, pc *pulsarClient, topic string,
 	})
 	assert.Nil(t, err)
 	assert.NotNil(t, consumer)
-	defer consumer.Close()
+	defer func() {
+		err = consumer.Close()
+		assert.NoError(t, err)
+	}()
 
 	err = consumer.Seek(msgID, true)
 	assert.Nil(t, err)
@@ -165,7 +171,10 @@ func Consume3(ctx context.Context, t *testing.T, pc *pulsarClient, topic string,
 	})
 	assert.Nil(t, err)
 	assert.NotNil(t, consumer)
-	defer consumer.Close()
+	defer func() {
+		err = consumer.Close()
+		assert.NoError(t, err)
+	}()
 
 	log.Info("Consume3 start")
 

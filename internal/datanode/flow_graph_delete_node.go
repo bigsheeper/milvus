@@ -94,8 +94,9 @@ func (dn *deleteNode) Name() string {
 	return "deleteNode-" + dn.channelName
 }
 
-func (dn *deleteNode) Close() {
+func (dn *deleteNode) Close() error {
 	log.Info("Flowgraph Delete Node closing")
+	return nil
 }
 
 func (dn *deleteNode) bufferDeleteMsg(msg *msgstream.DeleteMsg, tr TimeRange) error {

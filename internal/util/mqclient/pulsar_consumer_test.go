@@ -55,3 +55,31 @@ func Test_PatchEarliestMessageID(t *testing.T) {
 
 	assert.Equal(t, "-1:-1:0", fmt.Sprintf("%v", mid))
 }
+
+func TestPulsarConsumer_Close(t *testing.T) {
+	pulsarAddress, _ := Params.Load("_PulsarAddress")
+	pc, err := GetPulsarClientInstance(pulsar.ClientOptions{URL: pulsarAddress})
+	assert.Nil(t, err)
+
+	receiveChannel := make(chan pulsar.ConsumerMessage, 100)
+	consumer, err := pc.client.Subscribe(pulsar.ConsumerOptions{
+		Topic:                       "Topic",
+		SubscriptionName:            "SubName",
+		Type:                        pulsar.SubscriptionType(Exclusive),
+		SubscriptionInitialPosition: pulsar.SubscriptionInitialPosition(SubscriptionPositionEarliest),
+		MessageChannel:              receiveChannel,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, consumer)
+
+	str := consumer.Subscription()
+	assert.NotNil(t, str)
+
+	pulsarConsumer := &PulsarConsumer{c: consumer, closeCh: make(chan struct{})}
+	err = pulsarConsumer.Close()
+	assert.NoError(t, err)
+
+	// test double close
+	err = pulsarConsumer.Close()
+	assert.NoError(t, err)
+}

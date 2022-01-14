@@ -95,7 +95,8 @@ func TestNodeCtx_Start(t *testing.T) {
 	waitGroup.Add(1)
 	node.Start(&waitGroup)
 
-	node.Close()
+	err = node.Close()
+	assert.NoError(t, err)
 }
 
 func TestBaseNode(t *testing.T) {
@@ -119,5 +120,6 @@ func TestBaseNode(t *testing.T) {
 
 	assert.Equal(t, false, node.IsInputNode())
 
-	node.Close()
+	err := node.Close()
+	assert.NoError(t, err)
 }

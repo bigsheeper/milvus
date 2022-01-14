@@ -642,7 +642,12 @@ func (sched *taskScheduler) collectResultLoop() {
 		zap.Any("ProxySubName", Params.ProxyCfg.ProxySubName))
 
 	queryResultMsgStream.Start()
-	defer queryResultMsgStream.Close()
+	defer func() {
+		err := queryResultMsgStream.Close()
+		if err != nil {
+			log.Error("queryResultMsgStream close failed", zap.Error(err))
+		}
+	}()
 
 	searchResultBufs := make(map[UniqueID]*searchResultBuf)
 	searchResultBufFlags := newIDCache(Params.ProxyCfg.BufFlagExpireTime, Params.ProxyCfg.BufFlagCleanupInterval) // if value is true, we can ignore searchResult

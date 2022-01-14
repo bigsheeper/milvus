@@ -3,7 +3,7 @@ cluster:
 image:
   all:
     repository: milvusdb/milvus-dev
-    tag: master-latest
+    tag: master-20211230-95f0e9a
     pullPolicy: IfNotPresent
 
 etcd:

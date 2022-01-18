@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	"github.com/milvus-io/milvus/internal/common"
+	"github.com/milvus-io/milvus/internal/logutil"
 
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 
@@ -45,6 +46,8 @@ import (
 	"github.com/milvus-io/milvus/internal/util/distance"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
+
+const moduleName = "Proxy"
 
 // UpdateStateCode updates the state code of Proxy.
 func (node *Proxy) UpdateStateCode(code internalpb.StateCode) {
@@ -94,7 +97,8 @@ func (node *Proxy) GetStatisticsChannel(ctx context.Context) (*milvuspb.StringRe
 
 // InvalidateCollectionMetaCache invalidate the meta cache of specific collection.
 func (node *Proxy) InvalidateCollectionMetaCache(ctx context.Context, request *proxypb.InvalidateCollMetaCacheRequest) (*commonpb.Status, error) {
-	log.Debug("InvalidateCollectionMetaCache",
+	ctx = logutil.WithModule(ctx, moduleName)
+	logutil.Logger(ctx).Debug("received request to invalidate collection meta cache",
 		zap.String("role", typeutil.ProxyRole),
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName))
@@ -103,7 +107,7 @@ func (node *Proxy) InvalidateCollectionMetaCache(ctx context.Context, request *p
 	if globalMetaCache != nil {
 		globalMetaCache.RemoveCollection(ctx, collectionName) // no need to return error, though collection may be not cached
 	}
-	log.Debug("InvalidateCollectionMetaCache Done",
+	logutil.Logger(ctx).Debug("complete to invalidate collection meta cache",
 		zap.String("role", typeutil.ProxyRole),
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName))
@@ -116,7 +120,8 @@ func (node *Proxy) InvalidateCollectionMetaCache(ctx context.Context, request *p
 
 // ReleaseDQLMessageStream release the query message stream of specific collection.
 func (node *Proxy) ReleaseDQLMessageStream(ctx context.Context, request *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error) {
-	log.Debug("ReleaseDQLMessageStream",
+	ctx = logutil.WithModule(ctx, moduleName)
+	logutil.Logger(ctx).Debug("received request to release DQL message strem",
 		zap.Any("role", typeutil.ProxyRole),
 		zap.Any("db", request.DbID),
 		zap.Any("collection", request.CollectionID))
@@ -127,7 +132,7 @@ func (node *Proxy) ReleaseDQLMessageStream(ctx context.Context, request *proxypb
 
 	_ = node.chMgr.removeDQLStream(request.CollectionID)
 
-	log.Debug("ReleaseDQLMessageStream Done",
+	logutil.Logger(ctx).Debug("complete to release DQL message stream",
 		zap.Any("role", typeutil.ProxyRole),
 		zap.Any("db", request.DbID),
 		zap.Any("collection", request.CollectionID))
@@ -138,6 +143,7 @@ func (node *Proxy) ReleaseDQLMessageStream(ctx context.Context, request *proxypb
 	}, nil
 }
 
+// TODO(dragondriver): add more detailed ut for ConsistencyLevel, should we support multiple consistency level in Proxy?
 // CreateCollection create a collection by the schema.
 func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.CreateCollectionRequest) (*commonpb.Status, error) {
 	if !node.checkHealthy() {
@@ -166,7 +172,8 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName),
 		zap.Int("len(schema)", lenOfSchema),
-		zap.Int32("shards_num", request.ShardsNum))
+		zap.Int32("shards_num", request.ShardsNum),
+		zap.String("consistency_level", request.ConsistencyLevel.String()))
 
 	if err := node.sched.ddQueue.Enqueue(cct); err != nil {
 		log.Warn(
@@ -177,7 +184,8 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 			zap.String("db", request.DbName),
 			zap.String("collection", request.CollectionName),
 			zap.Int("len(schema)", lenOfSchema),
-			zap.Int32("shards_num", request.ShardsNum))
+			zap.Int32("shards_num", request.ShardsNum),
+			zap.String("consistency_level", request.ConsistencyLevel.String()))
 
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -196,7 +204,8 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName),
 		zap.Int("len(schema)", lenOfSchema),
-		zap.Int32("shards_num", request.ShardsNum))
+		zap.Int32("shards_num", request.ShardsNum),
+		zap.String("consistency_level", request.ConsistencyLevel.String()))
 
 	if err := cct.WaitToFinish(); err != nil {
 		log.Warn(
@@ -210,7 +219,8 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 			zap.String("db", request.DbName),
 			zap.String("collection", request.CollectionName),
 			zap.Int("len(schema)", lenOfSchema),
-			zap.Int32("shards_num", request.ShardsNum))
+			zap.Int32("shards_num", request.ShardsNum),
+			zap.String("consistency_level", request.ConsistencyLevel.String()))
 
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -228,7 +238,8 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName),
 		zap.Int("len(schema)", lenOfSchema),
-		zap.Int32("shards_num", request.ShardsNum))
+		zap.Int32("shards_num", request.ShardsNum),
+		zap.String("consistency_level", request.ConsistencyLevel.String()))
 
 	return cct.result, nil
 }
@@ -1976,7 +1987,8 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 		zap.String("partition", request.PartitionName),
 		zap.Int("len(FieldsData)", len(request.FieldsData)),
 		zap.Int("len(HashKeys)", len(request.HashKeys)),
-		zap.Uint32("NumRows", request.NumRows))
+		zap.Uint32("NumRows", request.NumRows),
+		zap.String("traceID", traceID))
 
 	if err := node.sched.dmQueue.Enqueue(it); err != nil {
 		log.Debug("Failed to enqueue insert task: " + err.Error())
@@ -1991,8 +2003,6 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 		zap.String("db", request.DbName),
 		zap.String("collection", request.CollectionName),
 		zap.String("partition", request.PartitionName),
-		zap.Int("len(FieldsData)", len(request.FieldsData)),
-		zap.Int("len(HashKeys)", len(request.HashKeys)),
 		zap.Uint32("NumRows", request.NumRows),
 		zap.String("traceID", traceID))
 
@@ -2132,7 +2142,12 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		qc:        node.queryCoord,
 	}
 
-	log.Debug("Search received",
+	method := "Search"
+	travelTs := request.TravelTimestamp
+	guaranteeTs := request.GuaranteeTimestamp
+
+	log.Debug(
+		rpcReceived(method),
 		zap.String("traceID", traceID),
 		zap.String("role", typeutil.ProxyRole),
 		zap.String("db", request.DbName),
@@ -2140,11 +2155,14 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		zap.Any("partitions", request.PartitionNames),
 		zap.Any("dsl", request.Dsl),
 		zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
-		zap.Any("OutputFields", request.OutputFields))
+		zap.Any("OutputFields", request.OutputFields),
+		zap.Any("search_params", request.SearchParams),
+		zap.Uint64("travel_timestamp", travelTs),
+		zap.Uint64("guarantee_timestamp", guaranteeTs))
 
-	err := node.sched.dqQueue.Enqueue(qt)
-	if err != nil {
-		log.Debug("Search failed to enqueue",
+	if err := node.sched.dqQueue.Enqueue(qt); err != nil {
+		log.Warn(
+			rpcFailedToEnqueue(method),
 			zap.Error(err),
 			zap.String("traceID", traceID),
 			zap.String("role", typeutil.ProxyRole),
@@ -2154,7 +2172,9 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 			zap.Any("dsl", request.Dsl),
 			zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
 			zap.Any("OutputFields", request.OutputFields),
-		)
+			zap.Any("search_params", request.SearchParams),
+			zap.Uint64("travel_timestamp", travelTs),
+			zap.Uint64("guarantee_timestamp", guaranteeTs))
 
 		return &milvuspb.SearchResults{
 			Status: &commonpb.Status{
@@ -2164,7 +2184,8 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		}, nil
 	}
 
-	log.Debug("Search enqueued",
+	log.Debug(
+		rpcEnqueued(method),
 		zap.String("traceID", traceID),
 		zap.String("role", typeutil.ProxyRole),
 		zap.Int64("msgID", qt.ID()),
@@ -2174,12 +2195,14 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		zap.Any("partitions", request.PartitionNames),
 		zap.Any("dsl", request.Dsl),
 		zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
-		zap.Any("OutputFields", request.OutputFields))
+		zap.Any("OutputFields", request.OutputFields),
+		zap.Any("search_params", request.SearchParams),
+		zap.Uint64("travel_timestamp", travelTs),
+		zap.Uint64("guarantee_timestamp", guaranteeTs))
 
-	err = qt.WaitToFinish()
-
-	if err != nil {
-		log.Debug("Search failed to WaitToFinish",
+	if err := qt.WaitToFinish(); err != nil {
+		log.Warn(
+			rpcFailedToWaitToFinish(method),
 			zap.Error(err),
 			zap.String("traceID", traceID),
 			zap.String("role", typeutil.ProxyRole),
@@ -2189,7 +2212,10 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 			zap.Any("partitions", request.PartitionNames),
 			zap.Any("dsl", request.Dsl),
 			zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
-			zap.Any("OutputFields", request.OutputFields))
+			zap.Any("OutputFields", request.OutputFields),
+			zap.Any("search_params", request.SearchParams),
+			zap.Uint64("travel_timestamp", travelTs),
+			zap.Uint64("guarantee_timestamp", guaranteeTs))
 
 		return &milvuspb.SearchResults{
 			Status: &commonpb.Status{
@@ -2199,7 +2225,8 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		}, nil
 	}
 
-	log.Debug("Search Done",
+	log.Debug(
+		rpcDone(method),
 		zap.String("traceID", traceID),
 		zap.String("role", typeutil.ProxyRole),
 		zap.Int64("msgID", qt.ID()),
@@ -2208,7 +2235,10 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		zap.Any("partitions", request.PartitionNames),
 		zap.Any("dsl", request.Dsl),
 		zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
-		zap.Any("OutputFields", request.OutputFields))
+		zap.Any("OutputFields", request.OutputFields),
+		zap.Any("search_params", request.SearchParams),
+		zap.Uint64("travel_timestamp", travelTs),
+		zap.Uint64("guarantee_timestamp", guaranteeTs))
 
 	return qt.result, nil
 }

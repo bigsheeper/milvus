@@ -34,16 +34,14 @@ type queryNodeFlowGraph struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	collectionID UniqueID
-	partitionID  UniqueID
 	channel      Channel
 	flowGraph    *flowgraph.TimeTickedFlowGraph
 	dmlStream    msgstream.MsgStream
 }
 
+// newQueryNodeFlowGraph returns a new queryNodeFlowGraph
 func newQueryNodeFlowGraph(ctx context.Context,
-	loadType loadType,
 	collectionID UniqueID,
-	partitionID UniqueID,
 	streamingReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
 	channel Channel,
@@ -55,15 +53,14 @@ func newQueryNodeFlowGraph(ctx context.Context,
 		ctx:          ctx1,
 		cancel:       cancel,
 		collectionID: collectionID,
-		partitionID:  partitionID,
 		channel:      channel,
 		flowGraph:    flowgraph.NewTimeTickedFlowGraph(ctx1),
 	}
 
 	var dmStreamNode node = q.newDmInputNode(ctx1, factory)
-	var filterDmNode node = newFilteredDmNode(streamingReplica, loadType, collectionID, partitionID)
+	var filterDmNode node = newFilteredDmNode(streamingReplica, collectionID)
 	var insertNode node = newInsertNode(streamingReplica)
-	var serviceTimeNode node = newServiceTimeNode(ctx1, tSafeReplica, loadType, collectionID, partitionID, channel, factory)
+	var serviceTimeNode node = newServiceTimeNode(ctx1, tSafeReplica, collectionID, channel, factory)
 
 	q.flowGraph.AddNode(dmStreamNode)
 	q.flowGraph.AddNode(filterDmNode)
@@ -109,10 +106,9 @@ func newQueryNodeFlowGraph(ctx context.Context,
 	return q
 }
 
+// newQueryNodeDeltaFlowGraph returns a new queryNodeFlowGraph
 func newQueryNodeDeltaFlowGraph(ctx context.Context,
-	loadType loadType,
 	collectionID UniqueID,
-	partitionID UniqueID,
 	historicalReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
 	channel Channel,
@@ -124,15 +120,14 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 		ctx:          ctx1,
 		cancel:       cancel,
 		collectionID: collectionID,
-		partitionID:  partitionID,
 		channel:      channel,
 		flowGraph:    flowgraph.NewTimeTickedFlowGraph(ctx1),
 	}
 
 	var dmStreamNode node = q.newDmInputNode(ctx1, factory)
-	var filterDeleteNode node = newFilteredDeleteNode(historicalReplica, collectionID, partitionID)
+	var filterDeleteNode node = newFilteredDeleteNode(historicalReplica, collectionID)
 	var deleteNode node = newDeleteNode(historicalReplica)
-	var serviceTimeNode node = newServiceTimeNode(ctx1, tSafeReplica, loadTypeCollection, collectionID, partitionID, channel, factory)
+	var serviceTimeNode node = newServiceTimeNode(ctx1, tSafeReplica, collectionID, channel, factory)
 
 	q.flowGraph.AddNode(dmStreamNode)
 	q.flowGraph.AddNode(filterDeleteNode)
@@ -178,6 +173,7 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 	return q
 }
 
+// newDmInputNode returns a new inputNode
 func (q *queryNodeFlowGraph) newDmInputNode(ctx context.Context, factory msgstream.Factory) *flowgraph.InputNode {
 	insertStream, err := factory.NewTtMsgStream(ctx)
 	if err != nil {
@@ -193,6 +189,7 @@ func (q *queryNodeFlowGraph) newDmInputNode(ctx context.Context, factory msgstre
 	return node
 }
 
+// consumerFlowGraph would consume by channel and subName
 func (q *queryNodeFlowGraph) consumerFlowGraph(channel Channel, subName ConsumeSubName) error {
 	if q.dmlStream == nil {
 		return errors.New("null dml message stream in flow graph")
@@ -206,6 +203,7 @@ func (q *queryNodeFlowGraph) consumerFlowGraph(channel Channel, subName ConsumeS
 	return nil
 }
 
+// consumerFlowGraphLatest would consume from latest by channel and subName
 func (q *queryNodeFlowGraph) consumerFlowGraphLatest(channel Channel, subName ConsumeSubName) error {
 	if q.dmlStream == nil {
 		return errors.New("null dml message stream in flow graph")
@@ -219,6 +217,7 @@ func (q *queryNodeFlowGraph) consumerFlowGraphLatest(channel Channel, subName Co
 	return nil
 }
 
+// seekQueryNodeFlowGraph would seek by position
 func (q *queryNodeFlowGraph) seekQueryNodeFlowGraph(position *internalpb.MsgPosition) error {
 	q.dmlStream.AsConsumer([]string{position.ChannelName}, position.MsgGroup)
 	err := q.dmlStream.Seek([]*internalpb.MsgPosition{position})
@@ -234,7 +233,6 @@ func (q *queryNodeFlowGraph) close() {
 	q.flowGraph.Close()
 	log.Debug("stop query node flow graph",
 		zap.Any("collectionID", q.collectionID),
-		zap.Any("partitionID", q.partitionID),
 		zap.Any("channel", q.channel),
 	)
 }

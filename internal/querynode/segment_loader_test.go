@@ -159,7 +159,7 @@ func TestSegmentLoader_loadSegmentFieldsData(t *testing.T) {
 			defaultSegmentID,
 			defaultPartitionID,
 			defaultCollectionID,
-			defaultVChannel,
+			defaultDMLChannel,
 			segmentTypeSealed,
 			true)
 
@@ -326,7 +326,7 @@ func TestSegmentLoader_estimateSegmentSize(t *testing.T) {
 	binlog := []*datapb.FieldBinlog{
 		{
 			FieldID: simpleConstField.id,
-			Binlogs: []string{"^&^%*&%&&(*^*&"},
+			Binlogs: []*datapb.Binlog{{LogPath: "^&^%*&%&&(*^*&"}},
 		},
 	}
 
@@ -370,7 +370,7 @@ func TestSegmentLoader_testLoadGrowing(t *testing.T) {
 		collection, err := node.historical.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
 
-		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultVChannel, segmentTypeGrowing, true)
+		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultDMLChannel, segmentTypeGrowing, true)
 
 		insertMsg, err := genSimpleInsertMsg()
 		assert.NoError(t, err)
@@ -388,7 +388,7 @@ func TestSegmentLoader_testLoadGrowing(t *testing.T) {
 		collection, err := node.historical.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
 
-		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultVChannel, segmentTypeGrowing, true)
+		segment := newSegment(collection, defaultSegmentID+1, defaultPartitionID, defaultCollectionID, defaultDMLChannel, segmentTypeGrowing, true)
 
 		insertMsg, err := genSimpleInsertMsg()
 		assert.NoError(t, err)

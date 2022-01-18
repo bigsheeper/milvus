@@ -135,6 +135,7 @@ type insertTask struct {
 	schema         *schemapb.CollectionSchema
 }
 
+// TraceCtx returns insertTask context
 func (it *insertTask) TraceCtx() context.Context {
 	return it.ctx
 }
@@ -679,7 +680,6 @@ func (it *insertTask) checkFieldAutoIDAndHashPK() error {
 
 		// TODO(dragondriver): when we can ignore the order of input fields, use append directly
 		// it.req.FieldsData = append(it.req.FieldsData, &fieldData)
-
 		it.req.FieldsData = append(it.req.FieldsData, &schemapb.FieldData{})
 		copy(it.req.FieldsData[autoIDLoc+1:], it.req.FieldsData[autoIDLoc:])
 		it.req.FieldsData[autoIDLoc] = &fieldData
@@ -985,6 +985,10 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 func (it *insertTask) Execute(ctx context.Context) error {
 	sp, ctx := trace.StartSpanFromContextWithOperationName(it.ctx, "Proxy-Insert-Execute")
 	defer sp.Finish()
+
+	tr := timerecord.NewTimeRecorder(fmt.Sprintf("proxy execute insert %d", it.ID()))
+	defer tr.Elapse("done")
+
 	collectionName := it.BaseInsertTask.CollectionName
 	collID, err := globalMetaCache.GetCollectionID(ctx, collectionName)
 	if err != nil {
@@ -1004,6 +1008,7 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		}
 	}
 	it.PartitionID = partitionID
+	tr.Record("get collection id & partition id from cache")
 
 	var tsMsg msgstream.TsMsg = &it.BaseInsertTask
 	it.BaseMsg.Ctx = ctx
@@ -1030,6 +1035,7 @@ func (it *insertTask) Execute(ctx context.Context) error {
 			return err
 		}
 	}
+	tr.Record("get used message stream")
 
 	// Assign SegmentID
 	var pack *msgstream.MsgPack
@@ -1037,6 +1043,7 @@ func (it *insertTask) Execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	tr.Record("assign segment id")
 
 	err = stream.Produce(pack)
 	if err != nil {
@@ -1044,6 +1051,7 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		it.result.Status.Reason = err.Error()
 		return err
 	}
+	tr.Record("send insert request to message stream")
 
 	return nil
 }
@@ -1623,6 +1631,10 @@ func (st *searchTask) PreExecute(ctx context.Context) error {
 func (st *searchTask) Execute(ctx context.Context) error {
 	sp, ctx := trace.StartSpanFromContextWithOperationName(st.TraceCtx(), "Proxy-Search-Execute")
 	defer sp.Finish()
+
+	tr := timerecord.NewTimeRecorder(fmt.Sprintf("proxy execute search %d", st.ID()))
+	defer tr.Elapse("done")
+
 	var tsMsg msgstream.TsMsg = &msgstream.SearchMsg{
 		SearchRequest: *st.SearchRequest,
 		BaseMsg: msgstream.BaseMsg{
@@ -1668,16 +1680,19 @@ func (st *searchTask) Execute(ctx context.Context) error {
 			return err
 		}
 	}
+	tr.Record("get used message stream")
+
 	err = stream.Produce(&msgPack)
 	if err != nil {
 		log.Debug("proxy", zap.String("send search request failed", err.Error()))
 	}
 	log.Debug("proxy sent one searchMsg",
-		zap.Any("collectionID", st.CollectionID),
-		zap.Any("msgID", tsMsg.ID()),
+		zap.Int64("collectionID", st.CollectionID),
+		zap.Int64("msgID", tsMsg.ID()),
 		zap.Int("length of search msg", len(msgPack.Msgs)),
-		zap.Any("timeoutTs", st.SearchRequest.TimeoutTimestamp),
-	)
+		zap.Uint64("timeoutTs", st.SearchRequest.TimeoutTimestamp))
+	tr.Record("send search msg to message stream")
+
 	return err
 }
 
@@ -1899,7 +1914,7 @@ func (st *searchTask) PostExecute(ctx context.Context) error {
 						Reason:    filterReason,
 					},
 				}
-				return fmt.Errorf("no Available Query node result, filter reason %s: id %d", filterReason, st.ID())
+				return fmt.Errorf("no Available QueryNode result, filter reason %s: id %d", filterReason, st.ID())
 			}
 
 			validSearchResults, err := decodeSearchResults(filterSearchResults)
@@ -2233,6 +2248,9 @@ func (qt *queryTask) PreExecute(ctx context.Context) error {
 }
 
 func (qt *queryTask) Execute(ctx context.Context) error {
+	tr := timerecord.NewTimeRecorder(fmt.Sprintf("proxy execute query %d", qt.ID()))
+	defer tr.Elapse("done")
+
 	var tsMsg msgstream.TsMsg = &msgstream.RetrieveMsg{
 		RetrieveRequest: *qt.RetrieveRequest,
 		BaseMsg: msgstream.BaseMsg{
@@ -2264,17 +2282,19 @@ func (qt *queryTask) Execute(ctx context.Context) error {
 			return err
 		}
 	}
+	tr.Record("get used message stream")
+
 	err = stream.Produce(&msgPack)
-	log.Debug("proxy sent one retrieveMsg",
-		zap.Any("collectionID", qt.CollectionID),
-		zap.Any("msgID", tsMsg.ID()),
-		zap.Int("length of search msg", len(msgPack.Msgs)),
-		zap.Any("timeoutTs", qt.RetrieveRequest.TimeoutTimestamp),
-	)
 	if err != nil {
 		log.Debug("Failed to send retrieve request.",
 			zap.Any("requestID", qt.Base.MsgID), zap.Any("requestType", "query"))
 	}
+	log.Debug("proxy sent one retrieveMsg",
+		zap.Int64("collectionID", qt.CollectionID),
+		zap.Int64("msgID", tsMsg.ID()),
+		zap.Int("length of search msg", len(msgPack.Msgs)),
+		zap.Uint64("timeoutTs", qt.RetrieveRequest.TimeoutTimestamp))
+	tr.Record("send retrieve request to message stream")
 
 	log.Info("Query Execute done.",
 		zap.Any("requestID", qt.Base.MsgID), zap.Any("requestType", "query"))
@@ -2556,6 +2576,7 @@ func (dct *describeCollectionTask) Execute(ctx context.Context) error {
 		dct.result.CreatedTimestamp = result.CreatedTimestamp
 		dct.result.CreatedUtcTimestamp = result.CreatedUtcTimestamp
 		dct.result.ShardsNum = result.ShardsNum
+		dct.result.ConsistencyLevel = result.ConsistencyLevel
 		for _, field := range result.Schema.Fields {
 			if field.FieldID >= common.StartOfUserFieldID {
 				dct.result.Schema.Fields = append(dct.result.Schema.Fields, &schemapb.FieldSchema{
@@ -4843,6 +4864,7 @@ func (c *CreateAliasTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
+// DropAliasTask is the task to drop alias
 type DropAliasTask struct {
 	Condition
 	*milvuspb.DropAliasRequest

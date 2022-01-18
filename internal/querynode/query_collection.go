@@ -52,6 +52,13 @@ type queryMsg interface {
 	TimeoutTs() Timestamp
 }
 
+// queryCollection manages and executes the retrieve and search tasks, it can be created
+// by LoadCollection or LoadPartition, but can only be destroyed by ReleaseCollection.
+// Currently query behaviors are defined below, if:
+// 1. LoadCollection --> ReleaseCollection: Query would be failed in proxy because collection is not loaded;
+// 2. LoadCollection --> ReleasePartition: Not allowed, release would failed;
+// 3. LoadPartition --> ReleaseCollection: Query would be failed in proxy because collection is not loaded;
+// 4. LoadPartition --> ReleasePartition: Query in collection should return empty results, and query in partition should return notLoaded error.
 type queryCollection struct {
 	releaseCtx context.Context
 	cancel     context.CancelFunc
@@ -1088,9 +1095,12 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	numSegment := int64(len(searchResults))
 	var marshaledHits *MarshaledHits
+	log.Debug("QueryNode reduce data", zap.Int64("msgID", searchMsg.ID()), zap.Int64("numSegment", numSegment))
 	err = reduceSearchResultsAndFillData(plan, searchResults, numSegment)
+	log.Debug("QueryNode reduce data finished", zap.Int64("msgID", searchMsg.ID()))
 	sp.LogFields(oplog.String("statistical time", "reduceSearchResults end"))
 	if err != nil {
+		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
 	marshaledHits, err = reorganizeSearchResults(searchResults, numSegment)

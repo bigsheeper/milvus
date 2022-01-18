@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 
 	"github.com/milvus-io/milvus/internal/metrics"
@@ -103,7 +104,7 @@ func NewProxy(ctx context.Context, factory msgstream.Factory) (*Proxy, error) {
 		msFactory: factory,
 	}
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
-	log.Debug("Proxy", zap.Any("State", node.stateCode.Load()))
+	logutil.Logger(ctx).Debug("create a new Proxy instance", zap.Any("state", node.stateCode.Load()))
 	return node, nil
 
 }
@@ -144,35 +145,35 @@ func (node *Proxy) Init() error {
 	Params.initProxySubName()
 	// wait for datacoord state changed to Healthy
 	if node.dataCoord != nil {
-		log.Debug("Proxy wait for dataCoord ready")
+		log.Debug("Proxy wait for DataCoord ready")
 		err := funcutil.WaitForComponentHealthy(node.ctx, node.dataCoord, "DataCoord", 1000000, time.Millisecond*200)
 		if err != nil {
-			log.Debug("Proxy wait for dataCoord ready failed", zap.Error(err))
+			log.Debug("Proxy wait for DataCoord ready failed", zap.Error(err))
 			return err
 		}
-		log.Debug("Proxy dataCoord is ready")
+		log.Debug("Proxy DataCoord is ready")
 	}
 
 	// wait for queryCoord state changed to Healthy
 	if node.queryCoord != nil {
-		log.Debug("Proxy wait for queryCoord ready")
+		log.Debug("Proxy wait for QueryCoord ready")
 		err := funcutil.WaitForComponentHealthy(node.ctx, node.queryCoord, "QueryCoord", 1000000, time.Millisecond*200)
 		if err != nil {
-			log.Debug("Proxy wait for queryCoord ready failed", zap.Error(err))
+			log.Debug("Proxy wait for QueryCoord ready failed", zap.Error(err))
 			return err
 		}
-		log.Debug("Proxy queryCoord is ready")
+		log.Debug("Proxy QueryCoord is ready")
 	}
 
 	// wait for indexcoord state changed to Healthy
 	if node.indexCoord != nil {
-		log.Debug("Proxy wait for indexCoord ready")
+		log.Debug("Proxy wait for IndexCoord ready")
 		err := funcutil.WaitForComponentHealthy(node.ctx, node.indexCoord, "IndexCoord", 1000000, time.Millisecond*200)
 		if err != nil {
-			log.Debug("Proxy wait for indexCoord ready failed", zap.Error(err))
+			log.Debug("Proxy wait for IndexCoord ready failed", zap.Error(err))
 			return err
 		}
-		log.Debug("Proxy indexCoord is ready")
+		log.Debug("Proxy IndexCoord is ready")
 	}
 
 	if node.queryCoord != nil {

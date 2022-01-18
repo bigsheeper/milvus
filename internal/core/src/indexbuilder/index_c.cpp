@@ -106,7 +106,7 @@ GetCBinarySize(CBinary c_binary) {
     return cBinary->data.size();
 }
 
-// Note: the memory of data is allocated outside
+// Note: the memory of data has been allocated outside
 void
 GetCBinaryData(CBinary c_binary, void* data) {
     auto cBinary = (milvus::indexbuilder::IndexWrapper::Binary*)c_binary;
@@ -255,7 +255,7 @@ GetIdsOfQueryResult(CIndexQueryResult res, int64_t* ids) {
     auto c_res = (milvus::indexbuilder::IndexWrapper::QueryResult*)res;
     auto nq = c_res->nq;
     auto k = c_res->topk;
-    // TODO: how could we avoid memory copy every time when this called
+    // TODO: how could we avoid memory copy whenever this called
     memcpy(ids, c_res->ids.data(), sizeof(int64_t) * nq * k);
 }
 
@@ -264,7 +264,7 @@ GetDistancesOfQueryResult(CIndexQueryResult res, float* distances) {
     auto c_res = (milvus::indexbuilder::IndexWrapper::QueryResult*)res;
     auto nq = c_res->nq;
     auto k = c_res->topk;
-    // TODO: how could we avoid memory copy every time when this called
+    // TODO: how could we avoid memory copy whenever this called
     memcpy(distances, c_res->distances.data(), sizeof(float) * nq * k);
 }
 

@@ -61,7 +61,7 @@ Search(CSegmentInterface c_segment,
        CSearchPlan c_plan,
        CPlaceholderGroup c_placeholder_group,
        uint64_t timestamp,
-       CSearchResult *result,
+       CSearchResult* result,
        int64_t segment_id) {
     try {
         auto segment = (milvus::segcore::SegmentInterface*)c_segment;

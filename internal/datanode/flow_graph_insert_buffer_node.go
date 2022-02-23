@@ -257,7 +257,7 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 	)
 
 	if fgMsg.dropCollection {
-		segmentsToFlush := ibNode.replica.listAllSegmentIDs()
+		segmentsToFlush := ibNode.replica.listAllSegmentIDs() // TODO: sheep, drop 了还要 flush?
 		log.Debug("Recive drop collection req and flushing all segments",
 			zap.Any("segments", segmentsToFlush),
 			zap.String("vchannel name", ibNode.channelName),

@@ -133,7 +133,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 					zap.Int64("Expected collID", ddn.collectionID))
 				continue
 			}
-			if msg.EndTs() < FilterThreshold {
+			if msg.EndTs() < FilterThreshold { // TODO: sheep?
 				log.Info("Filtering Insert Messages",
 					zap.Uint64("Message endts", msg.EndTs()),
 					zap.Uint64("FilterThreshold", FilterThreshold),
@@ -152,7 +152,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Int("num", len(dmsg.GetPrimaryKeys())),
 				zap.String("vChannelName", ddn.vchannelName))
 			for i := 0; i < len(dmsg.PrimaryKeys); i++ {
-				dmsg.HashValues = append(dmsg.HashValues, uint32(0))
+				dmsg.HashValues = append(dmsg.HashValues, uint32(0)) // TODO: sheep, don't append here
 			}
 			forwardMsgs = append(forwardMsgs, dmsg)
 			if dmsg.CollectionID != ddn.collectionID {
@@ -188,7 +188,7 @@ func (ddn *ddNode) filterFlushedSegmentInsertMessages(msg *msgstream.InsertMsg) 
 	}
 
 	if si, ok := ddn.segID2SegInfo.Load(msg.GetSegmentID()); ok {
-		if msg.EndTs() <= si.(*datapb.SegmentInfo).GetDmlPosition().GetTimestamp() {
+		if msg.EndTs() <= si.(*datapb.SegmentInfo).GetDmlPosition().GetTimestamp() { // TODO: sheep, 会重复消费？
 			return true
 		}
 

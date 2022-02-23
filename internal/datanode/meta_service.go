@@ -57,7 +57,7 @@ func (mService *metaService) getCollectionSchema(ctx context.Context, collID Uni
 		},
 		DbName:       "default", // GOOSE TODO
 		CollectionID: collID,
-		TimeStamp:    timestamp,
+		TimeStamp:    timestamp, // TODO: why need timestamp
 	}
 
 	response, err := mService.rootCoord.DescribeCollection(ctx, req)

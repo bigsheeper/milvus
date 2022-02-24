@@ -164,11 +164,11 @@ dataCoord:
     assignmentExpiration: 2000 # The time of the assignment expiration in ms
 
   compaction:
-    enableAutoCompaction: true
+    enableAutoCompaction: false
     entityExpiration: 9223372037 # Entity expiration in seconds, CAUTION make sure entityExpiration >= retentionDuration and 9223372037 is the maximum value of entityExpiration
 
   gc:
-    interval: 3600 # gc interval in seconds
+    interval: 36000 # gc interval in seconds
     missingTolerance: 86400 # file meta missing tolerance duration in seconds, 60*24
     dropTolerance: 86400 # file belongs to dropped entity tolerance duration in seconds, 60*24
 

@@ -127,3 +127,46 @@ func TestShuffleSegmentsToQueryNode(t *testing.T) {
 	err = removeAllSession()
 	assert.Nil(t, err)
 }
+
+//func TestShuffleSegmentsToQueryNodeV3(t *testing.T) {
+//	// init cluster
+//	cluster := &queryNodeCluster{
+//		nodes: make(map[int64]Node),
+//	}
+//	for i := 0; i < 5; i++ {
+//		nodeID := UniqueID(i + 1)
+//		cluster.nodes[nodeID] = &queryNode{
+//			id:           nodeID,
+//			memUsageRate: 0,
+//			state:        online,
+//		}
+//	}
+//
+//	// init reqs
+//	reqs := make([]*querypb.LoadSegmentsRequest, 0)
+//	for i := 0; i < 10; i++ {
+//		req := &querypb.LoadSegmentsRequest{
+//			Infos: []*querypb.SegmentLoadInfo{
+//				{
+//					SegmentSize: rand.Int63()%50 + 1,
+//				},
+//			},
+//		}
+//		reqs = append(reqs, req)
+//	}
+//	fmt.Println("================================== before")
+//	for _, r := range reqs {
+//		fmt.Println(r)
+//	}
+//	err := shuffleSegmentsToQueryNodeV3(nil, reqs, cluster, nil, false, nil, nil)
+//	assert.NoError(t, err)
+//
+//	sort.Slice(reqs, func(i, j int) bool {
+//		return reqs[i].DstNodeID < reqs[j].DstNodeID
+//	})
+//
+//	fmt.Println("================================== after")
+//	for _, r := range reqs {
+//		fmt.Println(r)
+//	}
+//}

@@ -18,7 +18,6 @@ package metrics
 
 import (
 	"net/http"
-
 	// nolint:gosec
 	_ "net/http/pprof"
 
@@ -587,11 +586,6 @@ func RegisterProxy() {
 	prometheus.MustRegister(ProxyDmlChannelTimeTick)
 }
 
-//RegisterQueryCoord registers QueryCoord metrics
-func RegisterQueryCoord() {
-
-}
-
 //RegisterQueryNode registers QueryNode metrics
 func RegisterQueryNode() {
 
@@ -633,12 +627,6 @@ var (
 			Help:      "Counter of watch dm channel",
 		}, []string{"type"})
 )
-
-//RegisterDataNode registers DataNode metrics
-func RegisterDataNode() {
-	prometheus.MustRegister(DataNodeFlushSegmentsCounter)
-	prometheus.MustRegister(DataNodeWatchDmChannelsCounter)
-}
 
 //RegisterIndexNode registers IndexNode metrics
 func RegisterIndexNode() {

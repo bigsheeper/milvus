@@ -90,7 +90,7 @@ func (t *compactionTask) shadowClone(opts ...compactionTaskOpt) *compactionTask 
 var _ compactionPlanContext = (*compactionPlanHandler)(nil)
 
 type compactionPlanHandler struct {
-	plans            map[int64]*compactionTask // planID -> task
+	plans            map[int64]*compactionTask // planID -> task // TODO: sheep, haven't seen any delete
 	sessions         *SessionManager
 	meta             *meta
 	chManager        *ChannelManager
@@ -99,7 +99,7 @@ type compactionPlanHandler struct {
 	allocator        allocator
 	quit             chan struct{}
 	wg               sync.WaitGroup
-	flushCh          chan UniqueID
+	flushCh          chan UniqueID // TODO: sheep, what is it used for?
 }
 
 func newCompactionPlanHandler(sessions *SessionManager, cm *ChannelManager, meta *meta,

@@ -35,7 +35,7 @@ import (
 func newDmInputNode(ctx context.Context, seekPos *internalpb.MsgPosition, dmNodeConfig *nodeConfig) (*flowgraph.InputNode, error) {
 	// subName should be unique, since pchannelName is shared among several collections
 	//	consumeSubName := Params.MsgChannelSubName + "-" + strconv.FormatInt(collID, 10)
-	consumeSubName := fmt.Sprintf("%s-%d-%d", Params.MsgChannelCfg.DataNodeSubName, Params.DataNodeCfg.NodeID, dmNodeConfig.collectionID)
+	consumeSubName := fmt.Sprintf("%s-%d-%d", Params.CommonCfg.DataNodeSubName, Params.DataNodeCfg.NodeID, dmNodeConfig.collectionID)
 	insertStream, err := dmNodeConfig.msFactory.NewTtMsgStream(ctx)
 	if err != nil {
 		return nil, err
@@ -46,17 +46,17 @@ func newDmInputNode(ctx context.Context, seekPos *internalpb.MsgPosition, dmNode
 	pchannelName := rootcoord.ToPhysicalChannel(dmNodeConfig.vChannelName)
 	insertStream.AsConsumer([]string{pchannelName}, consumeSubName)
 	metrics.DataNodeNumConsumers.WithLabelValues(fmt.Sprint(dmNodeConfig.collectionID), fmt.Sprint(Params.DataNodeCfg.NodeID)).Inc()
-	log.Debug("datanode AsConsumer", zap.String("physical channel", pchannelName), zap.String("subName", consumeSubName), zap.Int64("collection ID", dmNodeConfig.collectionID))
+	log.Info("datanode AsConsumer", zap.String("physical channel", pchannelName), zap.String("subName", consumeSubName), zap.Int64("collection ID", dmNodeConfig.collectionID))
 
 	if seekPos != nil {
 		seekPos.ChannelName = pchannelName
 		start := time.Now()
-		log.Debug("datanode begin to seek", zap.String("physical channel", seekPos.GetChannelName()), zap.Int64("collection ID", dmNodeConfig.collectionID))
+		log.Info("datanode begin to seek", zap.String("physical channel", seekPos.GetChannelName()), zap.Int64("collection ID", dmNodeConfig.collectionID))
 		err = insertStream.Seek([]*internalpb.MsgPosition{seekPos})
 		if err != nil {
 			return nil, err
 		}
-		log.Debug("datanode seek successfully", zap.String("physical channel", seekPos.GetChannelName()), zap.Int64("collection ID", dmNodeConfig.collectionID), zap.Duration("elapse", time.Since(start)))
+		log.Info("datanode seek successfully", zap.String("physical channel", seekPos.GetChannelName()), zap.Int64("collection ID", dmNodeConfig.collectionID), zap.Duration("elapse", time.Since(start)))
 	}
 
 	name := fmt.Sprintf("dmInputNode-%d-%s", dmNodeConfig.collectionID, dmNodeConfig.vChannelName)

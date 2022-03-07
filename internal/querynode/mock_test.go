@@ -31,7 +31,7 @@ import (
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	minioKV "github.com/milvus-io/milvus/internal/kv/minio"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
@@ -406,12 +406,8 @@ func genQueryMsgStream(ctx context.Context) (msgstream.MsgStream, error) {
 }
 
 func genLocalChunkManager() (storage.ChunkManager, error) {
-	p, err := Params.Load("storage.path")
-	if err != nil {
-		return nil, err
-	}
+	p := Params.LoadWithDefault("storage.path", "/tmp/milvus/data")
 	lcm := storage.NewLocalChunkManager(storage.RootPath(p))
-
 	return lcm, nil
 }
 
@@ -427,10 +423,7 @@ func genRemoteChunkManager(ctx context.Context) (storage.ChunkManager, error) {
 }
 
 func genVectorChunkManager(ctx context.Context) (*storage.VectorChunkManager, error) {
-	p, err := Params.Load("storage.path")
-	if err != nil {
-		return nil, err
-	}
+	p := Params.LoadWithDefault("storage.path", "/tmp/milvus/data")
 	lcm := storage.NewLocalChunkManager(storage.RootPath(p))
 
 	rcm, err := storage.NewMinioChunkManager(
@@ -1161,10 +1154,12 @@ func genSimpleSearchMsg() (*msgstream.SearchMsg, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &msgstream.SearchMsg{
+	msg := &msgstream.SearchMsg{
 		BaseMsg:       genMsgStreamBaseMsg(),
 		SearchRequest: *req,
-	}, nil
+	}
+	msg.SetTimeRecorder()
+	return msg, nil
 }
 
 func genSimpleRetrieveMsg() (*msgstream.RetrieveMsg, error) {
@@ -1172,10 +1167,12 @@ func genSimpleRetrieveMsg() (*msgstream.RetrieveMsg, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &msgstream.RetrieveMsg{
+	msg := &msgstream.RetrieveMsg{
 		BaseMsg:         genMsgStreamBaseMsg(),
 		RetrieveRequest: *req,
-	}, nil
+	}
+	msg.SetTimeRecorder()
+	return msg, nil
 }
 
 func genQueryChannel() Channel {

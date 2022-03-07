@@ -196,6 +196,7 @@ func AppendFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData, idx i
 		case *schemapb.FieldData_Scalars:
 			if dst[i] == nil || dst[i].GetScalars() == nil {
 				dst[i] = &schemapb.FieldData{
+					Type:      fieldData.Type,
 					FieldName: fieldData.FieldName,
 					FieldId:   fieldData.FieldId,
 					Field: &schemapb.FieldData_Scalars{
@@ -262,6 +263,7 @@ func AppendFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData, idx i
 			dim := fieldType.Vectors.Dim
 			if dst[i] == nil || dst[i].GetVectors() == nil {
 				dst[i] = &schemapb.FieldData{
+					Type:      fieldData.Type,
 					FieldName: fieldData.FieldName,
 					FieldId:   fieldData.FieldId,
 					Field: &schemapb.FieldData_Vectors{
@@ -275,20 +277,24 @@ func AppendFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData, idx i
 			switch srcVector := fieldType.Vectors.Data.(type) {
 			case *schemapb.VectorField_BinaryVector:
 				if dstVector.GetBinaryVector() == nil {
+					srcToCopy := srcVector.BinaryVector[idx*(dim/8) : (idx+1)*(dim/8)]
 					dstVector.Data = &schemapb.VectorField_BinaryVector{
-						BinaryVector: srcVector.BinaryVector[idx*(dim/8) : (idx+1)*(dim/8)],
+						BinaryVector: make([]byte, len(srcToCopy)),
 					}
+					copy(dstVector.Data.(*schemapb.VectorField_BinaryVector).BinaryVector, srcToCopy)
 				} else {
 					dstBinaryVector := dstVector.Data.(*schemapb.VectorField_BinaryVector)
 					dstBinaryVector.BinaryVector = append(dstBinaryVector.BinaryVector, srcVector.BinaryVector[idx*(dim/8):(idx+1)*(dim/8)]...)
 				}
 			case *schemapb.VectorField_FloatVector:
 				if dstVector.GetFloatVector() == nil {
+					srcToCopy := srcVector.FloatVector.Data[idx*dim : (idx+1)*dim]
 					dstVector.Data = &schemapb.VectorField_FloatVector{
 						FloatVector: &schemapb.FloatArray{
-							Data: srcVector.FloatVector.Data[idx*dim : (idx+1)*dim],
+							Data: make([]float32, len(srcToCopy)),
 						},
 					}
+					copy(dstVector.Data.(*schemapb.VectorField_FloatVector).FloatVector.Data, srcToCopy)
 				} else {
 					dstVector.GetFloatVector().Data = append(dstVector.GetFloatVector().Data, srcVector.FloatVector.Data[idx*dim:(idx+1)*dim]...)
 				}
@@ -297,4 +303,19 @@ func AppendFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData, idx i
 			}
 		}
 	}
+}
+
+func FillFieldBySchema(columns []*schemapb.FieldData, schema *schemapb.CollectionSchema) error {
+	if len(columns) != len(schema.GetFields()) {
+		return fmt.Errorf("len(columns) mismatch the len(fields), len(columns): %d, len(fields): %d",
+			len(columns), len(schema.GetFields()))
+	}
+
+	for idx, f := range schema.GetFields() {
+		columns[idx].FieldName = f.Name
+		columns[idx].Type = f.DataType
+		columns[idx].FieldId = f.FieldID
+	}
+
+	return nil
 }

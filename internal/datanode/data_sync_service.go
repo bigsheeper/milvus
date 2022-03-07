@@ -24,7 +24,7 @@ import (
 	"github.com/milvus-io/milvus/internal/kv"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
-	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
@@ -116,7 +116,7 @@ func newParallelConfig() parallelConfig {
 // start starts the flowgraph in datasyncservice
 func (dsService *dataSyncService) start() {
 	if dsService.fg != nil {
-		log.Debug("dataSyncService starting flowgraph", zap.Int64("collectionID", dsService.collectionID),
+		log.Info("dataSyncService starting flowgraph", zap.Int64("collectionID", dsService.collectionID),
 			zap.String("vChanName", dsService.vchannelName))
 		dsService.fg.Start()
 	} else {
@@ -127,7 +127,7 @@ func (dsService *dataSyncService) start() {
 
 func (dsService *dataSyncService) close() {
 	if dsService.fg != nil {
-		log.Debug("dataSyncService closing flowgraph", zap.Int64("collectionID", dsService.collectionID),
+		log.Info("dataSyncService closing flowgraph", zap.Int64("collectionID", dsService.collectionID),
 			zap.String("vChanName", dsService.vchannelName))
 		dsService.fg.Close()
 		metrics.DataNodeNumConsumers.WithLabelValues(fmt.Sprint(dsService.collectionID), fmt.Sprint(Params.DataNodeCfg.NodeID)).Dec()
@@ -170,7 +170,8 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 				pos:     *us.GetDmlPosition(),
 			}
 		}
-		if err := dsService.replica.addNormalSegment(us.GetID(), us.CollectionID, us.PartitionID, us.GetInsertChannel(), us.GetNumOfRows(), us.Statslogs, cp); err != nil {
+		if err := dsService.replica.addNormalSegment(us.GetID(), us.CollectionID, us.PartitionID, us.GetInsertChannel(),
+			us.GetNumOfRows(), us.Statslogs, cp, vchanInfo.GetSeekPosition().GetTimestamp()); err != nil {
 			return err
 		}
 	}
@@ -192,8 +193,8 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 			zap.Int64("SegmentID", fs.GetID()),
 			zap.Int64("NumOfRows", fs.GetNumOfRows()),
 		)
-		if err := dsService.replica.addFlushedSegment(fs.GetID(), fs.CollectionID,
-			fs.PartitionID, fs.GetInsertChannel(), fs.GetNumOfRows(), fs.Statslogs); err != nil {
+		if err := dsService.replica.addFlushedSegment(fs.GetID(), fs.CollectionID, fs.PartitionID, fs.GetInsertChannel(),
+			fs.GetNumOfRows(), fs.Statslogs, vchanInfo.GetSeekPosition().GetTimestamp()); err != nil {
 			return err
 		}
 	}

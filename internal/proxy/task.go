@@ -17,9 +17,7 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -37,7 +35,8 @@ import (
 	"github.com/milvus-io/milvus/internal/allocator"
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
@@ -340,248 +339,6 @@ func (it *insertTask) checkRowNums() error {
 	return nil
 }
 
-// TODO(dragondriver): ignore the order of fields in request, use the order of CollectionSchema to reorganize data
-func (it *insertTask) transferColumnBasedRequestToRowBasedData() error {
-	dTypes := make([]schemapb.DataType, 0, len(it.req.FieldsData))
-	datas := make([][]interface{}, 0, len(it.req.FieldsData))
-	rowNum := 0
-
-	appendScalarField := func(getDataFunc func() interface{}) error {
-		fieldDatas := reflect.ValueOf(getDataFunc())
-		if rowNum != 0 && rowNum != fieldDatas.Len() {
-			return errors.New("the row num of different column is not equal")
-		}
-		rowNum = fieldDatas.Len()
-		datas = append(datas, make([]interface{}, 0, rowNum))
-		idx := len(datas) - 1
-		for i := 0; i < rowNum; i++ {
-			datas[idx] = append(datas[idx], fieldDatas.Index(i).Interface())
-		}
-
-		return nil
-	}
-
-	appendFloatVectorField := func(fDatas []float32, dim int64) error {
-		l := len(fDatas)
-		if int64(l)%dim != 0 {
-			return errors.New("invalid vectors")
-		}
-		r := int64(l) / dim
-		if rowNum != 0 && rowNum != int(r) {
-			return errors.New("the row num of different column is not equal")
-		}
-		rowNum = int(r)
-		datas = append(datas, make([]interface{}, 0, rowNum))
-		idx := len(datas) - 1
-		vector := make([]float32, 0, dim)
-		for i := 0; i < l; i++ {
-			vector = append(vector, fDatas[i])
-			if int64(i+1)%dim == 0 {
-				datas[idx] = append(datas[idx], vector)
-				vector = make([]float32, 0, dim)
-			}
-		}
-
-		return nil
-	}
-
-	appendBinaryVectorField := func(bDatas []byte, dim int64) error {
-		l := len(bDatas)
-		if dim%8 != 0 {
-			return errors.New("invalid dim")
-		}
-		if (8*int64(l))%dim != 0 {
-			return errors.New("invalid vectors")
-		}
-		r := (8 * int64(l)) / dim
-		if rowNum != 0 && rowNum != int(r) {
-			return errors.New("the row num of different column is not equal")
-		}
-		rowNum = int(r)
-		datas = append(datas, make([]interface{}, 0, rowNum))
-		idx := len(datas) - 1
-		vector := make([]byte, 0, dim)
-		for i := 0; i < l; i++ {
-			vector = append(vector, bDatas[i])
-			if (8*int64(i+1))%dim == 0 {
-				datas[idx] = append(datas[idx], vector)
-				vector = make([]byte, 0, dim)
-			}
-		}
-
-		return nil
-	}
-
-	for _, field := range it.req.FieldsData {
-		switch field.Field.(type) {
-		case *schemapb.FieldData_Scalars:
-			scalarField := field.GetScalars()
-			switch scalarField.Data.(type) {
-			case *schemapb.ScalarField_BoolData:
-				err := appendScalarField(func() interface{} {
-					return scalarField.GetBoolData().Data
-				})
-				if err != nil {
-					return err
-				}
-			case *schemapb.ScalarField_IntData:
-				err := appendScalarField(func() interface{} {
-					return scalarField.GetIntData().Data
-				})
-				if err != nil {
-					return err
-				}
-			case *schemapb.ScalarField_LongData:
-				err := appendScalarField(func() interface{} {
-					return scalarField.GetLongData().Data
-				})
-				if err != nil {
-					return err
-				}
-			case *schemapb.ScalarField_FloatData:
-				err := appendScalarField(func() interface{} {
-					return scalarField.GetFloatData().Data
-				})
-				if err != nil {
-					return err
-				}
-			case *schemapb.ScalarField_DoubleData:
-				err := appendScalarField(func() interface{} {
-					return scalarField.GetDoubleData().Data
-				})
-				if err != nil {
-					return err
-				}
-			case *schemapb.ScalarField_BytesData:
-				return errors.New("bytes field is not supported now")
-			case *schemapb.ScalarField_StringData:
-				return errors.New("string field is not supported now")
-			case nil:
-				continue
-			default:
-				continue
-			}
-		case *schemapb.FieldData_Vectors:
-			vectorField := field.GetVectors()
-			switch vectorField.Data.(type) {
-			case *schemapb.VectorField_FloatVector:
-				floatVectorFieldData := vectorField.GetFloatVector().Data
-				dim := vectorField.GetDim()
-				err := appendFloatVectorField(floatVectorFieldData, dim)
-				if err != nil {
-					return err
-				}
-			case *schemapb.VectorField_BinaryVector:
-				binaryVectorFieldData := vectorField.GetBinaryVector()
-				dim := vectorField.GetDim()
-				err := appendBinaryVectorField(binaryVectorFieldData, dim)
-				if err != nil {
-					return err
-				}
-			case nil:
-				continue
-			default:
-				continue
-			}
-		case nil:
-			continue
-		default:
-			continue
-		}
-
-		dTypes = append(dTypes, field.Type)
-	}
-
-	it.RowData = make([]*commonpb.Blob, 0, rowNum)
-	l := len(dTypes)
-	// TODO(dragondriver): big endian or little endian?
-	endian := common.Endian
-	printed := false
-	for i := 0; i < rowNum; i++ {
-		blob := &commonpb.Blob{
-			Value: make([]byte, 0),
-		}
-
-		for j := 0; j < l; j++ {
-			var buffer bytes.Buffer
-			switch dTypes[j] {
-			case schemapb.DataType_Bool:
-				d := datas[j][i].(bool)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Int8:
-				d := int8(datas[j][i].(int32))
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Int16:
-				d := int16(datas[j][i].(int32))
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Int32:
-				d := datas[j][i].(int32)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Int64:
-				d := datas[j][i].(int64)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Float:
-				d := datas[j][i].(float32)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_Double:
-				d := datas[j][i].(float64)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_FloatVector:
-				d := datas[j][i].([]float32)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			case schemapb.DataType_BinaryVector:
-				d := datas[j][i].([]byte)
-				err := binary.Write(&buffer, endian, d)
-				if err != nil {
-					log.Warn("ConvertData", zap.Error(err))
-				}
-				blob.Value = append(blob.Value, buffer.Bytes()...)
-			default:
-				log.Warn("unsupported data type")
-			}
-		}
-		if !printed {
-			log.Debug("Proxy, transform", zap.Any("ID", it.ID()), zap.Any("BlobLen", len(blob.Value)), zap.Any("dTypes", dTypes))
-			printed = true
-		}
-		it.RowData = append(it.RowData, blob)
-	}
-
-	return nil
-}
-
 func (it *insertTask) checkFieldAutoIDAndHashPK() error {
 	// TODO(dragondriver): in fact, NumRows is not trustable, we should check all input fields
 	if it.req.NumRows <= 0 {
@@ -656,7 +413,9 @@ func (it *insertTask) checkFieldAutoIDAndHashPK() error {
 	var rowIDBegin UniqueID
 	var rowIDEnd UniqueID
 
+	tr := timerecord.NewTimeRecorder("applyPK")
 	rowIDBegin, rowIDEnd, _ = it.rowIDAllocator.Alloc(rowNums)
+	metrics.ProxyApplyPrimaryKeyLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10)).Observe(float64(tr.ElapseSpan()))
 
 	it.BaseInsertTask.RowIDs = make([]UniqueID, rowNums)
 	for i := rowIDBegin; i < rowIDEnd; i++ {
@@ -759,12 +518,15 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 
-	err = it.transferColumnBasedRequestToRowBasedData()
+	it.BaseInsertTask.InsertRequest.Version = internalpb.InsertDataVersion_ColumnBased
+	it.BaseInsertTask.InsertRequest.FieldsData = it.req.GetFieldsData()
+	it.BaseInsertTask.InsertRequest.NumRows = uint64(it.req.GetNumRows())
+	err = typeutil.FillFieldBySchema(it.BaseInsertTask.InsertRequest.GetFieldsData(), collSchema)
 	if err != nil {
 		return err
 	}
 
-	rowNum := len(it.RowData)
+	rowNum := it.req.NumRows
 	it.Timestamps = make([]uint64, rowNum)
 	for index := range it.Timestamps {
 		it.Timestamps[index] = it.BeginTimestamp
@@ -783,6 +545,9 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 	}
 	tsMsgs := pack.Msgs
 	hashKeys := stream.ComputeProduceChannelIndexes(tsMsgs)
+	if len(hashKeys) == 0 {
+		return nil, fmt.Errorf("the length of hashKeys is 0")
+	}
 	reqID := it.Base.MsgID
 	channelCountMap := make(map[int32]uint32)    //   channelID to count
 	channelMaxTSMap := make(map[int32]Timestamp) //  channelID to max Timestamp
@@ -802,13 +567,20 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 		}
 
 		keys := hashKeys[i]
-		timestampLen := len(insertRequest.Timestamps)
-		rowIDLen := len(insertRequest.RowIDs)
-		rowDataLen := len(insertRequest.RowData)
 		keysLen := len(keys)
 
-		if keysLen != timestampLen || keysLen != rowIDLen || keysLen != rowDataLen {
-			return nil, fmt.Errorf("the length of hashValue, timestamps, rowIDs, RowData are not equal")
+		if !insertRequest.CheckAligned() {
+			return nil,
+				fmt.Errorf("the length of timestamps(%d), rowIDs(%d) and num_rows(%d) are not equal",
+					len(insertRequest.GetTimestamps()),
+					len(insertRequest.GetRowIDs()),
+					insertRequest.NRows())
+		}
+		if uint64(keysLen) != insertRequest.NRows() {
+			return nil,
+				fmt.Errorf(
+					"the length of hashValue(%d), num_rows(%d) are not equal",
+					keysLen, insertRequest.NRows())
 		}
 		for idx, channelID := range keys {
 			channelCountMap[channelID]++
@@ -911,6 +683,7 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 		return size
 	}
 
+	sizePerRow, _ := typeutil.EstimateSizePerRecord(it.schema)
 	result := make(map[int32]msgstream.TsMsg)
 	curMsgSizeMap := make(map[int32]int)
 
@@ -925,7 +698,6 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 		for index, key := range keys {
 			ts := insertRequest.Timestamps[index]
 			rowID := insertRequest.RowIDs[index]
-			row := insertRequest.RowData[index]
 			segmentID := getSegmentID(key)
 			if segmentID == 0 {
 				return nil, fmt.Errorf("get SegmentID failed, segmentID is zero")
@@ -946,6 +718,11 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 					SegmentID:      segmentID,
 					ShardName:      channelNames[key],
 				}
+
+				sliceRequest.Version = internalpb.InsertDataVersion_ColumnBased
+				sliceRequest.NumRows = 0
+				sliceRequest.FieldsData = make([]*schemapb.FieldData, len(it.BaseInsertTask.InsertRequest.GetFieldsData()))
+
 				insertMsg := &msgstream.InsertMsg{
 					BaseMsg: msgstream.BaseMsg{
 						Ctx: request.TraceCtx(),
@@ -955,15 +732,17 @@ func (it *insertTask) _assignSegmentID(stream msgstream.MsgStream, pack *msgstre
 				result[key] = insertMsg
 				curMsgSizeMap[key] = getFixedSizeOfInsertMsg(insertMsg)
 			}
+
 			curMsg := result[key].(*msgstream.InsertMsg)
 			curMsgSize := curMsgSizeMap[key]
+
 			curMsg.HashValues = append(curMsg.HashValues, insertRequest.HashValues[index])
 			curMsg.Timestamps = append(curMsg.Timestamps, ts)
 			curMsg.RowIDs = append(curMsg.RowIDs, rowID)
-			curMsg.RowData = append(curMsg.RowData, row)
-			/* #nosec G103 */
-			curMsgSize += 4 + 8 + int(unsafe.Sizeof(row.Value))
-			curMsgSize += len(row.Value)
+
+			typeutil.AppendFieldData(curMsg.FieldsData, it.BaseInsertTask.InsertRequest.GetFieldsData(), int64(index))
+			curMsg.NumRows++
+			curMsgSize += sizePerRow
 
 			if curMsgSize >= threshold {
 				newPack.Msgs = append(newPack.Msgs, curMsg)
@@ -1046,13 +825,15 @@ func (it *insertTask) Execute(ctx context.Context) error {
 	}
 	tr.Record("assign segment id")
 
+	tr.Record("sendInsertMsg")
 	err = stream.Produce(pack)
 	if err != nil {
 		it.result.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
 		it.result.Status.Reason = err.Error()
 		return err
 	}
-	tr.Record("send insert request to message stream")
+	sendMsgDur := tr.Record("send insert request to message stream")
+	metrics.ProxySendInsertReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10), collectionName).Observe(float64(sendMsgDur.Milliseconds()))
 
 	return nil
 }
@@ -1137,23 +918,32 @@ func (cct *createCollectionTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 
+	// validate whether field names duplicates
 	if err := validateDuplicatedFieldName(cct.schema.Fields); err != nil {
 		return err
 	}
 
+	// validate primary key definition
 	if err := validatePrimaryKey(cct.schema); err != nil {
 		return err
 	}
 
+	// validate auto id definition
 	if err := ValidateFieldAutoID(cct.schema); err != nil {
 		return err
 	}
 
-	// validate field name
+	// validate field type definition
+	if err := validateFieldType(cct.schema); err != nil {
+		return err
+	}
+
 	for _, field := range cct.schema.Fields {
+		// validate field name
 		if err := validateFieldName(field.Name); err != nil {
 			return err
 		}
+		// validate vector field type parameters
 		if field.DataType == schemapb.DataType_FloatVector || field.DataType == schemapb.DataType_BinaryVector {
 			exist := false
 			var dim int64
@@ -1341,6 +1131,9 @@ type searchTask struct {
 	chMgr          channelsMgr
 	qc             types.QueryCoord
 	collectionName string
+
+	tr           *timerecord.TimeRecorder
+	collectionID UniqueID
 }
 
 func (st *searchTask) TraceCtx() context.Context {
@@ -1431,6 +1224,7 @@ func (st *searchTask) PreExecute(ctx context.Context) error {
 	if err != nil { // err is not nil if collection not exists
 		return err
 	}
+	st.collectionID = collID
 
 	if err := validateCollectionName(st.query.CollectionName); err != nil {
 		return err
@@ -1690,17 +1484,18 @@ func (st *searchTask) Execute(ctx context.Context) error {
 		}
 	}
 	tr.Record("get used message stream")
-
 	err = stream.Produce(&msgPack)
 	if err != nil {
 		log.Debug("proxy", zap.String("send search request failed", err.Error()))
 	}
+	st.tr.Record("send message done")
 	log.Debug("proxy sent one searchMsg",
 		zap.Int64("collectionID", st.CollectionID),
 		zap.Int64("msgID", tsMsg.ID()),
 		zap.Int("length of search msg", len(msgPack.Msgs)),
 		zap.Uint64("timeoutTs", st.SearchRequest.TimeoutTimestamp))
-	tr.Record("send search msg to message stream")
+	sendMsgDur := tr.Record("send search msg to message stream")
+	metrics.ProxySendMessageLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10), collectionName, metrics.SearchLabel).Observe(float64(sendMsgDur.Milliseconds()))
 
 	return err
 }
@@ -1903,20 +1698,23 @@ func (st *searchTask) PostExecute(ctx context.Context) error {
 			// fmt.Println("searchResults: ", searchResults)
 			filterSearchResults := make([]*internalpb.SearchResults, 0)
 			var filterReason string
+			errNum := 0
 			for _, partialSearchResult := range searchResults {
 				if partialSearchResult.Status.ErrorCode == commonpb.ErrorCode_Success {
 					filterSearchResults = append(filterSearchResults, partialSearchResult)
 					// For debugging, please don't delete.
 					// printSearchResult(partialSearchResult)
 				} else {
+					errNum++
 					filterReason += partialSearchResult.Status.Reason + "\n"
 				}
 			}
 
 			log.Debug("Proxy Search PostExecute stage1",
 				zap.Any("len(filterSearchResults)", len(filterSearchResults)))
+			metrics.ProxyWaitForSearchResultLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10), st.collectionName, metrics.SearchLabel).Observe(float64(st.tr.RecordSpan().Milliseconds()))
 			tr.Record("Proxy Search PostExecute stage1 done")
-			if len(filterSearchResults) <= 0 {
+			if len(filterSearchResults) <= 0 || errNum > 0 {
 				st.result = &milvuspb.SearchResults{
 					Status: &commonpb.Status{
 						ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -1924,14 +1722,14 @@ func (st *searchTask) PostExecute(ctx context.Context) error {
 					},
 					CollectionName: st.collectionName,
 				}
-				return fmt.Errorf("no Available QueryNode result, filter reason %s: id %d", filterReason, st.ID())
+				return fmt.Errorf("QueryNode search fail, reason %s: id %d", filterReason, st.ID())
 			}
-
+			tr.Record("decodeResultStart")
 			validSearchResults, err := decodeSearchResults(filterSearchResults)
 			if err != nil {
 				return err
 			}
-
+			metrics.ProxyDecodeSearchResultLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10), st.collectionName, metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
 			log.Debug("Proxy Search PostExecute stage2", zap.Any("len(validSearchResults)", len(validSearchResults)))
 			if len(validSearchResults) <= 0 {
 				filterReason += "empty search result\n"
@@ -1951,10 +1749,12 @@ func (st *searchTask) PostExecute(ctx context.Context) error {
 				return nil
 			}
 
+			tr.Record("reduceResultStart")
 			st.result, err = reduceSearchResultData(validSearchResults, searchResults[0].NumQueries, searchResults[0].TopK, searchResults[0].MetricType)
 			if err != nil {
 				return err
 			}
+			metrics.ProxyReduceSearchResultLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10), st.collectionName, metrics.SuccessLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
 			st.result.CollectionName = st.collectionName
 
 			schema, err := globalMetaCache.GetCollectionSchema(ctx, st.query.CollectionName)
@@ -1988,6 +1788,7 @@ type queryTask struct {
 	qc             types.QueryCoord
 	ids            *schemapb.IDs
 	collectionName string
+	collectionID   UniqueID
 }
 
 func (qt *queryTask) TraceCtx() context.Context {
@@ -2032,7 +1833,6 @@ func (qt *queryTask) getChannels() ([]pChan, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	var channels []pChan
 	channels, err = qt.chMgr.getChannels(collID)
 	if err != nil {
@@ -2630,6 +2430,8 @@ type getCollectionStatisticsTask struct {
 	ctx       context.Context
 	dataCoord types.DataCoord
 	result    *milvuspb.GetCollectionStatisticsResponse
+
+	collectionID UniqueID
 }
 
 func (g *getCollectionStatisticsTask) TraceCtx() context.Context {
@@ -2680,6 +2482,7 @@ func (g *getCollectionStatisticsTask) Execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	g.collectionID = collID
 	req := &datapb.GetCollectionStatisticsRequest{
 		Base: &commonpb.MsgBase{
 			MsgType:   commonpb.MsgType_GetCollectionStatistics,
@@ -2717,6 +2520,8 @@ type getPartitionStatisticsTask struct {
 	ctx       context.Context
 	dataCoord types.DataCoord
 	result    *milvuspb.GetPartitionStatisticsResponse
+
+	collectionID UniqueID
 }
 
 func (g *getPartitionStatisticsTask) TraceCtx() context.Context {
@@ -2767,6 +2572,7 @@ func (g *getPartitionStatisticsTask) Execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	g.collectionID = collID
 	partitionID, err := globalMetaCache.GetPartitionID(ctx, g.CollectionName, g.PartitionName)
 	if err != nil {
 		return err
@@ -3359,6 +3165,8 @@ type createIndexTask struct {
 	ctx       context.Context
 	rootCoord types.RootCoord
 	result    *commonpb.Status
+
+	collectionID UniqueID
 }
 
 func (cit *createIndexTask) TraceCtx() context.Context {
@@ -3448,6 +3256,8 @@ func (cit *createIndexTask) PreExecute(ctx context.Context) error {
 		return fmt.Errorf("invalid index params: %v", cit.CreateIndexRequest.ExtraParams)
 	}
 
+	collID, _ := globalMetaCache.GetCollectionID(ctx, collName)
+	cit.collectionID = collID
 	return nil
 }
 
@@ -3473,6 +3283,8 @@ type describeIndexTask struct {
 	ctx       context.Context
 	rootCoord types.RootCoord
 	result    *milvuspb.DescribeIndexResponse
+
+	collectionID UniqueID
 }
 
 func (dit *describeIndexTask) TraceCtx() context.Context {
@@ -3525,6 +3337,8 @@ func (dit *describeIndexTask) PreExecute(ctx context.Context) error {
 		dit.IndexName = Params.CommonCfg.DefaultIndexName
 	}
 
+	collID, _ := globalMetaCache.GetCollectionID(ctx, dit.CollectionName)
+	dit.collectionID = collID
 	return nil
 }
 
@@ -3550,6 +3364,8 @@ type dropIndexTask struct {
 	*milvuspb.DropIndexRequest
 	rootCoord types.RootCoord
 	result    *commonpb.Status
+
+	collectionID UniqueID
 }
 
 func (dit *dropIndexTask) TraceCtx() context.Context {
@@ -3607,6 +3423,9 @@ func (dit *dropIndexTask) PreExecute(ctx context.Context) error {
 		dit.IndexName = Params.CommonCfg.DefaultIndexName
 	}
 
+	collID, _ := globalMetaCache.GetCollectionID(ctx, dit.CollectionName)
+	dit.collectionID = collID
+
 	return nil
 }
 
@@ -3634,6 +3453,8 @@ type getIndexBuildProgressTask struct {
 	rootCoord  types.RootCoord
 	dataCoord  types.DataCoord
 	result     *milvuspb.GetIndexBuildProgressResponse
+
+	collectionID UniqueID
 }
 
 func (gibpt *getIndexBuildProgressTask) TraceCtx() context.Context {
@@ -3690,6 +3511,7 @@ func (gibpt *getIndexBuildProgressTask) Execute(ctx context.Context) error {
 	if err != nil { // err is not nil if collection not exists
 		return err
 	}
+	gibpt.collectionID = collectionID
 
 	showPartitionRequest := &milvuspb.ShowPartitionsRequest{
 		Base: &commonpb.MsgBase{
@@ -3855,6 +3677,8 @@ type getIndexStateTask struct {
 	indexCoord types.IndexCoord
 	rootCoord  types.RootCoord
 	result     *milvuspb.GetIndexStateResponse
+
+	collectionID UniqueID
 }
 
 func (gist *getIndexStateTask) TraceCtx() context.Context {
@@ -3911,6 +3735,7 @@ func (gist *getIndexStateTask) Execute(ctx context.Context) error {
 	if err != nil { // err is not nil if collection not exists
 		return err
 	}
+	gist.collectionID = collectionID
 
 	showPartitionRequest := &milvuspb.ShowPartitionsRequest{
 		Base: &commonpb.MsgBase{
@@ -4153,6 +3978,8 @@ type loadCollectionTask struct {
 	ctx        context.Context
 	queryCoord types.QueryCoord
 	result     *commonpb.Status
+
+	collectionID UniqueID
 }
 
 func (lct *loadCollectionTask) TraceCtx() context.Context {
@@ -4212,6 +4039,7 @@ func (lct *loadCollectionTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	lct.collectionID = collID
 	collSchema, err := globalMetaCache.GetCollectionSchema(ctx, lct.CollectionName)
 	if err != nil {
 		return err
@@ -4251,6 +4079,8 @@ type releaseCollectionTask struct {
 	queryCoord types.QueryCoord
 	result     *commonpb.Status
 	chMgr      channelsMgr
+
+	collectionID UniqueID
 }
 
 func (rct *releaseCollectionTask) TraceCtx() context.Context {
@@ -4308,6 +4138,7 @@ func (rct *releaseCollectionTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	rct.collectionID = collID
 	request := &querypb.ReleaseCollectionRequest{
 		Base: &commonpb.MsgBase{
 			MsgType:   commonpb.MsgType_ReleaseCollection,
@@ -4336,6 +4167,8 @@ type loadPartitionsTask struct {
 	ctx        context.Context
 	queryCoord types.QueryCoord
 	result     *commonpb.Status
+
+	collectionID UniqueID
 }
 
 func (lpt *loadPartitionsTask) TraceCtx() context.Context {
@@ -4394,6 +4227,7 @@ func (lpt *loadPartitionsTask) Execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	lpt.collectionID = collID
 	collSchema, err := globalMetaCache.GetCollectionSchema(ctx, lpt.CollectionName)
 	if err != nil {
 		return err
@@ -4431,6 +4265,8 @@ type releasePartitionsTask struct {
 	ctx        context.Context
 	queryCoord types.QueryCoord
 	result     *commonpb.Status
+
+	collectionID UniqueID
 }
 
 func (rpt *releasePartitionsTask) TraceCtx() context.Context {
@@ -4489,6 +4325,7 @@ func (rpt *releasePartitionsTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	rpt.collectionID = collID
 	for _, partitionName := range rpt.PartitionNames {
 		partitionID, err := globalMetaCache.GetPartitionID(ctx, rpt.CollectionName, partitionName)
 		if err != nil {
@@ -4527,6 +4364,8 @@ type deleteTask struct {
 	chTicker  channelsTimeTicker
 	vChannels []vChan
 	pChannels []pChan
+
+	collectionID UniqueID
 }
 
 func (dt *deleteTask) TraceCtx() context.Context {
@@ -4652,6 +4491,7 @@ func (dt *deleteTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	dt.DeleteRequest.CollectionID = collID
+	dt.collectionID = collID
 
 	// If partitionName is not empty, partitionID will be set.
 	if len(dt.req.PartitionName) > 0 {

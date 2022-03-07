@@ -450,7 +450,7 @@ func (m *rendezvousFlushManager) flushDelData(data *DelDataBuf, segmentID Unique
 	kvs := map[string]string{blobPath: string(blob.Value[:])}
 	data.LogSize = int64(len(blob.Value))
 	data.LogPath = blobPath
-	log.Debug("delete blob path", zap.String("path", blobPath))
+	log.Info("delete blob path", zap.String("path", blobPath))
 	m.handleDeleteTask(segmentID, &flushBufferDeleteTask{
 		BaseKV: m.BaseKV,
 		data:   kvs,
@@ -555,11 +555,11 @@ type flushBufferInsertTask struct {
 func (t *flushBufferInsertTask) flushInsertData() error {
 	if t.BaseKV != nil && len(t.data) > 0 {
 		for _, d := range t.data {
-			metrics.DataNodeFlushedSize.WithLabelValues(metrics.DataNodeMsgTypeInsert, fmt.Sprint(Params.DataNodeCfg.NodeID)).Add(float64(len(d)))
+			metrics.DataNodeFlushedSize.WithLabelValues(metrics.InsertLabel, fmt.Sprint(Params.DataNodeCfg.NodeID)).Add(float64(len(d)))
 		}
 		tr := timerecord.NewTimeRecorder("insertData")
 		err := t.MultiSave(t.data)
-		metrics.DataNodeSave2StorageLatency.WithLabelValues(metrics.DataNodeMsgTypeInsert, fmt.Sprint(Params.DataNodeCfg.NodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		metrics.DataNodeSave2StorageLatency.WithLabelValues(metrics.InsertLabel, fmt.Sprint(Params.DataNodeCfg.NodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		return err
 	}
 	return nil
@@ -574,11 +574,11 @@ type flushBufferDeleteTask struct {
 func (t *flushBufferDeleteTask) flushDeleteData() error {
 	if len(t.data) > 0 && t.BaseKV != nil {
 		for _, d := range t.data {
-			metrics.DataNodeFlushedSize.WithLabelValues(metrics.DataNodeMsgTypeDelete, fmt.Sprint(Params.DataNodeCfg.NodeID)).Add(float64(len(d)))
+			metrics.DataNodeFlushedSize.WithLabelValues(metrics.DeleteLabel, fmt.Sprint(Params.DataNodeCfg.NodeID)).Add(float64(len(d)))
 		}
 		tr := timerecord.NewTimeRecorder("deleteData")
 		err := t.MultiSave(t.data)
-		metrics.DataNodeSave2StorageLatency.WithLabelValues(metrics.DataNodeMsgTypeDelete, fmt.Sprint(Params.DataNodeCfg.NodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		metrics.DataNodeSave2StorageLatency.WithLabelValues(metrics.DeleteLabel, fmt.Sprint(Params.DataNodeCfg.NodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		return err
 	}
 	return nil
@@ -737,7 +737,7 @@ func flushNotifyFunc(dsService *dataSyncService, opts ...retry.Option) notifyMet
 
 		startPos := dsService.replica.listNewSegmentsStartPositions()
 
-		log.Debug("SaveBinlogPath",
+		log.Info("SaveBinlogPath",
 			zap.Int64("SegmentID", pack.segmentID),
 			zap.Int64("CollectionID", dsService.collectionID),
 			zap.Any("startPos", startPos),

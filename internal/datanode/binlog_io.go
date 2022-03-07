@@ -201,11 +201,14 @@ func (b *binlogIO) upload(
 	for err != nil {
 		select {
 		case <-ctx.Done():
-			log.Warn("ctx done when saving kvs to blob storage", zap.Any("key values", kvs))
+			log.Warn("ctx done when saving kvs to blob storage",
+				zap.Int64("collectionID", meta.GetID()),
+				zap.Int64("segmentID", segID),
+				zap.Int("number of kvs", len(kvs)))
 			return nil, errUploadToBlobStorage
 		default:
 			if err != errStart {
-				log.Info("save binlog failed, retry in 50ms",
+				log.Warn("save binlog failed, retry in 50ms",
 					zap.Int64("collectionID", meta.GetID()),
 					zap.Int64("segmentID", segID))
 				<-time.After(50 * time.Millisecond)

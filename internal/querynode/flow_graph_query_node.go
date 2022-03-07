@@ -19,14 +19,16 @@ package querynode
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
-	"github.com/milvus-io/milvus/internal/util/mqclient"
 )
 
 // queryNodeFlowGraph is a TimeTickedFlowGraph in query node
@@ -200,6 +202,8 @@ func (q *queryNodeFlowGraph) consumerFlowGraph(channel Channel, subName ConsumeS
 		zap.Any("channel", channel),
 		zap.Any("subName", subName),
 	)
+
+	metrics.QueryNodeNumConsumers.WithLabelValues(fmt.Sprint(q.collectionID), fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Inc()
 	return nil
 }
 
@@ -208,12 +212,14 @@ func (q *queryNodeFlowGraph) consumerFlowGraphLatest(channel Channel, subName Co
 	if q.dmlStream == nil {
 		return errors.New("null dml message stream in flow graph")
 	}
-	q.dmlStream.AsConsumerWithPosition([]string{channel}, subName, mqclient.SubscriptionPositionLatest)
+	q.dmlStream.AsConsumerWithPosition([]string{channel}, subName, mqwrapper.SubscriptionPositionLatest)
 	log.Debug("query node flow graph consumes from pChannel",
 		zap.Any("collectionID", q.collectionID),
 		zap.Any("channel", channel),
 		zap.Any("subName", subName),
 	)
+
+	metrics.QueryNodeNumConsumers.WithLabelValues(fmt.Sprint(q.collectionID), fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Inc()
 	return nil
 }
 
@@ -225,6 +231,8 @@ func (q *queryNodeFlowGraph) seekQueryNodeFlowGraph(position *internalpb.MsgPosi
 		zap.Any("collectionID", q.collectionID),
 		zap.Any("channel", position.ChannelName),
 	)
+
+	metrics.QueryNodeNumConsumers.WithLabelValues(fmt.Sprint(q.collectionID), fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Inc()
 	return err
 }
 

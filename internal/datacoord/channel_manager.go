@@ -24,7 +24,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/kv"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"go.uber.org/zap"
 	"stathat.com/c/consistent"
@@ -125,7 +125,7 @@ func (c *ChannelManager) Startup(nodes []int64) error {
 	// Unwatch and drop channel with drop flag.
 	c.unwatchDroppedChannels()
 
-	log.Debug("cluster start up",
+	log.Info("cluster start up",
 		zap.Any("nodes", nodes),
 		zap.Any("oNodes", oNodes),
 		zap.Int64s("new onlines", newOnLines),
@@ -171,7 +171,7 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 			}
 
 			updates := c.reassignPolicy(c.store, reallocates)
-			log.Debug("channel manager bg check reassign", zap.Array("updates", updates))
+			log.Info("channel manager bg check reassign", zap.Array("updates", updates))
 			for _, update := range updates {
 				if update.Type == Add {
 					c.fillChannelWatchInfo(update)
@@ -225,7 +225,7 @@ func (c *ChannelManager) AddNode(nodeID int64) error {
 	c.store.Add(nodeID)
 
 	updates := c.registerPolicy(c.store, nodeID)
-	log.Debug("register node",
+	log.Info("register node",
 		zap.Int64("registered node", nodeID),
 		zap.Array("updates", updates))
 
@@ -250,7 +250,7 @@ func (c *ChannelManager) DeleteNode(nodeID int64) error {
 	c.unsubAttempt(nodeChannelInfo)
 
 	updates := c.deregisterPolicy(c.store, nodeID)
-	log.Debug("deregister node",
+	log.Warn("deregister node",
 		zap.Int64("unregistered node", nodeID),
 		zap.Array("updates", updates))
 
@@ -289,7 +289,7 @@ func (c *ChannelManager) unsubAttempt(ncInfo *NodeChannelInfo) {
 
 // buildSubName generates a subscription name by concatenating DataNodeSubName, node ID and collection ID.
 func buildSubName(collectionID int64, nodeID int64) string {
-	return fmt.Sprintf("%s-%d-%d", Params.MsgChannelCfg.DataNodeSubName, nodeID, collectionID)
+	return fmt.Sprintf("%s-%d-%d", Params.CommonCfg.DataNodeSubName, nodeID, collectionID)
 }
 
 func (c *ChannelManager) unsubscribe(subName string, channel string) error {
@@ -312,7 +312,7 @@ func (c *ChannelManager) Watch(ch *channel) error {
 	if len(updates) == 0 {
 		return nil
 	}
-	log.Debug("watch channel",
+	log.Info("watch channel",
 		zap.Any("channel", ch),
 		zap.Array("updates", updates))
 
@@ -327,7 +327,7 @@ func (c *ChannelManager) Watch(ch *channel) error {
 			zap.String("channelName", ch.Name), zap.Error(err))
 		return err
 	}
-	log.Debug("ChannelManager RWChannelStore update success", zap.Int64("collectionID", ch.CollectionID),
+	log.Info("ChannelManager RWChannelStore update success", zap.Int64("collectionID", ch.CollectionID),
 		zap.String("channelName", ch.Name))
 	return nil
 }

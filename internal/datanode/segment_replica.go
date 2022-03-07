@@ -52,9 +52,9 @@ type Replica interface {
 
 	listAllSegmentIDs() []UniqueID
 	addNewSegment(segID, collID, partitionID UniqueID, channelName string, startPos, endPos *internalpb.MsgPosition) error
-	addNormalSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlog []*datapb.FieldBinlog, cp *segmentCheckPoint) error
+	addNormalSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlog []*datapb.FieldBinlog, cp *segmentCheckPoint, recoverTs Timestamp) error
 	filterSegments(channelName string, partitionID UniqueID) []*Segment
-	addFlushedSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlog []*datapb.FieldBinlog) error
+	addFlushedSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlog []*datapb.FieldBinlog, recoverTs Timestamp) error
 	listNewSegmentsStartPositions() []*datapb.SegmentStartPosition
 	listSegmentsCheckPoints() map[UniqueID]segmentCheckPoint
 	updateSegmentEndPosition(segID UniqueID, endPos *internalpb.MsgPosition)
@@ -240,7 +240,7 @@ func (replica *SegmentReplica) addNewSegment(segID, collID, partitionID UniqueID
 		return fmt.Errorf("mismatch collection, ID=%d", collID)
 	}
 
-	log.Debug("Add new segment",
+	log.Info("Add new segment",
 		zap.Int64("segment ID", segID),
 		zap.Int64("collection ID", collID),
 		zap.Int64("partition ID", partitionID),
@@ -322,7 +322,7 @@ func (replica *SegmentReplica) filterSegments(channelName string, partitionID Un
 
 // addNormalSegment adds a *NotNew* and *NotFlushed* segment. Before add, please make sure there's no
 // such segment by `hasSegment`
-func (replica *SegmentReplica) addNormalSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlogs []*datapb.FieldBinlog, cp *segmentCheckPoint) error {
+func (replica *SegmentReplica) addNormalSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlogs []*datapb.FieldBinlog, cp *segmentCheckPoint, recoverTs Timestamp) error {
 	if collID != replica.collectionID {
 		log.Warn("Mismatch collection",
 			zap.Int64("input ID", collID),
@@ -330,7 +330,7 @@ func (replica *SegmentReplica) addNormalSegment(segID, collID, partitionID Uniqu
 		return fmt.Errorf("mismatch collection, ID=%d", collID)
 	}
 
-	log.Debug("Add Normal segment",
+	log.Info("Add Normal segment",
 		zap.Int64("segment ID", segID),
 		zap.Int64("collection ID", collID),
 		zap.Int64("partition ID", partitionID),
@@ -352,7 +352,7 @@ func (replica *SegmentReplica) addNormalSegment(segID, collID, partitionID Uniqu
 		seg.checkPoint = *cp
 		seg.endPos = &cp.pos
 	}
-	err := replica.initPKBloomFilter(seg, statsBinlogs)
+	err := replica.initPKBloomFilter(seg, statsBinlogs, recoverTs)
 	if err != nil {
 		return err
 	}
@@ -370,7 +370,7 @@ func (replica *SegmentReplica) addNormalSegment(segID, collID, partitionID Uniqu
 
 // addFlushedSegment adds a *Flushed* segment. Before add, please make sure there's no
 // such segment by `hasSegment`
-func (replica *SegmentReplica) addFlushedSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlogs []*datapb.FieldBinlog) error {
+func (replica *SegmentReplica) addFlushedSegment(segID, collID, partitionID UniqueID, channelName string, numOfRows int64, statsBinlogs []*datapb.FieldBinlog, recoverTs Timestamp) error {
 
 	if collID != replica.collectionID {
 		log.Warn("Mismatch collection",
@@ -379,7 +379,7 @@ func (replica *SegmentReplica) addFlushedSegment(segID, collID, partitionID Uniq
 		return fmt.Errorf("mismatch collection, ID=%d", collID)
 	}
 
-	log.Debug("Add Flushed segment",
+	log.Info("Add Flushed segment",
 		zap.Int64("segment ID", segID),
 		zap.Int64("collection ID", collID),
 		zap.Int64("partition ID", partitionID),
@@ -399,7 +399,7 @@ func (replica *SegmentReplica) addFlushedSegment(segID, collID, partitionID Uniq
 		maxPK:    math.MinInt64, // use min value represents no value
 	}
 
-	err := replica.initPKBloomFilter(seg, statsBinlogs)
+	err := replica.initPKBloomFilter(seg, statsBinlogs, recoverTs)
 	if err != nil {
 		return err
 	}
@@ -414,11 +414,9 @@ func (replica *SegmentReplica) addFlushedSegment(segID, collID, partitionID Uniq
 	return nil
 }
 
-func (replica *SegmentReplica) initPKBloomFilter(s *Segment, statsBinlogs []*datapb.FieldBinlog) error {
-	if len(statsBinlogs) == 0 {
-		log.Info("statsBinlogs is empty")
-	}
-	schema, err := replica.getCollectionSchema(s.collectionID, 0)
+func (replica *SegmentReplica) initPKBloomFilter(s *Segment, statsBinlogs []*datapb.FieldBinlog, ts Timestamp) error {
+	log.Info("begin to init pk bloom filter", zap.Int("stats bin logs", len(statsBinlogs)))
+	schema, err := replica.getCollectionSchema(s.collectionID, ts)
 	if err != nil {
 		return err
 	}
@@ -445,6 +443,7 @@ func (replica *SegmentReplica) initPKBloomFilter(s *Segment, statsBinlogs []*dat
 
 	values, err := replica.minIOKV.MultiLoad(bloomFilterFiles)
 	if err != nil {
+		log.Warn("failed to load bloom filter files", zap.Error(err))
 		return err
 	}
 	blobs := make([]*Blob, 0)
@@ -454,6 +453,7 @@ func (replica *SegmentReplica) initPKBloomFilter(s *Segment, statsBinlogs []*dat
 
 	stats, err := storage.DeserializeStats(blobs)
 	if err != nil {
+		log.Warn("failed to deserialize bloom filter files", zap.Error(err))
 		return err
 	}
 	for _, stat := range stats {
@@ -559,7 +559,7 @@ func (replica *SegmentReplica) removeSegments(segIDs ...UniqueID) {
 	replica.segMu.Lock()
 	defer replica.segMu.Unlock()
 
-	log.Debug("remove segments if exist", zap.Int64s("segmentIDs", segIDs))
+	log.Info("remove segments if exist", zap.Int64s("segmentIDs", segIDs))
 
 	for _, segID := range segIDs {
 		if seg, ok := replica.newSegments[segID]; ok {
@@ -611,7 +611,7 @@ func (replica *SegmentReplica) updateStatistics(segID UniqueID, numRows int64) {
 	replica.segMu.Lock()
 	defer replica.segMu.Unlock()
 
-	log.Debug("updating segment", zap.Int64("Segment ID", segID), zap.Int64("numRows", numRows))
+	log.Info("updating segment", zap.Int64("Segment ID", segID), zap.Int64("numRows", numRows))
 	if seg, ok := replica.newSegments[segID]; ok {
 		seg.memorySize = 0
 		seg.numRows += numRows
@@ -709,7 +709,7 @@ func (replica *SegmentReplica) mergeFlushedSegments(segID, collID, partID, planI
 		return
 	}
 
-	log.Debug("merge flushed segments",
+	log.Info("merge flushed segments",
 		zap.Int64("planID", planID),
 		zap.Int64("compacted To segmentID", segID),
 		zap.Int64s("compacted From segmentIDs", compactedFrom),
@@ -763,7 +763,7 @@ func (replica *SegmentReplica) addFlushedSegmentWithPKs(segID, collID, partID Un
 		return
 	}
 
-	log.Debug("Add Flushed segment",
+	log.Info("Add Flushed segment",
 		zap.Int64("segment ID", segID),
 		zap.Int64("collection ID", collID),
 		zap.Int64("partition ID", partID),

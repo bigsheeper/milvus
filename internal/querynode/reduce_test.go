@@ -77,7 +77,7 @@ func TestReduce_AllFunc(t *testing.T) {
 	placeholderGroups = append(placeholderGroups, holder)
 
 	searchResults := make([]*SearchResult, 0)
-	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{0})
+	searchResult, err := segment.search(UniqueID(0), plan, placeholderGroups, []Timestamp{0})
 	assert.Nil(t, err)
 	searchResults = append(searchResults, searchResult)
 

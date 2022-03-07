@@ -284,7 +284,8 @@ func (s *Segment) getMemSize() int64 {
 	return int64(memoryUsageInBytes)
 }
 
-func (s *Segment) search(plan *SearchPlan,
+func (s *Segment) search(searchMsgID UniqueID,
+	plan *SearchPlan,
 	searchRequests []*searchRequest,
 	timestamp []Timestamp) (*SearchResult, error) {
 	/*
@@ -313,10 +314,17 @@ func (s *Segment) search(plan *SearchPlan,
 	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
 	tr := timerecord.NewTimeRecorder("cgoSearch")
 	status := C.Search(s.segmentPtr, plan.cSearchPlan, cPlaceHolderGroup, ts, &searchResult.cSearchResult, C.int64_t(s.segmentID))
-	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	cgoSearchDuration := tr.ElapseSpan().Microseconds()
+	fmt.Println("==========================", cgoSearchDuration)
+	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(cgoSearchDuration))
 	if err := HandleCStatus(&status, "Search failed"); err != nil {
 		return nil, err
 	}
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "cgo-search"),
+		zap.Int64(log.PerfCollectionID, s.collectionID),
+		zap.Int64(log.PerfMsgID, searchMsgID),
+		zap.Int64(log.PerfDuration, cgoSearchDuration),
+		zap.Int64(log.PerfSegmentID, s.segmentID))
 
 	return &searchResult, nil
 }

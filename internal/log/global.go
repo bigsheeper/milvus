@@ -19,12 +19,14 @@ import (
 )
 
 const (
-	BenchmarkRoot         = "benchmark-search"
-	BenchmarkRole         = "Role"
-	BenchmarkStep         = "Step"
-	BenchmarkMsgID        = "MsgID"
-	BenchmarkCollectionID = "CollectionID"
-	BenchmarkDuration     = "Duration"
+	PerfSearchRoot   = "perf-search"
+	PerfRole         = "Role"
+	PerfStep         = "Step"
+	PerfMsgID        = "MsgID"
+	PerfCollectionID = "CollectionID"
+	PerfPartitionID  = "PartitionID"
+	PerfSegmentID    = "SegmentID"
+	PerfDuration     = "Duration"
 )
 
 // Debug logs a message at DebugLevel. The message includes any fields passed

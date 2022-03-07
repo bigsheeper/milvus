@@ -470,9 +470,9 @@ func (q *queryCollection) receiveQueryMsg(msg queryMsg) error {
 		//	zap.Any("collectionID", collectionID),
 		//	zap.Int64("msgID", msg.ID()),
 		//)
-		log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "QueryNode-Receive"),
-			zap.Int64(log.BenchmarkCollectionID, collectionID),
-			zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, time.Now().UnixNano()))
+		log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "QueryNode-Receive"),
+			zap.Int64(log.PerfCollectionID, collectionID),
+			zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, time.Now().UnixNano()))
 
 	default:
 		err := fmt.Errorf("receive invalid msgType = %d", msgType)
@@ -993,16 +993,19 @@ func translateHits(schema *typeutil.SchemaHelper, fieldIDs []int64, rawHits [][]
 		}
 	}
 
-	metrics.QueryNodeTranslateHitsLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	translateHitsDuration := tr.ElapseSpan().Microseconds()
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "translateHits"),
+		zap.Int64(log.PerfDuration, translateHitsDuration))
+	metrics.QueryNodeTranslateHitsLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(translateHitsDuration))
 	return finalResult, nil
 }
 
 // TODO:: cache map[dsl]plan
 // TODO: reBatched search requests
 func (q *queryCollection) search(msg queryMsg) error {
-	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "UnresolvedQueue"),
-		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
-		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, msg.ElapseSpan().Milliseconds()))
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "UnresolvedQueue"),
+		zap.Int64(log.PerfCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
+		zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, msg.ElapseSpan().Microseconds()))
 	q.streaming.replica.queryRLock()
 	q.historical.replica.queryRLock()
 	defer q.historical.replica.queryRUnlock()
@@ -1087,7 +1090,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}()
 	// historical search
 	log.Debug("historical search start", zap.Int64("msgID", searchMsg.ID()))
-	hisSearchResults, sealedSegmentSearched, sealedPartitionSearched, err := q.historical.search(searchRequests, collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
+	hisSearchResults, sealedSegmentSearched, sealedPartitionSearched, err := q.historical.search(msg.ID(), searchRequests, collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
 	if err != nil {
 		return err
 	}
@@ -1095,13 +1098,13 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	log.Debug("historical search", zap.Int64("msgID", searchMsg.ID()), zap.Int64("collectionID", collectionID), zap.Int64s("searched partitionIDs", sealedPartitionSearched), zap.Int64s("searched segmentIDs", sealedSegmentSearched))
 	hisSearchDur := tr.Record(fmt.Sprintf("historical search done, msgID = %d", searchMsg.ID()))
-	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "HistoricalSearch"),
-		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
-		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, hisSearchDur.Milliseconds()))
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "HistoricalSearch"),
+		zap.Int64(log.PerfCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
+		zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, hisSearchDur.Microseconds()))
 
 	log.Debug("streaming search start", zap.Int64("msgID", searchMsg.ID()))
 	for _, channel := range collection.getVChannels() {
-		strSearchResults, growingSegmentSearched, growingPartitionSearched, err := q.streaming.search(searchRequests, collection.id, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
+		strSearchResults, growingSegmentSearched, growingPartitionSearched, err := q.streaming.search(msg.ID(), searchRequests, collection.id, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
 		if err != nil {
 			return err
 		}
@@ -1109,9 +1112,9 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Debug("streaming search", zap.Int64("msgID", searchMsg.ID()), zap.Int64("collectionID", collectionID), zap.String("searched dmChannel", channel), zap.Int64s("searched partitionIDs", growingPartitionSearched), zap.Int64s("searched segmentIDs", growingSegmentSearched))
 	}
 	streamingSearchDuration := tr.Record(fmt.Sprintf("streaming search done, msgID = %d", searchMsg.ID()))
-	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "StreamingSearch"),
-		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
-		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, streamingSearchDuration.Milliseconds()))
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "StreamingSearch"),
+		zap.Int64(log.PerfCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
+		zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, streamingSearchDuration.Microseconds()))
 
 	sp.LogFields(oplog.String("statistical time", "segment search end"))
 	if len(searchResults) <= 0 {
@@ -1181,10 +1184,10 @@ func (q *queryCollection) search(msg queryMsg) error {
 	if err != nil {
 		return err
 	}
-	reduceTime := tr.RecordSpan().Milliseconds()
-	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "QNReduceSearchResults"),
-		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
-		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, reduceTime))
+	reduceTime := tr.RecordSpan().Microseconds()
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "QNReduceSearchResults"),
+		zap.Int64(log.PerfCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
+		zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, reduceTime))
 	metrics.QueryNodeReduceLatency.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(reduceTime))
 
 	var offset int64
@@ -1271,9 +1274,9 @@ func (q *queryCollection) search(msg queryMsg) error {
 			metrics.SearchLabel,
 			fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Inc()
 		publishResultDuration := tr.Record(fmt.Sprintf("publish search result, msgID = %d", searchMsg.ID()))
-		log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "PublishSearchResult"),
-			zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
-			zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, publishResultDuration.Milliseconds()))
+		log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "PublishSearchResult"),
+			zap.Int64(log.PerfCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
+			zap.Int64(log.PerfMsgID, msg.ID()), zap.Int64(log.PerfDuration, publishResultDuration.Microseconds()))
 	}
 	sp.LogFields(oplog.String("statistical time", "stats done"))
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", searchMsg.ID()))

@@ -533,7 +533,7 @@ func TestSegment_segmentSearch(t *testing.T) {
 	placeholderGroups = append(placeholderGroups, holder)
 
 	searchResults := make([]*SearchResult, 0)
-	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{travelTimestamp})
+	searchResult, err := segment.search(UniqueID(0), plan, placeholderGroups, []Timestamp{travelTimestamp})
 	assert.Nil(t, err)
 	searchResults = append(searchResults, searchResult)
 

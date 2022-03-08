@@ -2536,11 +2536,15 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel, metrics.SuccessLabel).Inc()
 	metrics.ProxySearchVectors.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
 		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel).Set(float64(qt.result.Results.NumQueries))
-	searchDur := tr.ElapseSpan().Milliseconds()
+	searchDur := tr.ElapseSpan()
 	metrics.ProxySearchLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
-		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel).Observe(float64(searchDur))
+		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel).Observe(float64(searchDur.Milliseconds()))
 	metrics.ProxySearchLatencyPerNQ.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
-		strconv.FormatInt(qt.CollectionID, 10)).Observe(float64(searchDur) / float64(qt.result.Results.NumQueries))
+		strconv.FormatInt(qt.CollectionID, 10)).Observe(float64(searchDur.Milliseconds()) / float64(qt.result.Results.NumQueries))
+
+	log.Debug(log.PerfSearchRoot, zap.String(log.PerfRole, typeutil.QueryNodeRole), zap.String(log.PerfStep, "server-search"),
+		zap.Int64(log.PerfCollectionID, UniqueID(0)),
+		zap.Int64(log.PerfMsgID, UniqueID(0)), zap.Int64(log.PerfDuration, searchDur.Microseconds()))
 	return qt.result, nil
 }
 

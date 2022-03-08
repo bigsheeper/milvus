@@ -1,21 +1,21 @@
-kind: IOChaos
+kind: StressChaos
 apiVersion: chaos-mesh.org/v1alpha1
 metadata:
-  name: test-etcd-io-latency
+  name: test-etcd-memory-stress
   namespace: chaos-testing
 spec:
   selector:
     namespaces:
       - chaos-testing
     labelSelectors:
-      app.kubernetes.io/name: etcd
       app.kubernetes.io/instance: milvus-chaos
+      app.kubernetes.io/name: etcd
   mode: all
-  action: latency
-  delay: 10ms
-  methods:
-    - read
-    - write
-    - flush
-  percent: 100
-  volumePath: /bitnami/etcd
+  stressors:
+    cpu:
+      workers: 4
+      load: 80
+    memory:
+      workers: 4
+      size: 2048Mi
+  duration: 5m

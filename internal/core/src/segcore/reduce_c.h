@@ -46,6 +46,19 @@ GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index);
 void
 GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query);
 
+CStatus
+Marshal(void* CSearchResultData,
+       CSearchResult* c_search_results,
+       int32_t num_segments,
+       int32_t* req_sizes,
+       int32_t num_nq_per_slice);
+
+int32_t
+GetSearchResultSize(void* CSearchResultData, int32_t l, int32_t r, int32_t slice_index); // TODO: get slice size?
+
+CStatus
+CopySearchResultData(void* data, void* CSearchResultData, int32_t l, int32_t r, int32_t slice_index);
+
 #ifdef __cplusplus
 }
 #endif

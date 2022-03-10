@@ -29,6 +29,7 @@
 #include "knowhere/common/MetricType.h"
 #include "pb/schema.pb.h"
 #include "utils/Types.h"
+#include "FieldMeta.h"
 
 namespace milvus {
 
@@ -86,7 +87,10 @@ struct SearchResult {
     void* segment_;
     std::vector<int64_t> result_offsets_;
     std::vector<int64_t> primary_keys_;
-    std::vector<std::vector<char>> row_data_;
+    std::vector<std::vector<char>> row_data_; // deprecated
+    std::vector<aligned_vector<char>> column_data_;
+//    std::vector<int64_t> element_sizeof_;
+    std::vector<FieldMeta> output_fields_meta_;
 };
 
 using SearchResultPtr = std::shared_ptr<SearchResult>;

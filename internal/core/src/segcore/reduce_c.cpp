@@ -154,6 +154,93 @@ ReduceResultData(std::vector<SearchResult*>& search_results, int64_t nq, int64_t
     }
 }
 
+void
+ReorganizeSearchResultsV2(std::vector<SearchResult*>& search_results,
+                          std::vector<float>& result_distances,
+                          std::vector<milvus::aligned_vector<char>>& result_column_data) {
+    auto sr = search_results[0];
+    auto topk = sr->topk_;
+    auto num_queries = sr->num_queries_;
+    auto num_segments = search_results.size();
+
+    int64_t total_count = 0;
+    for (int i = 0; i < num_segments; i++) {
+        auto search_result = search_results[i];
+        AssertInfo(search_result != nullptr, "search result must not equal to nullptr");
+        auto size = search_result->result_offsets_.size();
+        if (size == 0) {
+            continue;
+        }
+#pragma omp parallel for
+        for (int j = 0; j < size; j++) {
+            auto loc = search_result->result_offsets_[j];
+            result_distances[loc] = search_result->distances_[j];
+            for (int k = 0; k < size; k++) {
+                auto ele_size = search_result->output_fields_meta_[k].get_sizeof();
+                memcpy(&result_column_data[k][loc], &search_result->column_data_[k][j * ele_size], ele_size);
+            }
+        }
+        total_count += size;
+    }
+
+    AssertInfo(total_count == num_queries * topk, "the reduces result's size less than total_num_queries*topk");
+}
+
+CStatus
+Marshal(void* CSearchResultData,
+          CSearchResult* c_search_results,
+          int32_t num_segments,
+          int32_t* req_sizes,
+          int32_t num_nq_per_slice) {
+
+    // parse search results and get topk, nq
+    std::vector<SearchResult*> search_results;
+    for (int i = 0; i < num_segments; ++i) {
+        search_results.push_back(static_cast<SearchResult*>(c_search_results[i]));
+    }
+    AssertInfo(search_results.size() > 0, "empty search result when Marshal");
+    auto topk = search_results[0]->topk_;
+    auto nq = search_results[0]->num_queries_;
+
+    // get distances and row_datas
+    std::vector<float> result_distances(nq *topk);
+    std::vector<milvus::aligned_vector<char>> result_column_data; // TODO: init result_column_data
+    ReorganizeSearchResultsV2(search_results, result_distances, result_column_data);
+
+    auto search_result_data = std::make_unique<milvus::proto::schema::SearchResultData>();
+    // set topK and nq
+    search_result_data->set_top_k(topk);
+    search_result_data->set_num_queries(nq);
+
+    // set ids and scores
+    auto result_ids = std::make_unique<milvus::proto::schema::IDs>();
+    auto ids = std::make_unique<milvus::proto::schema::LongArray>();
+    // result_column_data[0] is ids column
+    *ids->mutable_data() = {result_column_data[0].begin(), result_column_data[0].end()};
+    result_ids->set_allocated_int_id(ids.release());
+    search_result_data->set_allocated_ids(result_ids.release());
+    *search_result_data->mutable_scores() = {result_distances.begin(), result_distances.end()};
+
+    // set output fields
+    for (int i = 1; i < result_column_data.size(); i++) {
+        auto field_data = std::make_unique<milvus::proto::schema::FieldData>();
+        if (!search_results[0]->output_fields_meta_[i].is_vector()) {
+            // scalar field
+            auto data_type = search_results[0]->output_fields_meta_[i].get_data_type();
+            auto scalars = milvus::segcore::CreateScalarArrayFrom(result_column_data[i].data(), 1, data_type);
+            field_data->set_allocated_scalars(scalars);
+        } else {
+            // vector field
+            auto field_meta = search_results[0]->output_fields_meta_[i];
+            auto vectors = milvus::segcore::CreateDataArrayFrom(result_column_data[i].data(), 1, field_meta);
+            field_data->set_allocated_vectors(vectors);
+        }
+        search_result_data->mutable_fields_data()->AddAllocated(field_data.release());
+    }
+
+    CSearchResultData = search_result_data.release();
+}
+
 CStatus
 ReduceSearchResultsAndFillData(CSearchPlan c_plan, CSearchResult* c_search_results, int64_t num_segments) {
     try {
@@ -204,7 +291,7 @@ ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits, CSearchResult* c_searc
 
         std::vector<int64_t> counts(num_segments);
         for (int i = 0; i < num_segments; i++) {
-            auto search_result = (SearchResult*)c_search_results[i];
+            auto search_result = static_cast<SearchResult*>(c_search_results[i]);
             AssertInfo(search_result != nullptr, "search result must not equal to nullptr");
             auto size = search_result->result_offsets_.size();
             if (size == 0) {

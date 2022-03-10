@@ -46,8 +46,8 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
     AssertInfo(results.ids_.size() == size, "Size of result distances is not equal to size of ids");
     Assert(results.row_data_.size() == 0);
 
-    std::vector<int64_t> element_sizeofs;
-    std::vector<aligned_vector<char>> blobs;
+//    std::vector<int64_t> element_sizeofs;
+//    std::vector<aligned_vector<char>> blobs;
 
     // fill row_ids
     {
@@ -62,36 +62,40 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
                        "Primary key field is not INT64 type");
             bulk_subscript(key_offset, results.ids_.data(), size, blob.data());
         }
-        blobs.emplace_back(std::move(blob));
-        element_sizeofs.push_back(sizeof(int64_t));
+        results.column_data_.emplace_back(std::move(blob));
+//        results.element_sizeof_.push_back(sizeof(int64_t));
+        auto id_field = FieldMeta(FieldName("id_field"), FieldId(-1), DataType::INT64);
+        results.output_fields_meta_.push_back(id_field);
     }
 
-    // fill other entries except primary key
+    // fill other entries except primary key by result_offset
     for (auto field_offset : plan->target_entries_) {
         auto& field_meta = get_schema()[field_offset];
         auto element_sizeof = field_meta.get_sizeof();
         aligned_vector<char> blob(size * element_sizeof);
         bulk_subscript(field_offset, results.ids_.data(), size, blob.data());
-        blobs.emplace_back(std::move(blob));
-        element_sizeofs.push_back(element_sizeof);
+        results.column_data_.emplace_back(std::move(blob));
+//        results.element_sizeof_.push_back(element_sizeof);
+        results.output_fields_meta_.push_back(field_meta);
     }
 
-    auto target_sizeof = std::accumulate(element_sizeofs.begin(), element_sizeofs.end(), 0);
-
-    for (int64_t i = 0; i < size; ++i) {
-        int64_t element_offset = 0;
-        std::vector<char> target(target_sizeof);
-        for (int loc = 0; loc < blobs.size(); ++loc) {
-            auto element_sizeof = element_sizeofs[loc];
-            auto blob_ptr = blobs[loc].data();
-            auto src = blob_ptr + element_sizeof * i;
-            auto dst = target.data() + element_offset;
-            memcpy(dst, src, element_sizeof);
-            element_offset += element_sizeof;
-        }
-        assert(element_offset == target_sizeof);
-        results.row_data_.emplace_back(std::move(target));
-    }
+    // deprecated
+//    auto target_sizeof = std::accumulate(element_sizeofs.begin(), element_sizeofs.end(), 0);
+//
+//    for (int64_t i = 0; i < size; ++i) {
+//        int64_t element_offset = 0;
+//        std::vector<char> target(target_sizeof);
+//        for (int loc = 0; loc < blobs.size(); ++loc) {
+//            auto element_sizeof = element_sizeofs[loc];
+//            auto blob_ptr = blobs[loc].data();
+//            auto src = blob_ptr + element_sizeof * i;
+//            auto dst = target.data() + element_offset;
+//            memcpy(dst, src, element_sizeof);
+//            element_offset += element_sizeof;
+//        }
+//        assert(element_offset == target_sizeof);
+//        results.row_data_.emplace_back(std::move(target));
+//    }
 }
 
 std::unique_ptr<SearchResult>

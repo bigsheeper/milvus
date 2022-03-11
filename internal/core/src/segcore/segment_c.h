@@ -25,6 +25,7 @@ extern "C" {
 
 typedef void* CSegmentInterface;
 typedef void* CSearchResult;
+typedef void* CSearchResultData;
 typedef CProto CRetrieveResult;
 
 //////////////////////////////    common interfaces    //////////////////////////////

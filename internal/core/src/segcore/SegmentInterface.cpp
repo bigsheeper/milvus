@@ -63,9 +63,9 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
             bulk_subscript(key_offset, results.ids_.data(), size, blob.data());
         }
         results.column_data_.emplace_back(std::move(blob));
-//        results.element_sizeof_.push_back(sizeof(int64_t));
-        auto id_field = FieldMeta(FieldName("id_field"), FieldId(-1), DataType::INT64);
-        results.output_fields_meta_.push_back(id_field);
+        results.output_fields_meta_.emplace_back(FieldMeta(FieldName("id_field"),
+                                                           FieldId(-1),
+                                                           DataType::INT64));
     }
 
     // fill other entries except primary key by result_offset
@@ -75,8 +75,7 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
         aligned_vector<char> blob(size * element_sizeof);
         bulk_subscript(field_offset, results.ids_.data(), size, blob.data());
         results.column_data_.emplace_back(std::move(blob));
-//        results.element_sizeof_.push_back(element_sizeof);
-        results.output_fields_meta_.push_back(field_meta);
+        results.output_fields_meta_.emplace_back(field_meta.copy());
     }
 
     // deprecated
@@ -166,7 +165,7 @@ CreateScalarArrayFrom(const void* data_raw, int64_t count, DataType data_type) {
     return scalar_array;
 }
 
-static std::unique_ptr<DataArray>
+std::unique_ptr<DataArray>
 CreateDataArrayFrom(const void* data_raw, int64_t count, const FieldMeta& field_meta) {
     auto data_type = field_meta.get_data_type();
     auto data_array = std::make_unique<DataArray>();

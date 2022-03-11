@@ -65,6 +65,34 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
+func marshal(searchResults []*SearchResult, numSegments int32, reqSizes []int32, numNQPerSlice int32) (unsafe.Pointer, error) {
+	/*
+	CStatus
+	Marshal(CSearchResultData* CSearchResultData,
+	       CSearchResult* c_search_results,
+	       int32_t num_segments,
+	       int32_t* req_sizes,
+	       int32_t num_nq_per_slice);
+	 */
+	cSearchResults := make([]C.CSearchResult, 0)
+	for _, res := range searchResults {
+		cSearchResults = append(cSearchResults, res.cSearchResult)
+	}
+	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
+
+	var cNumSegments = C.int32_t(numSegments)
+	var cReqSizesPtr = (*C.int32_t)(&reqSizes[0])
+	var cNumNQPerSlice = C.int32_t(numNQPerSlice)
+
+	var cSearchResultData C.CSearchResultData
+
+	status := C.Marshal(&cSearchResultData, cSearchResultPtr, cNumSegments, cReqSizesPtr, cNumNQPerSlice)
+	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 func reorganizeSearchResults(searchResults []*SearchResult, numSegments int64) (*MarshaledHits, error) {
 	cSearchResults := make([]C.CSearchResult, 0)
 	for _, res := range searchResults {

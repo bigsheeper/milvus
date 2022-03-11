@@ -13,6 +13,7 @@
 
 #include "common/Consts.h"
 #include "common/Types.h"
+#include "common/SearchResult.h"
 #include "segcore/Reduce.h"
 
 using milvus::SearchResult;

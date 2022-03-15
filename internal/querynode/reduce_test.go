@@ -17,6 +17,8 @@
 package querynode
 
 import (
+	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"log"
 	"math"
 	"testing"
@@ -109,6 +111,84 @@ func TestReduce_AllFunc(t *testing.T) {
 	holder.delete()
 	deleteSearchResults(searchResults)
 	deleteMarshaledHits(marshaledHits)
+	deleteSegment(segment)
+	deleteCollection(collection)
+}
+
+func TestReduce_marshal(t *testing.T) {
+	collectionID := UniqueID(0)
+	segmentID := UniqueID(0)
+	collectionMeta := genTestCollectionMeta(collectionID, false)
+
+	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
+	segment, err := newSegment(collection, segmentID, defaultPartitionID, collectionID, "", segmentTypeGrowing, true)
+	assert.Nil(t, err)
+
+	const DIM = 16
+	var vec = [DIM]float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	// start search service
+	dslString := "{\"bool\": { \n\"vector\": {\n \"vec\": {\n \"metric_type\": \"L2\", \n \"params\": {\n \"nprobe\": 10 \n},\n \"query\": \"$0\",\n \"topk\": 10 \n,\"round_decimal\": 6\n } \n } \n } \n }"
+	var searchRawData1 []byte
+	var searchRawData2 []byte
+	for i, ele := range vec {
+		buf := make([]byte, 4)
+		common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*2)))
+		searchRawData1 = append(searchRawData1, buf...)
+	}
+	for i, ele := range vec {
+		buf := make([]byte, 4)
+		common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*4)))
+		searchRawData2 = append(searchRawData2, buf...)
+	}
+	placeholderValue := milvuspb.PlaceholderValue{
+		Tag:    "$0",
+		Type:   milvuspb.PlaceholderType_FloatVector,
+		Values: [][]byte{searchRawData1, searchRawData2},
+	}
+
+	placeholderGroup := milvuspb.PlaceholderGroup{
+		Placeholders: []*milvuspb.PlaceholderValue{&placeholderValue},
+	}
+
+	placeGroupByte, err := proto.Marshal(&placeholderGroup)
+	if err != nil {
+		log.Print("marshal placeholderGroup failed")
+	}
+
+	plan, err := createSearchPlan(collection, dslString)
+	assert.NoError(t, err)
+	holder, err := parseSearchRequest(plan, placeGroupByte)
+	assert.NoError(t, err)
+	placeholderGroups := make([]*searchRequest, 0)
+	placeholderGroups = append(placeholderGroups, holder)
+
+	searchResults := make([]*SearchResult, 0)
+	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{0})
+	assert.Nil(t, err)
+	searchResults = append(searchResults, searchResult)
+
+	err = reduceSearchResultsAndFillData(plan, searchResults, 1)
+	assert.Nil(t, err)
+
+	res, err := marshal(searchResults, 1, []int32{1,2}, 1)
+	assert.NoError(t, err)
+
+	result := new(schemapb.SearchResultData)
+	err = HandleCProto(res, result)
+	assert.NoError(t, err)
+
+	expectTopK := 10
+	expectNQ := 2
+	assert.Equal(t, expectTopK, int(result.TopK))
+	assert.Equal(t, expectNQ, int(result.NumQueries))
+	fmt.Println(result.Ids)
+	assert.Equal(t, expectTopK * expectNQ, len(result.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
+	assert.Equal(t, expectTopK * expectNQ, len(result.Scores))
+
+	plan.delete()
+	holder.delete()
+	deleteSearchResults(searchResults)
 	deleteSegment(segment)
 	deleteCollection(collection)
 }

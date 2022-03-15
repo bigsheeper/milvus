@@ -571,6 +571,7 @@ func (q *queryCollection) receiveQueryMsg(msg queryMsg) error {
 		err = q.retrieve(msg)
 	case commonpb.MsgType_Search:
 		err = q.search(msg)
+		err = q.searchOld(msg)
 	default:
 		err = fmt.Errorf("receive invalid msgType = %d", msgType)
 		return err
@@ -688,6 +689,7 @@ func (q *queryCollection) doUnsolvedQueryMsg() {
 					metrics.QueryNodeSQLatencyInQueue.WithLabelValues(metrics.SearchLabel,
 						fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(m.RecordSpan().Milliseconds()))
 					err = q.search(m)
+					err = q.searchOld(m)
 				default:
 					err := fmt.Errorf("receive invalid msgType = %d", msgType)
 					log.Warn(err.Error())
@@ -1021,11 +1023,6 @@ func (q *queryCollection) search(msg queryMsg) error {
 		return err
 	}
 
-	schema, err := typeutil.CreateSchemaHelper(collection.schema)
-	if err != nil {
-		return err
-	}
-
 	var plan *SearchPlan
 	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
 		expr := searchMsg.SerializedExprPlan
@@ -1083,7 +1080,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 
 	searchResults := make([]*SearchResult, 0)
 	defer func() {
-		deleteSearchResults(searchResults)
+		//deleteSearchResults(searchResults)
 	}()
 	// historical search
 	log.Debug("historical search start", zap.Int64("msgID", searchMsg.ID()))
@@ -1159,7 +1156,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 
 	numSegment := int64(len(searchResults))
-	var marshaledHits *MarshaledHits
+
 	log.Debug("QueryNode reduce data", zap.Int64("msgID", searchMsg.ID()), zap.Int64("numSegment", numSegment))
 	tr.RecordSpan()
 	err = reduceSearchResultsAndFillData(plan, searchResults, numSegment)
@@ -1169,57 +1166,51 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
-	marshaledHits, err = reorganizeSearchResults(searchResults, numSegment)
+	srd, err := marshal(searchResults, int32(numSegment), []int32{1,2,3}, 1)
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err
 	}
-	defer deleteMarshaledHits(marshaledHits)
 
-	hitsBlob, err := marshaledHits.getHitsBlob()
-	sp.LogFields(oplog.String("statistical time", "getHitsBlob end"))
+	// TODO: tmp check, delete this
+	tmpRes := new(schemapb.SearchResultData)
+	err = HandleCProto(srd, tmpRes)
 	if err != nil {
-		return err
+		panic(err)
 	}
+
+	blob, err := proto.Marshal(tmpRes)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("[go search result] nq = ", tmpRes.NumQueries)
+	fmt.Println("[go search result] topK = ", tmpRes.TopK)
+	fmt.Println("[go search result] ids size = ", len(tmpRes.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
+	fmt.Println("[go search result] scores size = ", len(tmpRes.Scores))
+	fmt.Println("[go search result] ids = ", tmpRes.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data)
+	fmt.Println("[go search result] scores = ", tmpRes.Scores)
+
+	if len(tmpRes.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data) != int(queryNum * topK) {
+		panic(fmt.Errorf("ids error"))
+	}
+	if len(tmpRes.Scores) != int(queryNum * topK) {
+		panic(fmt.Errorf("scores error"))
+	}
+	if tmpRes.TopK != topK {
+		panic("topK error")
+	}
+	if tmpRes.NumQueries != queryNum {
+		panic("nq error")
+	}
+
 	reduceTime := tr.RecordSpan()
 	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "QNReduceSearchResults"),
 		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
 		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, reduceTime.Microseconds()))
 	metrics.QueryNodeReduceLatency.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(reduceTime.Milliseconds()))
 
-	var offset int64
-	for index := range searchRequests {
-		hitBlobSizePeerQuery, err := marshaledHits.hitBlobSizeInGroup(int64(index))
-		if err != nil {
-			return err
-		}
-		hits := make([][]byte, len(hitBlobSizePeerQuery))
-		for i, len := range hitBlobSizePeerQuery {
-			hits[i] = hitsBlob[offset : offset+len]
-			//test code to checkout marshaled hits
-			//marshaledHit := hitsBlob[offset:offset+len]
-			//unMarshaledHit := milvuspb.Hits{}
-			//err = proto.Unmarshal(marshaledHit, &unMarshaledHit)
-			//if err != nil {
-			//	return err
-			//}
-			//log.Debug("hits msg  = ", unMarshaledHit)
-			offset += len
-		}
-
-		// TODO: remove inefficient code in cgo and use SearchResultData directly
-		// TODO: Currently add a translate layer from hits to SearchResultData
-		// TODO: hits marshal and unmarshal is likely bottleneck
-
-		transformed, err := translateHits(schema, searchMsg.OutputFieldsId, hits)
-		if err != nil {
-			return err
-		}
-		byteBlobs, err := proto.Marshal(transformed)
-		if err != nil {
-			return err
-		}
-
+	for range searchRequests {
 		resultChannelInt := 0
 		searchResultMsg := &msgstream.SearchResultMsg{
 			BaseMsg: msgstream.BaseMsg{Ctx: searchMsg.Ctx, HashValues: []uint32{uint32(resultChannelInt)}},
@@ -1235,7 +1226,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 				MetricType:               plan.getMetricType(),
 				NumQueries:               queryNum,
 				TopK:                     topK,
-				SlicedBlob:               byteBlobs,
+				SlicedBlob:               blob,
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
 				SealedSegmentIDsSearched: sealedSegmentSearched,
@@ -1277,6 +1268,147 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 	sp.LogFields(oplog.String("statistical time", "stats done"))
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", searchMsg.ID()))
+	return nil
+}
+
+func (q *queryCollection) searchOld(msg queryMsg) error {
+	q.streaming.replica.queryRLock()
+	q.historical.replica.queryRLock()
+	defer q.historical.replica.queryRUnlock()
+	defer q.streaming.replica.queryRUnlock()
+
+	searchMsg := msg.(*msgstream.SearchMsg)
+	collectionID := searchMsg.CollectionID
+
+	travelTimestamp := searchMsg.TravelTimestamp
+
+	collection, err := q.streaming.replica.getCollectionByID(searchMsg.CollectionID)
+	if err != nil {
+		return err
+	}
+
+	schema, err := typeutil.CreateSchemaHelper(collection.schema)
+	if err != nil {
+		return err
+	}
+
+	var plan *SearchPlan
+	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
+		expr := searchMsg.SerializedExprPlan
+		plan, err = createSearchPlanByExpr(collection, expr)
+		if err != nil {
+			return err
+		}
+	} else {
+		dsl := searchMsg.Dsl
+		plan, err = createSearchPlan(collection, dsl)
+		if err != nil {
+			return err
+		}
+	}
+
+	defer plan.delete()
+
+	topK := plan.getTopK()
+	if topK == 0 {
+		return fmt.Errorf("limit must be greater than 0, msgID = %d", searchMsg.ID())
+	}
+	if topK >= 16385 {
+		return fmt.Errorf("limit %d is too large, msgID = %d", topK, searchMsg.ID())
+	}
+	searchRequestBlob := searchMsg.PlaceholderGroup
+	searchReq, err := parseSearchRequest(plan, searchRequestBlob)
+	if err != nil {
+		return err
+	}
+	defer searchReq.delete()
+
+	searchRequests := make([]*searchRequest, 0)
+	searchRequests = append(searchRequests, searchReq)
+
+	searchResults := make([]*SearchResult, 0)
+	defer func() {
+		deleteSearchResults(searchResults)
+	}()
+	// historical search
+	log.Debug("historical search start", zap.Int64("msgID", searchMsg.ID()))
+	hisSearchResults, sealedSegmentSearched, sealedPartitionSearched, err := q.historical.search(searchRequests, collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
+	if err != nil {
+		return err
+	}
+	searchResults = append(searchResults, hisSearchResults...)
+
+	log.Debug("historical search", zap.Int64("msgID", searchMsg.ID()), zap.Int64("collectionID", collectionID), zap.Int64s("searched partitionIDs", sealedPartitionSearched), zap.Int64s("searched segmentIDs", sealedSegmentSearched))
+
+	log.Debug("streaming search start", zap.Int64("msgID", searchMsg.ID()))
+	for _, channel := range collection.getVChannels() {
+		strSearchResults, growingSegmentSearched, growingPartitionSearched, err := q.streaming.search(searchRequests, collection.id, searchMsg.PartitionIDs, channel, plan, travelTimestamp)
+		if err != nil {
+			return err
+		}
+		searchResults = append(searchResults, strSearchResults...)
+		log.Debug("streaming search", zap.Int64("msgID", searchMsg.ID()), zap.Int64("collectionID", collectionID), zap.String("searched dmChannel", channel), zap.Int64s("searched partitionIDs", growingPartitionSearched), zap.Int64s("searched segmentIDs", growingSegmentSearched))
+	}
+
+	if len(searchResults) <= 0 {
+		return nil
+	}
+
+	numSegment := int64(len(searchResults))
+	var marshaledHits *MarshaledHits
+	log.Debug("QueryNode reduce data", zap.Int64("msgID", searchMsg.ID()), zap.Int64("numSegment", numSegment))
+	err = reduceSearchResultsAndFillData(plan, searchResults, numSegment)
+	log.Debug("QueryNode reduce data finished", zap.Int64("msgID", searchMsg.ID()))
+	if err != nil {
+		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
+		return err
+	}
+	marshaledHits, err = reorganizeSearchResults(searchResults, numSegment)
+	if err != nil {
+		return err
+	}
+	defer deleteMarshaledHits(marshaledHits)
+
+	hitsBlob, err := marshaledHits.getHitsBlob()
+	if err != nil {
+		return err
+	}
+
+	var offset int64
+	for index := range searchRequests {
+		hitBlobSizePeerQuery, err := marshaledHits.hitBlobSizeInGroup(int64(index))
+		if err != nil {
+			return err
+		}
+		hits := make([][]byte, len(hitBlobSizePeerQuery))
+		for i, len := range hitBlobSizePeerQuery {
+			hits[i] = hitsBlob[offset : offset+len]
+			offset += len
+		}
+
+		transformed, err := translateHits(schema, searchMsg.OutputFieldsId, hits)
+		if err != nil {
+			return err
+		}
+		fmt.Println("[expected result] nq = ", transformed.NumQueries)
+		fmt.Println("[expected result] topK = ", transformed.TopK)
+		fmt.Println("[expected result] ids size = ", len(transformed.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
+		fmt.Println("[expected result] scores size = ", len(transformed.Scores))
+		fmt.Println("[expected result] ids = ", transformed.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data)
+		fmt.Println("[expected result] scores = ", transformed.Scores)
+
+		// For debugging, please don't delete.
+		//fmt.Println("==================== search result ======================")
+		//for i := 0; i < len(hits); i++ {
+		//	testHits := milvuspb.Hits{}
+		//	err := proto.Unmarshal(hits[i], &testHits)
+		//	if err != nil {
+		//		panic(err)
+		//	}
+		//	fmt.Println(testHits.IDs)
+		//	fmt.Println(testHits.Scores)
+		//}
+	}
 	return nil
 }
 

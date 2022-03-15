@@ -326,8 +326,8 @@ func HandleCProto(cRes *C.CProto, msg proto.Message) error {
 	// Standalone CProto is protobuf created by C side,
 	// Passed from c side
 	// memory is managed manually
-	lease, blob := cgoconverter.UnsafeGoBytes(&cRes.proto_blob, int(cRes.proto_size))
-	defer cgoconverter.Release(lease)
+	_, blob := cgoconverter.UnsafeGoBytes(&cRes.proto_blob, int(cRes.proto_size))
+	//defer cgoconverter.Release(lease)
 
 	return proto.Unmarshal(blob, msg)
 }

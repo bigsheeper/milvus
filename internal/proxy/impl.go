@@ -2545,6 +2545,13 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.ProxyRole), zap.String(log.BenchmarkStep, "server search"),
 		zap.Int64(log.BenchmarkCollectionID, qt.CollectionID),
 		zap.Int64(log.BenchmarkMsgID, qt.ID()), zap.Int64(log.BenchmarkDuration, searchDur.Microseconds()))
+
+	fmt.Println("[proxy search result] nq = ", qt.result.Results.NumQueries)
+	fmt.Println("[proxy search result] topK = ", qt.result.Results.TopK)
+	fmt.Println("[proxy search result] ids size = ", len(qt.result.Results.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
+	fmt.Println("[proxy search result] scores size = ", len(qt.result.Results.Scores))
+	fmt.Println("[proxy search result] ids = ", qt.result.Results.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data)
+	fmt.Println("[proxy search result] scores = ", qt.result.Results.Scores)
 	return qt.result, nil
 }
 

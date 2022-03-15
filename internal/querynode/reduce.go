@@ -36,6 +36,8 @@ type SearchResult struct {
 	cSearchResult C.CSearchResult
 }
 
+type searchResultData = C.CSearchResultData
+
 // MarshaledHits contains a pointer to the marshaled hits in C++ memory
 type MarshaledHits struct {
 	cMarshaledHits C.CMarshaledHits
@@ -63,6 +65,36 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 		return err
 	}
 	return nil
+}
+
+func marshal(searchResults []*SearchResult, numSegments int32, reqSizes []int32, numNQPerSlice int32) (*searchResultData, error) {
+	/*
+	CStatus
+	Marshal(CSearchResultData* cSearchResultData,
+	          CSearchResult* c_search_results,
+	          int32_t num_segments,
+	          int32_t* req_sizes,
+	          int32_t req_sizes_size,
+	          int32_t num_nq_per_slice);
+	 */
+	cSearchResults := make([]C.CSearchResult, 0)
+	for _, res := range searchResults {
+		cSearchResults = append(cSearchResults, res.cSearchResult)
+	}
+	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
+
+	var cNumSegments = C.int32_t(numSegments)
+	var cReqSizesPtr = (*C.int32_t)(&reqSizes[0])
+	var cReqSizesSize = C.int32_t(len(reqSizes))
+	var cNumNQPerSlice = C.int32_t(numNQPerSlice)
+
+	var cSearchResultData C.CSearchResultData
+
+	status := C.Marshal(&cSearchResultData, cSearchResultPtr, cNumSegments, cReqSizesPtr, cReqSizesSize, cNumNQPerSlice)
+	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
+		return nil, err
+	}
+	return &cSearchResultData, nil
 }
 
 func reorganizeSearchResults(searchResults []*SearchResult, numSegments int64) (*MarshaledHits, error) {

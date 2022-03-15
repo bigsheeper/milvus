@@ -62,20 +62,28 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
                        "Primary key field is not INT64 type");
             bulk_subscript(key_offset, results.ids_.data(), size, blob.data());
         }
-        blobs.emplace_back(std::move(blob));
+        // TODO: deprecated >>>
+        blobs.emplace_back(blob);
         element_sizeofs.push_back(sizeof(int64_t));
+        // TODO: deprecated >>>
+        results.ids_data_ = std::move(blob);
     }
 
-    // fill other entries except primary key
+    // fill other entries except primary key by result_offset
     for (auto field_offset : plan->target_entries_) {
         auto& field_meta = get_schema()[field_offset];
         auto element_sizeof = field_meta.get_sizeof();
         aligned_vector<char> blob(size * element_sizeof);
         bulk_subscript(field_offset, results.ids_.data(), size, blob.data());
-        blobs.emplace_back(std::move(blob));
+        // TODO: deprecated >>>
+        blobs.emplace_back(blob);
         element_sizeofs.push_back(element_sizeof);
+        // TODO: deprecated >>>
+        results.output_fields_data_.emplace_back(std::move(blob));
+        results.output_fields_meta_.emplace_back(field_meta.copy());
     }
 
+    // deprecated
     auto target_sizeof = std::accumulate(element_sizeofs.begin(), element_sizeofs.end(), 0);
 
     for (int64_t i = 0; i < size; ++i) {
@@ -162,7 +170,7 @@ CreateScalarArrayFrom(const void* data_raw, int64_t count, DataType data_type) {
     return scalar_array;
 }
 
-static std::unique_ptr<DataArray>
+std::unique_ptr<DataArray>
 CreateDataArrayFrom(const void* data_raw, int64_t count, const FieldMeta& field_meta) {
     auto data_type = field_meta.get_data_type();
     auto data_array = std::make_unique<DataArray>();

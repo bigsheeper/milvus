@@ -29,6 +29,8 @@
 #include "segcore/reduce_c.h"
 #include "test_utils/DataGen.h"
 #include "utils/Types.h"
+#include "common/Types.h"
+#include "common/SearchResult.h"
 
 namespace chrono = std::chrono;
 
@@ -777,6 +779,83 @@ TEST(CApiTest, ReduceSearchWithExpr) {
     DeleteSearchResult(res1);
     DeleteSearchResult(res2);
     DeleteMarshaledHits(reorganize_search_result);
+    DeleteCollection(collection);
+    DeleteSegment(segment);
+}
+
+TEST(CApiTest, ReduceSearchWithExprV2) {
+    auto collection = NewCollection(get_default_schema_config());
+    auto segment = NewSegment(collection, Growing, -1);
+
+    int N = 10000;
+    auto [raw_data, timestamps, uids] = generate_data(N);
+    auto line_sizeof = (sizeof(int) + sizeof(float) * DIM);
+
+    int64_t offset;
+    PreInsert(segment, N, &offset);
+    auto ins_res = Insert(segment, offset, N, uids.data(), timestamps.data(), raw_data.data(), (int)line_sizeof, N);
+    assert(ins_res.error_code == Success);
+
+    const char* serialized_expr_plan = R"(vector_anns: <
+                                            field_id: 100
+                                            query_info: <
+                                                topk: 10
+                                                metric_type: "L2"
+                                                search_params: "{\"nprobe\": 10}"
+                                            >
+                                            placeholder_tag: "$0">
+                                            output_field_ids: 100)";
+
+    int topK = 10;
+    int num_queries = 10;
+    auto blob = generate_query_data(num_queries);
+
+    void* plan = nullptr;
+    auto binary_plan = translate_text_plan_to_binary_plan(serialized_expr_plan);
+    auto status = CreateSearchPlanByExpr(collection, binary_plan.data(), binary_plan.size(), &plan);
+    assert(status.error_code == Success);
+
+    void* placeholderGroup = nullptr;
+    status = ParsePlaceholderGroup(plan, blob.data(), blob.length(), &placeholderGroup);
+    assert(status.error_code == Success);
+
+    std::vector<CPlaceholderGroup> placeholderGroups;
+    placeholderGroups.push_back(placeholderGroup);
+    timestamps.clear();
+    timestamps.push_back(1);
+
+    std::vector<CSearchResult> results;
+    CSearchResult res1;
+    CSearchResult res2;
+    auto res = Search(segment, plan, placeholderGroup, timestamps[0], &res1, -1);
+    assert(res.error_code == Success);
+    res = Search(segment, plan, placeholderGroup, timestamps[0], &res2, -1);
+    assert(res.error_code == Success);
+    results.push_back(res1);
+    results.push_back(res2);
+
+    // 1. reduce
+    status = ReduceSearchResultsAndFillData(plan, results.data(), results.size());
+    assert(status.error_code == Success);
+
+    // 2. marshal
+    auto cSearchResultData = CProto{};
+    auto req_sizes = std::vector<int32_t>{1, 2};
+    status = Marshal(&cSearchResultData, results.data(), results.size(), req_sizes.data(), req_sizes.size(), 1);
+    assert(status.error_code == Success);
+
+    milvus::proto::schema::SearchResultData search_result_data;
+    auto suc = search_result_data.ParseFromArray(cSearchResultData.proto_blob, cSearchResultData.proto_size);
+    assert(suc);
+    assert(search_result_data.top_k() == topK);
+    assert(search_result_data.num_queries() == num_queries);
+    assert(search_result_data.scores().size() == topK * num_queries);
+    assert(search_result_data.ids().int_id().data_size() == topK * num_queries);
+
+    DeleteSearchPlan(plan);
+    DeletePlaceholderGroup(placeholderGroup);
+    DeleteSearchResult(res1);
+    DeleteSearchResult(res2);
     DeleteCollection(collection);
     DeleteSegment(segment);
 }

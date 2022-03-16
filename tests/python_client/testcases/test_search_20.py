@@ -797,19 +797,19 @@ class TestCollectionSearch(TestcaseBase):
     def nb(self, request):
         yield request.param
 
-    @pytest.fixture(scope="function", params=[2, 500])
+    @pytest.fixture(scope="function", params=[2])
     def nq(self, request):
         yield request.param
 
-    @pytest.fixture(scope="function", params=[8, 128])
+    @pytest.fixture(scope="function", params=[128])
     def dim(self, request):
         yield request.param
 
-    @pytest.fixture(scope="function", params=[False, True])
+    @pytest.fixture(scope="function", params=[True])
     def auto_id(self, request):
         yield request.param
 
-    @pytest.fixture(scope="function", params=[False, True])
+    @pytest.fixture(scope="function", params=[False])
     def _async(self, request):
         yield request.param
 

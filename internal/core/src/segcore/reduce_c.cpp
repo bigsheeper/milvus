@@ -15,6 +15,7 @@
 
 #include "common/Consts.h"
 #include "common/Types.h"
+#include "common/SearchResult.h"
 #include "exceptions/EasyAssert.h"
 #include "log/Log.h"
 #include "pb/milvus.pb.h"
@@ -151,6 +152,137 @@ ReduceResultData(std::vector<SearchResult*>& search_results, int64_t nq, int64_t
         search_result->primary_keys_ = primary_keys;
         search_result->distances_ = distances;
         search_result->ids_ = ids;
+    }
+}
+
+void
+ReorganizeSearchResultsV2(std::vector<SearchResult*>& search_results,
+                          milvus::aligned_vector<int64_t>& result_ids,
+                          std::vector<float>& result_distances,
+                          std::vector<milvus::aligned_vector<char>>& result_output_fields_data) {
+    auto sr = search_results[0];
+    auto topk = sr->topk_;
+    auto num_queries = sr->num_queries_;
+    auto num_segments = search_results.size();
+
+    int64_t total_count = 0;
+    for (int i = 0; i < num_segments; i++) {
+        auto search_result = search_results[i];
+        AssertInfo(search_result != nullptr, "search result must not equal to nullptr");
+        auto size = search_result->result_offsets_.size();
+        if (size == 0) {
+            continue;
+        }
+#pragma omp parallel for
+        for (int j = 0; j < size; j++) {
+            auto loc = search_result->result_offsets_[j];
+            // set id field
+            memcpy(&result_ids[loc], &search_result->ids_data_[j * 8], 8); // sizeof(int64_t) = 8
+            // set distance
+            result_distances[loc] = search_result->distances_[j];
+            // set output fields
+            for (int k = 0; k < search_result->output_fields_meta_.size(); k++) {
+                auto ele_size = search_result->output_fields_meta_[k].get_sizeof();
+                memcpy(&result_output_fields_data[k][loc * ele_size], &search_result->output_fields_data_[k][j * ele_size], ele_size);
+            }
+        }
+        total_count += size;
+    }
+
+    AssertInfo(total_count == num_queries * topk, "the reduces result's size less than total_num_queries*topk");
+}
+
+CStatus
+Marshal(CSearchResultData* cSearchResultData,
+          CSearchResult* c_search_results,
+          int32_t num_segments,
+          int32_t* req_sizes,
+          int32_t req_sizes_size,
+          int32_t num_nq_per_slice) {
+    try {
+        // parse search results and get topk, nq
+        std::vector<SearchResult*> search_results(num_segments);
+        for (int i = 0; i < num_segments; ++i) {
+            search_results[i] = static_cast<SearchResult*>(c_search_results[i]);
+        }
+        AssertInfo(search_results.size() > 0, "empty search result when Marshal");
+        auto topk = search_results[0]->topk_;
+        auto nq = search_results[0]->num_queries_;
+
+        // init result ids, distances and output fields
+        milvus::aligned_vector<int64_t> result_ids(topk * nq);
+        std::vector<float> result_distances(topk * nq);
+        auto output_fields_size = search_results[0]->output_fields_meta_.size();
+        std::vector<milvus::aligned_vector<char>> result_output_fields_data(output_fields_size);
+        for(int i = 0; i < output_fields_size; i++) {
+            auto size = search_results[0]->output_fields_meta_[i].get_sizeof();
+            result_output_fields_data[i].resize(size * topk * nq);
+        }
+
+        // prefix sum, get req offsets
+        auto req_offsets = std::vector<int32_t>(req_sizes_size);
+        AssertInfo(req_sizes_size > 0, "empty req_sizes is not allowed");
+        req_offsets[0] = req_sizes[0];
+        for (int i = 1; i < req_sizes_size; i++) {
+            req_offsets[i] = req_offsets[i-1] + req_sizes[i];
+        }
+
+        // get distances and result_output_fields_data
+        ReorganizeSearchResultsV2(search_results, result_ids, result_distances, result_output_fields_data);
+
+        auto search_result_data = std::make_unique<milvus::proto::schema::SearchResultData>();
+        // set topK and nq
+        search_result_data->set_top_k(topk);
+        search_result_data->set_num_queries(nq);
+
+        // set ids and scores
+        auto proto_ids = std::make_unique<milvus::proto::schema::IDs>();
+        auto ids = std::make_unique<milvus::proto::schema::LongArray>();
+
+        // result_output_fields_data[0] is id field
+        *ids->mutable_data() = {result_ids.begin(), result_ids.end()};
+        proto_ids->set_allocated_int_id(ids.release());
+        search_result_data->set_allocated_ids(proto_ids.release());
+        *search_result_data->mutable_scores() = {result_distances.begin(), result_distances.end()};
+
+        // set output fields
+        for (int i = 0; i < result_output_fields_data.size(); i++) {
+            auto& field_meta = search_results[0]->output_fields_meta_[i];
+            auto array = milvus::segcore::CreateDataArrayFrom(result_output_fields_data[i].data(), nq * topk, field_meta);
+            search_result_data->mutable_fields_data()->AddAllocated(array.release());
+        }
+
+        auto size = search_result_data->ByteSize();
+        void* buffer = malloc(size);
+        search_result_data->SerializePartialToArray(buffer, size);
+
+        cSearchResultData->proto_blob = buffer;
+        cSearchResultData->proto_size = size;
+
+        auto status = CStatus();
+        status.error_code = Success;
+        status.error_msg = "";
+        return status;
+    } catch (std::exception& e) {
+        auto status = CStatus();
+        status.error_code = UnexpectedError;
+        status.error_msg = strdup(e.what());
+        return status;
+    }
+}
+
+CStatus
+CopySearchResultData(void** data, int64_t* dataSize, CSearchResultData cSearchResultData, int32_t l, int32_t r, int32_t slice_index) {
+    try {
+        auto status = CStatus();
+        status.error_code = Success;
+        status.error_msg = "";
+        return status;
+    } catch (std::exception& e) {
+        auto status = CStatus();
+        status.error_code = UnexpectedError;
+        status.error_msg = strdup(e.what());
+        return status;
     }
 }
 

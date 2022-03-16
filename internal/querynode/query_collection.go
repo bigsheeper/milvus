@@ -1021,11 +1021,6 @@ func (q *queryCollection) search(msg queryMsg) error {
 		return err
 	}
 
-	schema, err := typeutil.CreateSchemaHelper(collection.schema)
-	if err != nil {
-		return err
-	}
-
 	var plan *SearchPlan
 	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
 		expr := searchMsg.SerializedExprPlan
@@ -1159,7 +1154,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 
 	numSegment := int64(len(searchResults))
-	var marshaledHits *MarshaledHits
+
 	log.Debug("QueryNode reduce data", zap.Int64("msgID", searchMsg.ID()), zap.Int64("numSegment", numSegment))
 	tr.RecordSpan()
 	err = reduceSearchResultsAndFillData(plan, searchResults, numSegment)
@@ -1169,57 +1164,19 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
-	marshaledHits, err = reorganizeSearchResults(searchResults, numSegment)
+	srd, err := marshal(searchResults, int32(numSegment), []int32{1,2,3}, 1)
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err
 	}
-	defer deleteMarshaledHits(marshaledHits)
 
-	hitsBlob, err := marshaledHits.getHitsBlob()
-	sp.LogFields(oplog.String("statistical time", "getHitsBlob end"))
-	if err != nil {
-		return err
-	}
 	reduceTime := tr.RecordSpan()
 	log.Debug(log.BenchmarkRoot, zap.String(log.BenchmarkRole, typeutil.QueryNodeRole), zap.String(log.BenchmarkStep, "QNReduceSearchResults"),
 		zap.Int64(log.BenchmarkCollectionID, msg.(*msgstream.SearchMsg).CollectionID),
 		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, reduceTime.Microseconds()))
 	metrics.QueryNodeReduceLatency.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(reduceTime.Milliseconds()))
 
-	var offset int64
-	for index := range searchRequests {
-		hitBlobSizePeerQuery, err := marshaledHits.hitBlobSizeInGroup(int64(index))
-		if err != nil {
-			return err
-		}
-		hits := make([][]byte, len(hitBlobSizePeerQuery))
-		for i, len := range hitBlobSizePeerQuery {
-			hits[i] = hitsBlob[offset : offset+len]
-			//test code to checkout marshaled hits
-			//marshaledHit := hitsBlob[offset:offset+len]
-			//unMarshaledHit := milvuspb.Hits{}
-			//err = proto.Unmarshal(marshaledHit, &unMarshaledHit)
-			//if err != nil {
-			//	return err
-			//}
-			//log.Debug("hits msg  = ", unMarshaledHit)
-			offset += len
-		}
-
-		// TODO: remove inefficient code in cgo and use SearchResultData directly
-		// TODO: Currently add a translate layer from hits to SearchResultData
-		// TODO: hits marshal and unmarshal is likely bottleneck
-
-		transformed, err := translateHits(schema, searchMsg.OutputFieldsId, hits)
-		if err != nil {
-			return err
-		}
-		byteBlobs, err := proto.Marshal(transformed)
-		if err != nil {
-			return err
-		}
-
+	for range searchRequests {
 		resultChannelInt := 0
 		searchResultMsg := &msgstream.SearchResultMsg{
 			BaseMsg: msgstream.BaseMsg{Ctx: searchMsg.Ctx, HashValues: []uint32{uint32(resultChannelInt)}},
@@ -1235,7 +1192,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 				MetricType:               plan.getMetricType(),
 				NumQueries:               queryNum,
 				TopK:                     topK,
-				SlicedBlob:               byteBlobs,
+				SlicedBlob:               CopyCProtoBlob(srd),
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
 				SealedSegmentIDsSearched: sealedSegmentSearched,

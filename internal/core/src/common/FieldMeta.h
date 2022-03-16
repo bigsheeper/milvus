@@ -117,7 +117,7 @@ datatype_is_floating(DataType datatype) {
 class FieldMeta {
  public:
     static const FieldMeta RowIdMeta;
-    FieldMeta(const FieldMeta&) = delete;
+    FieldMeta(const FieldMeta&) = default;
     FieldMeta(FieldMeta&&) = default;
     FieldMeta&
     operator=(const FieldMeta&) = delete;
@@ -175,6 +175,14 @@ class FieldMeta {
         } else {
             return datatype_sizeof(type_);
         }
+    }
+
+    FieldMeta
+    copy() const {
+        if (is_vector()) {
+            return FieldMeta(name_, id_, type_, get_dim(), get_metric_type());
+        }
+        return FieldMeta(name_, id_, type_);
     }
 
  private:

@@ -54,3 +54,9 @@ func HandleCStatus(status *C.CStatus, extraInfo string) error {
 	log.Warn(logMsg)
 	return errors.New(finalMsg)
 }
+
+func CopyCProtoBlob(cProto *C.CProto) []byte {
+	blob := C.GoBytes(unsafe.Pointer(cProto.proto_blob), C.int32_t(cProto.proto_size))
+	//defer C.free(cProto.proto_blob)
+	return blob
+}

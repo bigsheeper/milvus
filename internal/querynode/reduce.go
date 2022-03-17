@@ -28,6 +28,9 @@ package querynode
 import "C"
 import (
 	"errors"
+	"fmt"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"unsafe"
 )
 
@@ -36,7 +39,7 @@ type SearchResult struct {
 	cSearchResult C.CSearchResult
 }
 
-type searchResultData = C.CSearchResultData
+type searchResultsDataBlobs = C.CSearchResultsDataBlobs
 
 // MarshaledHits contains a pointer to the marshaled hits in C++ memory
 type MarshaledHits struct {
@@ -67,7 +70,7 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
-func marshal(searchResults []*SearchResult, numSegments int32, reqSizes []int32, numNQPerSlice int32) (*searchResultData, error) {
+func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, numNQPerSlice int) (*searchResultsDataBlobs, error) {
 	/*
 	CStatus
 	Marshal(CSearchResultData* cSearchResultData,
@@ -77,24 +80,53 @@ func marshal(searchResults []*SearchResult, numSegments int32, reqSizes []int32,
 	          int32_t req_sizes_size,
 	          int32_t num_nq_per_slice);
 	 */
+	if numNQPerSlice == 0 {
+		return nil, fmt.Errorf("zero numNQPerSlice is not allowed")
+	}
+
 	cSearchResults := make([]C.CSearchResult, 0)
 	for _, res := range searchResults {
 		cSearchResults = append(cSearchResults, res.cSearchResult)
 	}
 	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
 
+	slices := make([]int32, 0)
+	for i := 0; i < len(reqSizes); i++ {
+		for j := 0; j < reqSizes[i]/numNQPerSlice; j++ {
+			slices = append(slices, int32(numNQPerSlice))
+		}
+		if tailSliceSize := reqSizes[i]%numNQPerSlice; tailSliceSize > 0 {
+			slices = append(slices, int32(tailSliceSize))
+		}
+	}
+
+	log.Debug("start marshal...", zap.Any("slices", slices))
+
 	var cNumSegments = C.int32_t(numSegments)
-	var cReqSizesPtr = (*C.int32_t)(&reqSizes[0])
-	var cReqSizesSize = C.int32_t(len(reqSizes))
-	var cNumNQPerSlice = C.int32_t(numNQPerSlice)
+	var cSlicesPtr = (*C.int32_t)(&slices[0])
+	var cNumSlices = C.int32_t(len(slices))
 
-	var cSearchResultData C.CSearchResultData
+	var cSearchResultsDataBlobs searchResultsDataBlobs
 
-	status := C.Marshal(&cSearchResultData, cSearchResultPtr, cNumSegments, cReqSizesPtr, cReqSizesSize, cNumNQPerSlice)
+	status := C.Marshal(&cSearchResultsDataBlobs, cSearchResultPtr, cNumSegments, cSlicesPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err
 	}
-	return &cSearchResultData, nil
+	return &cSearchResultsDataBlobs, nil
+}
+
+func getNumSearchResultDataBlob(cSearchResultsDataBlobs *searchResultsDataBlobs) int {
+	return int(cSearchResultsDataBlobs.num_cproto)
+}
+
+func getSearchResultDataBlob(cSearchResultsDataBlobs *searchResultsDataBlobs, blobIndex int) ([]byte, error) {
+	var blob C.CProto
+	status := C.GetSearchResultDataBlob(&blob, cSearchResultsDataBlobs, C.int32_t(blobIndex))
+	if err := HandleCStatus(&status, "marshal failed"); err != nil {
+		return nil, err
+	}
+	// TODO: prevent copy?
+	return CopyCProtoBlob(&blob), nil
 }
 
 func reorganizeSearchResults(searchResults []*SearchResult, numSegments int64) (*MarshaledHits, error) {

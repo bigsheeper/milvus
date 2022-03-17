@@ -839,18 +839,21 @@ TEST(CApiTest, ReduceSearchWithExprV2) {
     assert(status.error_code == Success);
 
     // 2. marshal
-    auto cSearchResultData = CProto{};
-    auto req_sizes = std::vector<int32_t>{1, 2};
-    status = Marshal(&cSearchResultData, results.data(), results.size(), req_sizes.data(), req_sizes.size(), 1);
+    CSearchResultsDataBlobs cSearchResultData;
+    auto req_sizes = std::vector<int32_t>{5, 5};
+    status = Marshal(&cSearchResultData, results.data(), results.size(), req_sizes.data(), req_sizes.size());
     assert(status.error_code == Success);
 
-    milvus::proto::schema::SearchResultData search_result_data;
-    auto suc = search_result_data.ParseFromArray(cSearchResultData.proto_blob, cSearchResultData.proto_size);
-    assert(suc);
-    assert(search_result_data.top_k() == topK);
-    assert(search_result_data.num_queries() == num_queries);
-    assert(search_result_data.scores().size() == topK * num_queries);
-    assert(search_result_data.ids().int_id().data_size() == topK * num_queries);
+    // check result
+    for (int i = 0; i < req_sizes.size(); i++) {
+        milvus::proto::schema::SearchResultData search_result_data;
+        auto suc = search_result_data.ParseFromArray(cSearchResultData.search_results[i].proto_blob, cSearchResultData.search_results[i].proto_size);
+        assert(suc);
+        assert(search_result_data.top_k() == topK);
+        assert(search_result_data.num_queries() == num_queries);
+        assert(search_result_data.scores().size() == topK * req_sizes[i]);
+        assert(search_result_data.ids().int_id().data_size() == topK * req_sizes[i]);
+    }
 
     DeleteSearchPlan(plan);
     DeletePlaceholderGroup(placeholderGroup);

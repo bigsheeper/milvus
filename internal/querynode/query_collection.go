@@ -1164,7 +1164,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
-	srd, err := marshal(searchResults, int32(numSegment), []int32{1,2,3}, 1)
+	srd, err := marshal(searchResults, int(numSegment), []int{int(queryNum)}, int(queryNum))
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err
@@ -1176,7 +1176,11 @@ func (q *queryCollection) search(msg queryMsg) error {
 		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, reduceTime.Microseconds()))
 	metrics.QueryNodeReduceLatency.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(reduceTime.Milliseconds()))
 
-	for range searchRequests {
+	for i := 0; i < getNumSearchResultDataBlob(srd); i++ {
+		blob, err := getSearchResultDataBlob(srd, i)
+		if err != nil {
+			return err
+		}
 		resultChannelInt := 0
 		searchResultMsg := &msgstream.SearchResultMsg{
 			BaseMsg: msgstream.BaseMsg{Ctx: searchMsg.Ctx, HashValues: []uint32{uint32(resultChannelInt)}},
@@ -1192,7 +1196,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 				MetricType:               plan.getMetricType(),
 				NumQueries:               queryNum,
 				TopK:                     topK,
-				SlicedBlob:               CopyCProtoBlob(srd),
+				SlicedBlob:               blob,
 				SlicedOffset:             1,
 				SlicedNumCount:           1,
 				SealedSegmentIDsSearched: sealedSegmentSearched,

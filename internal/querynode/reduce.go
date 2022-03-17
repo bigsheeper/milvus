@@ -71,18 +71,19 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
-func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, numNQPerSlice int) (*searchResultDataBlobs, error) {
+func marshal(collectionID UniqueID, msgID UniqueID,
+	searchResults []*SearchResult, numSegments int,
+	nqOfReqs []int, nqPerSlice int) (*searchResultDataBlobs, error) {
 	/*
-	CStatus
-	Marshal(CSearchResultData* cSearchResultData,
-	          CSearchResult* c_search_results,
-	          int32_t num_segments,
-	          int32_t* req_sizes,
-	          int32_t req_sizes_size,
-	          int32_t num_nq_per_slice);
-	 */
-	if numNQPerSlice == 0 {
-		return nil, fmt.Errorf("zero numNQPerSlice is not allowed")
+		CStatus
+		Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
+		        CSearchResult* c_search_results,
+		        int32_t num_segments,
+		        int32_t* nq_slice_sizes,
+		        int32_t num_slices);
+	*/
+	if nqPerSlice == 0 {
+		return nil, fmt.Errorf("zero nqPerSlice is not allowed")
 	}
 
 	cSearchResults := make([]C.CSearchResult, 0)
@@ -92,16 +93,19 @@ func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, num
 	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
 
 	slices := make([]int32, 0)
-	for i := 0; i < len(reqSizes); i++ {
-		for j := 0; j < reqSizes[i]/numNQPerSlice; j++ {
-			slices = append(slices, int32(numNQPerSlice))
+	for i := 0; i < len(nqOfReqs); i++ {
+		for j := 0; j < nqOfReqs[i]/nqPerSlice; j++ {
+			slices = append(slices, int32(nqPerSlice))
 		}
-		if tailSliceSize := reqSizes[i]%numNQPerSlice; tailSliceSize > 0 {
+		if tailSliceSize := nqOfReqs[i] % nqPerSlice; tailSliceSize > 0 {
 			slices = append(slices, int32(tailSliceSize))
 		}
 	}
 
-	log.Debug("start marshal...", zap.Any("slices", slices))
+	log.Debug("start marshal...",
+		zap.Int64("collectionID", collectionID),
+		zap.Int64("msgID", msgID),
+		zap.Int32s("slices", slices))
 
 	var cNumSegments = C.int32_t(numSegments)
 	var cSlicesPtr = (*C.int32_t)(&slices[0])
@@ -121,6 +125,12 @@ func getNumSearchResultDataBlobs(cSearchResultsDataBlobs *searchResultDataBlobs)
 }
 
 func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blobIndex int) ([]byte, error) {
+	/*
+		CStatus
+		GetSearchResultDataBlob(CProto* searchResultDataBlob,
+		                        CSearchResultDataBlobs* cSearchResultDataBlobs,
+		                        int32_t blob_index);
+	*/
 	var blob C.CProto
 	status := C.GetSearchResultDataBlob(&blob, cSearchResultDataBlobs, C.int32_t(blobIndex))
 	if err := HandleCStatus(&status, "marshal failed"); err != nil {

@@ -47,7 +47,7 @@ void
 GetHitsBlob(CMarshaledHits c_marshaled_hits, const void* hits); // deprecated
 
 int64_t
-GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index);
+GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index); // deprecated
 
 void
 GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query); // deprecated
@@ -56,11 +56,13 @@ CStatus
 Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         CSearchResult* c_search_results,
         int32_t num_segments,
-        int32_t* slice_sizes,
+        int32_t* nq_slice_sizes,
         int32_t num_slices);
 
 CStatus
-GetSearchResultDataBlob(CProto* searchResultBlob, CSearchResultDataBlobs* cSearchResultDataBlobs, int32_t blob_index);
+GetSearchResultDataBlob(CProto* searchResultDataBlob,
+                        CSearchResultDataBlobs* cSearchResultDataBlobs,
+                        int32_t blob_index);
 
 #ifdef __cplusplus
 }

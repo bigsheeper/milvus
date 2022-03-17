@@ -1166,7 +1166,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 	reqSlices := []int{int(nq)}
 	numNQPerSlice := int(nq)
-	blobs, err := marshal(searchResults, int(numSegment), reqSlices, numNQPerSlice)
+	blobs, err := marshal(collectionID, searchMsg.ID(), searchResults, int(numSegment), reqSlices, numNQPerSlice)
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err

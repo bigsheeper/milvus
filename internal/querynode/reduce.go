@@ -74,14 +74,6 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 func marshal(collectionID UniqueID, msgID UniqueID,
 	searchResults []*SearchResult, numSegments int,
 	nqOfReqs []int, nqPerSlice int) (*searchResultDataBlobs, error) {
-	/*
-		CStatus
-		Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
-		        CSearchResult* c_search_results,
-		        int32_t num_segments,
-		        int32_t* nq_slice_sizes,
-		        int32_t num_slices);
-	*/
 	if nqPerSlice == 0 {
 		return nil, fmt.Errorf("zero nqPerSlice is not allowed")
 	}
@@ -125,12 +117,6 @@ func getNumSearchResultDataBlobs(cSearchResultsDataBlobs *searchResultDataBlobs)
 }
 
 func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blobIndex int) ([]byte, error) {
-	/*
-		CStatus
-		GetSearchResultDataBlob(CProto* searchResultDataBlob,
-		                        CSearchResultDataBlobs* cSearchResultDataBlobs,
-		                        int32_t blob_index);
-	*/
 	var blob C.CProto
 	status := C.GetSearchResultDataBlob(&blob, cSearchResultDataBlobs, C.int32_t(blobIndex))
 	if err := HandleCStatus(&status, "marshal failed"); err != nil {
@@ -138,6 +124,10 @@ func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blob
 	}
 	// TODO: prevent copy?
 	return CopyCProtoBlob(&blob), nil
+}
+
+func deleteSearchResultDataBlobs(cSearchResultDataBlobs *searchResultDataBlobs) {
+	C.DeleteSearchResultDataBlobs(cSearchResultDataBlobs)
 }
 
 // deprecated

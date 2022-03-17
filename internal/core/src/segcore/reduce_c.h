@@ -64,6 +64,9 @@ GetSearchResultDataBlob(CProto* searchResultDataBlob,
                         CSearchResultDataBlobs* cSearchResultDataBlobs,
                         int32_t blob_index);
 
+void
+DeleteSearchResultDataBlobs(CSearchResultDataBlobs* cSearchResultDataBlobs);
+
 #ifdef __cplusplus
 }
 #endif

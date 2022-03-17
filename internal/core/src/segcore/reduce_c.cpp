@@ -336,6 +336,17 @@ GetSearchResultDataBlob(CProto* searchResultDataBlob,
     }
 }
 
+void
+DeleteSearchResultDataBlobs(CSearchResultDataBlobs* cSearchResultDataBlobs) {
+    if (cSearchResultDataBlobs == nullptr) {
+        return;
+    }
+    for (int i = 0; i < cSearchResultDataBlobs->num_blobs; i++) {
+        std::free(cSearchResultDataBlobs->blobs[i].proto_blob);
+    }
+    std::free(cSearchResultDataBlobs->blobs);
+}
+
 CStatus
 ReduceSearchResultsAndFillData(CSearchPlan c_plan, CSearchResult* c_search_results, int64_t num_segments) {
     try {

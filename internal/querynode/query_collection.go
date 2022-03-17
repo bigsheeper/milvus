@@ -1164,9 +1164,10 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
-	reqSlices := []int{int(nq)}
-	numNQPerSlice := int(nq)
-	blobs, err := marshal(collectionID, searchMsg.ID(), searchResults, int(numSegment), reqSlices, numNQPerSlice)
+	nqOfReqs := []int{int(nq)}
+	nqPerSlice := int(nq)
+	blobs, err := marshal(collectionID, searchMsg.ID(), searchResults, int(numSegment), nqOfReqs, nqPerSlice)
+	defer deleteSearchResultDataBlobs(blobs)
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err

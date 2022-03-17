@@ -42,7 +42,7 @@ typedef struct CStatus {
 } CStatus;
 
 typedef struct CProto {
-    const void* proto_blob;
+    void* proto_blob;
     int64_t proto_size;
 } CProto;
 

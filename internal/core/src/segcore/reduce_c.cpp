@@ -179,7 +179,7 @@ ReorganizeSearchResultsV2(std::vector<SearchResult*>& search_results,
 #pragma omp parallel for
         for (int j = 0; j < num_results; j++) {
             auto loc = search_result->result_offsets_[j];
-            AssertInfo(loc < nq * topK, "result location of out range, location = " + std::to_string(loc));
+//            AssertInfo(loc < nq * topK, "result location of out range, location = " + std::to_string(loc));
             // set result ids
             memcpy(&result_ids[loc], &search_result->ids_data_[j * sizeof(int64_t)], sizeof(int64_t));
             // set result distances

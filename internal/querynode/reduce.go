@@ -123,7 +123,7 @@ func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blob
 		return nil, err
 	}
 	// TODO: prevent copy?
-	return CopyCProtoBlob(&blob), nil
+	return GetCProtoBlob(&blob), nil
 }
 
 func deleteSearchResultDataBlobs(cSearchResultDataBlobs *searchResultDataBlobs) {

@@ -30,6 +30,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/cgoconverter"
 	"unsafe"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -58,5 +59,10 @@ func HandleCStatus(status *C.CStatus, extraInfo string) error {
 func CopyCProtoBlob(cProto *C.CProto) []byte {
 	blob := C.GoBytes(unsafe.Pointer(cProto.proto_blob), C.int32_t(cProto.proto_size))
 	//defer C.free(cProto.proto_blob)
+	return blob
+}
+
+func GetCProtoBlob(cProto *C.CProto) []byte {
+	_, blob := cgoconverter.UnsafeGoBytes(&cProto.proto_blob, int(cProto.proto_size))
 	return blob
 }

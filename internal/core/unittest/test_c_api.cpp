@@ -839,7 +839,7 @@ TEST(CApiTest, ReduceSearchWithExprV2) {
     assert(status.error_code == Success);
 
     // 2. marshal
-    CSearchResultsDataBlobs cSearchResultData;
+    CSearchResultDataBlobs cSearchResultData;
     auto req_sizes = std::vector<int32_t>{5, 5};
     status = Marshal(&cSearchResultData, results.data(), results.size(), req_sizes.data(), req_sizes.size());
     assert(status.error_code == Success);
@@ -847,7 +847,7 @@ TEST(CApiTest, ReduceSearchWithExprV2) {
     // check result
     for (int i = 0; i < req_sizes.size(); i++) {
         milvus::proto::schema::SearchResultData search_result_data;
-        auto suc = search_result_data.ParseFromArray(cSearchResultData.search_results[i].proto_blob, cSearchResultData.search_results[i].proto_size);
+        auto suc = search_result_data.ParseFromArray(cSearchResultData.blobs[i].proto_blob, cSearchResultData.blobs[i].proto_size);
         assert(suc);
         assert(search_result_data.top_k() == topK);
         assert(search_result_data.num_queries() == num_queries);

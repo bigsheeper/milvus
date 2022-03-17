@@ -22,44 +22,45 @@ extern "C" {
 
 typedef void* CMarshaledHits;
 
-typedef struct CSearchResultsDataBlobs {
-    CProto* search_results;
-    int32_t num_cproto;
-} CSearchResultsDataBlobs;
+// CSearchResultDataBlobs contains the marshal blobs of many `milvus::proto::schema::SearchResultData`
+typedef struct CSearchResultDataBlobs {
+    CProto* blobs;
+    int32_t num_blobs;
+} CSearchResultDataBlobs;
 
 void
-DeleteMarshaledHits(CMarshaledHits c_marshaled_hits);
+DeleteMarshaledHits(CMarshaledHits c_marshaled_hits); // deprecated
 
 int
-MergeInto(int64_t num_queries, int64_t topk, float* distances, int64_t* uids, float* new_distances, int64_t* new_uids);
+MergeInto(int64_t num_queries, int64_t topk, float* distances, int64_t* uids, float* new_distances, int64_t* new_uids); // deprecated
 
 CStatus
 ReduceSearchResultsAndFillData(CSearchPlan c_plan, CSearchResult* search_results, int64_t num_segments);
 
 CStatus
-ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits, CSearchResult* c_search_results, int64_t num_segments);
+ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits, CSearchResult* c_search_results, int64_t num_segments); // deprecated
 
 int64_t
-GetHitsBlobSize(CMarshaledHits c_marshaled_hits);
+GetHitsBlobSize(CMarshaledHits c_marshaled_hits); // deprecated
 
 void
-GetHitsBlob(CMarshaledHits c_marshaled_hits, const void* hits);
+GetHitsBlob(CMarshaledHits c_marshaled_hits, const void* hits); // deprecated
 
 int64_t
 GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index);
 
 void
-GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query);
+GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query); // deprecated
 
 CStatus
-Marshal(CSearchResultsDataBlobs* cSearchResultsDataBlobs,
+Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         CSearchResult* c_search_results,
         int32_t num_segments,
         int32_t* slice_sizes,
         int32_t num_slices);
 
 CStatus
-GetSearchResultDataBlob(CProto* searchResultsDataBlob, CSearchResultsDataBlobs* cSearchResultsDataBlobs, int32_t blob_index);
+GetSearchResultDataBlob(CProto* searchResultBlob, CSearchResultDataBlobs* cSearchResultDataBlobs, int32_t blob_index);
 
 #ifdef __cplusplus
 }

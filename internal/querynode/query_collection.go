@@ -1052,21 +1052,21 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 	defer searchReq.delete()
 
-	queryNum := searchReq.getNumOfQuery()
+	nq := searchReq.getNumOfQuery()
 	searchRequests := make([]*searchRequest, 0)
 	searchRequests = append(searchRequests, searchReq)
 
 	if searchMsg.GetDslType() == commonpb.DslType_BoolExprV1 {
 		sp.LogFields(oplog.String("statistical time", "stats start"),
-			oplog.Object("nq", queryNum),
+			oplog.Object("nq", nq),
 			oplog.Object("expr", searchMsg.SerializedExprPlan))
 	} else {
 		sp.LogFields(oplog.String("statistical time", "stats start"),
-			oplog.Object("nq", queryNum),
+			oplog.Object("nq", nq),
 			oplog.Object("dsl", searchMsg.Dsl))
 	}
 
-	tr := timerecord.NewTimeRecorder(fmt.Sprintf("search %d(nq=%d, k=%d), msgID = %d", searchMsg.CollectionID, queryNum, topK, searchMsg.ID()))
+	tr := timerecord.NewTimeRecorder(fmt.Sprintf("search %d(nq=%d, k=%d), msgID = %d", searchMsg.CollectionID, nq, topK, searchMsg.ID()))
 
 	// get global sealed segments
 	var globalSealedSegments []UniqueID
@@ -1124,7 +1124,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 					Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 					ResultChannelID:          searchMsg.ResultChannelID,
 					MetricType:               plan.getMetricType(),
-					NumQueries:               queryNum,
+					NumQueries:               nq,
 					TopK:                     topK,
 					SlicedBlob:               nil,
 					SlicedOffset:             1,
@@ -1164,7 +1164,9 @@ func (q *queryCollection) search(msg queryMsg) error {
 		log.Error("QueryNode reduce data failed", zap.Int64("msgID", searchMsg.ID()), zap.Error(err))
 		return err
 	}
-	srd, err := marshal(searchResults, int(numSegment), []int{int(queryNum)}, int(queryNum))
+	reqSlices := []int{int(nq)}
+	numNQPerSlice := int(nq)
+	blobs, err := marshal(searchResults, int(numSegment), reqSlices, numNQPerSlice)
 	sp.LogFields(oplog.String("statistical time", "reorganizeSearchResults end"))
 	if err != nil {
 		return err
@@ -1176,8 +1178,8 @@ func (q *queryCollection) search(msg queryMsg) error {
 		zap.Int64(log.BenchmarkMsgID, msg.ID()), zap.Int64(log.BenchmarkDuration, reduceTime.Microseconds()))
 	metrics.QueryNodeReduceLatency.WithLabelValues(metrics.SearchLabel, fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(reduceTime.Milliseconds()))
 
-	for i := 0; i < getNumSearchResultDataBlob(srd); i++ {
-		blob, err := getSearchResultDataBlob(srd, i)
+	for i := 0; i < getNumSearchResultDataBlobs(blobs); i++ {
+		blob, err := getSearchResultDataBlob(blobs, i)
 		if err != nil {
 			return err
 		}
@@ -1194,7 +1196,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 				Status:                   &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 				ResultChannelID:          searchMsg.ResultChannelID,
 				MetricType:               plan.getMetricType(),
-				NumQueries:               queryNum,
+				NumQueries:               nq,
 				TopK:                     topK,
 				SlicedBlob:               blob,
 				SlicedOffset:             1,

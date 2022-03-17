@@ -39,7 +39,8 @@ type SearchResult struct {
 	cSearchResult C.CSearchResult
 }
 
-type searchResultsDataBlobs = C.CSearchResultsDataBlobs
+// searchResultDataBlobs is the CSearchResultsDataBlobs in C++
+type searchResultDataBlobs = C.CSearchResultDataBlobs
 
 // MarshaledHits contains a pointer to the marshaled hits in C++ memory
 type MarshaledHits struct {
@@ -70,7 +71,7 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
-func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, numNQPerSlice int) (*searchResultsDataBlobs, error) {
+func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, numNQPerSlice int) (*searchResultDataBlobs, error) {
 	/*
 	CStatus
 	Marshal(CSearchResultData* cSearchResultData,
@@ -106,22 +107,22 @@ func marshal(searchResults []*SearchResult, numSegments int, reqSizes []int, num
 	var cSlicesPtr = (*C.int32_t)(&slices[0])
 	var cNumSlices = C.int32_t(len(slices))
 
-	var cSearchResultsDataBlobs searchResultsDataBlobs
+	var cSearchResultDataBlobs searchResultDataBlobs
 
-	status := C.Marshal(&cSearchResultsDataBlobs, cSearchResultPtr, cNumSegments, cSlicesPtr, cNumSlices)
+	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, cNumSegments, cSlicesPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err
 	}
-	return &cSearchResultsDataBlobs, nil
+	return &cSearchResultDataBlobs, nil
 }
 
-func getNumSearchResultDataBlob(cSearchResultsDataBlobs *searchResultsDataBlobs) int {
-	return int(cSearchResultsDataBlobs.num_cproto)
+func getNumSearchResultDataBlobs(cSearchResultsDataBlobs *searchResultDataBlobs) int {
+	return int(cSearchResultsDataBlobs.num_blobs)
 }
 
-func getSearchResultDataBlob(cSearchResultsDataBlobs *searchResultsDataBlobs, blobIndex int) ([]byte, error) {
+func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blobIndex int) ([]byte, error) {
 	var blob C.CProto
-	status := C.GetSearchResultDataBlob(&blob, cSearchResultsDataBlobs, C.int32_t(blobIndex))
+	status := C.GetSearchResultDataBlob(&blob, cSearchResultDataBlobs, C.int32_t(blobIndex))
 	if err := HandleCStatus(&status, "marshal failed"); err != nil {
 		return nil, err
 	}
@@ -129,6 +130,7 @@ func getSearchResultDataBlob(cSearchResultsDataBlobs *searchResultsDataBlobs, bl
 	return CopyCProtoBlob(&blob), nil
 }
 
+// deprecated
 func reorganizeSearchResults(searchResults []*SearchResult, numSegments int64) (*MarshaledHits, error) {
 	cSearchResults := make([]C.CSearchResult, 0)
 	for _, res := range searchResults {
@@ -146,11 +148,13 @@ func reorganizeSearchResults(searchResults []*SearchResult, numSegments int64) (
 	return &MarshaledHits{cMarshaledHits: cMarshaledHits}, nil
 }
 
+// deprecated
 func (mh *MarshaledHits) getHitsBlobSize() int64 {
 	res := C.GetHitsBlobSize(mh.cMarshaledHits)
 	return int64(res)
 }
 
+// deprecated
 func (mh *MarshaledHits) getHitsBlob() ([]byte, error) {
 	byteSize := mh.getHitsBlobSize()
 	result := make([]byte, byteSize)
@@ -159,6 +163,7 @@ func (mh *MarshaledHits) getHitsBlob() ([]byte, error) {
 	return result, nil
 }
 
+// deprecated
 func (mh *MarshaledHits) hitBlobSizeInGroup(groupOffset int64) ([]int64, error) {
 	cGroupOffset := (C.int64_t)(groupOffset)
 	numQueries := C.GetNumQueriesPerGroup(mh.cMarshaledHits, cGroupOffset)
@@ -168,6 +173,7 @@ func (mh *MarshaledHits) hitBlobSizeInGroup(groupOffset int64) ([]int64, error) 
 	return result, nil
 }
 
+// deprecated
 func deleteMarshaledHits(hits *MarshaledHits) {
 	C.DeleteMarshaledHits(hits.cMarshaledHits)
 }

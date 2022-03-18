@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
+#include <stdio.h>
 #include <limits>
 #include <unordered_set>
 #include <vector>
@@ -301,7 +302,7 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
                                                     ", nq = " + std::to_string(nq));
 
         // get search result data blobs by slices
-        auto blobs = std::make_unique<std::vector<CProto>>(num_slices);
+        auto blobs = static_cast<CProto*>(malloc(sizeof(CProto) * num_slices));
 #pragma omp parallel for
         for (int i = 0; i < num_slices; i++) {
             auto cProto = GetSearchResultDataSlice(result_ids,
@@ -310,12 +311,12 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
                                                    nq, topK,
                                                    slice_offsets[i], slice_offsets[i + 1],
                                                    output_fields_meta);
-            blobs->at(i) = cProto;
+            blobs[i] = cProto;
         }
 
         // set final result ptr
-        cSearchResultDataBlobs->num_blobs = blobs->size();
-        cSearchResultDataBlobs->blobs = &blobs.release()->data()[0];
+        cSearchResultDataBlobs->num_blobs = num_slices;
+        cSearchResultDataBlobs->blobs = blobs;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
@@ -342,9 +343,9 @@ DeleteSearchResultDataBlobs(CSearchResultDataBlobs* cSearchResultDataBlobs) {
         return;
     }
     for (int i = 0; i < cSearchResultDataBlobs->num_blobs; i++) {
-        std::free(cSearchResultDataBlobs->blobs[i].proto_blob);
+        free(cSearchResultDataBlobs->blobs[i].proto_blob);
     }
-    std::free(cSearchResultDataBlobs->blobs);
+    free(cSearchResultDataBlobs->blobs);
 }
 
 CStatus

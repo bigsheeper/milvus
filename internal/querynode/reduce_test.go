@@ -17,7 +17,7 @@
 package querynode
 
 import (
-	"fmt"
+	"context"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"log"
 	"math"
@@ -116,35 +116,36 @@ func TestReduce_AllFunc(t *testing.T) {
 }
 
 func TestReduce_marshal(t *testing.T) {
-	collectionID := UniqueID(0)
-	segmentID := UniqueID(0)
-	collectionMeta := genTestCollectionMeta(collectionID, false)
+	nq := 10
 
-	collection := newCollection(collectionMeta.ID, collectionMeta.Schema)
-	segment, err := newSegment(collection, segmentID, defaultPartitionID, collectionID, "", segmentTypeGrowing, true)
-	assert.Nil(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	node, err := genSimpleQueryNode(ctx)
+	assert.NoError(t, err)
 
-	const DIM = 16
-	var vec = [DIM]float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	collection, err := node.historical.replica.getCollectionByID(defaultCollectionID)
+	assert.NoError(t, err)
 
-	// start search service
-	dslString := "{\"bool\": { \n\"vector\": {\n \"vec\": {\n \"metric_type\": \"L2\", \n \"params\": {\n \"nprobe\": 10 \n},\n \"query\": \"$0\",\n \"topk\": 10 \n,\"round_decimal\": 6\n } \n } \n } \n }"
-	var searchRawData1 []byte
-	var searchRawData2 []byte
+	segment, err := node.historical.replica.getSegmentByID(defaultSegmentID)
+	assert.NoError(t, err)
+
+	// TODO: replace below by genPlaceholderGroup(nq)
+	vec := genSimpleFloatVectors()
+	var searchRawData []byte
 	for i, ele := range vec {
 		buf := make([]byte, 4)
 		common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*2)))
-		searchRawData1 = append(searchRawData1, buf...)
+		searchRawData = append(searchRawData, buf...)
 	}
-	for i, ele := range vec {
-		buf := make([]byte, 4)
-		common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*4)))
-		searchRawData2 = append(searchRawData2, buf...)
-	}
+
 	placeholderValue := milvuspb.PlaceholderValue{
 		Tag:    "$0",
 		Type:   milvuspb.PlaceholderType_FloatVector,
-		Values: [][]byte{searchRawData1, searchRawData2},
+		Values: [][]byte{},
+	}
+
+	for i := 0; i < nq; i++ {
+		placeholderValue.Values = append(placeholderValue.Values, searchRawData)
 	}
 
 	placeholderGroup := milvuspb.PlaceholderGroup{
@@ -156,41 +157,53 @@ func TestReduce_marshal(t *testing.T) {
 		log.Print("marshal placeholderGroup failed")
 	}
 
+	dslString, err := genSimpleDSL()
+	assert.NoError(t, err)
+
 	plan, err := createSearchPlan(collection, dslString)
 	assert.NoError(t, err)
 	holder, err := parseSearchRequest(plan, placeGroupByte)
 	assert.NoError(t, err)
+
 	placeholderGroups := make([]*searchRequest, 0)
 	placeholderGroups = append(placeholderGroups, holder)
 
 	searchResults := make([]*SearchResult, 0)
 	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{0})
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	searchResults = append(searchResults, searchResult)
 
 	err = reduceSearchResultsAndFillData(plan, searchResults, 1)
-	assert.Nil(t, err)
-
-	res, err := marshal(searchResults, 1, []int32{1,2}, 1)
 	assert.NoError(t, err)
 
-	result := new(schemapb.SearchResultData)
-	err = HandleCProto(res, result)
+	nqOfReqs := []int{nq / 5, nq / 5, nq / 5, nq / 5, nq / 5}
+	nqPerSlice := nq / 5
+	res, err := marshal(defaultCollectionID, UniqueID(0), searchResults, 1, nqOfReqs, nqPerSlice)
 	assert.NoError(t, err)
 
-	expectTopK := 10
-	expectNQ := 2
-	assert.Equal(t, expectTopK, int(result.TopK))
-	assert.Equal(t, expectNQ, int(result.NumQueries))
-	fmt.Println(result.Ids)
-	assert.Equal(t, expectTopK * expectNQ, len(result.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
-	assert.Equal(t, expectTopK * expectNQ, len(result.Scores))
+	num := getNumSearchResultDataBlobs(res)
+	assert.Equal(t, len(nqOfReqs), num)
+
+	for i := 0; i < num; i++ {
+		blob, err := getSearchResultDataBlob(res, i)
+		assert.NoError(t, err)
+		assert.NotEqual(t, 0, len(blob))
+
+		result := &schemapb.SearchResultData{}
+		err = proto.Unmarshal(blob, result)
+		assert.NoError(t, err)
+
+		assert.Equal(t, defaultTopK, result.TopK)
+		assert.Equal(t, int64(nq), result.NumQueries)
+		assert.Equal(t, int(defaultTopK)*(nq/5), len(result.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data))
+		assert.Equal(t, int(defaultTopK)*(nq/5), len(result.Scores))
+	}
 
 	plan.delete()
-	holder.delete()
 	deleteSearchResults(searchResults)
 	deleteSegment(segment)
 	deleteCollection(collection)
+	deleteSearchResultDataBlobs(res)
 }
 
 func TestReduce_nilPlan(t *testing.T) {

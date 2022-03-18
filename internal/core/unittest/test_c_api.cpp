@@ -855,6 +855,7 @@ TEST(CApiTest, ReduceSearchWithExprV2) {
         assert(search_result_data.ids().int_id().data_size() == topK * req_sizes[i]);
     }
 
+    DeleteSearchResultDataBlobs(&cSearchResultData);
     DeleteSearchPlan(plan);
     DeletePlaceholderGroup(placeholderGroup);
     DeleteSearchResult(res1);

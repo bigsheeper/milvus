@@ -122,7 +122,6 @@ func getSearchResultDataBlob(cSearchResultDataBlobs *searchResultDataBlobs, blob
 	if err := HandleCStatus(&status, "marshal failed"); err != nil {
 		return nil, err
 	}
-	// TODO: prevent copy?
 	return GetCProtoBlob(&blob), nil
 }
 

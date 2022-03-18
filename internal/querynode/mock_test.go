@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"strconv"
@@ -1228,6 +1229,61 @@ func produceSimpleRetrieveMsg(ctx context.Context, queryChannel Channel) error {
 		return err
 	}
 	log.Debug("[query node unittest] produce retrieve message done")
+	return nil
+}
+
+func checkSearchResult(nq int, plan *SearchPlan, searchResult *SearchResult) error {
+	searchResults := make([]*SearchResult, 0)
+	searchResults = append(searchResults, searchResult)
+
+	err := reduceSearchResultsAndFillData(plan, searchResults, 1)
+	if err != nil {
+		return err
+	}
+
+	nqOfReqs := []int{nq / 5, nq / 5, nq / 5, nq / 5, nq / 5}
+	nqPerSlice := nq / 5
+	res, err := marshal(defaultCollectionID, UniqueID(0), searchResults, 1, nqOfReqs, nqPerSlice)
+	if err != nil {
+		return err
+	}
+
+	num := getNumSearchResultDataBlobs(res)
+	if len(nqOfReqs) != num {
+		return fmt.Errorf("wrong number of search result data blobs when checkSearchResult")
+	}
+
+	for i := 0; i < num; i++ {
+		blob, err := getSearchResultDataBlob(res, i)
+		if err != nil {
+			return err
+		}
+		if len(blob) == 0 {
+			return fmt.Errorf("wrong search result data blobs when checkSearchResult")
+		}
+
+		result := &schemapb.SearchResultData{}
+		err = proto.Unmarshal(blob, result)
+		if err != nil {
+			return err
+		}
+
+		if result.TopK != defaultTopK {
+			return fmt.Errorf("unexpected topK when checkSearchResult")
+		}
+		if result.NumQueries != int64(nq) {
+			return fmt.Errorf("unexpected nq when checkSearchResult")
+		}
+		if len(result.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data) != int(defaultTopK)*(nq/5) {
+			return fmt.Errorf("unexpected Ids when checkSearchResult")
+		}
+		if len(result.Scores) != int(defaultTopK)*(nq/5) {
+			return fmt.Errorf("unexpected Scores when checkSearchResult")
+		}
+	}
+
+	deleteSearchResults(searchResults)
+	deleteSearchResultDataBlobs(res)
 	return nil
 }
 

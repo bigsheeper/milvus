@@ -198,7 +198,10 @@ ReorganizeSearchResultsV2(std::vector<SearchResult*>& search_results,
         results_count += num_results;
     }
 
-    AssertInfo(results_count == nq * topK, "size of reduce result is less than nq * topK");
+    AssertInfo(results_count == nq * topK,
+               "size of reduce result is less than nq * topK"
+               ", result_count = " +
+                   std::to_string(results_count) + ", nq * topK = " + std::to_string(nq * topK));
 }
 
 CProto

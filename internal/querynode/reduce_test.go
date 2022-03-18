@@ -115,7 +115,7 @@ func TestReduce_AllFunc(t *testing.T) {
 	deleteCollection(collection)
 }
 
-func TestReduce_marshal(t *testing.T) {
+func TestReduce(t *testing.T) {
 	nq := 10
 
 	ctx, cancel := context.WithCancel(context.Background())

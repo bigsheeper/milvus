@@ -76,22 +76,22 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan, SearchResult&
     }
 
     // deprecated
-//    auto target_sizeof = std::accumulate(element_sizeofs.begin(), element_sizeofs.end(), 0);
-//
-//    for (int64_t i = 0; i < size; ++i) {
-//        int64_t element_offset = 0;
-//        std::vector<char> target(target_sizeof);
-//        for (int loc = 0; loc < blobs.size(); ++loc) {
-//            auto element_sizeof = element_sizeofs[loc];
-//            auto blob_ptr = blobs[loc].data();
-//            auto src = blob_ptr + element_sizeof * i;
-//            auto dst = target.data() + element_offset;
-//            memcpy(dst, src, element_sizeof);
-//            element_offset += element_sizeof;
-//        }
-//        assert(element_offset == target_sizeof);
-//        results.row_data_.emplace_back(std::move(target));
-//    }
+    //    auto target_sizeof = std::accumulate(element_sizeofs.begin(), element_sizeofs.end(), 0);
+    //
+    //    for (int64_t i = 0; i < size; ++i) {
+    //        int64_t element_offset = 0;
+    //        std::vector<char> target(target_sizeof);
+    //        for (int loc = 0; loc < blobs.size(); ++loc) {
+    //            auto element_sizeof = element_sizeofs[loc];
+    //            auto blob_ptr = blobs[loc].data();
+    //            auto src = blob_ptr + element_sizeof * i;
+    //            auto dst = target.data() + element_offset;
+    //            memcpy(dst, src, element_sizeof);
+    //            element_offset += element_sizeof;
+    //        }
+    //        assert(element_offset == target_sizeof);
+    //        results.row_data_.emplace_back(std::move(target));
+    //    }
 }
 
 std::unique_ptr<SearchResult>

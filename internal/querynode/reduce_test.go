@@ -18,7 +18,6 @@ package querynode
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"log"
 	"math"
 	"testing"
@@ -28,6 +27,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
+	"github.com/milvus-io/milvus/internal/proto/schemapb"
 )
 
 func TestReduce_AllFunc(t *testing.T) {

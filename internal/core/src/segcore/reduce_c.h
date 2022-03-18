@@ -29,28 +29,35 @@ typedef struct CSearchResultDataBlobs {
 } CSearchResultDataBlobs;
 
 void
-DeleteMarshaledHits(CMarshaledHits c_marshaled_hits); // deprecated
+DeleteMarshaledHits(CMarshaledHits c_marshaled_hits);  // deprecated
 
 int
-MergeInto(int64_t num_queries, int64_t topk, float* distances, int64_t* uids, float* new_distances, int64_t* new_uids); // deprecated
+MergeInto(int64_t num_queries,
+          int64_t topk,
+          float* distances,
+          int64_t* uids,
+          float* new_distances,
+          int64_t* new_uids);  // deprecated
 
 CStatus
 ReduceSearchResultsAndFillData(CSearchPlan c_plan, CSearchResult* search_results, int64_t num_segments);
 
 CStatus
-ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits, CSearchResult* c_search_results, int64_t num_segments); // deprecated
+ReorganizeSearchResults(CMarshaledHits* c_marshaled_hits,
+                        CSearchResult* c_search_results,
+                        int64_t num_segments);  // deprecated
 
 int64_t
-GetHitsBlobSize(CMarshaledHits c_marshaled_hits); // deprecated
+GetHitsBlobSize(CMarshaledHits c_marshaled_hits);  // deprecated
 
 void
-GetHitsBlob(CMarshaledHits c_marshaled_hits, const void* hits); // deprecated
+GetHitsBlob(CMarshaledHits c_marshaled_hits, const void* hits);  // deprecated
 
 int64_t
-GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index); // deprecated
+GetNumQueriesPerGroup(CMarshaledHits c_marshaled_hits, int64_t group_index);  // deprecated
 
 void
-GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query); // deprecated
+GetHitSizePerQueries(CMarshaledHits c_marshaled_hits, int64_t group_index, int64_t* hit_size_peer_query);  // deprecated
 
 CStatus
 Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,

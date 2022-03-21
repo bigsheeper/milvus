@@ -666,7 +666,7 @@ func (sched *taskScheduler) collectionResultLoopV2() {
 	queryResultBufFlags := newIDCache(Params.ProxyCfg.BufFlagExpireTime, Params.ProxyCfg.BufFlagCleanupInterval) // if value is true, we can ignore queryResult
 
 	processSearchResult := func(results *internalpb.SearchResults) error {
-		reqID := results.Base.MsgID
+		reqID := results.GetReqID()
 
 		ignoreThisResult, ok := searchResultBufFlags.Get(reqID)
 		if !ok {
@@ -727,7 +727,7 @@ func (sched *taskScheduler) collectionResultLoopV2() {
 	}
 
 	processRetrieveResult := func(results *internalpb.RetrieveResults) error {
-		reqID := results.Base.MsgID
+		reqID := results.GetReqID()
 
 		ignoreThisResult, ok := queryResultBufFlags.Get(reqID)
 		if !ok {
@@ -845,7 +845,7 @@ func (sched *taskScheduler) collectResultLoop() {
 				sp, ctx := trace.StartSpanFromContext(tsMsg.TraceCtx())
 				tsMsg.SetTraceCtx(ctx)
 				if searchResultMsg, srOk := tsMsg.(*msgstream.SearchResultMsg); srOk {
-					reqID := searchResultMsg.Base.MsgID
+					reqID := searchResultMsg.ReqID
 					reqIDStr := strconv.FormatInt(reqID, 10)
 					ignoreThisResult, ok := searchResultBufFlags.Get(reqID)
 					if !ok {
@@ -913,38 +913,7 @@ func (sched *taskScheduler) collectResultLoop() {
 					sp.Finish()
 				}
 				if queryResultMsg, rtOk := tsMsg.(*msgstream.RetrieveResultMsg); rtOk {
-					//reqID := retrieveResultMsg.Base.MsgID
-					//reqIDStr := strconv.FormatInt(reqID, 10)
-					//t := sched.getTaskByReqID(reqID)
-					//if t == nil {
-					//	log.Debug("proxy", zap.String("RetrieveResult GetTaskByReqID failed, reqID = ", reqIDStr))
-					//	delete(queryResultBufs, reqID)
-					//	continue
-					//}
-					//
-					//_, ok = queryResultBufs[reqID]
-					//if !ok {
-					//	queryResultBufs[reqID] = make([]*internalpb.RetrieveResults, 0)
-					//}
-					//queryResultBufs[reqID] = append(queryResultBufs[reqID], &retrieveResultMsg.RetrieveResults)
-					//
-					//{
-					//	colName := t.(*RetrieveTask).retrieve.CollectionName
-					//	log.Debug("Getcollection", zap.String("collection name", colName), zap.String("reqID", reqIDStr), zap.Int("answer cnt", len(queryResultBufs[reqID])))
-					//}
-					//if len(queryResultBufs[reqID]) == queryNodeNum {
-					//	t := sched.getTaskByReqID(reqID)
-					//	if t != nil {
-					//		rt, ok := t.(*RetrieveTask)
-					//		if ok {
-					//			rt.resultBuf <- queryResultBufs[reqID]
-					//			delete(queryResultBufs, reqID)
-					//		}
-					//	} else {
-					//	}
-					//}
-
-					reqID := queryResultMsg.Base.MsgID
+					reqID := queryResultMsg.ReqID
 					reqIDStr := strconv.FormatInt(reqID, 10)
 					ignoreThisResult, ok := queryResultBufFlags.Get(reqID)
 					if !ok {

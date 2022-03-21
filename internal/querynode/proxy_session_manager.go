@@ -93,11 +93,14 @@ func (c *SessionManager) GetSessions() []*Session {
 }
 
 func (c *SessionManager) SendSearchResult(ctx context.Context, nodeID UniqueID, result *internalpb.SearchResults) error {
+	log.Info("Start to getClient in SendSearchResult111111")
 	cli, err := c.getClient(ctx, nodeID)
 	if err != nil {
 		log.Warn("failed to send search result, cannot get client", zap.Int64("nodeID", nodeID), zap.Error(err))
 		return err
 	}
+
+	log.Info("Start to getClient in SendSearchResult222222")
 
 	resp, err := cli.SendSearchResult(ctx, result)
 	if err := funcutil.VerifyResponse(resp, err); err != nil {
@@ -105,23 +108,28 @@ func (c *SessionManager) SendSearchResult(ctx context.Context, nodeID UniqueID, 
 		return err
 	}
 
+	log.Info("Start to getClient in SendSearchResult333333")
+
 	log.Debug("success to send search result", zap.Int64("node", nodeID), zap.Any("base", result.Base))
 
 	return nil
 }
 
 func (c *SessionManager) SendRetrieveResult(ctx context.Context, nodeID UniqueID, result *internalpb.RetrieveResults) error {
+	log.Info("Start to getClient in SendRetrieveResult111111")
+
 	cli, err := c.getClient(ctx, nodeID)
 	if err != nil {
 		log.Warn("failed to send retrieve result, cannot get client", zap.Int64("nodeID", nodeID), zap.Error(err))
 		return err
 	}
-
+	log.Info("Start to getClient in SendRetrieveResult2222")
 	resp, err := cli.SendRetrieveResult(ctx, result)
 	if err := funcutil.VerifyResponse(resp, err); err != nil {
 		log.Warn("failed to send retrieve result", zap.Int64("node", nodeID), zap.Error(err))
 		return err
 	}
+	log.Info("Start to getClient in SendRetrieveResult3333")
 
 	log.Debug("success to send retrieve result", zap.Int64("node", nodeID), zap.Any("base", result.Base))
 

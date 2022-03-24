@@ -1001,6 +1001,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	defer q.historical.replica.queryRUnlock()
 	defer q.streaming.replica.queryRUnlock()
 
+	sheepTr := timerecord.NewTimeRecorder("sheep")
 	searchMsg := msg.(*msgstream.SearchMsg)
 	collectionID := searchMsg.CollectionID
 	sp, ctx := trace.StartSpanFromContext(searchMsg.TraceCtx())
@@ -1256,6 +1257,8 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 	sp.LogFields(oplog.String("statistical time", "stats done"))
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", searchMsg.ID()))
+
+	fmt.Println("sheep queryNode", sheepTr.RecordSpan().Milliseconds())
 	return nil
 }
 

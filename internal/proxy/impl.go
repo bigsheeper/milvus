@@ -2408,6 +2408,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 	defer sp.Finish()
 	traceID, _, _ := trace.InfoFromSpan(sp)
 
+	sheepTr := timerecord.NewTimeRecorder("sheep")
 	qt := &searchTask{
 		ctx:       ctx,
 		Condition: NewTaskCondition(ctx),
@@ -2539,6 +2540,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 	metrics.ProxySearchLatencyPerNQ.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
 		strconv.FormatInt(qt.CollectionID, 10)).Observe(float64(tr.ElapseSpan().Milliseconds()) / float64(qt.result.Results.NumQueries))
+	fmt.Println("sheep proxy", sheepTr.RecordSpan().Milliseconds())
 	return qt.result, nil
 }
 

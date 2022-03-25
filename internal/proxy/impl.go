@@ -2540,7 +2540,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		strconv.FormatInt(qt.CollectionID, 10), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 	metrics.ProxySearchLatencyPerNQ.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
 		strconv.FormatInt(qt.CollectionID, 10)).Observe(float64(tr.ElapseSpan().Milliseconds()) / float64(qt.result.Results.NumQueries))
-	fmt.Println("sheep proxy", sheepTr.RecordSpan().Milliseconds())
+	fmt.Println("sheep proxy search", sheepTr.RecordSpan().Milliseconds())
 	return qt.result, nil
 }
 
@@ -2651,6 +2651,7 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 	traceID, _, _ := trace.InfoFromSpan(sp)
 	tr := timerecord.NewTimeRecorder("Query")
 
+	sheepTr := timerecord.NewTimeRecorder("sheep")
 	qt := &queryTask{
 		ctx:       ctx,
 		Condition: NewTaskCondition(ctx),
@@ -2753,6 +2754,8 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 		strconv.FormatInt(qt.CollectionID, 10), metrics.QueryLabel).Set(float64(len(qt.result.FieldsData)))
 	metrics.ProxySendMessageLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.ProxyID, 10),
 		strconv.FormatInt(qt.CollectionID, 10), metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+
+	fmt.Println("sheep proxy retrieve", sheepTr.RecordSpan().Milliseconds())
 	return &milvuspb.QueryResults{
 		Status:     qt.result.Status,
 		FieldsData: qt.result.FieldsData,

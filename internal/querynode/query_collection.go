@@ -1258,11 +1258,12 @@ func (q *queryCollection) search(msg queryMsg) error {
 	sp.LogFields(oplog.String("statistical time", "stats done"))
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", searchMsg.ID()))
 
-	fmt.Println("sheep queryNode", sheepTr.RecordSpan().Milliseconds())
+	fmt.Println("sheep queryNode search", sheepTr.RecordSpan().Milliseconds())
 	return nil
 }
 
 func (q *queryCollection) retrieve(msg queryMsg) error {
+	sheepTr := timerecord.NewTimeRecorder("sheep")
 	// TODO(yukun)
 	// step 1: get retrieve object and defer destruction
 	// step 2: for each segment, call retrieve to get ids proto buffer
@@ -1373,6 +1374,8 @@ func (q *queryCollection) retrieve(msg queryMsg) error {
 		zap.Any("sealedSegmentRetrieved", sealedSegmentRetrieved),
 	)
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", retrieveMsg.ID()))
+
+	fmt.Println("sheep queryNode retrieve", sheepTr.RecordSpan().Milliseconds())
 	return nil
 }
 

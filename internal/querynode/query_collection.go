@@ -980,6 +980,7 @@ func (q *queryCollection) search(msg queryMsg) error {
 	defer q.historical.replica.queryRUnlock()
 	defer q.streaming.replica.queryRUnlock()
 
+	trQueryNode := timerecord.NewTimeRecorder("queryNode")
 	searchMsg := msg.(*msgstream.SearchMsg)
 	collectionID := searchMsg.CollectionID
 	sp, ctx := trace.StartSpanFromContext(searchMsg.TraceCtx())
@@ -1228,6 +1229,8 @@ func (q *queryCollection) search(msg queryMsg) error {
 	}
 	sp.LogFields(oplog.String("statistical time", "stats done"))
 	tr.Elapse(fmt.Sprintf("all done, msgID = %d", searchMsg.ID()))
+
+	metrics.QueryNodeSearchLatency.WithLabelValues().Set(float64(trQueryNode.ElapseSpan().Milliseconds()))
 	return nil
 }
 

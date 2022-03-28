@@ -21,6 +21,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"strconv"
 	"sync"
 
@@ -472,6 +474,7 @@ func (sched *taskScheduler) processTask(t task, q taskQueue) {
 	}()
 	span.LogFields(oplog.Int64("scheduler process PreExecute", t.ID()))
 
+	trQueue := timerecord.NewTimeRecorder("proxy_queue")
 	err := t.PreExecute(ctx)
 
 	defer func() {
@@ -495,6 +498,8 @@ func (sched *taskScheduler) processTask(t task, q taskQueue) {
 
 	span.LogFields(oplog.Int64("scheduler process PostExecute", t.ID()))
 	err = t.PostExecute(ctx)
+
+	metrics.ProxyQueueSearchLatency.WithLabelValues().Set(float64(trQueue.ElapseSpan().Milliseconds()))
 
 	if err != nil {
 		trace.LogError(span, err)

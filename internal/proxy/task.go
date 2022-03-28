@@ -1586,7 +1586,7 @@ func (st *searchTask) PreExecute(ctx context.Context) error {
 			return fmt.Errorf("only support to travel back to %s so far", duration.String())
 		}
 	}
-	guaranteeTimestamp := st.query.GuaranteeTimestamp
+	guaranteeTimestamp := Timestamp(1)
 	if guaranteeTimestamp == 0 {
 		guaranteeTimestamp = st.BeginTs()
 	}

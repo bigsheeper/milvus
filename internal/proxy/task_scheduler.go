@@ -499,7 +499,9 @@ func (sched *taskScheduler) processTask(t task, q taskQueue) {
 	span.LogFields(oplog.Int64("scheduler process PostExecute", t.ID()))
 	err = t.PostExecute(ctx)
 
-	metrics.ProxyQueueSearchLatency.WithLabelValues().Set(float64(trQueue.ElapseSpan().Milliseconds()))
+	if _, ok := t.(*searchTask); ok {
+		metrics.ProxyQueueSearchLatency.WithLabelValues().Set(float64(trQueue.ElapseSpan().Milliseconds()))
+	}
 
 	if err != nil {
 		trace.LogError(span, err)

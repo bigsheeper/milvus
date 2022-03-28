@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"math"
 	"sync"
 	"unsafe"
@@ -1057,11 +1058,13 @@ func (q *queryCollection) search(msg queryMsg) error {
 		deleteSearchResults(searchResults)
 	}()
 	// historical search
+	trHistorical := timerecord.NewTimeRecorder("core_search")
 	log.Debug("historical search start", zap.Int64("msgID", searchMsg.ID()))
 	hisSearchResults, sealedSegmentSearched, sealedPartitionSearched, err := q.historical.search(searchRequests, collection.id, searchMsg.PartitionIDs, plan, travelTimestamp)
 	if err != nil {
 		return err
 	}
+	metrics.HistoricalSearchLatency.WithLabelValues().Set(float64(trHistorical.ElapseSpan().Milliseconds()))
 	searchResults = append(searchResults, hisSearchResults...)
 	log.Debug("historical search", zap.Int64("msgID", searchMsg.ID()), zap.Int64("collectionID", collectionID), zap.Int64s("searched partitionIDs", sealedPartitionSearched), zap.Int64s("searched segmentIDs", sealedSegmentSearched))
 	tr.Record(fmt.Sprintf("historical search done, msgID = %d", searchMsg.ID()))

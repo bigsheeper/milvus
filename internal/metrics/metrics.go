@@ -427,6 +427,34 @@ var (
 			Name:      "search_latency",
 			Help:      "Latency of search",
 		}, []string{})
+	ProxyQueueSearchLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.ProxyRole,
+			Name:      "queue_search_latency",
+			Help:      "Latency of search",
+		}, []string{})
+	QueryNodeSearchLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "search_latency",
+			Help:      "Latency of search",
+		}, []string{})
+	HistoricalSearchLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "historical_search_latency",
+			Help:      "Latency of search",
+		}, []string{})
+	CoreSearchLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "core_search_latency",
+			Help:      "Latency of search",
+		}, []string{})
 
 	// ProxyRetrieveCounter counts the num of calls of Retrieve
 	ProxyRetrieveCounter = prometheus.NewCounterVec(
@@ -573,7 +601,13 @@ func RegisterProxy() {
 
 	prometheus.MustRegister(ProxyInsertCounter)
 	prometheus.MustRegister(ProxySearchCounter)
+
 	prometheus.MustRegister(ProxySearchLatency)
+	prometheus.MustRegister(ProxyQueueSearchLatency)
+	prometheus.MustRegister(QueryNodeSearchLatency)
+	prometheus.MustRegister(HistoricalSearchLatency)
+	prometheus.MustRegister(CoreSearchLatency)
+
 	prometheus.MustRegister(ProxyRetrieveCounter)
 	prometheus.MustRegister(ProxyFlushCounter)
 	prometheus.MustRegister(ProxyQueryCounter)

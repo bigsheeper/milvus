@@ -32,6 +32,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"strconv"
 	"sync"
 	"unsafe"
@@ -307,11 +309,13 @@ func (s *Segment) search(plan *SearchPlan,
 	ts := C.uint64_t(timestamp[0])
 	cPlaceHolderGroup := cPlaceholderGroups[0]
 
+	tr := timerecord.NewTimeRecorder("core_search")
 	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
 	status := C.Search(s.segmentPtr, plan.cSearchPlan, cPlaceHolderGroup, ts, &searchResult.cSearchResult, C.int64_t(s.segmentID))
 	if err := HandleCStatus(&status, "Search failed"); err != nil {
 		return nil, err
 	}
+	metrics.CoreSearchLatency.WithLabelValues().Set(float64(tr.ElapseSpan().Milliseconds()))
 
 	return &searchResult, nil
 }

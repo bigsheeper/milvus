@@ -420,6 +420,14 @@ var (
 			Help:      "Counter of search",
 		}, []string{"status"})
 
+	ProxySearchLatency = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.ProxyRole,
+			Name:      "search_latency",
+			Help:      "Latency of search",
+		}, []string{})
+
 	// ProxyRetrieveCounter counts the num of calls of Retrieve
 	ProxyRetrieveCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -565,6 +573,7 @@ func RegisterProxy() {
 
 	prometheus.MustRegister(ProxyInsertCounter)
 	prometheus.MustRegister(ProxySearchCounter)
+	prometheus.MustRegister(ProxySearchLatency)
 	prometheus.MustRegister(ProxyRetrieveCounter)
 	prometheus.MustRegister(ProxyFlushCounter)
 	prometheus.MustRegister(ProxyQueryCounter)

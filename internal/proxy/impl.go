@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"os"
 	"strconv"
 
@@ -2115,6 +2117,7 @@ func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) 
 
 // Search search the most similar records of requests.
 func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
+	tr := timerecord.NewTimeRecorder("proxy_search")
 	if !node.checkHealthy() {
 		return &milvuspb.SearchResults{
 			Status: unhealthyStatus(),
@@ -2239,6 +2242,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		zap.Uint64("travel_timestamp", travelTs),
 		zap.Uint64("guarantee_timestamp", guaranteeTs))
 
+	metrics.ProxySearchLatency.WithLabelValues().Set(float64(tr.ElapseSpan().Milliseconds()))
 	return qt.result, nil
 }
 

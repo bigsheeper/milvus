@@ -37,6 +37,9 @@ CreatePlanByExpr(const Schema& schema, const char* serialized_expr_plan, int64_t
 std::unique_ptr<PlaceholderGroup>
 ParsePlaceholderGroup(const Plan* plan, const std::string& placeholder_group_blob);
 
+void
+MergePlaceholder(PlaceholderGroup* placeholder_group, const Plan* plan, const std::string& placeholder_group_blob);
+
 int64_t
 GetNumOfQueries(const PlaceholderGroup*);
 

@@ -50,6 +50,40 @@ ParsePlaceholderGroup(const Plan* plan, const std::string& blob) {
     return result;
 }
 
+void
+MergePlaceholder(PlaceholderGroup* placeholder_group, const Plan* plan, const std::string& blob) {
+    namespace ser = milvus::proto::milvus;
+    ser::PlaceholderGroup ph_group;
+    auto ok = ph_group.ParseFromString(blob);
+    AssertInfo(ok, "parse placeholder failed");
+    AssertInfo(ph_group.placeholders().size() == 1, "invalid placeholder size in placeholder_group");
+    AssertInfo(placeholder_group->size() == 1, "invalid placeholder size in placeholder_group");
+    auto& info = ph_group.placeholders()[0];
+    auto& element = placeholder_group->at(0);
+    // set tag
+    element.tag_ = info.tag();
+    Assert(plan->tag2field_.count(element.tag_));
+
+    // append nq
+    element.num_of_queries_ += info.values_size();
+    AssertInfo(element.num_of_queries_, "must have queries");
+    Assert(element.num_of_queries_ > 0);
+
+    // set and check line_sizeof
+    element.line_sizeof_ = info.values().Get(0).size();
+    auto field_offset = plan->tag2field_.at(element.tag_);
+    auto& field_meta = plan->schema_[field_offset];
+    Assert(field_meta.get_sizeof() == element.line_sizeof_);
+
+    // set blob
+    auto& target = element.blob_;
+    target.reserve(element.line_sizeof_ * info.values_size());
+    for (auto& line : info.values()) {
+        Assert(element.line_sizeof_ == line.size());
+        target.insert(target.end(), line.begin(), line.end());
+    }
+}
+
 std::unique_ptr<Plan>
 CreatePlan(const Schema& schema, const std::string& dsl_str) {
     Json dsl;

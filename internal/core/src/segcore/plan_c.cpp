@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
+#include <common/CGoHelper.h>
 #include "pb/segcore.pb.h"
 #include "query/Plan.h"
 #include "segcore/Collection.h"
@@ -68,6 +69,32 @@ CreateSearchPlanByExpr(CCollection c_col, const char* serialized_expr_plan, int6
         status.error_msg = strdup(e.what());
         *res_plan = nullptr;
         return status;
+    }
+}
+
+CPlaceholderGroup
+CreatePlaceholderGroup() {
+    auto result = std::make_unique<milvus::query::PlaceholderGroup>();
+    // init placeholder
+    milvus::query::Placeholder element;
+    result->emplace_back(element);
+    return result.release();
+}
+
+CStatus
+MergePlaceholder(CPlaceholderGroup c_placeholder_group,
+                 CSearchPlan c_plan,
+                 void* placeholder_group_blob,
+                 int64_t blob_size) {
+    try {
+        auto placeHolder_group = reinterpret_cast<milvus::query::PlaceholderGroup*>(c_placeholder_group);
+        std::string blob_string(static_cast<char*>(placeholder_group_blob),
+                                static_cast<char*>(placeholder_group_blob) + blob_size);
+        auto plan = static_cast<milvus::query::Plan*>(c_plan);
+        milvus::query::MergePlaceholder(placeHolder_group, plan, blob_string);
+        return milvus::SuccessCStatus();
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
     }
 }
 

@@ -30,6 +30,15 @@ CreateSearchPlan(CCollection col, const char* dsl, CSearchPlan* res_plan);
 CStatus
 CreateSearchPlanByExpr(CCollection col, const char* serialized_expr_plan, int64_t size, CSearchPlan* res_plan);
 
+CPlaceholderGroup
+CreatePlaceholderGroup();
+
+CStatus
+MergePlaceholder(CPlaceholderGroup c_placeholder_group,
+                 CSearchPlan c_plan,
+                 void* placeholder_group_blob,
+                 int64_t blob_size);
+
 CStatus
 ParsePlaceholderGroup(CSearchPlan plan,
                       void* placeholder_group_blob,

@@ -171,8 +171,8 @@ BenchmarkSearch(int N, int total_round, int num_segments) {
 int
 main() {
     int N = 1000000;
-    int round = 5000;
-    int num_segments = 1;
+    int round = 50000;
+    int num_segments = 10;
 
     PrintProcessInfo();
     BenchmarkSearch(N, round, num_segments);

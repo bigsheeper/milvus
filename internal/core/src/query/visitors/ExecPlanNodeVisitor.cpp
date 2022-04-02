@@ -92,16 +92,19 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         return;
     }
 
-    if (node.predicate_.has_value()) {
+    auto need_predicate = node.predicate_.has_value();
+    if (need_predicate) {
         BitsetType expr_ret = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*node.predicate_.value());
         bitset_holder = std::move(expr_ret);
     } else {
-        bitset_holder.resize(active_count, true);
+        bitset_holder.resize(active_count, false);
     }
     segment->mask_with_timestamps(bitset_holder, timestamp_);
 
     if (!bitset_holder.empty()) {
-        bitset_holder.flip();
+        if (need_predicate) {
+            bitset_holder.flip();
+        }
         view = BitsetView((uint8_t*)boost_ext::get_data(bitset_holder), bitset_holder.size());
     }
 

@@ -33,7 +33,7 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
  public:
     ExecPlanNodeVisitor(const segcore::SegmentInterface& segment,
                         Timestamp timestamp,
-                        const PlaceholderGroup& placeholder_group)
+                        PlaceholderGroup* placeholder_group)
         : segment_(segment), timestamp_(timestamp), placeholder_group_(placeholder_group) {
     }
 
@@ -72,7 +72,7 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
  private:
     const segcore::SegmentInterface& segment_;
     Timestamp timestamp_;
-    PlaceholderGroup placeholder_group_;
+    PlaceholderGroup* placeholder_group_;
 
     SearchResultOpt search_result_opt_;
     RetrieveResultOpt retrieve_result_opt_;

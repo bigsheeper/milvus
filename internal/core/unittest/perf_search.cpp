@@ -122,7 +122,7 @@ Search_Index_HNSW(int i, int round) {
             count++;
             timer.reset();
         }
-        auto qr = segments[i]->Search(plan.get(), *ph_group, time);
+        auto qr = segments[i]->Search(plan.get(), ph_group.get(), time);
     }
     auto avg_duration = totalDuration / count;
     std::cout << "Perf done, totalDuration = " << totalDuration << " s"
@@ -171,7 +171,7 @@ BenchmarkSearch(int N, int total_round, int num_segments) {
 int
 main() {
     int N = 1000000;
-    int round = 50000;
+    int round = 500000;
     int num_segments = 10;
 
     PrintProcessInfo();

@@ -58,18 +58,18 @@ if (LINUX)
             )
     install(TARGETS index_builder_test DESTINATION unittest)
 
-#    add_executable(perf_search
-#            perf_search.cpp
-#            )
-#
-#    target_link_libraries(perf_search
-#            milvus_segcore
-#            milvus_indexbuilder
-#            log
-#            pthread
-#            )
-#
-#    install(TARGETS perf_search DESTINATION unittest)
+    add_executable(perf_search
+            perf_search.cpp
+            )
+
+    target_link_libraries(perf_search
+            milvus_segcore
+            milvus_indexbuilder
+            log
+            pthread
+            )
+
+    install(TARGETS perf_search DESTINATION unittest)
 endif()
 
 if ( APPLE )

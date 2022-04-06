@@ -264,6 +264,26 @@ var (
 		}, []string{
 			nodeIDLabelName,
 		})
+	QueryNodeSearch = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "query_node_search",
+		}, []string{nodeIDLabelName})
+
+	QueryNodeSearchHistorical = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "query_node_search_historical",
+		}, []string{nodeIDLabelName})
+
+	QueryNodeSearchReduce = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.QueryNodeRole,
+			Name:      "query_node_search_reduce",
+		}, []string{nodeIDLabelName})
 )
 
 //RegisterQueryNode registers QueryNode metrics
@@ -285,9 +305,16 @@ func RegisterQueryNode() {
 	prometheus.MustRegister(QueryNodeLoadSegmentLatency)
 	prometheus.MustRegister(QueryNodeServiceTime)
 	prometheus.MustRegister(QueryNodeNumFlowGraphs)
+<<<<<<< HEAD
 	prometheus.MustRegister(QueryNodeSearchNQ)
 	prometheus.MustRegister(QueryNodeWaitForExecuteReqs)
 	prometheus.MustRegister(QueryNodeWaitForMergeReqs)
 	prometheus.MustRegister(QueryNodeReceiveReqs)
 	prometheus.MustRegister(QueryNodeExecuteReqs)
+=======
+
+	prometheus.MustRegister(QueryNodeSearch)
+	prometheus.MustRegister(QueryNodeSearchHistorical)
+	prometheus.MustRegister(QueryNodeSearchReduce)
+>>>>>>> a964bb173... Add search metrics to perf
 }

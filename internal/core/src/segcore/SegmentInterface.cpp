@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
+#include <chrono>
 #include "SegmentInterface.h"
 #include "query/generated/ExecPlanNodeVisitor.h"
 
@@ -84,11 +85,20 @@ SegmentInternalInterface::Search(const query::Plan* plan,
                                  const query::PlaceholderGroup* placeholder_group,
                                  Timestamp timestamp) const {
     std::shared_lock lck(mutex_);
+
+    // Get starting timepoint
+    auto start = std::chrono::high_resolution_clock::now();
+
     check_search(plan);
     query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
     auto results = std::make_unique<SearchResult>();
     *results = visitor.get_moved_result(*plan->plan_node_);
     results->segment_ = (void*)this;
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Time taken by search: " << duration.count() << std::endl;
+
     return results;
 }
 

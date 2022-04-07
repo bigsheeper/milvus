@@ -87,7 +87,7 @@ SegmentInternalInterface::Search(const query::Plan* plan,
     std::shared_lock lck(mutex_);
 
     // Get starting timepoint
-    auto start = std::chrono::high_resolution_clock::now();
+//    auto start = std::chrono::high_resolution_clock::now();
 
     check_search(plan);
     query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
@@ -95,9 +95,9 @@ SegmentInternalInterface::Search(const query::Plan* plan,
     *results = visitor.get_moved_result(*plan->plan_node_);
     results->segment_ = (void*)this;
 
-    auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-    std::cout << "Time taken by search: " << duration.count() << std::endl;
+//    auto stop = std::chrono::high_resolution_clock::now();
+//    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+//    std::cout << "Time taken by search: " << duration.count() << std::endl;
 
     return results;
 }

@@ -22,13 +22,15 @@
 using namespace milvus;
 
 static int dim = 128;
-static int nq = 10;
+static int nq = 1;
 
 static int efConstruction = 150;
 static int M = 12;
 
 static int topK = 50;
 static int ef = 50;
+
+static int round_per_tick = 1000;
 
 const auto schema = []() {
     auto schema = std::make_shared<Schema>();
@@ -113,11 +115,11 @@ Search_Index_HNSW(int i, int round) {
     Timestamp time = 1000000000;
     double totalDuration = 0;
     double count = 0;
-    auto round_per_tick = 1000;
+
     for (int r = 1; r <= round; r++) {
         if ((r % round_per_tick) == 0) {
             auto t = timer.get_step_seconds();
-            std::cout << "thread " << tid << ", " << round_per_tick << " cost: " << t << " seconds" << std::endl;
+//            std::cout << "thread " << tid << ", " << round_per_tick << " cost: " << t << " seconds" << std::endl;
             totalDuration += t;
             count++;
             timer.reset();
@@ -144,12 +146,12 @@ PrintProcessInfo() {
     std::cout << "PID:" << ::getpid() << std::endl;
     setenv("OMP_WAIT_POLICY", "PASSIVE", 1);
     auto x = GetEnv("OMP_WAIT_POLICY");
-    std::cout << "OMP:$" << x << "$" << std::endl;
+//    std::cout << "OMP:$" << x << "$" << std::endl;
 }
 
 void
 BenchmarkSearch(int N, int total_round, int num_segments) {
-    std::cout << "Start BenchmarkSearch..." << std::endl;
+//    std::cout << "Start BenchmarkSearch..." << std::endl;
     std::cout << "Nb=" << N << " dim=" << dim << " total_round=" << total_round << " num_segments=" << num_segments
               << std::endl;
     std::cout << "IndexType=" << knowhere::IndexEnum::INDEX_HNSW << " efConstruction=" << efConstruction << " M=" << M
@@ -158,6 +160,8 @@ BenchmarkSearch(int N, int total_round, int num_segments) {
 
     Create_Index_HNSW(N, num_segments);
     // start searching...
+    std::cout << "start search..." << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> threads;
     for (int i = 0; i < num_segments; i++) {
         threads.emplace_back(Search_Index_HNSW, i, total_round);
@@ -166,13 +170,17 @@ BenchmarkSearch(int N, int total_round, int num_segments) {
     for (auto& th : threads) {
         th.join();
     }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "BenchmarkSearch done, threads_avg_duration = " << duration.count()/1000000.0/*to seconds*//total_round*round_per_tick << " s" << std::endl;
 }
 
 int
 main() {
     int N = 1000000;
-    int round = 50000;
-    int num_segments = 10;
+    int round = 200000;
+    int num_segments = 24;
 
     PrintProcessInfo();
     BenchmarkSearch(N, round, num_segments);

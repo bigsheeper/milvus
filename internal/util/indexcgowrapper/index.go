@@ -15,7 +15,6 @@ package indexcgowrapper
 import "C"
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"unsafe"
 
@@ -71,8 +70,8 @@ func NewCgoIndex(dtype schemapb.DataType, typeParams, indexParams map[string]str
 	defer C.free(unsafe.Pointer(indexParamsPointer))
 
 	var indexPtr C.CIndex
-	cintDType := uint32(dtype)
-	status := C.CreateIndex(cintDType, typeParamsPointer, indexParamsPointer, &indexPtr)
+	//cintDType := uint32(dtype)
+	status := C.CreateIndex(typeParamsPointer, indexParamsPointer, &indexPtr)
 	if err := HandleCStatus(&status, "failed to create index"); err != nil {
 		return nil, err
 	}
@@ -99,22 +98,6 @@ func (index *CgoIndex) Build(dataset *Dataset) error {
 		return index.buildFloatVecIndex(dataset)
 	case schemapb.DataType_BinaryVector:
 		return index.buildBinaryVecIndex(dataset)
-	case schemapb.DataType_Bool:
-		return index.buildBoolIndex(dataset)
-	case schemapb.DataType_Int8:
-		return index.buildInt8Index(dataset)
-	case schemapb.DataType_Int16:
-		return index.buildInt16Index(dataset)
-	case schemapb.DataType_Int32:
-		return index.buildInt32Index(dataset)
-	case schemapb.DataType_Int64:
-		return index.buildInt64Index(dataset)
-	case schemapb.DataType_Float:
-		return index.buildFloatIndex(dataset)
-	case schemapb.DataType_Double:
-		return index.buildDoubleIndex(dataset)
-	case schemapb.DataType_String:
-		return index.buildStringIndex(dataset)
 	default:
 		return fmt.Errorf("build index on unsupported data type: %s", dataset.DType.String())
 	}
@@ -122,79 +105,14 @@ func (index *CgoIndex) Build(dataset *Dataset) error {
 
 func (index *CgoIndex) buildFloatVecIndex(dataset *Dataset) error {
 	vectors := dataset.Data[keyRawArr].([]float32)
-	status := C.BuildFloatVecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.float)(&vectors[0]))
+	status := C.BuildFloatVecIndexWithoutIds(index.indexPtr, (C.int64_t)(len(vectors)), (*C.float)(&vectors[0]))
 	return HandleCStatus(&status, "failed to build float vector index")
 }
 
 func (index *CgoIndex) buildBinaryVecIndex(dataset *Dataset) error {
 	vectors := dataset.Data[keyRawArr].([]byte)
-	status := C.BuildBinaryVecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.uint8_t)(&vectors[0]))
+	status := C.BuildBinaryVecIndexWithoutIds(index.indexPtr, (C.int64_t)(len(vectors)), (*C.uint8_t)(&vectors[0]))
 	return HandleCStatus(&status, "failed to build binary vector index")
-}
-
-// TODO: investigate if we can pass an bool array to cgo.
-func (index *CgoIndex) buildBoolIndex(dataset *Dataset) error {
-	arr := dataset.Data[keyRawArr].([]bool)
-	f := &schemapb.BoolArray{
-		Data: arr,
-	}
-	data, err := proto.Marshal(f)
-	if err != nil {
-		return err
-	}
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-// TODO: refactor these duplicated code after generic programming is supported.
-
-func (index *CgoIndex) buildInt8Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int8)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt16Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int16)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt32Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int32)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt64Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int64)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildFloatIndex(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]float32)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildDoubleIndex(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]float64)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildStringIndex(dataset *Dataset) error {
-	arr := dataset.Data[keyRawArr].([]string)
-	f := &schemapb.StringArray{
-		Data: arr,
-	}
-	data, err := proto.Marshal(f)
-	if err != nil {
-		return err
-	}
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
 }
 
 func (index *CgoIndex) Serialize() ([]*Blob, error) {
@@ -231,28 +149,30 @@ func (index *CgoIndex) Serialize() ([]*Blob, error) {
 }
 
 func (index *CgoIndex) Load(blobs []*Blob) error {
-	var cBinarySet C.CBinarySet
-	status := C.NewBinarySet(&cBinarySet)
-	defer C.DeleteBinarySet(cBinarySet)
+	//var cBinarySet C.CBinarySet
+	//status := C.NewBinarySet(&cBinarySet)
+	//defer C.DeleteBinarySet(cBinarySet)
+	//
+	//if err := HandleCStatus(&status, "failed to load index"); err != nil {
+	//	return err
+	//}
+	//for _, blob := range blobs {
+	//	key := blob.Key
+	//	byteIndex := blob.Value
+	//	indexPtr := unsafe.Pointer(&byteIndex[0])
+	//	indexLen := C.int64_t(len(byteIndex))
+	//	binarySetKey := filepath.Base(key)
+	//	indexKey := C.CString(binarySetKey)
+	//	status = C.AppendIndexBinary(cBinarySet, indexPtr, indexLen, indexKey)
+	//	C.free(unsafe.Pointer(indexKey))
+	//	if err := HandleCStatus(&status, "failed to load index"); err != nil {
+	//		return err
+	//	}
+	//}
+	//status = C.LoadIndexFromBinarySet(index.indexPtr, cBinarySet)
+	//return HandleCStatus(&status, "failed to load index")
 
-	if err := HandleCStatus(&status, "failed to load index"); err != nil {
-		return err
-	}
-	for _, blob := range blobs {
-		key := blob.Key
-		byteIndex := blob.Value
-		indexPtr := unsafe.Pointer(&byteIndex[0])
-		indexLen := C.int64_t(len(byteIndex))
-		binarySetKey := filepath.Base(key)
-		indexKey := C.CString(binarySetKey)
-		status = C.AppendIndexBinary(cBinarySet, indexPtr, indexLen, indexKey)
-		C.free(unsafe.Pointer(indexKey))
-		if err := HandleCStatus(&status, "failed to load index"); err != nil {
-			return err
-		}
-	}
-	status = C.LoadIndexFromBinarySet(index.indexPtr, cBinarySet)
-	return HandleCStatus(&status, "failed to load index")
+	return nil
 }
 
 func (index *CgoIndex) Delete() error {

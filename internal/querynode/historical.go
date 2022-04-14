@@ -167,34 +167,35 @@ func (h *historical) search(req *searchRequest, collID UniqueID, partIDs []Uniqu
 		var err2 error
 		var wg sync.WaitGroup
 		for _, segID := range segIDs {
-			segID2 := segID
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				seg, err := h.replica.getSegmentByID(segID2)
-				if err != nil {
-					err2 = err
-					return
-				}
-				if !seg.getOnService() {
-					return
-				}
-				tr := timerecord.NewTimeRecorder("searchOnSealed")
-				searchResult, err := seg.search(plan, req, []Timestamp{searchTs})
-				if err != nil {
-					err2 = err
-					return
-				}
-				metrics.QueryNodeSQSegmentLatency.WithLabelValues(metrics.SearchLabel,
-					metrics.SealedSegmentLabel,
-					fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
+			for i := 0; i < 20; i++ {
+				segID2 := segID
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					seg, err := h.replica.getSegmentByID(segID2)
+					if err != nil {
+						err2 = err
+						return
+					}
+					if !seg.getOnService() {
+						return
+					}
+					tr := timerecord.NewTimeRecorder("searchOnSealed")
+					searchResult, err := seg.search(plan, req, []Timestamp{searchTs})
+					if err != nil {
+						err2 = err
+						return
+					}
+					metrics.QueryNodeSQSegmentLatency.WithLabelValues(metrics.SearchLabel,
+						metrics.SealedSegmentLabel,
+						fmt.Sprint(Params.QueryNodeCfg.QueryNodeID)).Observe(float64(tr.ElapseSpan().Milliseconds()))
 
-				segmentLock.Lock()
-				searchResults = append(searchResults, searchResult)
-				searchSegmentIDs = append(searchSegmentIDs, seg.segmentID)
-				segmentLock.Unlock()
-			}()
-
+					segmentLock.Lock()
+					searchResults = append(searchResults, searchResult)
+					searchSegmentIDs = append(searchSegmentIDs, seg.segmentID)
+					segmentLock.Unlock()
+				}()
+			}
 		}
 		wg.Wait()
 		if err2 != nil {

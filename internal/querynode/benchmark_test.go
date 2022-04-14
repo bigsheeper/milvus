@@ -18,6 +18,8 @@ package querynode
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap/zapcore"
 	"os"
 	"runtime/pprof"
 	"strconv"
@@ -25,16 +27,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 const (
 	maxNQ = 100
-	nb    = 10000
+	nb    = 1000000
 )
 
 func benchmarkQueryCollectionSearch(nq int, b *testing.B) {

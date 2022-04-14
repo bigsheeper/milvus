@@ -35,7 +35,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"unsafe"
 
 	"go.uber.org/zap"
@@ -286,11 +285,11 @@ func NewCIndex(typeParams, indexParams map[string]string) (Index, error) {
 		indexPtr: indexPtr,
 		close:    false,
 	}
-	runtime.SetFinalizer(index, func(index *CIndex) {
-		if index != nil && !index.close {
-			log.Error("there is leakage in index object, please check.")
-		}
-	})
+	//runtime.SetFinalizer(index, func(index *CIndex) {
+	//	if index != nil && !index.close {
+	//		log.Error("there is leakage in index object, please check.")
+	//	}
+	//})
 	return index, nil
 }
 

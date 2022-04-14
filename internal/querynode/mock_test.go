@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/indexcgowrapper"
 	"math"
 	"math/rand"
 	"strconv"
@@ -61,11 +60,11 @@ const (
 	defaultConstFieldName = "const"
 	defaultPKFieldName    = "pk"
 	defaultTopK           = int64(10)
-	defaultNQ             = int64(10)
+	defaultNQ             = int64(100)
 	defaultRoundDecimal   = int64(6)
 	defaultDim            = 128
 	defaultNProb          = 10
-	defaultMetricType     = "JACCARD"
+	defaultMetricType     = "L2"
 	defaultEf             = 10
 
 	defaultDMLChannel   = "query-node-unittest-DML-0"
@@ -1958,17 +1957,15 @@ func generateAndSaveIndex(segmentID UniqueID, msgLength int, indexType, metricTy
 		}
 	}
 
-	index, err := indexcgowrapper.NewCgoIndex(schemapb.DataType_FloatVector, typeParams, indexParams)
+	index, err := indexnode.NewCIndex(typeParams, indexParams)
 	if err != nil {
 		return nil, err
 	}
 
-	err = index.Build(indexcgowrapper.GenFloatVecDataset(indexRowData))
+	err = index.BuildFloatVecIndexWithoutIds(indexRowData)
 	if err != nil {
 		return nil, err
 	}
-
-	cm := storage.NewLocalChunkManager(storage.RootPath(defaultLocalStorage))
 
 	// save index to minio
 	binarySet, err := index.Serialize()
@@ -1994,11 +1991,25 @@ func generateAndSaveIndex(segmentID UniqueID, msgLength int, indexType, metricTy
 		return nil, err
 	}
 
+	option := &minioKV.Option{
+		Address:           Params.MinioCfg.Address,
+		AccessKeyID:       Params.MinioCfg.AccessKeyID,
+		SecretAccessKeyID: Params.MinioCfg.SecretAccessKey,
+		UseSSL:            Params.MinioCfg.UseSSL,
+		BucketName:        Params.MinioCfg.BucketName,
+		CreateBucket:      true,
+	}
+
+	kv, err := minioKV.NewMinIOKV(context.Background(), option)
+	if err != nil {
+		return nil, err
+	}
+
 	indexPaths := make([]string, 0)
 	for _, index := range serializedIndexBlobs {
 		p := strconv.Itoa(int(segmentID)) + "/" + index.Key
 		indexPaths = append(indexPaths, p)
-		err := cm.Write(p, index.Value)
+		err := kv.Save(p, string(index.Value))
 		if err != nil {
 			return nil, err
 		}

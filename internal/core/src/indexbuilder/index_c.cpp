@@ -14,6 +14,7 @@
 #ifndef __APPLE__
 
 #include <malloc.h>
+#include <exceptions/EasyAssert.h>
 
 #endif
 
@@ -330,3 +331,20 @@ void
 DeleteByteArray(const char* array) {
     delete[] array;
 }
+//
+//CStatus
+//SerializeIndexToBinarySet(CIndex index, CBinarySet* c_binary_set) {
+//    auto status = CStatus();
+//    try {
+//        AssertInfo(index, "failed to serialize index to binary set, passed index was null");
+//        auto real_index = reinterpret_cast<milvus::indexbuilder::IndexCreatorBase*>(index);
+//        auto binary = std::make_unique<knowhere::BinarySet>(real_index->Serialize());
+//        *c_binary_set = binary.release();
+//        status.error_code = Success;
+//        status.error_msg = "";
+//    } catch (std::exception& e) {
+//        status.error_code = UnexpectedError;
+//        status.error_msg = strdup(e.what());
+//    }
+//    return status;
+//}

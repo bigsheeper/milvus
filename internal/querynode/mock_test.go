@@ -1745,14 +1745,29 @@ func genSearchRequest(nq int, indexType string) (*internalpb.SearchRequest, erro
 	}, nil
 }
 
-func genSearchMsg(nq int, indexType string) (*msgstream.SearchMsg, error) {
+func genSearchMsg(nq int, indexType string) (*searchMsg, error) {
 	req, err := genSearchRequest(nq, indexType)
 	if err != nil {
 		return nil, err
 	}
-	msg := &msgstream.SearchMsg{
-		BaseMsg:       genMsgStreamBaseMsg(),
-		SearchRequest: *req,
+	msg := &searchMsg{
+		Base:               req.Base,
+		BaseMsg:            genMsgStreamBaseMsg(),
+		ReqIDs:             []UniqueID{req.GetReqID()},
+		DbID:               req.DbID,
+		CollectionID:       req.GetCollectionID(),
+		PartitionIDs:       req.GetPartitionIDs(),
+		Dsl:                req.GetDsl(),
+		DslType:            req.GetDslType(),
+		PlaceholderGroup:   req.GetPlaceholderGroup(),
+		SerializedExprPlan: req.GetSerializedExprPlan(),
+		TravelTimestamp:    req.GetTravelTimestamp(),
+		GuaranteeTimestamp: req.GetGuaranteeTimestamp(),
+		TimeoutTimestamp:   req.GetTimeoutTimestamp(),
+		NQ:                 defaultNQ,
+		OrigNQs:            []int64{defaultNQ},
+		SourceIDs:          []UniqueID{req.Base.SourceID},
+		TopK:               defaultTopK,
 	}
 	msg.SetTimeRecorder()
 	return msg, nil
@@ -1823,7 +1838,7 @@ func loadIndexForSegment(ctx context.Context, node *QueryNode, segmentID UniqueI
 	if err != nil {
 		return err
 	}
-	vecFieldInfo, err := segment.getIndexedFieldInfo(simpleVecField.id)
+	vecFieldInfo, err := segment.getVectorFieldInfo(simpleVecField.id)
 	if err != nil {
 		return err
 	}

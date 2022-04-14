@@ -29,7 +29,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/milvus-io/milvus/internal/log"
-	msgstream2 "github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -84,11 +83,11 @@ func benchmarkQueryCollectionSearch(nq int, b *testing.B) {
 	msgTmp, err := genSearchMsg(10, IndexFaissIDMap)
 	assert.NoError(b, err)
 	for j := 0; j < 1000; j++ {
-		err = queryCollection.search(msgTmp)
+		_, err = queryCollection.search(msgTmp)
 		assert.NoError(b, err)
 	}
 
-	msgs := make([]*msgstream2.SearchMsg, maxNQ/nq)
+	msgs := make([]*searchMsg, maxNQ/nq)
 	for i := 0; i < maxNQ/nq; i++ {
 		msg, err := genSearchMsg(nq, IndexFaissIDMap)
 		assert.NoError(b, err)
@@ -113,7 +112,7 @@ func benchmarkQueryCollectionSearch(nq int, b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err = queryCollection.search(msgs[j])
+				_, err = queryCollection.search(msgs[j])
 				assert.NoError(b, err)
 			}()
 		}
@@ -167,7 +166,7 @@ func benchmarkQueryCollectionSearchIndex(nq int, indexType string, b *testing.B)
 	msgTmp, err := genSearchMsg(100, indexType)
 	assert.NoError(b, err)
 	for i := 0; i < 1000; i++ {
-		err = queryCollection.search(msgTmp)
+		_, err = queryCollection.search(msgTmp)
 		assert.NoError(b, err)
 		time.Sleep(300 * time.Millisecond)
 	}

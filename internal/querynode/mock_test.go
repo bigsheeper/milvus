@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/indexcgowrapper"
 	"math"
 	"math/rand"
 	"strconv"

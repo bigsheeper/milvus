@@ -115,8 +115,6 @@ func (index *CgoIndex) Build(dataset *Dataset) error {
 		return index.buildDoubleIndex(dataset)
 	case schemapb.DataType_String:
 		return index.buildStringIndex(dataset)
-	case schemapb.DataType_VarChar:
-		return index.buildStringIndex(dataset)
 	default:
 		return fmt.Errorf("build index on unsupported data type: %s", dataset.DType.String())
 	}

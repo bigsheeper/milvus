@@ -130,6 +130,8 @@ const (
 	edgeSize       = 10
 	epsilon        = 0.1
 	maxSearchEdges = 50
+
+	defaultLocalStorage = "/tmp/milvus_test/querynode"
 )
 
 // ---------- unittest util functions ----------

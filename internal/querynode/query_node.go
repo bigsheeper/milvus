@@ -34,6 +34,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -327,6 +328,8 @@ func (node *QueryNode) Start() error {
 		node.streaming,
 		node.msFactory,
 		qsOptWithSessionManager(node.sessionManager))
+
+	fmt.Println("================================= sheep, pid = ", os.Getpid())
 
 	// start task scheduler
 	go node.scheduler.Start()

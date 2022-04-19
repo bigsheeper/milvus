@@ -158,16 +158,14 @@ func (h *historical) search(req *searchRequest, collID UniqueID, partIDs []Uniqu
 	}
 
 	var segmentLock sync.RWMutex
+	var err2 error
+	var wg sync.WaitGroup
 	for _, partID := range searchPartIDs {
 		segIDs, err := h.replica.getSegmentIDs(partID)
 		if err != nil {
 			return searchResults, searchSegmentIDs, searchPartIDs, err
 		}
-
-		var err2 error
-		var wg sync.WaitGroup
 		for _, segID := range segIDs {
-			//for i := 0; i < 20; i++ {
 			segID2 := segID
 			wg.Add(1)
 			go func() {
@@ -195,13 +193,13 @@ func (h *historical) search(req *searchRequest, collID UniqueID, partIDs []Uniqu
 				searchSegmentIDs = append(searchSegmentIDs, seg.segmentID)
 				segmentLock.Unlock()
 			}()
-			//}
 		}
-		wg.Wait()
+
 		if err2 != nil {
 			return searchResults, searchSegmentIDs, searchPartIDs, err2
 		}
 	}
+	wg.Wait()
 
 	return searchResults, searchSegmentIDs, searchPartIDs, nil
 }

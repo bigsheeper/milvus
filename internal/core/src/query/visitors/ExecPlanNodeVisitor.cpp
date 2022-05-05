@@ -92,6 +92,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         return;
     }
 
+    auto start = std::chrono::high_resolution_clock::now();
     if (node.predicate_.has_value()) {
         BitsetType expr_ret = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*node.predicate_.value());
         bitset_holder = std::move(expr_ret);
@@ -99,6 +100,9 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     } else {
         bitset_holder.resize(active_count, false);
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "CoreBenchmark ExecExpr time " << duration.count() << std::endl;
     segment->mask_with_timestamps(bitset_holder, timestamp_);
 
     if (!bitset_holder.empty()) {

@@ -89,7 +89,13 @@ SearchOnSealed(const Schema& schema,
         auto adapter = milvus::knowhere::AdapterMgr::GetInstance().GetAdapter(index_type);
         AssertInfo(adapter->CheckSearch(conf, index_type, field_indexing->indexing_->index_mode()),
                    "[SearchOnSealed]Search params check failed");
-        return field_indexing->indexing_->Query(ds, conf, bitset);
+
+        auto start = std::chrono::high_resolution_clock::now();
+        auto res = field_indexing->indexing_->Query(ds, conf, bitset);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+        std::cout << "Time (in microseconds) taken by Knowhere::Query: " << duration.count() << std::endl;
+        return res;
     }();
 
     auto ids = final->Get<idx_t*>(knowhere::meta::IDS);

@@ -107,8 +107,19 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
 
     auto final_bitset = segment->get_filtered_bitmap(view, active_count, timestamp_);
 
-    segment->vector_search(active_count, node.search_info_, src_data, num_queries, MAX_TIMESTAMP, final_bitset,
+    auto N = 1000000;
+    auto tmp_block = std::vector<uint8_t>(N/8, -1);
+    tmp_block[0] = 7;
+    auto tmp_view = faiss::BitsetView(tmp_block.data(), N);
+    std::cout << "view.count_1: " << tmp_view.count_1() << ", view.size: " << tmp_view.size() << std::endl;
+
+
+    auto start = std::chrono::high_resolution_clock::now();
+    segment->vector_search(active_count, node.search_info_, src_data, num_queries, MAX_TIMESTAMP, tmp_view,
                            search_result);
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Time (in microseconds) taken by vector_search: " << duration.count() << std::endl;
 
     search_result_opt_ = std::move(search_result);
 }

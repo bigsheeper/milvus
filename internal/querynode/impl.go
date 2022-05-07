@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -557,61 +558,117 @@ func (node *QueryNode) isHealthy() bool {
 
 // Search performs replica search tasks.
 func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (*internalpb.SearchResults, error) {
+	failRet := &internalpb.SearchResults{
+		Status: &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+		},
+	}
 	if !node.isHealthy() {
-		return &internalpb.SearchResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    msgQueryNodeIsUnhealthy(Params.QueryNodeCfg.GetNodeID()),
-			},
-		}, nil
+		failRet.Status.Reason = msgQueryNodeIsUnhealthy(Params.QueryNodeCfg.GetNodeID())
+		return failRet, nil
 	}
 
 	log.Debug("Received SearchRequest", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
 
 	if node.queryShardService == nil {
-		return &internalpb.SearchResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    "queryShardService is nil",
-			},
-		}, nil
+		failRet.Status.Reason = "queryShardService is nil"
+		return failRet, nil
 	}
 
 	if !node.queryShardService.hasQueryShard(req.GetDmlChannel()) {
-		err := node.queryShardService.addQueryShard(req.Req.CollectionID, req.GetDmlChannel(), 0) // TODO: add replicaID in request or remove it in query shard
+		// TODO: add replicaID in request or remove it in query shard
+		err := node.queryShardService.addQueryShard(req.Req.CollectionID, req.GetDmlChannel(), 0)
 		if err != nil {
-			return &internalpb.SearchResults{
-				Status: &commonpb.Status{
-					ErrorCode: commonpb.ErrorCode_UnexpectedError,
-					Reason:    err.Error(),
-				},
-			}, nil
+			failRet.Status.Reason = err.Error()
+			return failRet, nil
 		}
 	}
 
 	qs, err := node.queryShardService.getQueryShard(req.GetDmlChannel())
 	if err != nil {
-		return &internalpb.SearchResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
+		failRet.Status.Reason = err.Error()
+		return failRet, nil
 	}
 
-	results, err := qs.search(ctx, req)
-	if err != nil {
-		log.Warn("QueryService failed to search", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()), zap.Error(err))
-		return &internalpb.SearchResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
-	log.Debug("Search Shard Done", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
+	if req.FromShardLeader {
+		historicalTask := newSearchTask(ctx, req)
+		historicalTask.QS = qs
+		err2 := node.scheduler.addSQTask(historicalTask, ctx)
+		if err2 != nil {
+			failRet.Status.Reason = err2.Error()
+			return failRet, nil
+		}
 
-	return results, err
+		err2 = historicalTask.WaitToFinish()
+		if err2 != nil {
+			failRet.Status.Reason = err2.Error()
+			return failRet, nil
+		}
+		return historicalTask.Ret, nil
+	}
+
+	//from Proxy
+	cluster, ok := qs.clusterService.getShardCluster(req.GetDmlChannel())
+	if !ok {
+		failRet.Status.Reason = fmt.Sprintf("channel %s leader is not here", req.GetDmlChannel())
+		return failRet, nil
+	}
+
+	searchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var results []*internalpb.SearchResults
+	var streamingResult *internalpb.SearchResults
+
+	var wg sync.WaitGroup
+	var errCluster error
+
+	wg.Add(1) // search cluster
+	go func() {
+		defer wg.Done()
+		// shard leader dispatches request to its shard cluster
+		cResults, cErr := cluster.Search(searchCtx, req)
+		if cErr != nil {
+			log.Warn("search cluster failed", zap.Int64("collectionID", req.Req.GetCollectionID()), zap.Error(cErr))
+			errCluster = cErr
+			return
+		}
+		results = cResults
+	}()
+
+	var errStreaming error
+	wg.Add(1) // search streaming
+	go func() {
+		defer wg.Done()
+		streamingTask := newSearchTask(searchCtx, req)
+		streamingTask.QS = qs
+		err2 := node.scheduler.addSQTask(streamingTask, ctx)
+		defer func() {
+			errStreaming = err2
+		}()
+		if err2 != nil {
+			return
+		}
+		err2 = streamingTask.WaitToFinish()
+		if err2 != nil {
+			return
+		}
+		streamingResult = streamingTask.Ret
+	}()
+	wg.Wait()
+
+	if errCluster != nil {
+		failRet.Status.Reason = errCluster.Error()
+		return failRet, nil
+	}
+	if errStreaming != nil {
+		failRet.Status.Reason = errStreaming.Error()
+		return failRet, nil
+	}
+	results = append(results, streamingResult)
+
+
+	return nil, err
 }
 
 // Query performs replica query tasks.
@@ -647,29 +704,66 @@ func (node *QueryNode) Query(ctx context.Context, req *queryPb.QueryRequest) (*i
 		}
 	}
 
-	qs, err := node.queryShardService.getQueryShard(req.GetDmlChannel())
-	if err != nil {
-		return &internalpb.RetrieveResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
+	if req.FromShardLeader {
+		// construct a queryTask
+	} else {
+		qs, err := node.queryShardService.getQueryShard(req.GetDmlChannel())
+		if err != nil {
+			return &internalpb.RetrieveResults{
+				Status: &commonpb.Status{
+					ErrorCode: commonpb.ErrorCode_UnexpectedError,
+					Reason:    err.Error(),
+				},
+			}, nil
+		}
 
-	results, err := qs.query(ctx, req)
-	if err != nil {
-		log.Warn("QueryService failed to query", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()), zap.Error(err))
-		return &internalpb.RetrieveResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
-	log.Debug("Query Shard Done", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
+		cluster, ok := qs.clusterService.getShardCluster(req.GetDmlChannel())
+		if !ok {
+			return nil, fmt.Errorf("channel %s leader is not here", req.GetDmlChannel())
+		}
 
-	return results, nil
+		// add cancel when error occurs
+		queryCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		var results []*internalpb.RetrieveResults
+		var streamingResults *internalpb.RetrieveResults
+		var mut sync.Mutex
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			// shard leader dispatches request to its shard cluster
+			cResults, cErr := cluster.Query(queryCtx, req)
+			mut.Lock()
+			defer mut.Unlock()
+			if cErr != nil {
+				err = cErr
+				log.Warn("failed to query cluster", zap.Int64("collectionID", req.Req.GetCollectionID()), zap.Error(cErr))
+				cancel()
+				return
+			}
+			results = cResults
+		}()
+
+		go func() {
+			defer wg.Done()
+			streamingTask := newQueryTask(queryCtx, req)
+			err := streamingTask.WaitToFinish()
+			if err != nil {
+				return
+			}
+			streamingResults = streamingTask.Ret
+		}()
+
+		wg.Wait()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 // SyncReplicaSegments syncs replica node & segments states

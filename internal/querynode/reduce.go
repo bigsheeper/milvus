@@ -35,6 +35,11 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 )
 
+type sliceInfo struct {
+	sliceNQs   []int32
+	sliceTopKs []int32
+}
+
 // SearchResult contains a pointer to the search result in C++ memory
 type SearchResult struct {
 	cSearchResult C.CSearchResult
@@ -46,6 +51,30 @@ type searchResultDataBlobs = C.CSearchResultDataBlobs
 // RetrieveResult contains a pointer to the retrieve result in C++ memory
 type RetrieveResult struct {
 	cRetrieveResult C.CRetrieveResult
+}
+
+func parseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *sliceInfo {
+	sInfo := &sliceInfo{
+		sliceNQs:   make([]int32, 0),
+		sliceTopKs: make([]int32, 0),
+	}
+
+	if nqPerSlice == 0 {
+		return sInfo
+	}
+
+	for i := 0; i < len(originNQs); i++ {
+		for j := 0; j < int(originNQs[i]/nqPerSlice); j++ {
+			sInfo.sliceNQs = append(sInfo.sliceNQs, int32(nqPerSlice))
+			sInfo.sliceTopKs = append(sInfo.sliceTopKs, int32(originTopKs[i]))
+		}
+		if tailSliceSize := originNQs[i] % nqPerSlice; tailSliceSize > 0 {
+			sInfo.sliceNQs = append(sInfo.sliceNQs, int32(tailSliceSize))
+			sInfo.sliceTopKs = append(sInfo.sliceTopKs, int32(originTopKs[i]))
+		}
+	}
+
+	return sInfo
 }
 
 func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult, numSegments int64) error {
@@ -67,14 +96,16 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
-func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResult, plan *SearchPlan, numSegments int, reqSlices []int32) (searchResultDataBlobs, error) {
-	if plan.cSearchPlan == nil {
-		return nil, errors.New("nil search plan")
-	}
+func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResult, numSegments int, sliceNQs []int32, sliceTopKs []int32) (searchResultDataBlobs, error) {
 	log.Debug("start marshal...",
 		zap.Int64("collectionID", collectionID),
 		zap.Int64("msgID", msgID),
-		zap.Int32s("reqSlices", reqSlices))
+		zap.Int32s("sliceNQs", sliceNQs),
+		zap.Int32s("sliceTopKs", sliceTopKs))
+
+	if len(sliceNQs) != len(sliceTopKs) {
+		return nil, fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
+	}
 
 	cSearchResults := make([]C.CSearchResult, 0)
 	for _, res := range searchResults {
@@ -83,12 +114,13 @@ func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResul
 	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
 
 	var cNumSegments = C.int32_t(numSegments)
-	var cSlicesPtr = (*C.int32_t)(&reqSlices[0])
-	var cNumSlices = C.int32_t(len(reqSlices))
+	var cSliceNQSPtr = (*C.int32_t)(&sliceNQs[0])
+	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
+	var cNumSlices = C.int32_t(len(sliceNQs))
 
 	var cSearchResultDataBlobs searchResultDataBlobs
 
-	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, plan.cSearchPlan, cNumSegments, cSlicesPtr, cNumSlices)
+	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err
 	}

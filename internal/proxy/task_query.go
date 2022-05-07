@@ -348,7 +348,6 @@ func (t *queryTask) queryShard(ctx context.Context, leaders *querypb.ShardLeader
 	query := func(nodeID UniqueID, qn types.QueryNode) error {
 		req := &querypb.QueryRequest{
 			Req:           t.RetrieveRequest,
-			IsShardLeader: true,
 			DmlChannel:    leaders.GetChannelName(),
 		}
 

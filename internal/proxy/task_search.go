@@ -55,6 +55,7 @@ type searchTask struct {
 
 func (t *searchTask) PreExecute(ctx context.Context) error {
 	sp, ctx := trace.StartSpanFromContextWithOperationName(t.TraceCtx(), "Proxy-Search-PreExecute")
+	defer sp.Finish()
 
 	if t.getQueryNodePolicy == nil {
 		t.getQueryNodePolicy = defaultGetQueryNodePolicy
@@ -64,7 +65,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		t.searchShardPolicy = roundRobinPolicy
 	}
 
-	defer sp.Finish()
 	t.Base.MsgType = commonpb.MsgType_Search
 	t.Base.SourceID = Params.ProxyCfg.GetNodeID()
 
@@ -398,7 +398,6 @@ func (t *searchTask) searchShard(ctx context.Context, leaders *querypb.ShardLead
 	search := func(nodeID UniqueID, qn types.QueryNode) error {
 		req := &querypb.SearchRequest{
 			Req:           t.SearchRequest,
-			IsShardLeader: true,
 			DmlChannel:    leaders.GetChannelName(),
 		}
 

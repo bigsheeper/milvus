@@ -35,6 +35,14 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 )
 
+type sliceInfo struct {
+	slices    []int32
+	reqIDs    []UniqueID
+	sourceIDs []UniqueID
+	reqNum    map[UniqueID]int64
+	reqCount  map[UniqueID]int64
+}
+
 // SearchResult contains a pointer to the search result in C++ memory
 type SearchResult struct {
 	cSearchResult C.CSearchResult
@@ -46,6 +54,57 @@ type searchResultDataBlobs = C.CSearchResultDataBlobs
 // RetrieveResult contains a pointer to the retrieve result in C++ memory
 type RetrieveResult struct {
 	cRetrieveResult C.CRetrieveResult
+}
+
+func parseSliceInfo(originNQs []int64, nq int64, originReqIDs []UniqueID, sourceIDs []UniqueID) *sliceInfo {
+	sInfo := &sliceInfo{
+		slices:    make([]int32, 0),
+		reqIDs:    make([]UniqueID, 0),
+		sourceIDs: make([]UniqueID, 0),
+		reqNum:    make(map[UniqueID]int64),
+		reqCount:  make(map[UniqueID]int64),
+	}
+
+	if nq == 0 {
+		return sInfo
+	}
+
+	if len(originNQs) != len(originReqIDs) {
+		return sInfo
+	}
+	if len(originReqIDs) != len(sourceIDs) {
+		return sInfo
+	}
+
+	for i := 0; i < len(originNQs); i++ {
+		for j := 0; j < int(originNQs[i]/nq); j++ {
+			sInfo.slices = append(sInfo.slices, int32(nq))
+			sInfo.reqIDs = append(sInfo.reqIDs, originReqIDs[i])
+			sInfo.sourceIDs = append(sInfo.sourceIDs, sourceIDs[i])
+			sInfo.reqNum[originReqIDs[i]]++
+		}
+		if tailSliceSize := originNQs[i] % nq; tailSliceSize > 0 {
+			sInfo.slices = append(sInfo.slices, int32(tailSliceSize))
+			sInfo.reqIDs = append(sInfo.reqIDs, originReqIDs[i])
+			sInfo.sourceIDs = append(sInfo.sourceIDs, sourceIDs[i])
+			sInfo.reqNum[originReqIDs[i]]++
+		}
+	}
+
+	return sInfo
+}
+
+// TODO: rename by SearchResult.SliceOffset
+func (s *sliceInfo) getSliceOffset(i int) int64 {
+	reqID := s.reqIDs[i]
+	s.reqCount[reqID]++
+	return s.reqCount[reqID]
+}
+
+// TODO: rename by SearchResult.SliceNum
+func (s *sliceInfo) getSliceNum(i int) int64 {
+	reqID := s.reqIDs[i]
+	return s.reqNum[reqID]
 }
 
 func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult, numSegments int64) error {
@@ -67,14 +126,16 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	return nil
 }
 
-func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResult, plan *SearchPlan, numSegments int, reqSlices []int32) (searchResultDataBlobs, error) {
-	if plan.cSearchPlan == nil {
-		return nil, errors.New("nil search plan")
-	}
+func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResult, numSegments int, sliceNQs []int32, sliceTopKs []int32) (searchResultDataBlobs, error) {
 	log.Debug("start marshal...",
 		zap.Int64("collectionID", collectionID),
 		zap.Int64("msgID", msgID),
-		zap.Int32s("reqSlices", reqSlices))
+		zap.Int32s("sliceNQs", sliceNQs),
+		zap.Int32s("sliceTopKs", sliceTopKs))
+
+	if len(sliceNQs) != len(sliceTopKs) {
+		return nil, fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
+	}
 
 	cSearchResults := make([]C.CSearchResult, 0)
 	for _, res := range searchResults {
@@ -83,12 +144,13 @@ func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResul
 	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
 
 	var cNumSegments = C.int32_t(numSegments)
-	var cSlicesPtr = (*C.int32_t)(&reqSlices[0])
-	var cNumSlices = C.int32_t(len(reqSlices))
+	var cSliceNQSPtr = (*C.int32_t)(&sliceNQs[0])
+	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
+	var cNumSlices = C.int32_t(len(sliceNQs))
 
 	var cSearchResultDataBlobs searchResultDataBlobs
 
-	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, plan.cSearchPlan, cNumSegments, cSlicesPtr, cNumSlices)
+	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err
 	}

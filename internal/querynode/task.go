@@ -36,7 +36,6 @@ import (
 
 type task interface {
 	ID() UniqueID       // return ReqID
-	SetID(uid UniqueID) // set ReqID
 	Timestamp() Timestamp
 	PreExecute(ctx context.Context) error
 	Execute(ctx context.Context) error
@@ -50,6 +49,36 @@ type baseTask struct {
 	done chan error
 	ctx  context.Context
 	id   UniqueID
+	ts   Timestamp
+}
+
+func (b *baseTask) OnEnqueue() error {
+	return nil
+}
+
+func (b *baseTask) ID() UniqueID {
+	return b.id
+}
+
+func (b *baseTask) Timestamp() Timestamp {
+	return b.ts
+}
+
+func (b *baseTask) PreExecute(ctx context.Context) error {
+	return nil
+}
+
+func (b *baseTask) PostExecute(ctx context.Context) error {
+	return nil
+}
+
+func (b *baseTask) WaitToFinish() error {
+	err := <-b.done
+	return err
+}
+
+func (b *baseTask) Notify(err error) {
+	b.done <- err
 }
 
 type addQueryChannelTask struct {
@@ -88,45 +117,7 @@ type releasePartitionsTask struct {
 	node *QueryNode
 }
 
-func (b *baseTask) ID() UniqueID {
-	return b.id
-}
-
-func (b *baseTask) SetID(uid UniqueID) {
-	b.id = uid
-}
-
-func (b *baseTask) WaitToFinish() error {
-	err := <-b.done
-	return err
-}
-
-func (b *baseTask) Notify(err error) {
-	b.done <- err
-}
-
-// addQueryChannel
-func (r *addQueryChannelTask) Timestamp() Timestamp {
-	if r.req.Base == nil {
-		log.Warn("nil base req in addQueryChannelTask", zap.Any("collectionID", r.req.CollectionID))
-		return 0
-	}
-	return r.req.Base.Timestamp
-}
-
-func (r *addQueryChannelTask) OnEnqueue() error {
-	if r.req == nil || r.req.Base == nil {
-		r.SetID(rand.Int63n(100000000000))
-	} else {
-		r.SetID(r.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (r *addQueryChannelTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
+// addQueryChannelTask
 func (r *addQueryChannelTask) Execute(ctx context.Context) error {
 	log.Info("Execute addQueryChannelTask",
 		zap.Any("collectionID", r.req.CollectionID))
@@ -160,32 +151,7 @@ func (r *addQueryChannelTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (r *addQueryChannelTask) PostExecute(ctx context.Context) error {
-	return nil
-}
-
 // watchDmChannelsTask
-func (w *watchDmChannelsTask) Timestamp() Timestamp {
-	if w.req.Base == nil {
-		log.Warn("nil base req in watchDmChannelsTask", zap.Any("collectionID", w.req.CollectionID))
-		return 0
-	}
-	return w.req.Base.Timestamp
-}
-
-func (w *watchDmChannelsTask) OnEnqueue() error {
-	if w.req == nil || w.req.Base == nil {
-		w.SetID(rand.Int63n(100000000000))
-	} else {
-		w.SetID(w.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (w *watchDmChannelsTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
 func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	collectionID := w.req.CollectionID
 	partitionIDs := w.req.GetPartitionIDs()
@@ -455,32 +421,7 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (w *watchDmChannelsTask) PostExecute(ctx context.Context) error {
-	return nil
-}
-
 // watchDeltaChannelsTask
-func (w *watchDeltaChannelsTask) Timestamp() Timestamp {
-	if w.req.Base == nil {
-		log.Warn("nil base req in watchDeltaChannelsTask", zap.Any("collectionID", w.req.CollectionID))
-		return 0
-	}
-	return w.req.Base.Timestamp
-}
-
-func (w *watchDeltaChannelsTask) OnEnqueue() error {
-	if w.req == nil || w.req.Base == nil {
-		w.SetID(rand.Int63n(100000000000))
-	} else {
-		w.SetID(w.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (w *watchDeltaChannelsTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
 func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 	collectionID := w.req.CollectionID
 
@@ -603,32 +544,7 @@ func (w *watchDeltaChannelsTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (w *watchDeltaChannelsTask) PostExecute(ctx context.Context) error {
-	return nil
-}
-
 // loadSegmentsTask
-func (l *loadSegmentsTask) Timestamp() Timestamp {
-	if l.req.Base == nil {
-		log.Warn("nil base req in loadSegmentsTask")
-		return 0
-	}
-	return l.req.Base.Timestamp
-}
-
-func (l *loadSegmentsTask) OnEnqueue() error {
-	if l.req == nil || l.req.Base == nil {
-		l.SetID(rand.Int63n(100000000000))
-	} else {
-		l.SetID(l.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (l *loadSegmentsTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
 func (l *loadSegmentsTask) Execute(ctx context.Context) error {
 	// TODO: support db
 	log.Info("LoadSegment start", zap.Int64("msgID", l.req.Base.MsgID))
@@ -659,32 +575,6 @@ func (l *loadSegmentsTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (l *loadSegmentsTask) PostExecute(ctx context.Context) error {
-	return nil
-}
-
-// releaseCollectionTask
-func (r *releaseCollectionTask) Timestamp() Timestamp {
-	if r.req.Base == nil {
-		log.Warn("nil base req in releaseCollectionTask", zap.Any("collectionID", r.req.CollectionID))
-		return 0
-	}
-	return r.req.Base.Timestamp
-}
-
-func (r *releaseCollectionTask) OnEnqueue() error {
-	if r.req == nil || r.req.Base == nil {
-		r.SetID(rand.Int63n(100000000000))
-	} else {
-		r.SetID(r.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (r *releaseCollectionTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
 type ReplicaType int
 
 const (
@@ -693,6 +583,7 @@ const (
 	replicaHistorical
 )
 
+// releaseCollectionTask
 func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 	log.Info("Execute release collection task", zap.Any("collectionID", r.req.CollectionID))
 	// sleep to wait for query tasks done
@@ -729,7 +620,7 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	}
 	// set release time
 	log.Info("set release time", zap.Any("collectionID", r.req.CollectionID))
-	collection.setReleaseTime(r.req.Base.Timestamp)
+	collection.setReleaseTime(r.Timestamp())
 
 	// remove all flow graphs of the target collection
 	var channels []Channel
@@ -760,32 +651,7 @@ func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replica
 	return nil
 }
 
-func (r *releaseCollectionTask) PostExecute(ctx context.Context) error {
-	return nil
-}
-
 // releasePartitionsTask
-func (r *releasePartitionsTask) Timestamp() Timestamp {
-	if r.req.Base == nil {
-		log.Warn("nil base req in releasePartitionsTask", zap.Any("collectionID", r.req.CollectionID))
-		return 0
-	}
-	return r.req.Base.Timestamp
-}
-
-func (r *releasePartitionsTask) OnEnqueue() error {
-	if r.req == nil || r.req.Base == nil {
-		r.SetID(rand.Int63n(100000000000))
-	} else {
-		r.SetID(r.req.Base.MsgID)
-	}
-	return nil
-}
-
-func (r *releasePartitionsTask) PreExecute(ctx context.Context) error {
-	return nil
-}
-
 func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	log.Info("Execute release partition task",
 		zap.Any("collectionID", r.req.CollectionID),
@@ -829,9 +695,5 @@ func (r *releasePartitionsTask) Execute(ctx context.Context) error {
 	log.Info("Release partition task done",
 		zap.Any("collectionID", r.req.CollectionID),
 		zap.Any("partitionIDs", r.req.PartitionIDs))
-	return nil
-}
-
-func (r *releasePartitionsTask) PostExecute(ctx context.Context) error {
 	return nil
 }

@@ -18,6 +18,7 @@ package querynode
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"log"
 	"math"
 	"testing"
@@ -28,6 +29,18 @@ import (
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 )
+
+func TestReduce_parseSliceInfo(t *testing.T) {
+	originNQs := []int64{2, 3, 2}
+	originTopKs := []int64{10, 5, 20}
+	nqPerSlice := int64(2)
+	sInfo := parseSliceInfo(originNQs, originTopKs, nqPerSlice)
+
+	expectedSliceNQs := []int32{2, 2, 1, 2}
+	expectedSliceTopKs := []int32{10, 5, 5, 20}
+	assert.True(t, funcutil.SliceSetEqual(sInfo.sliceNQs, expectedSliceNQs))
+	assert.True(t, funcutil.SliceSetEqual(sInfo.sliceTopKs, expectedSliceTopKs))
+}
 
 func TestReduce_AllFunc(t *testing.T) {
 	nq := int64(10)

@@ -49,15 +49,13 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
-		res, _, _, err := streaming.search(searchReqs,
+		res, _, _, err := streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.NoError(t, err)
 		assert.Len(t, res, 1)
 	})
@@ -70,15 +68,13 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
-		res, _, _, err := streaming.search(searchReqs,
+		res, _, _, err := streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.NoError(t, err)
 		assert.Len(t, res, 1)
 	})
@@ -91,7 +87,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
 		col, err := streaming.replica.getCollectionByID(defaultCollectionID)
@@ -101,12 +97,10 @@ func TestStreaming_search(t *testing.T) {
 		err = streaming.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		res, _, _, err := streaming.search(searchReqs,
+		res, _, _, err := streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.NoError(t, err)
 		assert.Equal(t, 0, len(res))
 	})
@@ -119,7 +113,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
 		col, err := streaming.replica.getCollectionByID(defaultCollectionID)
@@ -129,12 +123,10 @@ func TestStreaming_search(t *testing.T) {
 		err = streaming.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		_, _, _, err = streaming.search(searchReqs,
+		_, _, _, err = streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{defaultPartitionID},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.Error(t, err)
 	})
 
@@ -146,18 +138,16 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
 		err = streaming.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		res, _, _, err := streaming.search(searchReqs,
+		res, _, _, err := streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.NoError(t, err)
 		assert.Equal(t, 0, len(res))
 	})
@@ -170,7 +160,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
 		assert.NoError(t, err)
 
 		seg, err := streaming.replica.getSegmentByID(defaultSegmentID)
@@ -178,12 +168,10 @@ func TestStreaming_search(t *testing.T) {
 
 		seg.segmentPtr = nil
 
-		_, _, _, err = streaming.search(searchReqs,
+		_, _, _, err = streaming.search(searchReq,
 			defaultCollectionID,
 			[]UniqueID{},
-			defaultDMLChannel,
-			plan,
-			Timestamp(0))
+			defaultDMLChannel)
 		assert.Error(t, err)
 	})
 }

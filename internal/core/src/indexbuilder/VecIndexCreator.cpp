@@ -170,10 +170,10 @@ VecIndexCreator::BuildWithoutIds(const knowhere::DatasetPtr& dataset) {
     }
     knowhere::TimeRecorder rc("BuildWithoutIds", 1);
     // if (is_in_need_build_all_list(index_type)) {
-    //     index_->BuildAll(dataset, config_);
+    //     segment_index_->BuildAll(dataset, config_);
     // } else {
-    //     index_->Train(dataset, config_);
-    //     index_->AddWithoutIds(dataset, config_);
+    //     segment_index_->Train(dataset, config_);
+    //     segment_index_->AddWithoutIds(dataset, config_);
     // }
     index_->BuildAll(dataset, config_);
     rc.RecordSection("TrainAndAdd");
@@ -199,8 +199,8 @@ VecIndexCreator::BuildWithIds(const knowhere::DatasetPtr& dataset) {
     }
     auto conf_adapter = knowhere::AdapterMgr::GetInstance().GetAdapter(index_type);
     AssertInfo(conf_adapter->CheckTrain(config_, index_mode), "something wrong in index parameters!");
-    //    index_->Train(dataset, config_);
-    //    index_->Add(dataset, config_);
+    //    segment_index_->Train(dataset, config_);
+    //    segment_index_->Add(dataset, config_);
     index_->BuildAll(dataset, config_);
 
     if (is_in_nm_list(get_index_type())) {
@@ -259,7 +259,7 @@ VecIndexCreator::Load(const knowhere::BinarySet& binary_set) {
 
 std::string
 VecIndexCreator::get_index_type() {
-    // return index_->index_type();
+    // return segment_index_->index_type();
     // knowhere bug here
     // the index_type of all ivf-based index will change to ivf flat after loaded
     auto type = get_config_by_name<std::string>("index_type");

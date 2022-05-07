@@ -48,9 +48,10 @@ type queryShardService struct {
 	localChunkManager   storage.ChunkManager
 	remoteChunkManager  storage.ChunkManager
 	localCacheEnabled   bool
+	scheduler           *taskScheduler
 }
 
-func newQueryShardService(ctx context.Context, historical *historical, streaming *streaming, clusterService *ShardClusterService, factory dependency.Factory) *queryShardService {
+func newQueryShardService(ctx context.Context, historical *historical, streaming *streaming, clusterService *ShardClusterService, factory dependency.Factory, scheduler *taskScheduler) *queryShardService {
 	queryShardServiceCtx, queryShardServiceCancel := context.WithCancel(ctx)
 
 	path := Params.LoadWithDefault("localStorage.Path", "/tmp/milvus/data")
@@ -92,6 +93,7 @@ func (q *queryShardService) addQueryShard(collectionID UniqueID, channel Channel
 		q.localChunkManager,
 		q.remoteChunkManager,
 		q.localCacheEnabled,
+		q.scheduler.tsafeUpdateChan,
 	)
 	q.queryShards[channel] = qs
 	log.Info("Successfully add query shard", zap.Int64("collection", collectionID), zap.Int64("replica", replicaID), zap.String("channel", channel))

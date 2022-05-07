@@ -5670,7 +5670,7 @@ const char* SearchResultData::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPA
       // int64 num_queries = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 8)) {
-          num_queries_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint(&ptr);
+          total_nq_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint(&ptr);
           CHK_(ptr);
         } else goto handle_unusual;
         continue;

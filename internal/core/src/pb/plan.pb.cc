@@ -1291,7 +1291,7 @@ const char* QueryInfo::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::
       // int64 topk = 1;
       case 1:
         if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 8)) {
-          topk_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint(&ptr);
+          unity_topK_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint(&ptr);
           CHK_(ptr);
         } else goto handle_unusual;
         continue;

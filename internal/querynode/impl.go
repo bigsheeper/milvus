@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -599,19 +600,60 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		}, nil
 	}
 
-	results, err := qs.search(ctx, req)
-	if err != nil {
-		log.Warn("QueryService failed to search", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()), zap.Error(err))
-		return &internalpb.SearchResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
-	log.Debug("Search Shard Done", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
+	if req.FromShardLeader {
+		// construct different task according to DataScope
+	} else {
+		//from Proxy
 
-	return results, err
+		cluster, ok := qs.clusterService.getShardCluster(req.GetDmlChannel())
+		if !ok {
+			return nil, fmt.Errorf("channel %s leader is not here", req.GetDmlChannel())
+		}
+		searchCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		var results []*internalpb.SearchResults
+		var streamingResult *internalpb.SearchResults
+		//var streamingResults []*SearchResult
+		var err error
+		var mut sync.Mutex
+		var wg sync.WaitGroup
+
+		wg.Add(2) // search cluster and search streaming
+
+		go func() {
+			defer wg.Done()
+			// shard leader dispatches request to its shard cluster
+			cResults, cErr := cluster.Search(searchCtx, req)
+			mut.Lock()
+			defer mut.Unlock()
+			if cErr != nil {
+				log.Warn("search cluster failed", zap.Int64("collectionID", req.Req.GetCollectionID()), zap.Error(cErr))
+				err = cErr
+				cancel()
+				return
+			}
+
+			results = cResults
+		}()
+
+		go func() {
+			defer wg.Done()
+			streamingTask := newSearchTask(searchCtx, req)
+			err := streamingTask.WaitToFinish()
+			if err != nil {
+				return
+			}
+			streamingResult = streamingTask.Ret
+		}()
+
+		wg.Wait()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, err
 }
 
 // Query performs replica query tasks.

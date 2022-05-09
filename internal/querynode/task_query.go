@@ -20,20 +20,27 @@ import (
 	"context"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
-	"github.com/milvus-io/milvus/internal/util/timerecord"
 )
-
 
 var _ sqTask = (*queryTask)(nil)
 
 type queryTask struct {
 	sqBaseTask
-
-	Ret *internalpb.RetrieveResults
+	iReq *internalpb.RetrieveRequest
+	req  *querypb.QueryRequest
+	Ret  *internalpb.RetrieveResults
 }
 
 func (q *queryTask) PreExecute(ctx context.Context) error {
 	panic("not implemented")
+}
+
+func (q *queryTask) searchOnStreaming() error {
+	return nil
+}
+
+func (q *queryTask) searchOnHistorical() error {
+	return nil
 }
 
 func (q *queryTask) Execute(ctx context.Context) error {
@@ -44,22 +51,28 @@ func (q *queryTask) PostExecute(ctx context.Context) error {
 	panic("not implemented")
 }
 
-func (q *queryTask) CanMergeWith(t sqTask) bool {
-	return false
+func (q *queryTask) EstimateCpuUsage() int32 {
+	// TODO according to number of segments
+	return 50
 }
 
-func newQueryTask(src * querypb.QueryRequest) *queryTask {
-	target := &retrieveMsg{
-		BaseMsg:            src.BaseMsg,
-		Base:               src.Base,
-		DbID:               src.DbID,
-		CollectionID:       src.GetCollectionID(),
-		PartitionIDs:       src.GetPartitionIDs(),
-		SerializedExprPlan: src.GetSerializedExprPlan(),
-		TravelTimestamp:    src.GetTravelTimestamp(),
-		GuaranteeTimestamp: src.GetGuaranteeTimestamp(),
-		TimeoutTimestamp:   src.GetTimeoutTimestamp(),
-		ReqID:              src.GetReqID(),
+func newQueryTask(ctx context.Context, src *querypb.QueryRequest) *queryTask {
+	target := &queryTask{
+		sqBaseTask: sqBaseTask{
+			baseTask: baseTask{
+				done: make(chan error),
+				ctx:  ctx,
+				id:   src.Req.Base.GetMsgID(),
+				ts:   src.Req.Base.GetTimestamp(),
+			},
+			DbID:               src.Req.GetReqID(),
+			CollectionID:       src.Req.GetCollectionID(),
+			TravelTimestamp:    src.Req.GetTravelTimestamp(),
+			GuaranteeTimestamp: src.Req.GetGuaranteeTimestamp(),
+			TimeoutTimestamp:   src.Req.GetTimeoutTimestamp(),
+		},
+		iReq: src.Req,
+		req:  src,
 	}
 	return target
 }

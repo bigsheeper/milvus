@@ -44,6 +44,10 @@ func (q *queryTask) PostExecute(ctx context.Context) error {
 	panic("not implemented")
 }
 
+func (q *queryTask) CanMergeWith(t sqTask) bool {
+	return false
+}
+
 func newQueryTask(src * querypb.QueryRequest) *queryTask {
 	target := &retrieveMsg{
 		BaseMsg:            src.BaseMsg,

@@ -38,10 +38,8 @@ type taskScheduler struct {
 	cancel context.CancelFunc
 
 	// for search and query start
-	mergedSearchTasks    []sqTask
-
-	unsolvedSearchTasks  *list.List
-	unsolvedQueryTasks   *list.List
+	unsolvedSQTasks  *list.List
+	readySQTasks    *list.List
 
 	receiveSQTaskChan  chan sqTask
 	executeSQTaskChan  chan sqTask
@@ -61,8 +59,8 @@ func newTaskScheduler(ctx context.Context) *taskScheduler {
 	s := &taskScheduler{
 		ctx:    ctx1,
 		cancel: cancel,
-		unsolvedSearchTasks: list.New(),
-		unsolvedQueryTasks:  list.New(),
+		unsolvedSQTasks: list.New(),
+		readySQTasks    *list.List
 		receiveSQTaskChan:  make(chan sqTask, maxReceiveSQChanLen),
 		executeSQTaskChan:     make(chan sqTask, maxExecuteSQChanLen),
 		notifyChan:      make(chan bool, 1),
@@ -231,30 +229,44 @@ func (s *taskScheduler) Close() {
 }
 
 func (s *taskScheduler) tryMergeSearchTasks() {
-//	s.mergedMsgs, s.needWaitNewTsafeMsgs
-//mergedMsgs []queryMsg, queryMsgs []queryMsg
-	unsolvedSearchTasksLen := s.unsolvedSearchTasks.Len()
+	unsolvedLen := s.unsolvedSQTasks.Len()
 	metrics.QueryNodeWaitForMergeReqs.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(unsolvedSearchTasksLen))
 	log.Debug("tryMergeSearchTasks before", zap.Int("unsolvedSearchTasksLen", len(unsolvedSearchTasksLen)))
-	if unsolvedSearchTasksLen == 0 {
+	if unsolvedLen == 0 {
 		return
 	}
-	for e := s.unsolvedSearchTasks.Front(); e != nil; e = e.Next() {
-		sTask, ok := e.Value.(*searchTask)
+
+	for e := s.unsolvedSQTasks.Front(); e != nil; e = e.Next() {
+		t, ok := e.Value.(sqTask)
 		if !ok {
 			log.Warn("can not cast to sTask")
-			s.unsolvedSearchTasks.Remove(e)
+			s.unsolvedSQTasks.Remove(e)
 			continue
 		}
-		canDo, err := sTask.CanDo()
+		canDo, err := t.CanDo()
 		if err != nil {
-			sTask.SetErr(err)
-			sTask.PostExecute()
+			s.unsolvedSQTasks.Remove(e)
+			t.SetErr(err)
+			t.PostExecute()
 			continue
 		}
 		if canDo {
-
-
+			merged := false
+			for m := s.readySQTasks.Back(); m != nil; m = e.Prev() {
+				mTask, ok := m.Value.(sqTask)
+				if !ok {
+					continue
+				}
+				if mTask.CanMergeWith(sTask) {
+					mTask.Merge(sTask)
+					merged := true
+					break
+				}
+			}
+			if !merged {
+				s.readySQTasks.PushBack(sTask)
+			}
+			s.unsolvedSQTasks.Remove(e)
 		}
 	}
 

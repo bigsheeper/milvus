@@ -43,6 +43,7 @@ type sqTask interface {
 
 	GetCollectionID() UniqueID
 	ElapseSpan() time.Duration
+	Mergable() bool
 }
 
 var _ sqTask = (*sqBaseTask)(nil)
@@ -137,6 +138,14 @@ func (s *sqBaseTask) Timeout() bool {
 		zap.Time("curTimePhysical", curTimePhysical),
 	)
 	return s.TimeoutTimestamp > typeutil.ZeroTimestamp && curTime >= s.TimeoutTimestamp
+}
+
+func (s *sqBaseTask) Mergable() bool {
+	return false
+}
+
+func (s *sqBaseTask) Merge() {
+	return
 }
 
 func (s *sqBaseTask) CanDo() (bool, error) {

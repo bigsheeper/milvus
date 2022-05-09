@@ -41,10 +41,13 @@ type searchTask struct {
 	TopK                  int64
 	OrigTopKs             []int64
 	Ret *internalpb.SearchResults
+
+	originTasks []*searchTask
 }
 
 func (s *searchTask) PreExecute(ctx context.Context) error {
-	panic("not implemented")
+	s.combinePlaceHolderGroups()
+	return nil
 }
 
 func (s *searchTask) Execute(ctx context.Context) error {
@@ -55,41 +58,46 @@ func (s *searchTask) PostExecute(ctx context.Context) error {
 	panic("not implemented")
 }
 
-func (s *searchTask) CanMergeWith(t *searchTask) bool {
-	if task1.DbID != task2.DbID {
+func (s *searchTask) CanMergeWith(t sqTask) bool {
+	s2, ok := t.(*searchTask)
+	if !ok {
 		return false
 	}
 
-	if task1.CollectionID != task2.CollectionID {
+	if s.DbID != s2.DbID {
 		return false
 	}
 
-	if task1.DslType != task2.DslType {
+	if s.CollectionID != s2.CollectionID {
 		return false
 	}
 
-	if task1.MetricType != task2.MetricType {
+	if s.DslType != s2.DslType {
 		return false
 	}
 
-	if !funcutil.SortedSliceEqual(task1.PartitionIDs, task2.PartitionIDs) {
+	if s.MetricType != s2.MetricType {
 		return false
 	}
 
-	if !bytes.Equal(task1.SerializedExprPlan, task2.SerializedExprPlan) {
+	if !funcutil.SortedSliceEqual(s.PartitionIDs, s2.PartitionIDs) {
 		return false
 	}
 
-	if task1.TravelTimestamp != task2.TravelTimestamp {
+	if !bytes.Equal(s.SerializedExprPlan, s2.SerializedExprPlan) {
 		return false
 	}
 
-	pre := task1.NQ * task1.TopK * 1.0
-	newTopK := task1.TopK
-	if newTopK < task2.TopK {
-		newTopK = task2.TopK
+	if s.TravelTimestamp != s2.TravelTimestamp {
+		return false
 	}
-	after := (task1.NQ + task2.NQ) * newTopK * 1.0
+
+	pre := s.NQ * s.TopK * 1.0
+	newTopK := s.TopK
+	if newTopK < s2.TopK {
+		newTopK = s2.TopK
+	}
+	after := (s.NQ + s2.NQ) * newTopK * 1.0
 
 	if pre == 0 {
 		return false
@@ -97,38 +105,37 @@ func (s *searchTask) CanMergeWith(t *searchTask) bool {
 	if after/pre > maxTopKMergeRatio {
 		return false
 	}
-	if task1.NQ+task2.NQ > maxNQ {
+	if s.NQ+s2.NQ > maxNQ {
 		return false
 	}
 	return true
 }
 
-func (s *searchTask) Merge(t *searchTask) *mergeSearchTask {
-	target, _ := t.(*searchMsg)
-	src, _ := s.(*searchMsg)
+func (s *searchTask) Mergable() bool {
+	return true
+}
 
-	newTopK := target.TopK
+func (s *searchTask) Merge(t sqTask) {
+	src, ok := t.(*searchMsg)
+	if !ok {
+		return
+	}
+	newTopK := s.TopK
 	if newTopK < src.TopK {
 		newTopK = src.TopK
 	}
 
-	target.TopK = newTopK
-	target.ReqIDs = append(target.ReqIDs, src.ReqIDs...)
-	target.OrigTopKs = append(target.OrigTopKs, src.OrigTopKs...)
-	target.OrigNQs = append(target.OrigNQs, src.OrigNQs...)
-	target.SourceIDs = append(target.SourceIDs, src.SourceIDs...)
-	target.OrigPlaceHolderGroups = append(target.OrigPlaceHolderGroups, src.OrigPlaceHolderGroups...)
-	target.NQ += src.NQ
-	return target
-}
-
-type mergeSearchTask struct {
-	searchTask
-	originTasks []*searchTask
+	s.TopK = newTopK
+	s.ReqIDs = append(target.ReqIDs, src.ReqIDs...)
+	s.OrigTopKs = append(target.OrigTopKs, src.OrigTopKs...)
+	s.OrigNQs = append(target.OrigNQs, src.OrigNQs...)
+	s.SourceIDs = append(target.SourceIDs, src.SourceIDs...)
+	s.OrigPlaceHolderGroups = append(target.OrigPlaceHolderGroups, src.OrigPlaceHolderGroups...)
+	s.NQ += src.NQ
 }
 
 // combinePlaceHolderGroups combine all the placeholder groups.
-func (m *mergeSearchTask) combinePlaceHolderGroups() {
+func (s *searchTask) combinePlaceHolderGroups() {
 	if len(s.OrigPlaceHolderGroups) > 1 {
 		ret := &milvuspb.PlaceholderGroup{}
 		//retValues := ret.Placeholders[0].GetValues()
@@ -143,36 +150,6 @@ func (m *mergeSearchTask) combinePlaceHolderGroups() {
 		}
 		s.PlaceholderGroup, _ = proto.Marshal(ret)
 	}
-}
-
-func (m *mergeSearchTask) PreExecute(ctx context.Context) error {
-	m.combinePlaceHolderGroups()
-	return m.searchTask.PreExecute(ctx)
-}
-
-func (m *mergeSearchTask) PostExecute(ctx context.Context) error {
-	panic("not implemented")
-}
-
-func (m *mergeSearchTask) Merge(t *searchTask) *mergeSearchTask {
-	target, _ := t.(*searchMsg)
-	src, _ := s.(*searchMsg)
-
-	newTopK := target.TopK
-	if newTopK < src.TopK {
-		newTopK = src.TopK
-	}
-
-	target.TopK = newTopK
-	target.ReqIDs = append(target.ReqIDs, src.ReqIDs...)
-	target.OrigTopKs = append(target.OrigTopKs, src.OrigTopKs...)
-	target.OrigNQs = append(target.OrigNQs, src.OrigNQs...)
-	target.SourceIDs = append(target.SourceIDs, src.SourceIDs...)
-	target.OrigPlaceHolderGroups = append(target.OrigPlaceHolderGroups, src.OrigPlaceHolderGroups...)
-	target.NQ += src.NQ
-	return target
-
-	return m
 }
 
 func newSearchTask(src *querypb.SearchRequest) *searchTask {

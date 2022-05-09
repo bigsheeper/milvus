@@ -57,6 +57,11 @@ type Cache interface {
 	RemoveCollection(ctx context.Context, collectionName string)
 	RemovePartition(ctx context.Context, collectionName string, partitionName string)
 
+	// IsCollectionLoaded checks if collection has been loaded
+	IsCollectionLoaded(ctx context.Context, msgID UniqueID, collectionName string) (bool, error)
+	// RemoveCollectionLoadCache sets the loaded cache to false
+	RemoveCollectionLoadCache(collectionID UniqueID)
+
 	// GetCredentialInfo operate credential cache
 	GetCredentialInfo(ctx context.Context, username string) (*internalpb.CredentialInfo, error)
 	RemoveCredential(username string)
@@ -72,6 +77,7 @@ type collectionInfo struct {
 	shardLeaders        []*querypb.ShardLeadersList
 	createdTimestamp    uint64
 	createdUtcTimestamp uint64
+	isLoaded            bool
 }
 
 type partitionInfo struct {
@@ -85,7 +91,8 @@ var _ Cache = (*MetaCache)(nil)
 
 // MetaCache implements Cache, provides collection meta cache based on internal RootCoord
 type MetaCache struct {
-	client types.RootCoord
+	rootCoord  types.RootCoord
+	queryCoord types.QueryCoord
 
 	collInfo         map[string]*collectionInfo
 	credMap          map[string]*internalpb.CredentialInfo // cache for credential, lazy load
@@ -98,21 +105,22 @@ type MetaCache struct {
 var globalMetaCache Cache
 
 // InitMetaCache initializes globalMetaCache
-func InitMetaCache(client types.RootCoord) error {
+func InitMetaCache(rootCoord types.RootCoord, queryCoord types.QueryCoord) error {
 	var err error
-	globalMetaCache, err = NewMetaCache(client)
+	globalMetaCache, err = NewMetaCache(rootCoord, queryCoord)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// NewMetaCache creates a MetaCache with provided RootCoord
-func NewMetaCache(client types.RootCoord) (*MetaCache, error) {
+// NewMetaCache creates a MetaCache with provided RootCoord and QueryNode
+func NewMetaCache(rootCoord types.RootCoord, queryCoord types.QueryCoord) (*MetaCache, error) {
 	return &MetaCache{
-		client:   client,
-		collInfo: map[string]*collectionInfo{},
-		credMap:  map[string]*internalpb.CredentialInfo{},
+		rootCoord:  rootCoord,
+		queryCoord: queryCoord,
+		collInfo:   map[string]*collectionInfo{},
+		credMap:    map[string]*internalpb.CredentialInfo{},
 	}, nil
 }
 
@@ -333,7 +341,7 @@ func (m *MetaCache) describeCollection(ctx context.Context, collectionName strin
 		},
 		CollectionName: collectionName,
 	}
-	coll, err := m.client.DescribeCollection(ctx, req)
+	coll, err := m.rootCoord.DescribeCollection(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +378,7 @@ func (m *MetaCache) showPartitions(ctx context.Context, collectionName string) (
 		CollectionName: collectionName,
 	}
 
-	partitions, err := m.client.ShowPartitions(ctx, req)
+	partitions, err := m.rootCoord.ShowPartitions(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +459,7 @@ func (m *MetaCache) GetCredentialInfo(ctx context.Context, username string) (*in
 			},
 			Username: username,
 		}
-		resp, err := m.client.GetCredential(ctx, req)
+		resp, err := m.rootCoord.GetCredential(ctx, req)
 		if err != nil {
 			return &internalpb.CredentialInfo{}, err
 		}
@@ -515,7 +523,7 @@ func (m *MetaCache) GetCredUsernames(ctx context.Context) ([]string, error) {
 				MsgType: commonpb.MsgType_ListCredUsernames,
 			},
 		}
-		resp, err := m.client.ListCredUsers(ctx, req)
+		resp, err := m.rootCoord.ListCredUsers(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -562,4 +570,76 @@ func (m *MetaCache) GetShards(ctx context.Context, withCache bool, collectionNam
 
 	m.collInfo[collectionName].shardLeaders = shards
 	return shards, nil
+}
+
+// IsCollectionLoaded checks if collection has been loaded
+func (m *MetaCache) IsCollectionLoaded(ctx context.Context, msgID UniqueID, collectionName string) (bool, error) {
+	m.mu.RLock()
+	collInfo, ok := m.collInfo[collectionName]
+	m.mu.RUnlock()
+	if !ok {
+		coll, err := m.describeCollection(ctx, collectionName)
+		if err != nil {
+			return false, err
+		}
+		m.mu.Lock()
+		m.updateCollection(coll, collectionName)
+		collInfo = m.collInfo[collectionName]
+		m.mu.Unlock()
+	}
+
+	if !collInfo.isLoaded {
+		// check if collection was loaded
+		showResp, err := m.queryCoord.ShowCollections(ctx, &querypb.ShowCollectionsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:  commonpb.MsgType_ShowCollections,
+				MsgID:    msgID,
+				SourceID: Params.ProxyCfg.GetNodeID(),
+			},
+		})
+		if err != nil {
+			return false, err
+		}
+		if showResp.Status.ErrorCode != commonpb.ErrorCode_Success {
+			return false, errors.New(showResp.Status.Reason)
+		}
+		log.Debug("QueryCoord show collections",
+			zap.Int64("collID", collInfo.collID),
+			zap.Int64s("collections", showResp.CollectionIDs),
+		)
+		loaded := false
+		for index, collID := range showResp.CollectionIDs {
+			if collID == collInfo.collID && showResp.GetInMemoryPercentages()[index] >= int64(100) {
+				loaded = true
+				break
+			}
+		}
+		if !loaded {
+			return false, nil
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.collInfo[collectionName].isLoaded = true
+		return true, nil
+	}
+	return true, nil
+}
+
+// RemoveCollectionLoadCache sets the loaded cache to false
+func (m *MetaCache) RemoveCollectionLoadCache(collectionID UniqueID) {
+	collNames := make([]string, 0)
+	m.mu.RLock()
+	for name, info := range m.collInfo {
+		if collectionID == info.collID {
+			collNames = append(collNames, name)
+		}
+	}
+	m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, name := range collNames {
+		if _, ok := m.collInfo[name]; ok {
+			m.collInfo[name].isLoaded = false
+		}
+	}
 }

@@ -3016,7 +3016,10 @@ func TestProxy_Import(t *testing.T) {
 	msgStreamFactory := newSimpleMockMsgStreamFactory()
 	rc.Start()
 	defer rc.Stop()
-	err := InitMetaCache(rc)
+	qc := NewQueryCoordMock()
+	qc.Start()
+	defer qc.Stop()
+	err := InitMetaCache(rc, qc)
 	assert.NoError(t, err)
 	rc.CreateCollection(context.TODO(), &milvuspb.CreateCollectionRequest{
 		Base: &commonpb.MsgBase{

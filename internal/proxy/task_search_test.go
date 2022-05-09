@@ -124,7 +124,7 @@ func TestSearchTask_PreExecute(t *testing.T) {
 	err = rc.Start()
 	defer rc.Stop()
 	require.NoError(t, err)
-	err = InitMetaCache(rc)
+	err = InitMetaCache(rc, qc)
 	require.NoError(t, err)
 
 	err = qc.Start()
@@ -406,7 +406,7 @@ func TestSearchTaskV2_Execute(t *testing.T) {
 	err = rc.Start()
 	require.NoError(t, err)
 	defer rc.Stop()
-	err = InitMetaCache(rc)
+	err = InitMetaCache(rc, qc)
 	require.NoError(t, err)
 
 	err = qc.Start()

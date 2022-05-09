@@ -462,37 +462,17 @@ func (t *searchTask) checkIfLoaded(collectionID UniqueID, searchPartitionIDs []U
 		return true
 	}
 
-	// If request to search collection
-	resp, err := t.qc.ShowCollections(t.ctx, &querypb.ShowCollectionsRequest{
-		Base: &commonpb.MsgBase{
-			MsgType:   commonpb.MsgType_ShowCollections,
-			MsgID:     t.Base.MsgID,
-			Timestamp: t.Base.Timestamp,
-			SourceID:  Params.ProxyCfg.GetNodeID(),
-		},
-	})
+	// If request to search collection,
+	// check if collection was loaded into QueryNode
+	loaded, err := globalMetaCache.IsCollectionLoaded(t.ctx, t.Base.MsgID, t.collectionName)
 	if err != nil {
-		log.Warn("fail to show collections by QueryCoord",
-			zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "search"),
+		log.Warn("fail to check if collection is loaded",
+			zap.Int64("requestID", t.Base.MsgID),
+			zap.Int64("collectionID", collectionID),
+			zap.String("requestType", "search"),
 			zap.Error(err))
 		return false
 	}
-
-	if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-		log.Warn("fail to show collections by QueryCoord",
-			zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "search"),
-			zap.String("reason", resp.GetStatus().GetReason()))
-		return false
-	}
-
-	loaded := false
-	for index, collID := range resp.CollectionIDs {
-		if collID == collectionID && resp.GetInMemoryPercentages()[index] >= int64(100) {
-			loaded = true
-			break
-		}
-	}
-
 	if !loaded {
 		resp, err := t.qc.ShowPartitions(t.ctx, &querypb.ShowPartitionsRequest{
 			Base: &commonpb.MsgBase{

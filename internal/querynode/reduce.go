@@ -56,38 +56,23 @@ type RetrieveResult struct {
 	cRetrieveResult C.CRetrieveResult
 }
 
-func parseSliceInfo(originNQs []int64, nq int64, originReqIDs []UniqueID, sourceIDs []UniqueID) *sliceInfo {
+func parseSliceInfo(originNQs []int64, nq int64) *sliceInfo {
 	sInfo := &sliceInfo{
-		slices:    make([]int32, 0),
-		reqIDs:    make([]UniqueID, 0),
-		sourceIDs: make([]UniqueID, 0),
-		reqNum:    make(map[UniqueID]int64),
-		reqCount:  make(map[UniqueID]int64),
+		slices:   make([]int32, 0),
+		reqNum:   make(map[UniqueID]int64),
+		reqCount: make(map[UniqueID]int64),
 	}
 
 	if nq == 0 {
 		return sInfo
 	}
 
-	if len(originNQs) != len(originReqIDs) {
-		return sInfo
-	}
-	if len(originReqIDs) != len(sourceIDs) {
-		return sInfo
-	}
-
 	for i := 0; i < len(originNQs); i++ {
 		for j := 0; j < int(originNQs[i]/nq); j++ {
 			sInfo.slices = append(sInfo.slices, int32(nq))
-			sInfo.reqIDs = append(sInfo.reqIDs, originReqIDs[i])
-			sInfo.sourceIDs = append(sInfo.sourceIDs, sourceIDs[i])
-			sInfo.reqNum[originReqIDs[i]]++
 		}
 		if tailSliceSize := originNQs[i] % nq; tailSliceSize > 0 {
 			sInfo.slices = append(sInfo.slices, int32(tailSliceSize))
-			sInfo.reqIDs = append(sInfo.reqIDs, originReqIDs[i])
-			sInfo.sourceIDs = append(sInfo.sourceIDs, sourceIDs[i])
-			sInfo.reqNum[originReqIDs[i]]++
 		}
 	}
 
@@ -149,7 +134,6 @@ func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResul
 	var cNumSlices = C.int32_t(len(sliceNQs))
 
 	var cSearchResultDataBlobs searchResultDataBlobs
-
 	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err

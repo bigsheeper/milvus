@@ -19,10 +19,10 @@ package querynode
 import (
 	"container/list"
 	"context"
-	"fmt"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
+	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/milvus-io/milvus/internal/log"
 )
@@ -30,7 +30,6 @@ import (
 const (
 	maxReceiveSQChanLen = 1024 * 10
 	maxExecuteSQChanLen = 1024 * 10
-	maxPublishSQChanLen = 1024 * 10
 )
 
 type taskScheduler struct {
@@ -38,34 +37,40 @@ type taskScheduler struct {
 	cancel context.CancelFunc
 
 	// for search and query start
-	unsolvedSQTasks  *list.List
+	unsolvedSQTasks *list.List
 	readySQTasks    *list.List
 
-	receiveSQTaskChan  chan sqTask
-	executeSQTaskChan  chan sqTask
+	receiveSQTaskChan chan sqTask
+	executeSQTaskChan chan sqTask
 
 	notifyChan      chan bool
 	tsafeUpdateChan chan bool
+
+	scheduleSQPolicy scheduleSQPolicy
 	// for search and query end
 
-	// for other tasks 
-	queue taskQueue
+	cpuUsage int32 // 1200 means 1200% 12 cores
 
-	wg    sync.WaitGroup
+	// for other tasks
+	queue       taskQueue
+	maxCpuUsage int32
+
+	wg sync.WaitGroup
 }
 
 func newTaskScheduler(ctx context.Context) *taskScheduler {
 	ctx1, cancel := context.WithCancel(ctx)
 	s := &taskScheduler{
-		ctx:    ctx1,
-		cancel: cancel,
-		unsolvedSQTasks: list.New(),
-		readySQTasks    *list.List
-		receiveSQTaskChan:  make(chan sqTask, maxReceiveSQChanLen),
-		executeSQTaskChan:     make(chan sqTask, maxExecuteSQChanLen),
-		notifyChan:      make(chan bool, 1),
-		tsafeUpdateChan: make(chan bool, 1),
-
+		ctx:               ctx1,
+		cancel:            cancel,
+		unsolvedSQTasks:   list.New(),
+		readySQTasks:      list.New(),
+		receiveSQTaskChan: make(chan sqTask, maxReceiveSQChanLen),
+		executeSQTaskChan: make(chan sqTask, maxExecuteSQChanLen),
+		notifyChan:        make(chan bool, 1),
+		tsafeUpdateChan:   make(chan bool, 1),
+		maxCpuUsage:       int32(runtime.NumCPU() * 100),
+		scheduleSQPolicy:  defaultScheduleSQPolicy,
 	}
 	s.queue = newQueryNodeTaskQueue(s)
 	return s
@@ -122,80 +127,77 @@ func (s *taskScheduler) Start() {
 	go s.executeSQTasks()
 }
 
-// how to spawn tasks is in here
-func (s *taskScheduler) popAndAddToExecute() {
-	if len(q.executeSQTaskChan) < maxExecuteReqs && q.executeNQNum.Load().(int64) < maxExecuteNQ {
-		if len(q.mergedMsgs) > 0 {
-			msg := q.mergedMsgs[0]
-			q.executeChan <- msg
-			q.mergedMsgs = q.mergedMsgs[1:]
-			sMsg, ok := msg.(*searchMsg)
-			if ok {
-				q.executeNQNum.Store(q.executeNQNum.Load().(int64) + sMsg.NQ)
-			}
+func (s *taskScheduler) scheduleSQTasks() {
+	defer s.wg.Done()
+	for {
+		select {
+		case <-s.ctx.Done():
+			log.Info("QueryNode sop schedulerSQTasks")
+			return
+		case <-s.notifyChan:
+			s.tryMergeSQTasks()
+			s.popAndAddToExecute()
+
+		case <-s.receiveSQTaskChan:
+			s.tryMergeSQTasks()
+			s.popAndAddToExecute()
+
+		case <-s.tsafeUpdateChan:
+			s.tryMergeSQTasks()
+			s.popAndAddToExecute()
 		}
 	}
 }
 
-func (s *taskScheduler) scheduleSQTasks() {
-	defer s.wg.Done()
-	log.Debug("starting doUnsolvedMsg...", zap.Any("collectionID", q.collectionID))
-
-	for {
-		select {
-		case <-s.releaseCtx.Done():
-			log.Info("stop Collection's doUnsolvedMsg", zap.Int64("collectionID", q.collectionID))
-			return
-		case <-s.notifyChan:
-			if len(s.needWaitNewTsafeMsgs) == 0 && len(s.mergedMsgs) == 0 {
-				continue
-			}
-			s.mergedMsgs, s.needWaitNewTsafeMsgs = s.tryMergeSearchTasks(s.mergedMsgs, s.needWaitNewTsafeMsgs)
-			s.popAndAddToQuery()
-
-		case <-s.receiveSQTaskChan:
-			s.needWaitNewTsafeMsgs = append(s.needWaitNewTsafeMsgs, s.popAllUnsolvedMsg()...)
-			s.mergedMsgs, s.needWaitNewTsafeMsgs = s.tryMergeSearchTasks(s.mergedMsgs, s.needWaitNewTsafeMsgs)
-			s.popAndAddToQuery()
-
-		case <-s.tsafeUpdateChan:
-			s.needWaitNewTsafeMsgs = append(s.needWaitNewTsafeMsgs, s.popAllUnsolvedMsg()...)
-			if len(s.needWaitNewTsafeMsgs) == 0 && len(s.mergedMsgs) == 0 {
-				continue
-			}
-			s.mergedMsgs, s.needWaitNewTsafeMsgs = s.tryMergeSearchTasks(s.mergedMsgs, s.needWaitNewTsafeMsgs)
-			s.popAndAddToQuery()
-			//runtime.GC()
-		}
+func (s *taskScheduler) popAndAddToExecute() {
+	readyLen := s.readySQTasks.Len()
+	if readyLen <= 0 {
+		return
 	}
+	curUsage := atomic.LoadInt32(&s.cpuUsage)
+	targetUsage := s.maxCpuUsage - curUsage
+	if targetUsage <= 0 {
+		return
+	}
+	tasks, deltaUsage := s.scheduleSQPolicy(s.readySQTasks, targetUsage)
+	if deltaUsage <= 0 || tasks == nil {
+		return
+	}
+	for _, t := range tasks {
+		s.executeSQTaskChan <- t
+	}
+	atomic.AddInt32(&s.cpuUsage, deltaUsage)
 }
 
 func (s *taskScheduler) executeSQTasks() {
 	defer s.wg.Done()
+	var taskWg sync.WaitGroup
+	defer taskWg.Wait()
 	for {
 		select {
-		case <-s.releaseCtx.Done():
-			log.Debug("stop Collection's executeSearchMsg", zap.Int64("collectionID", q.collectionID))
+		case <-s.ctx.Done():
+			log.Debug("QueryNode stop executeSQTasks", zap.Int64("NodeID", Params.QueryNodeCfg.GetNodeID()))
 			return
 		case t, ok := <-s.executeSQTaskChan:
 			if ok {
-				var wg sync.WaitGroup
-				wg.Add(1)
-				go func(wg *sync.WaitGroup, t task){
-					defer wg.Done()
+				taskWg.Add(1)
+				go func(t sqTask) {
+					defer taskWg.Done()
 					s.processSQTask(t)
-				}(&wg, t)
+					atomic.AddInt32(&s.cpuUsage, -t.EstimateCpuUsage())
+				}(t)
 
-				taskLen := len(s.executeSQTaskChan)
-				for i:=0; i< taskLen; i++ {
-					wg.Add(1)
-					go func(wg *sync.WaitGroup, t task){
-						defer wg.Done()
+				pendingTaskLen := len(s.executeSQTaskChan)
+				for i := 0; i < pendingTaskLen; i++ {
+					taskWg.Add(1)
+					t := <-s.executeSQTaskChan
+					go func(t sqTask) {
+						defer taskWg.Done()
 						s.processSQTask(t)
-					}(&wg, t)
+						atomic.AddInt32(&s.cpuUsage, -t.EstimateCpuUsage())
+					}(t)
 				}
-				wg.Wait()
-				log.Info("QueryNode taskScheduler executeSQTasks process tasks done", zap.Int64("numOfTasks", taskLen +1))
+				log.Info("QueryNode taskScheduler executeSQTasks process tasks done", zap.Int("numOfTasks", pendingTaskLen+1))
 			} else {
 				errMsg := "taskScheduler executeSQTaskChan has been closed"
 				log.Warn(errMsg)
@@ -205,8 +207,8 @@ func (s *taskScheduler) executeSQTasks() {
 	}
 }
 
-func (s *taskScheduler) processSQTask(t task) {
-	err := t.PreExecute(t.ctx)
+func (s *taskScheduler) processSQTask(t sqTask) {
+	err := t.PreExecute(t.Ctx())
 
 	defer func() {
 		t.Notify(err)
@@ -228,10 +230,10 @@ func (s *taskScheduler) Close() {
 	s.wg.Wait()
 }
 
-func (s *taskScheduler) tryMergeSearchTasks() {
+func (s *taskScheduler) tryMergeSQTasks() {
 	unsolvedLen := s.unsolvedSQTasks.Len()
-	metrics.QueryNodeWaitForMergeReqs.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(unsolvedSearchTasksLen))
-	log.Debug("tryMergeSearchTasks before", zap.Int("unsolvedSearchTasksLen", len(unsolvedSearchTasksLen)))
+	//metrics.QueryNodeWaitForMergeReqs.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(unsolvedLen))
+	log.Debug("tryMergeSQTasks before", zap.Int("unsolvedSearchTasksLen", unsolvedLen))
 	if unsolvedLen == 0 {
 		return
 	}
@@ -247,7 +249,7 @@ func (s *taskScheduler) tryMergeSearchTasks() {
 		if err != nil {
 			s.unsolvedSQTasks.Remove(e)
 			t.SetErr(err)
-			t.PostExecute()
+			t.PostExecute(t.Ctx())
 			continue
 		}
 		if canDo {
@@ -257,58 +259,18 @@ func (s *taskScheduler) tryMergeSearchTasks() {
 				if !ok {
 					continue
 				}
-				if mTask.CanMergeWith(sTask) {
-					mTask.Merge(sTask)
-					merged := true
+				if mTask.CanMergeWith(t) {
+					mTask.Merge(t)
+					merged = true
 					break
 				}
 			}
 			if !merged {
-				s.readySQTasks.PushBack(sTask)
+				s.readySQTasks.PushBack(t)
 			}
 			s.unsolvedSQTasks.Remove(e)
 		}
 	}
-
-	for i := 0; i < len(queryMsgs); i++ {
-		msg := queryMsgs[i]
-		ok, err := q.checkSearchCanDo(msg)
-		log.Debug("judge if msg can do", zap.Int64("msgID", msg.ID()), zap.Int64("collectionID", q.collectionID),
-			zap.Bool("ok", ok), zap.Error(err), zap.Bool("merge search requests", q.mergeMsgs))
-
-		if err != nil {
-			pubRet := &pubResult{
-				Msg: msg,
-				Err: err,
-			}
-			q.addToPublishChan(pubRet)
-			log.Error("search request fast fail", zap.Int64("msgID", msg.ID()), zap.Error(err))
-			continue
-		}
-		if ok {
-			if q.mergeMsgs {
-				merge := false
-				for j, mergedMsg := range mergedMsgs {
-					if canMerge(mergedMsg, msg) {
-						mergedMsgs[j] = mergeSearchMsg(mergedMsg, msg)
-						merge = true
-						log.Info("Merge search message", zap.Int("num", mergedMsg.GetNumMerged()),
-							zap.Int64("mergedMsgID", mergedMsg.ID()), zap.Int64("msgID", msg.ID()),
-							zap.Int("merged msg nq", msg.GetNumMerged()))
-						break
-					}
-				}
-				if !merge {
-					mergedMsgs = append(mergedMsgs, msg)
-				}
-			} else {
-				mergedMsgs = append(mergedMsgs, msg)
-			}
-
-		} else {
-			canNotDoMsg = append(canNotDoMsg, msg)
-		}
-	}
-	metrics.QueryNodeWaitForExecuteReqs.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(len(mergedMsgs)))
-	return mergedMsgs, canNotDoMsg
+	//mergedLen := s.readySQTasks.Len()
+	//metrics.QueryNodeWaitForExecuteReqs.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(mergedLen))
 }

@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"runtime/debug"
 	"time"
 
@@ -50,6 +49,10 @@ type baseTask struct {
 	ctx  context.Context
 	id   UniqueID
 	ts   Timestamp
+}
+
+func (b *baseTask) Ctx() context.Context {
+	return b.ctx
 }
 
 func (b *baseTask) OnEnqueue() error {

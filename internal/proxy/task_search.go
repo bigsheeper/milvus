@@ -398,7 +398,6 @@ func (t *searchTask) searchShard(ctx context.Context, leaders *querypb.ShardLead
 	search := func(nodeID UniqueID, qn types.QueryNode) error {
 		req := &querypb.SearchRequest{
 			Req:           t.SearchRequest,
-			IsShardLeader: true,
 			DmlChannel:    leaders.GetChannelName(),
 		}
 

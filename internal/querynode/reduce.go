@@ -36,11 +36,8 @@ import (
 )
 
 type sliceInfo struct {
-	slices    []int32
-	reqIDs    []UniqueID
-	sourceIDs []UniqueID
-	reqNum    map[UniqueID]int64
-	reqCount  map[UniqueID]int64
+	sliceNQs   []int32
+	sliceTopKs []int32
 }
 
 // SearchResult contains a pointer to the search result in C++ memory
@@ -56,41 +53,28 @@ type RetrieveResult struct {
 	cRetrieveResult C.CRetrieveResult
 }
 
-func parseSliceInfo(originNQs []int64, nq int64) *sliceInfo {
+func parseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *sliceInfo {
 	sInfo := &sliceInfo{
-		slices:    make([]int32, 0),
-		reqNum:    make(map[UniqueID]int64),
-		reqCount:  make(map[UniqueID]int64),
+		sliceNQs:   make([]int32, 0),
+		sliceTopKs: make([]int32, 0),
 	}
 
-	if nq == 0 {
+	if nqPerSlice == 0 {
 		return sInfo
 	}
 
-
 	for i := 0; i < len(originNQs); i++ {
-		for j := 0; j < int(originNQs[i]/nq); j++ {
-			sInfo.slices = append(sInfo.slices, int32(nq))
+		for j := 0; j < int(originNQs[i]/nqPerSlice); j++ {
+			sInfo.sliceNQs = append(sInfo.sliceNQs, int32(nqPerSlice))
+			sInfo.sliceTopKs = append(sInfo.sliceTopKs, int32(originTopKs[i]))
 		}
-		if tailSliceSize := originNQs[i] % nq; tailSliceSize > 0 {
-			sInfo.slices = append(sInfo.slices, int32(tailSliceSize))
+		if tailSliceSize := originNQs[i] % nqPerSlice; tailSliceSize > 0 {
+			sInfo.sliceNQs = append(sInfo.sliceNQs, int32(tailSliceSize))
+			sInfo.sliceTopKs = append(sInfo.sliceTopKs, int32(originTopKs[i]))
 		}
 	}
 
 	return sInfo
-}
-
-// TODO: rename by SearchResult.SliceOffset
-func (s *sliceInfo) getSliceOffset(i int) int64 {
-	reqID := s.reqIDs[i]
-	s.reqCount[reqID]++
-	return s.reqCount[reqID]
-}
-
-// TODO: rename by SearchResult.SliceNum
-func (s *sliceInfo) getSliceNum(i int) int64 {
-	reqID := s.reqIDs[i]
-	return s.reqNum[reqID]
 }
 
 func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult, numSegments int64) error {

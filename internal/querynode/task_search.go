@@ -144,15 +144,8 @@ func (s *searchTask) searchOnStreaming() error {
 		//	return  err
 		//}
 
-		sInfo := parseSliceInfo(s.OrigNQs, s.NQ)
-
-		// TODO: move sliceTopKs to sliceInfo
-		sliceTopKs := make([]int32, 0)
-		for i := 0; i < len(sInfo.slices); i++ {
-			sliceTopKs = append(sliceTopKs, int32(topK))
-		}
-
-		blobs, err := marshal(s.CollectionID, s.ID(), streamingResults, int(numSegment), sInfo.slices, sliceTopKs)
+		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
+		blobs, err := marshal(s.CollectionID, s.ID(), streamingResults, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
 
 		//blobs, err := marshal(s.CollectionID, 0, streamingResults, int(numSegment), reqSlices)
 		defer deleteSearchResultDataBlobs(blobs)
@@ -272,14 +265,8 @@ func (s *searchTask) searchOnHistorical() error {
 		return err
 	}
 
-	sInfo := parseSliceInfo(s.OrigNQs, s.NQ)
-
-	// TODO: move sliceTopKs to sliceInfo
-	sliceTopKs := make([]int32, 0)
-	for i := 0; i < len(sInfo.slices); i++ {
-		sliceTopKs = append(sliceTopKs, int32(topK))
-	}
-	blobs, err := marshal(s.CollectionID, s.ID(), historicalResults, int(numSegment), sInfo.slices, sliceTopKs)
+	sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
+	blobs, err := marshal(s.CollectionID, s.ID(), historicalResults, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
 
 	//blobs, err := marshal(s.CollectionID, 0, historicalResults, int(numSegment), reqSlices)
 	defer deleteSearchResultDataBlobs(blobs)

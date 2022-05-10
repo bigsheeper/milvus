@@ -946,54 +946,6 @@ func mergeRetrieveResults(retrieveResults []*segcorepb.RetrieveResults) (*segcor
 	return ret, nil
 }
 
-func mergeRetrieveResults(retrieveResults []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {
-	var ret *segcorepb.RetrieveResults
-	var skipDupCnt int64
-	var idSet = make(map[interface{}]struct{})
-
-	// merge results and remove duplicates
-	for _, rr := range retrieveResults {
-		// skip empty result, it will break merge result
-		if rr == nil || len(rr.Offset) == 0 {
-			continue
-		}
-
-		if ret == nil {
-			ret = &segcorepb.RetrieveResults{
-				Ids:        &schemapb.IDs{},
-				FieldsData: make([]*schemapb.FieldData, len(rr.FieldsData)),
-			}
-		}
-
-		if len(ret.FieldsData) != len(rr.FieldsData) {
-			return nil, fmt.Errorf("mismatch FieldData in RetrieveResults")
-		}
-
-		pkHitNum := typeutil.GetSizeOfIDs(rr.GetIds())
-		for i := 0; i < pkHitNum; i++ {
-			id := typeutil.GetPK(rr.GetIds(), int64(i))
-			if _, ok := idSet[id]; !ok {
-				typeutil.AppendPKs(ret.Ids, id)
-				typeutil.AppendFieldData(ret.FieldsData, rr.FieldsData, int64(i))
-				idSet[id] = struct{}{}
-			} else {
-				// primary keys duplicate
-				skipDupCnt++
-			}
-		}
-	}
-	log.Debug("skip duplicated query result", zap.Int64("count", skipDupCnt))
-
-	// not found, return default values indicating not result found
-	if ret == nil {
-		ret = &segcorepb.RetrieveResults{
-			Ids:        &schemapb.IDs{},
-			FieldsData: []*schemapb.FieldData{},
-		}
-	}
-
-	return ret, nil
-}
 // func printSearchResultData(data *schemapb.SearchResultData, header string) {
 // 	size := len(data.Ids.GetIntId().Data)
 // 	if size != len(data.Scores) {

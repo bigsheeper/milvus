@@ -162,37 +162,40 @@ StrPKVisitor::operator()<std::string>(std::string t) const {
 std::vector<char>
 GetSearchResultDataSlice(std::vector<SearchResult*>& search_results,
                          milvus::query::Plan* plan,
-                         int64_t nq_offset_begin,
-                         int64_t nq_offset_end,
-                         int64_t result_offset_begin,
-                         int64_t result_offset_end,
-                         int64_t nq,
-                         int64_t topK) {
-    AssertInfo(nq_offset_begin <= nq_offset_end,
-               "illegal offsets when GetSearchResultDataSlice, nq_offset_begin = " + std::to_string(nq_offset_begin) +
-                   ", nq_offset_end = " + std::to_string(nq_offset_end));
-    AssertInfo(nq_offset_end <= nq, "illegal nq_offset_end when GetSearchResultDataSlice, nq_offset_end = " +
-                                        std::to_string(nq_offset_end) + ", nq = " + std::to_string(nq));
-
-    AssertInfo(result_offset_begin <= result_offset_end,
-               "illegal result offsets when GetSearchResultDataSlice, result_offset_begin = " +
-                   std::to_string(result_offset_begin) + ", result_offset_end = " + std::to_string(result_offset_end));
-    AssertInfo(result_offset_end <= nq * topK,
-               "illegal result_offset_end when GetSearchResultDataSlice, result_offset_end = " +
-                   std::to_string(result_offset_end) + ", nq = " + std::to_string(nq) +
-                   ", topk = " + std::to_string(topK));
+                         int64_t nq_begin,
+                         int64_t nq_end,
+                         int64_t real_topK_begin,
+                         int64_t real_topK_end,
+                         int64_t unify_topK,
+                         int64_t slice_topK) {
+    auto nq = nq_end - nq_begin;
+    AssertInfo(nq_begin <= nq_end,
+               "illegal offsets when GetSearchResultDataSlice, nq_begin = " + std::to_string(nq_begin) +
+               ", nq_end = " + std::to_string(nq_end));
+    AssertInfo(real_topK_begin <= real_topK_end,
+               "illegal result offsets when GetSearchResultDataSlice, real_topK_begin = " +
+               std::to_string(real_topK_begin) + ", real_topK_end = " + std::to_string(real_topK_end));
+    AssertInfo(real_topK_end <= nq * unify_topK,
+               "illegal real_topK_end when GetSearchResultDataSlice, real_topK_end = " +
+               std::to_string(real_topK_end) + ", nq = " + std::to_string(nq) +
+               ", topk = " + std::to_string(unify_topK));
 
     auto search_result_data = std::make_unique<milvus::proto::schema::SearchResultData>();
-    // set topK and nq
-    search_result_data->set_top_k(topK);
-    search_result_data->set_num_queries(nq_offset_end - nq_offset_begin);
-    search_result_data->mutable_topks()->Resize(nq_offset_end - nq_offset_begin, 0);
+    // set unify_topK and nq
+    search_result_data->set_top_k(unify_topK);
+    search_result_data->set_num_queries(nq_end - nq_begin);
+    search_result_data->mutable_topks()->Resize(nq_end - nq_begin, 0);
 
     auto num_segments = search_results.size();
-    auto total_result_count = result_offset_end - result_offset_begin;
+    auto real_topK = real_topK_end - real_topK_begin;
+
+    // use min(real_topK, slice_topK) as real_topK
+    if (slice_topK < real_topK) {
+        real_topK = slice_topK;
+    }
 
     // use for fill field data
-    std::vector<std::pair<SearchResult*, int64_t>> result_offsets(total_result_count);
+    std::vector<std::pair<SearchResult*, int64_t>> result_offsets(real_topK);
 
     // reverse space for pks
     auto primary_field_id = plan->schema_.get_primary_field_id().value_or(milvus::FieldId(-1));
@@ -201,13 +204,13 @@ GetSearchResultDataSlice(std::vector<SearchResult*>& search_results,
     switch (pk_type) {
         case milvus::DataType::INT64: {
             auto ids = std::make_unique<milvus::proto::schema::LongArray>();
-            ids->mutable_data()->Resize(total_result_count, 0);
+            ids->mutable_data()->Resize(real_topK, 0);
             search_result_data->mutable_ids()->set_allocated_int_id(ids.release());
             break;
         }
         case milvus::DataType::VARCHAR: {
             auto ids = std::make_unique<milvus::proto::schema::StringArray>();
-            std::vector<std::string> string_pks(total_result_count);
+            std::vector<std::string> string_pks(real_topK);
             *ids->mutable_data() = {string_pks.begin(), string_pks.end()};
             search_result_data->mutable_ids()->set_allocated_str_id(ids.release());
             break;
@@ -218,22 +221,22 @@ GetSearchResultDataSlice(std::vector<SearchResult*>& search_results,
     }
 
     // reverse space for distances
-    search_result_data->mutable_scores()->Resize(total_result_count, 0);
+    search_result_data->mutable_scores()->Resize(real_topK, 0);
 
     // fill pks and distances
-    for (auto nq_offset = nq_offset_begin; nq_offset < nq_offset_end; nq_offset++) {
+    for (auto nq_offset = nq_begin; nq_offset < nq_end; nq_offset++) {
         int64_t result_count = 0;
-        for (int i = 0; i < num_segments; i++) {
+        for (int i = 0; i < num_segments && result_count <= real_topK; i++) {
             auto search_result = search_results[i];
-            AssertInfo(search_result != nullptr, "null search result when reorganize");
+            AssertInfo(search_result != nullptr, "null search result when GetSearchResultDataSlice");
             if (search_result->result_offsets_.size() == 0) {
                 continue;
             }
 
             auto seg_result_offset_start = search_result->get_result_count(nq_offset);
             auto seg_result_offset_end = seg_result_offset_start + search_result->real_topK_per_nq_[nq_offset];
-            for (auto j = seg_result_offset_start; j < seg_result_offset_end; j++) {
-                auto loc = search_result->result_offsets_[j] - result_offset_begin;
+            for (auto j = seg_result_offset_start; j < seg_result_offset_end && result_count <= real_topK; j++) {
+                auto loc = search_result->result_offsets_[j] - real_topK_begin;
                 // set result pks
                 switch (pk_type) {
                     case milvus::DataType::INT64: {
@@ -255,20 +258,19 @@ GetSearchResultDataSlice(std::vector<SearchResult*>& search_results,
                 search_result_data->mutable_scores()->Set(loc, search_result->distances_[j]);
                 // set result offset to fill output fields data
                 result_offsets[loc] = std::make_pair(search_result, j);
+                result_count++;
             }
-
-            result_count += search_result->real_topK_per_nq_[nq_offset];
         }
 
         // update result topks
-        search_result_data->mutable_topks()->Set(nq_offset - nq_offset_begin, result_count);
+        search_result_data->mutable_topks()->Set(nq_offset - nq_begin, result_count);
     }
 
-    AssertInfo(search_result_data->scores_size() == total_result_count,
+    AssertInfo(search_result_data->scores_size() == real_topK,
                "wrong scores size"
                ", size = " +
                    std::to_string(search_result_data->scores_size()) +
-                   ", expected size = " + std::to_string(total_result_count));
+                   ", expected size = " + std::to_string(real_topK));
 
     // set output fields
     for (auto field_id : plan->target_entries_) {
@@ -290,7 +292,8 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         CSearchResult* c_search_results,
         CSearchPlan c_plan,
         int32_t num_segments,
-        int32_t* nq_slice_sizes,
+        int32_t* slice_nqs,
+        int32_t* slice_topks,
         int32_t num_slices) {
     try {
         // parse search results and get topK, nq
@@ -303,26 +306,26 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         auto topK = search_results[0]->topk_;
         auto nq = search_results[0]->num_queries_;
 
-        std::vector<int64_t> result_count_per_nq(nq);
+        std::vector<int64_t> real_topK_per_nq(nq);
         for (auto search_result : search_results) {
             AssertInfo(search_result->real_topK_per_nq_.size() == nq,
                        "incorrect real_topK_per_nq_ size in search result");
             for (int j = 0; j < nq; j++) {
-                result_count_per_nq[j] += search_result->real_topK_per_nq_[j];
+                real_topK_per_nq[j] += search_result->real_topK_per_nq_[j];
             }
         }
 
         // prefix sum, get slices offsets
-        AssertInfo(num_slices > 0, "empty nq_slice_sizes is not allowed");
+        AssertInfo(num_slices > 0, "empty slice_nqs is not allowed");
         auto slice_offsets_size = num_slices + 1;
         auto nq_slice_offsets = std::vector<int32_t>(slice_offsets_size);
-        auto result_slice_offset = std::vector<int64_t>(slice_offsets_size);
+        auto real_topK_slice_offset = std::vector<int64_t>(slice_offsets_size);
 
         for (int i = 1; i < slice_offsets_size; i++) {
-            nq_slice_offsets[i] = nq_slice_offsets[i - 1] + nq_slice_sizes[i - 1];
-            result_slice_offset[i] = result_slice_offset[i - 1];
+            nq_slice_offsets[i] = nq_slice_offsets[i - 1] + slice_nqs[i - 1];
+            real_topK_slice_offset[i] = real_topK_slice_offset[i - 1];
             for (auto j = nq_slice_offsets[i - 1]; j < nq_slice_offsets[i]; j++) {
-                result_slice_offset[i] += result_count_per_nq[j];
+                real_topK_slice_offset[i] += real_topK_per_nq[j];
             }
         }
         AssertInfo(nq_slice_offsets[num_slices] == nq,
@@ -335,8 +338,10 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         search_result_data_blobs->blobs.resize(num_slices);
         //#pragma omp parallel for
         for (int i = 0; i < num_slices; i++) {
-            auto proto = GetSearchResultDataSlice(search_results, plan, nq_slice_offsets[i], nq_slice_offsets[i + 1],
-                                                  result_slice_offset[i], result_slice_offset[i + 1], nq, topK);
+            auto proto = GetSearchResultDataSlice(search_results, plan,
+                                                  nq_slice_offsets[i], nq_slice_offsets[i + 1],
+                                                  real_topK_slice_offset[i], real_topK_slice_offset[i + 1],
+                                                  topK, slice_topks[i]);
             search_result_data_blobs->blobs[i] = proto;
         }
 

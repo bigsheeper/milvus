@@ -18,8 +18,17 @@ package querynode
 
 import (
 	"context"
+	"errors"
+	"fmt"
+
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"go.uber.org/zap"
 )
 
 var _ sqTask = (*queryTask)(nil)
@@ -35,11 +44,136 @@ func (q *queryTask) PreExecute(ctx context.Context) error {
 	panic("not implemented")
 }
 
-func (q *queryTask) searchOnStreaming() error {
+func (q *queryTask) queryOnStreaming() error {
+	// check ctx timeout
+	if !funcutil.CheckCtxValid(q.Ctx()) {
+		return errors.New("search context timeout")
+	}
+
+	// lock streaming meta-replica for shard leader
+	q.QS.streaming.replica.queryRLock()
+	defer q.QS.streaming.replica.queryRUnlock()
+
+	// check if collection has been released
+	collection, err := q.QS.streaming.replica.getCollectionByID(q.CollectionID)
+	if err != nil {
+		return err
+	}
+
+	if q.iReq.GetGuaranteeTimestamp() >= collection.getReleaseTime() {
+		log.Warn("collection release before query", zap.Int64("collectionID", q.CollectionID))
+		return fmt.Errorf("retrieve failed, collection has been released, collectionID = %d", q.CollectionID)
+	}
+	// deserialize query plan
+	plan, err := createRetrievePlanByExpr(collection, q.iReq.GetSerializedExprPlan(), q.TravelTimestamp)
+	if err != nil {
+		return err
+	}
+	defer plan.delete()
+
+	// TODO: init vector chunk manager at most once
+	if q.QS.vectorChunkManager == nil {
+		if q.QS.localChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+		}
+		if q.QS.remoteChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+		}
+		q.QS.vectorChunkManager, err = storage.NewVectorChunkManager(q.QS.localChunkManager, q.QS.remoteChunkManager,
+			&etcdpb.CollectionMeta{
+				ID:     collection.id,
+				Schema: collection.schema,
+			}, q.QS.localCacheSize, q.QS.localCacheEnabled)
+		if err != nil {
+			return err
+		}
+	}
+
+	sResults, _, _, sErr := q.QS.streaming.retrieve(q.CollectionID, q.iReq.GetPartitionIDs(),
+		plan, func(segment *Segment) bool { return segment.vChannelID == q.QS.channel })
+	if sErr != nil {
+		return sErr
+	}
+	mergedResult, err := mergeRetrieveResults(sResults)
+	if err != nil {
+		return err
+	}
+
+	q.Ret = &internalpb.RetrieveResults{
+		Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+		Ids:        mergedResult.Ids,
+		FieldsData: mergedResult.FieldsData,
+	}
+
 	return nil
 }
 
-func (q *queryTask) searchOnHistorical() error {
+func (q *queryTask) queryOnHistorical() error {
+	// check ctx timeout
+	if !funcutil.CheckCtxValid(q.Ctx()) {
+		return errors.New("search context timeout")
+	}
+
+	// lock streaming meta-replica for shard leader
+	q.QS.historical.replica.queryRLock()
+	defer q.QS.historical.replica.queryRUnlock()
+
+	// check if collection has been released
+	collection, err := q.QS.streaming.replica.getCollectionByID(q.CollectionID)
+	if err != nil {
+		return err
+	}
+
+	if q.iReq.GetGuaranteeTimestamp() >= collection.getReleaseTime() {
+		log.Warn("collection release before query", zap.Int64("collectionID", q.CollectionID))
+		return fmt.Errorf("retrieve failed, collection has been released, collectionID = %d", q.CollectionID)
+	}
+	// deserialize query plan
+	plan, err := createRetrievePlanByExpr(collection, q.iReq.GetSerializedExprPlan(), q.TravelTimestamp)
+	if err != nil {
+		return err
+	}
+	defer plan.delete()
+
+	// TODO: init vector chunk manager at most once
+	if q.QS.vectorChunkManager == nil {
+		if q.QS.localChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+		}
+		if q.QS.remoteChunkManager == nil {
+			return fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+		}
+		q.QS.vectorChunkManager, err = storage.NewVectorChunkManager(q.QS.localChunkManager, q.QS.remoteChunkManager,
+			&etcdpb.CollectionMeta{
+				ID:     collection.id,
+				Schema: collection.schema,
+			}, q.QS.localCacheSize, q.QS.localCacheEnabled)
+		if err != nil {
+			return err
+		}
+	}
+
+	// validate segmentIDs in request
+	err = q.QS.historical.validateSegmentIDs(q.req.SegmentIDs, q.CollectionID, q.iReq.GetPartitionIDs())
+	if err != nil {
+		log.Warn("segmentIDs in query request fails validation", zap.Int64s("segmentIDs", q.req.SegmentIDs))
+		return err
+	}
+	retrieveResults, err := q.QS.historical.retrieveBySegmentIDs(q.CollectionID, q.req.SegmentIDs, q.QS.vectorChunkManager, plan)
+	if err != nil {
+		return err
+	}
+	mergedResult, err := mergeRetrieveResults(retrieveResults)
+	if err != nil {
+		return err
+	}
+
+	log.Debug("follower retrieve result", zap.String("ids", mergedResult.Ids.String()))
+	q.Ret = &internalpb.RetrieveResults{
+		Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+		Ids:        mergedResult.Ids,
+		FieldsData: mergedResult.FieldsData,
+	}
 	return nil
 }
 

@@ -30,9 +30,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
@@ -353,7 +351,6 @@ func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
 //	}
 //	return q.searchLeader(ctx, req, searchRequests, collectionID, partitionIDs, schemaHelper, plan, topK, queryNum, timestamp)
 //}
-//
 //func (q *queryShard) searchLeader(ctx context.Context, req *querypb.SearchRequest, searchRequests []*searchRequest, collectionID UniqueID, partitionIDs []UniqueID,
 //	schemaHelper *typeutil.SchemaHelper, plan *SearchPlan, topK int64, queryNum int64, timestamp Timestamp) (*internalpb.SearchResults, error) {
 //	cluster, ok := q.clusterService.getShardCluster(req.GetDmlChannel())
@@ -493,7 +490,6 @@ func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
 //	}
 //	return searchResults, nil
 //}
-//
 //func (q *queryShard) searchFollower(ctx context.Context, req *querypb.SearchRequest, searchRequests []*searchRequest, collectionID UniqueID, partitionIDs []UniqueID,
 //	schemaHelper *typeutil.SchemaHelper, plan *SearchPlan, topK int64, queryNum int64, timestamp Timestamp) (*internalpb.SearchResults, error) {
 //	segmentIDs := req.GetSegmentIDs()
@@ -689,167 +685,167 @@ func encodeSearchResultData(searchResultData *schemapb.SearchResultData, nq int6
 	return
 }
 
-func (q *queryShard) query(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error) {
-	collectionID := req.Req.CollectionID
-	segmentIDs := req.SegmentIDs
-	partitionIDs := req.Req.PartitionIDs
-	expr := req.Req.SerializedExprPlan
-	timestamp := req.Req.TravelTimestamp
-
-	// check ctx timeout
-	if !funcutil.CheckCtxValid(ctx) {
-		return nil, errors.New("search context timeout")
-	}
-
-	// lock historic meta-replica
-	q.historical.replica.queryRLock()
-	defer q.historical.replica.queryRUnlock()
-
-	// lock streaming meta-replica for shard leader
-	if !req.FromShardLeader {
-		q.streaming.replica.queryRLock()
-		defer q.streaming.replica.queryRUnlock()
-	}
-
-	// check if collection has been released
-	collection, err := q.streaming.replica.getCollectionByID(collectionID)
-	if err != nil {
-		return nil, err
-	}
-
-	if req.GetReq().GetGuaranteeTimestamp() >= collection.getReleaseTime() {
-		log.Warn("collection release before query", zap.Int64("collectionID", collectionID))
-		return nil, fmt.Errorf("retrieve failed, collection has been released, collectionID = %d", collectionID)
-	}
-	// deserialize query plan
-	plan, err := createRetrievePlanByExpr(collection, expr, timestamp)
-	if err != nil {
-		return nil, err
-	}
-	defer plan.delete()
-
-	// TODO: init vector chunk manager at most once
-	if q.vectorChunkManager == nil {
-		if q.localChunkManager == nil {
-			return nil, fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
-		}
-		if q.remoteChunkManager == nil {
-			return nil, fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
-		}
-		q.vectorChunkManager, err = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
-			&etcdpb.CollectionMeta{
-				ID:     collection.id,
-				Schema: collection.schema,
-			}, q.localCacheSize, q.localCacheEnabled)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if !req.FromShardLeader {
-		cluster, ok := q.clusterService.getShardCluster(req.GetDmlChannel())
-		if !ok {
-			return nil, fmt.Errorf("channel %s leader is not here", req.GetDmlChannel())
-		}
-
-		// add cancel when error occurs
-		queryCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		var results []*internalpb.RetrieveResults
-		var streamingResults []*segcorepb.RetrieveResults
-		var err error
-		var mut sync.Mutex
-		var wg sync.WaitGroup
-
-		wg.Add(2)
-
-		go func() {
-			defer wg.Done()
-			// shard leader dispatches request to its shard cluster
-			cResults, cErr := cluster.Query(queryCtx, req)
-			mut.Lock()
-			defer mut.Unlock()
-			if cErr != nil {
-				err = cErr
-				log.Warn("failed to query cluster", zap.Int64("collectionID", q.collectionID), zap.Error(cErr))
-				cancel()
-				return
-			}
-			results = cResults
-		}()
-
-		go func() {
-			defer wg.Done()
-			// hold request until guarantee timestamp >= service timestamp
-			guaranteeTs := req.GetReq().GetGuaranteeTimestamp()
-			q.waitUntilServiceable(ctx, guaranteeTs, tsTypeDML)
-			// shard leader queries its own streaming data
-			// TODO add context
-			sResults, _, _, sErr := q.streaming.retrieve(collectionID, partitionIDs, plan, func(segment *Segment) bool { return segment.vChannelID == q.channel })
-			mut.Lock()
-			defer mut.Unlock()
-			if sErr != nil {
-				err = sErr
-				log.Warn("failed to query streaming", zap.Int64("collectionID", q.collectionID), zap.Error(err))
-				cancel()
-				return
-			}
-			streamingResults = sResults
-		}()
-
-		wg.Wait()
-		if err != nil {
-			return nil, err
-		}
-
-		streamingResult, err := mergeRetrieveResults(streamingResults)
-		if err != nil {
-			return nil, err
-		}
-
-		// complete results with merged streaming result
-		results = append(results, &internalpb.RetrieveResults{
-			Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
-			Ids:        streamingResult.Ids,
-			FieldsData: streamingResult.FieldsData,
-		})
-		// merge shard query results
-		mergedResults, err := mergeInternalRetrieveResults(results)
-		if err != nil {
-			return nil, err
-		}
-		log.Debug("leader retrieve result", zap.String("channel", req.DmlChannel), zap.String("ids", mergedResults.Ids.String()))
-		return mergedResults, nil
-	}
-
-	// hold request until guarantee timestamp >= service timestamp
-	guaranteeTs := req.GetReq().GetGuaranteeTimestamp()
-	q.waitUntilServiceable(ctx, guaranteeTs, tsTypeDelta)
-
-	// validate segmentIDs in request
-	err = q.historical.validateSegmentIDs(segmentIDs, collectionID, partitionIDs)
-	if err != nil {
-		log.Warn("segmentIDs in query request fails validation", zap.Int64s("segmentIDs", segmentIDs))
-		return nil, err
-	}
-	retrieveResults, err := q.historical.retrieveBySegmentIDs(collectionID, segmentIDs, q.vectorChunkManager, plan)
-	if err != nil {
-		return nil, err
-	}
-	mergedResult, err := mergeRetrieveResults(retrieveResults)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debug("follower retrieve result", zap.String("ids", mergedResult.Ids.String()))
-	RetrieveResults := &internalpb.RetrieveResults{
-		Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
-		Ids:        mergedResult.Ids,
-		FieldsData: mergedResult.FieldsData,
-	}
-	return RetrieveResults, nil
-}
+//func (q *queryShard) query(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error) {
+//	collectionID := req.Req.CollectionID
+//	segmentIDs := req.SegmentIDs
+//	partitionIDs := req.Req.PartitionIDs
+//	expr := req.Req.SerializedExprPlan
+//	timestamp := req.Req.TravelTimestamp
+//
+//	// check ctx timeout
+//	if !funcutil.CheckCtxValid(ctx) {
+//		return nil, errors.New("search context timeout")
+//	}
+//
+//	// lock historic meta-replica
+//	q.historical.replica.queryRLock()
+//	defer q.historical.replica.queryRUnlock()
+//
+//	// lock streaming meta-replica for shard leader
+//	if !req.FromShardLeader {
+//		q.streaming.replica.queryRLock()
+//		defer q.streaming.replica.queryRUnlock()
+//	}
+//
+//	// check if collection has been released
+//	collection, err := q.streaming.replica.getCollectionByID(collectionID)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	if req.GetReq().GetGuaranteeTimestamp() >= collection.getReleaseTime() {
+//		log.Warn("collection release before query", zap.Int64("collectionID", collectionID))
+//		return nil, fmt.Errorf("retrieve failed, collection has been released, collectionID = %d", collectionID)
+//	}
+//	// deserialize query plan
+//	plan, err := createRetrievePlanByExpr(collection, expr, timestamp)
+//	if err != nil {
+//		return nil, err
+//	}
+//	defer plan.delete()
+//
+//	// TODO: init vector chunk manager at most once
+//	if q.vectorChunkManager == nil {
+//		if q.localChunkManager == nil {
+//			return nil, fmt.Errorf("can not create vector chunk manager for local chunk manager is nil")
+//		}
+//		if q.remoteChunkManager == nil {
+//			return nil, fmt.Errorf("can not create vector chunk manager for remote chunk manager is nil")
+//		}
+//		q.vectorChunkManager, err = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
+//			&etcdpb.CollectionMeta{
+//				ID:     collection.id,
+//				Schema: collection.schema,
+//			}, q.localCacheSize, q.localCacheEnabled)
+//		if err != nil {
+//			return nil, err
+//		}
+//	}
+//
+//	if !req.FromShardLeader {
+//		cluster, ok := q.clusterService.getShardCluster(req.GetDmlChannel())
+//		if !ok {
+//			return nil, fmt.Errorf("channel %s leader is not here", req.GetDmlChannel())
+//		}
+//
+//		// add cancel when error occurs
+//		queryCtx, cancel := context.WithCancel(ctx)
+//		defer cancel()
+//
+//		var results []*internalpb.RetrieveResults
+//		var streamingResults []*segcorepb.RetrieveResults
+//		var err error
+//		var mut sync.Mutex
+//		var wg sync.WaitGroup
+//
+//		wg.Add(2)
+//
+//		go func() {
+//			defer wg.Done()
+//			// shard leader dispatches request to its shard cluster
+//			cResults, cErr := cluster.Query(queryCtx, req)
+//			mut.Lock()
+//			defer mut.Unlock()
+//			if cErr != nil {
+//				err = cErr
+//				log.Warn("failed to query cluster", zap.Int64("collectionID", q.collectionID), zap.Error(cErr))
+//				cancel()
+//				return
+//			}
+//			results = cResults
+//		}()
+//
+//		go func() {
+//			defer wg.Done()
+//			// hold request until guarantee timestamp >= service timestamp
+//			guaranteeTs := req.GetReq().GetGuaranteeTimestamp()
+//			q.waitUntilServiceable(ctx, guaranteeTs, tsTypeDML)
+//			// shard leader queries its own streaming data
+//			// TODO add context
+//			sResults, _, _, sErr := q.streaming.retrieve(collectionID, partitionIDs, plan, func(segment *Segment) bool { return segment.vChannelID == q.channel })
+//			mut.Lock()
+//			defer mut.Unlock()
+//			if sErr != nil {
+//				err = sErr
+//				log.Warn("failed to query streaming", zap.Int64("collectionID", q.collectionID), zap.Error(err))
+//				cancel()
+//				return
+//			}
+//			streamingResults = sResults
+//		}()
+//
+//		wg.Wait()
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		streamingResult, err := mergeRetrieveResults(streamingResults)
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		// complete results with merged streaming result
+//		results = append(results, &internalpb.RetrieveResults{
+//			Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+//			Ids:        streamingResult.Ids,
+//			FieldsData: streamingResult.FieldsData,
+//		})
+//		// merge shard query results
+//		mergedResults, err := mergeInternalRetrieveResults(results)
+//		if err != nil {
+//			return nil, err
+//		}
+//		log.Debug("leader retrieve result", zap.String("channel", req.DmlChannel), zap.String("ids", mergedResults.Ids.String()))
+//		return mergedResults, nil
+//	}
+//
+//	// hold request until guarantee timestamp >= service timestamp
+//	guaranteeTs := req.GetReq().GetGuaranteeTimestamp()
+//	q.waitUntilServiceable(ctx, guaranteeTs, tsTypeDelta)
+//
+//	// validate segmentIDs in request
+//	err = q.historical.validateSegmentIDs(segmentIDs, collectionID, partitionIDs)
+//	if err != nil {
+//		log.Warn("segmentIDs in query request fails validation", zap.Int64s("segmentIDs", segmentIDs))
+//		return nil, err
+//	}
+//	retrieveResults, err := q.historical.retrieveBySegmentIDs(collectionID, segmentIDs, q.vectorChunkManager, plan)
+//	if err != nil {
+//		return nil, err
+//	}
+//	mergedResult, err := mergeRetrieveResults(retrieveResults)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	log.Debug("follower retrieve result", zap.String("ids", mergedResult.Ids.String()))
+//	RetrieveResults := &internalpb.RetrieveResults{
+//		Status:     &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+//		Ids:        mergedResult.Ids,
+//		FieldsData: mergedResult.FieldsData,
+//	}
+//	return RetrieveResults, nil
+//}
 
 // TODO: largely based on function mergeRetrieveResults, need rewriting
 func mergeInternalRetrieveResults(retrieveResults []*internalpb.RetrieveResults) (*internalpb.RetrieveResults, error) {
@@ -893,6 +889,55 @@ func mergeInternalRetrieveResults(retrieveResults []*internalpb.RetrieveResults)
 	// not found, return default values indicating not result found
 	if ret == nil {
 		ret = &internalpb.RetrieveResults{
+			Ids:        &schemapb.IDs{},
+			FieldsData: []*schemapb.FieldData{},
+		}
+	}
+
+	return ret, nil
+}
+
+func mergeRetrieveResults(retrieveResults []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {
+	var ret *segcorepb.RetrieveResults
+	var skipDupCnt int64
+	var idSet = make(map[interface{}]struct{})
+
+	// merge results and remove duplicates
+	for _, rr := range retrieveResults {
+		// skip empty result, it will break merge result
+		if rr == nil || len(rr.Offset) == 0 {
+			continue
+		}
+
+		if ret == nil {
+			ret = &segcorepb.RetrieveResults{
+				Ids:        &schemapb.IDs{},
+				FieldsData: make([]*schemapb.FieldData, len(rr.FieldsData)),
+			}
+		}
+
+		if len(ret.FieldsData) != len(rr.FieldsData) {
+			return nil, fmt.Errorf("mismatch FieldData in RetrieveResults")
+		}
+
+		pkHitNum := typeutil.GetSizeOfIDs(rr.GetIds())
+		for i := 0; i < pkHitNum; i++ {
+			id := typeutil.GetPK(rr.GetIds(), int64(i))
+			if _, ok := idSet[id]; !ok {
+				typeutil.AppendPKs(ret.Ids, id)
+				typeutil.AppendFieldData(ret.FieldsData, rr.FieldsData, int64(i))
+				idSet[id] = struct{}{}
+			} else {
+				// primary keys duplicate
+				skipDupCnt++
+			}
+		}
+	}
+	log.Debug("skip duplicated query result", zap.Int64("count", skipDupCnt))
+
+	// not found, return default values indicating not result found
+	if ret == nil {
+		ret = &segcorepb.RetrieveResults{
 			Ids:        &schemapb.IDs{},
 			FieldsData: []*schemapb.FieldData{},
 		}

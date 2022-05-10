@@ -119,7 +119,6 @@ func marshal(collectionID UniqueID, msgID UniqueID, searchResults []*SearchResul
 	var cNumSlices = C.int32_t(len(sliceNQs))
 
 	var cSearchResultDataBlobs searchResultDataBlobs
-
 	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err

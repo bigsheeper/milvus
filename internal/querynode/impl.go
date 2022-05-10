@@ -652,7 +652,6 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 			return nil, err
 		}
 	}
-
 	return nil, err
 }
 
@@ -689,29 +688,66 @@ func (node *QueryNode) Query(ctx context.Context, req *queryPb.QueryRequest) (*i
 		}
 	}
 
-	qs, err := node.queryShardService.getQueryShard(req.GetDmlChannel())
-	if err != nil {
-		return &internalpb.RetrieveResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
+	if req.FromShardLeader {
+		// construct a queryTask
+	} else {
+		qs, err := node.queryShardService.getQueryShard(req.GetDmlChannel())
+		if err != nil {
+			return &internalpb.RetrieveResults{
+				Status: &commonpb.Status{
+					ErrorCode: commonpb.ErrorCode_UnexpectedError,
+					Reason:    err.Error(),
+				},
+			}, nil
+		}
 
-	results, err := qs.query(ctx, req)
-	if err != nil {
-		log.Warn("QueryService failed to query", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()), zap.Error(err))
-		return &internalpb.RetrieveResults{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-		}, nil
-	}
-	log.Debug("Query Shard Done", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
+		cluster, ok := qs.clusterService.getShardCluster(req.GetDmlChannel())
+		if !ok {
+			return nil, fmt.Errorf("channel %s leader is not here", req.GetDmlChannel())
+		}
 
-	return results, nil
+		// add cancel when error occurs
+		queryCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		var results []*internalpb.RetrieveResults
+		var streamingResults *internalpb.RetrieveResults
+		var mut sync.Mutex
+		var wg sync.WaitGroup
+
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			// shard leader dispatches request to its shard cluster
+			cResults, cErr := cluster.Query(queryCtx, req)
+			mut.Lock()
+			defer mut.Unlock()
+			if cErr != nil {
+				err = cErr
+				log.Warn("failed to query cluster", zap.Int64("collectionID", req.Req.GetCollectionID()), zap.Error(cErr))
+				cancel()
+				return
+			}
+			results = cResults
+		}()
+
+		go func() {
+			defer wg.Done()
+			streamingTask := newQueryTask(queryCtx, req)
+			err := streamingTask.WaitToFinish()
+			if err != nil {
+				return
+			}
+			streamingResults = streamingTask.Ret
+		}()
+
+		wg.Wait()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 // SyncReplicaSegments syncs replica node & segments states

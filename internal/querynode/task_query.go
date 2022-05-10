@@ -44,7 +44,7 @@ func (q *queryTask) PreExecute(ctx context.Context) error {
 	panic("not implemented")
 }
 
-func (q *queryTask) searchOnStreaming() error {
+func (q *queryTask) queryOnStreaming() error {
 	// check ctx timeout
 	if !funcutil.CheckCtxValid(q.Ctx()) {
 		return errors.New("search context timeout")
@@ -108,7 +108,7 @@ func (q *queryTask) searchOnStreaming() error {
 	return nil
 }
 
-func (q *queryTask) searchOnHistorical() error {
+func (q *queryTask) queryOnHistorical() error {
 	// check ctx timeout
 	if !funcutil.CheckCtxValid(q.Ctx()) {
 		return errors.New("search context timeout")

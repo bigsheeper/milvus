@@ -3451,13 +3451,13 @@ class MessageBuilder {
         typename QList<K>::const_iterator begin = keys.begin();
         typename QList<K>::const_iterator end = keys.end();
         int max_ = static_cast<int>(base::consts::kMaxLogPerContainer);  // to prevent warning
-        for (int index_ = 0; begin != end && index_ < max_; ++index_, ++begin) {
+        for (int segment_index_ = 0; begin != end && segment_index_ < max_; ++segment_index_, ++begin) {
             m_logger->stream() << ELPP_LITERAL("(");
             operator<<(static_cast<K>(*begin));
             m_logger->stream() << ELPP_LITERAL(", ");
             operator<<(static_cast<V>(map_.value(*begin)));
             m_logger->stream() << ELPP_LITERAL(")");
-            m_logger->stream() << ((index_ < keys.size() - 1) ? m_containerLogSeperator : ELPP_LITERAL(""));
+            m_logger->stream() << ((segment_index_ < keys.size() - 1) ? m_containerLogSeperator : ELPP_LITERAL(""));
         }
         if (begin != end) {
             m_logger->stream() << ELPP_LITERAL("...");
@@ -3479,13 +3479,13 @@ class MessageBuilder {
         typename QList<K>::const_iterator begin = keys.begin();
         typename QList<K>::const_iterator end = keys.end();
         int max_ = static_cast<int>(base::consts::kMaxLogPerContainer);  // prevent type warning
-        for (int index_ = 0; begin != end && index_ < max_; ++index_, ++begin) {
+        for (int segment_index_ = 0; begin != end && segment_index_ < max_; ++segment_index_, ++begin) {
             m_logger->stream() << ELPP_LITERAL("(");
             operator<<(static_cast<K>(*begin));
             m_logger->stream() << ELPP_LITERAL(", ");
             operator<<(static_cast<V>(hash_.value(*begin)));
             m_logger->stream() << ELPP_LITERAL(")");
-            m_logger->stream() << ((index_ < keys.size() - 1) ? m_containerLogSeperator : ELPP_LITERAL(""));
+            m_logger->stream() << ((segment_index_ < keys.size() - 1) ? m_containerLogSeperator : ELPP_LITERAL(""));
         }
         if (begin != end) {
             m_logger->stream() << ELPP_LITERAL("...");

@@ -20,7 +20,12 @@ extern "C" {
 typedef void* CSearchResultDataBlobs;
 
 CStatus
-ReduceSearchResultsAndFillData(CSearchPlan c_plan, CSearchResult* search_results, int64_t num_segments);
+ReduceSearchResultsAndFillData(CSearchPlan c_plan,
+                               CSearchResult* search_results,
+                               int64_t num_segments,
+                               int32_t* slice_nqs,
+                               int32_t* slice_topKs,
+                               int32_t num_slices);
 
 CStatus
 Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,

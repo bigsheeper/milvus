@@ -145,7 +145,7 @@ func (s *searchTask) searchOnStreaming() error {
 		//}
 
 		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
-		blobs, err := marshal(s.CollectionID, s.ID(), streamingResults, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
+		blobs, err := marshal(s.CollectionID, s.ID(), streamingResults, plan, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
 
 		//blobs, err := marshal(s.CollectionID, 0, streamingResults, int(numSegment), reqSlices)
 		defer deleteSearchResultDataBlobs(blobs)
@@ -266,7 +266,7 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 
 	sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
-	blobs, err := marshal(s.CollectionID, s.ID(), historicalResults, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
+	blobs, err := marshal(s.CollectionID, s.ID(), historicalResults, plan, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
 
 	//blobs, err := marshal(s.CollectionID, 0, historicalResults, int(numSegment), reqSlices)
 	defer deleteSearchResultDataBlobs(blobs)

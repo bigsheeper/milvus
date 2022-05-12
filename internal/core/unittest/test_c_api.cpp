@@ -492,8 +492,8 @@ TEST(CApiTest, GetRowCountTest) {
 void
 CheckSearchResultDuplicate(const std::vector<CSearchResult>& results) {
     auto sr = (SearchResult*)results[0];
-    auto topk = sr->topk_;
-    auto num_queries = sr->num_queries_;
+    auto topk = sr->unity_topK_;
+    auto num_queries = sr->total_nq_;
 
     // fill primary keys
     std::vector<PkType> result_pks(num_queries * topk);
@@ -683,16 +683,11 @@ testReduceSearchWithExpr(int N, int topK, int num_queries) {
     }
 
     // 1. reduce
-    status = ReduceSearchResultsAndFillData(plan, results.data(), results.size(), slice_nqs.data(), slice_topKs.data(),
-                                            slice_nqs.size());
-    assert(status.error_code == Success);
-
-    // 2. marshal
     CSearchResultDataBlobs cSearchResultData;
-
-    status = Marshal(&cSearchResultData, results.data(), plan, results.size(), slice_nqs.data(), slice_topKs.data(),
-                     slice_nqs.size());
+    status = ReduceSearchResultsAndFillData(&cSearchResultData, plan, results.data(), results.size(), slice_nqs.data(),
+                                            slice_topKs.data(), slice_nqs.size());
     assert(status.error_code == Success);
+
     auto search_result_data_blobs = reinterpret_cast<milvus::segcore::SearchResultDataBlobs*>(cSearchResultData);
 
     // check result
@@ -723,10 +718,10 @@ testReduceSearchWithExpr(int N, int topK, int num_queries) {
 }
 
 TEST(CApiTest, ReduceSearchWithExpr) {
-    //    testReduceSearchWithExpr(100, 1, 1);
+    testReduceSearchWithExpr(100, 1, 1);
     testReduceSearchWithExpr(100, 10, 10);
-    //    testReduceSearchWithExpr(10000, 1, 1);
-    //    testReduceSearchWithExpr(10000, 10, 10);
+    testReduceSearchWithExpr(10000, 1, 1);
+    testReduceSearchWithExpr(10000, 10, 10);
 }
 
 TEST(CApiTest, LoadIndexInfo) {

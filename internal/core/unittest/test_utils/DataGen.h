@@ -347,8 +347,8 @@ CreateBinaryPlaceholderGroupFromBlob(int64_t num_queries, int64_t dim, const uin
 
 inline json
 SearchResultToJson(const SearchResult& sr) {
-    int64_t num_queries = sr.num_queries_;
-    int64_t topk = sr.topk_;
+    int64_t num_queries = sr.total_nq_;
+    int64_t topk = sr.unity_topK_;
     std::vector<std::vector<std::string>> results;
     for (int q = 0; q < num_queries; ++q) {
         std::vector<std::string> result;

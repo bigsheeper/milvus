@@ -77,9 +77,14 @@ func parseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *s
 	return sInfo
 }
 
-func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult, numSegments int64) error {
+func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult,
+	numSegments int64, sliceNQs []int32, sliceTopKs []int32) error {
 	if plan.cSearchPlan == nil {
 		return errors.New("nil search plan")
+	}
+
+	if len(sliceNQs) != len(sliceTopKs) {
+		return fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
 	}
 
 	cSearchResults := make([]C.CSearchResult, 0)
@@ -88,8 +93,12 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	}
 	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
 	cNumSegments := C.int64_t(numSegments)
+	var cSliceNQSPtr = (*C.int32_t)(&sliceNQs[0])
+	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
+	var cNumSlices = C.int32_t(len(sliceNQs))
 
-	status := C.ReduceSearchResultsAndFillData(plan.cSearchPlan, cSearchResultPtr, cNumSegments)
+	status := C.ReduceSearchResultsAndFillData(plan.cSearchPlan, cSearchResultPtr,
+		cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReduceSearchResultsAndFillData failed"); err != nil {
 		return err
 	}

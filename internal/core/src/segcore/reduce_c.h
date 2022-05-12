@@ -33,7 +33,7 @@ Marshal(CSearchResultDataBlobs* cSearchResultDataBlobs,
         CSearchPlan c_plan,
         int32_t num_segments,
         int32_t* slice_nqs,
-        int32_t* slice_topks,
+        int32_t* slice_topKs,
         int32_t num_slices);
 
 CStatus

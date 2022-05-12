@@ -285,8 +285,8 @@ TEST(Indexing, BinaryBruteForce) {
     auto sub_result = query::BinarySearchBruteForce(search_dataset, bin_vec.data(), N, nullptr);
 
     SearchResult sr;
-    sr.num_queries_ = num_queries;
-    sr.topk_ = topk;
+    sr.total_nq_ = num_queries;
+    sr.unity_topK_ = topk;
     sr.seg_offsets_ = std::move(sub_result.mutable_seg_offsets());
     sr.distances_ = std::move(sub_result.mutable_distances());
 

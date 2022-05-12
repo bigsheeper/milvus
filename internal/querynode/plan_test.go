@@ -30,6 +30,23 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 )
 
+func parseSearchRequest(plan *SearchPlan, searchRequestBlob []byte) (*searchRequest, error) {
+	if len(searchRequestBlob) == 0 {
+		return nil, errors.New("empty search request")
+	}
+	var blobPtr = unsafe.Pointer(&searchRequestBlob[0])
+	blobSize := C.int64_t(len(searchRequestBlob))
+	var cPlaceholderGroup C.CPlaceholderGroup
+	status := C.ParsePlaceholderGroup(plan.cSearchPlan, blobPtr, blobSize, &cPlaceholderGroup)
+
+	if err := HandleCStatus(&status, "parser searchRequest failed"); err != nil {
+		return nil, err
+	}
+
+	var ret = &searchRequest{cPlaceholderGroup: cPlaceholderGroup}
+	return ret, nil
+}
+
 func TestPlan_Plan(t *testing.T) {
 	collectionID := UniqueID(0)
 	pkType := schemapb.DataType_Int64

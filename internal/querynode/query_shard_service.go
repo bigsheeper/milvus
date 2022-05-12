@@ -72,6 +72,7 @@ func newQueryShardService(ctx context.Context, historical *historical, streaming
 		remoteChunkManager:  remoteChunkManager,
 		localCacheEnabled:   localCacheEnabled,
 		factory:             factory,
+		scheduler: scheduler,
 	}
 	return qss
 }

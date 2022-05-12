@@ -255,12 +255,14 @@ func (s *searchTask) EstimateCpuUsage() int32 {
 	return int32(ret)
 }
 
+/*
 func (s *searchTask) CanDo() (bool, error) {
 	if s.TopK <= 0 || s.TopK >= 16385 {
 		return false, fmt.Errorf("limit should be in range [1, 16385], but got %d", s.TopK)
 	}
 	return s.sqBaseTask.CanDo()
 }
+*/
 
 func (s *searchTask) Merge(t sqTask) {
 	src, ok := t.(*searchTask)

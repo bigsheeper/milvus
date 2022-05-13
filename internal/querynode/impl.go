@@ -597,6 +597,7 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		log.Debug("QueryNode Search3333", zap.String("vchannel", req.GetDmlChannel()), zap.Int64s("segmentIDs", req.GetSegmentIDs()))
 		historicalTask := newSearchTask(ctx, req)
 		historicalTask.QS = qs
+		historicalTask.DataScope = querypb.DataScope_Historical
 		err2 := node.scheduler.addSQTask(historicalTask, ctx)
 		if err2 != nil {
 			failRet.Status.Reason = err2.Error()

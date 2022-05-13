@@ -401,7 +401,7 @@ func (t *searchTask) searchShard(ctx context.Context, leaders *querypb.ShardLead
 		req := &querypb.SearchRequest{
 			Req:        t.SearchRequest,
 			DmlChannel: leaders.GetChannelName(),
-			Scope: querypb.DataScope_Historical,
+			Scope:      querypb.DataScope_All,
 		}
 
 		result, err := qn.Search(ctx, req)

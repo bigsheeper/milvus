@@ -115,6 +115,8 @@ func (s *streaming) retrieve(collID UniqueID, partIDs []UniqueID, plan *Retrieve
 func (s *streaming) search(searchReq *searchRequest, collID UniqueID, partIDs []UniqueID,
 	vChannel Channel) ([]*SearchResult, []UniqueID, []UniqueID, error) {
 
+	fmt.Println(">>>>>>>>>>>> streaming search:", collID, ", ", partIDs, " ,", vChannel)
+	s.replica.printReplica()
 	searchResults := make([]*SearchResult, 0)
 	searchSegmentIDs := make([]UniqueID, 0)
 

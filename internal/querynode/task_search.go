@@ -97,6 +97,7 @@ func (s *searchTask) searchOnHistorical() error {
 		return errors.New("search context timeout")
 	}
 	segmentIDs := s.req.GetSegmentIDs()
+	fmt.Println("s.req.GetSegmentIDs():", s.req.GetSegmentIDs())
 
 	// lock historic meta-replica
 	s.QS.historical.replica.queryRLock()
@@ -134,10 +135,10 @@ func (s *searchTask) searchOnHistorical() error {
 }
 
 func (s *searchTask) Execute(ctx context.Context) error {
-	if s.req.GetScope() == querypb.DataScope_Streaming {
+	if s.DataScope == querypb.DataScope_Streaming {
 		log.Info("searchTask Execute DataScope Streaming")
 		return s.searchOnStreaming()
-	} else if s.req.GetScope() == querypb.DataScope_Historical {
+	} else if s.DataScope == querypb.DataScope_Historical {
 		log.Info("searchTask Execute DataScope Historical")
 		return s.searchOnHistorical()
 	}

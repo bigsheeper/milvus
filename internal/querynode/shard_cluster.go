@@ -723,6 +723,7 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest) 
 	var resultMut sync.Mutex
 	results := make([]*internalpb.SearchResults, 0, len(segAllocs)+1) // count(nodes) + 1(growing)
 
+	fmt.Println("segAllocs:", segAllocs)
 	for nodeID, segments := range segAllocs {
 		nodeReq := proto.Clone(req).(*querypb.SearchRequest)
 		nodeReq.FromShardLeader = true

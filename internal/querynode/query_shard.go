@@ -254,6 +254,8 @@ func (q *queryShard) getServiceableTime(tp tsType) Timestamp {
 func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
 	updated := false
 	defer func() {
+		log.Info("queryShard setServiceableTime",zap.Any("updated", updated),
+			zap.Any("len of tsafeUpdatechan", len(q.tsafeUpdateChan)))
 		if updated && len(q.tsafeUpdateChan) == 0 {
 			q.tsafeUpdateChan <- true
 		}

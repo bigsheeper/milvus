@@ -136,14 +136,17 @@ func (s *taskScheduler) scheduleSQTasks() {
 			log.Info("QueryNode sop schedulerSQTasks")
 			return
 		case <-s.notifyChan:
+			log.Info("QueryNode taskScheduler notifyChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 
 		case <-s.receiveSQTaskChan:
+			log.Info("QueryNode taskScheduler receiveSQTaskChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 
 		case <-s.tsafeUpdateChan:
+			log.Info("QueryNode taskScheduler tsafeUpdateChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 		}
@@ -152,8 +155,8 @@ func (s *taskScheduler) scheduleSQTasks() {
 
 func (s *taskScheduler) addSQTask(t sqTask, ctx context.Context) error {
 	select {
-//	case <-ctx.Done():
-//		return fmt.Errorf("taskScheduler AddSQTask context is done")
+	case <-ctx.Done():
+		return fmt.Errorf("taskScheduler addSQTask context is done")
 	case <-s.ctx.Done():
 		return fmt.Errorf("taskScheduler stoped")
 	case s.executeSQTaskChan <- t:

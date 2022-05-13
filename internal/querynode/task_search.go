@@ -137,8 +137,10 @@ func (s *searchTask) searchOnHistorical() error {
 
 func (s *searchTask) Execute(ctx context.Context) error {
 	if s.req.GetScope() == querypb.DataScope_Streaming {
+		log.Info("searchTask Execute DataScope Streaming")
 		return s.searchOnStreaming()
 	} else if s.req.GetScope() == querypb.DataScope_Historical {
+		log.Info("searchTask Execute DataScope Historical")
 		return s.searchOnHistorical()
 	}
 	panic("searchTask not implement search on all data scope")
@@ -192,8 +194,7 @@ func (s *searchTask) reduceResults(searchReq *searchRequest, results []*SearchRe
 				SlicedNumCount: 1,
 			}
 		}
-
-	}else {
+	} else {
 		for i := 0; i < len(s.originTasks); i++ {
 			s.originTasks[i].Ret = &internalpb.SearchResults{
 				Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},

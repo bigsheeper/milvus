@@ -284,9 +284,7 @@ func (s *Segment) getMemSize() int64 {
 	return int64(memoryUsageInBytes)
 }
 
-func (s *Segment) search(plan *SearchPlan,
-	searchRequests []*searchRequest,
-	timestamp []Timestamp) (*SearchResult, error) {
+func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
 	/*
 		CStatus
 		Search(void* plan,
@@ -301,23 +299,20 @@ func (s *Segment) search(plan *SearchPlan,
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
-	cPlaceholderGroups := make([]C.CPlaceholderGroup, 0)
-	for _, pg := range searchRequests {
-		cPlaceholderGroups = append(cPlaceholderGroups, (*pg).cPlaceholderGroup)
+
+	if searchReq.plan == nil {
+		return nil, fmt.Errorf("nil search plan")
 	}
 
 	var searchResult SearchResult
-	ts := C.uint64_t(timestamp[0])
-	cPlaceHolderGroup := cPlaceholderGroups[0]
-
 	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
 	tr := timerecord.NewTimeRecorder("cgoSearch")
-	status := C.Search(s.segmentPtr, plan.cSearchPlan, cPlaceHolderGroup, ts, &searchResult.cSearchResult, C.int64_t(s.segmentID))
+	status := C.Search(s.segmentPtr, searchReq.plan.cSearchPlan, searchReq.cPlaceholderGroup,
+		C.uint64_t(searchReq.timestamp), &searchResult.cSearchResult, C.int64_t(s.segmentID))
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 	if err := HandleCStatus(&status, "Search failed"); err != nil {
 		return nil, err
 	}
-
 	return &searchResult, nil
 }
 
@@ -773,10 +768,6 @@ func (s *Segment) segmentLoadDeletedRecord(primaryKeys []primaryKey, timestamps 
 	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
-	}
-	if s.segmentType != segmentTypeSealed {
-		errMsg := fmt.Sprintln("segmentLoadFieldData failed, illegal segment type ", s.segmentType, "segmentID = ", s.ID())
-		return errors.New(errMsg)
 	}
 
 	if len(primaryKeys) <= 0 {

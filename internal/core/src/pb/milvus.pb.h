@@ -8071,6 +8071,7 @@ class SearchRequest :
     kBaseFieldNumber = 1,
     kTravelTimestampFieldNumber = 10,
     kGuaranteeTimestampFieldNumber = 11,
+    kNqFieldNumber = 12,
     kDslTypeFieldNumber = 7,
   };
   // repeated string partition_names = 4;
@@ -8180,6 +8181,11 @@ class SearchRequest :
   ::PROTOBUF_NAMESPACE_ID::uint64 guarantee_timestamp() const;
   void set_guarantee_timestamp(::PROTOBUF_NAMESPACE_ID::uint64 value);
 
+  // int64 nq = 12;
+  void clear_nq();
+  ::PROTOBUF_NAMESPACE_ID::int64 nq() const;
+  void set_nq(::PROTOBUF_NAMESPACE_ID::int64 value);
+
   // .milvus.proto.common.DslType dsl_type = 7;
   void clear_dsl_type();
   ::milvus::proto::common::DslType dsl_type() const;
@@ -8200,6 +8206,7 @@ class SearchRequest :
   ::milvus::proto::common::MsgBase* base_;
   ::PROTOBUF_NAMESPACE_ID::uint64 travel_timestamp_;
   ::PROTOBUF_NAMESPACE_ID::uint64 guarantee_timestamp_;
+  ::PROTOBUF_NAMESPACE_ID::int64 nq_;
   int dsl_type_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_milvus_2eproto;
@@ -13840,8 +13847,10 @@ class GetImportStateResponse :
     kInfosFieldNumber = 5,
     kStatusFieldNumber = 1,
     kRowCountFieldNumber = 3,
-    kIdFieldNumber = 6,
     kStateFieldNumber = 2,
+    kHeuristicDataQueryableFieldNumber = 7,
+    kHeuristicDataIndexedFieldNumber = 8,
+    kIdFieldNumber = 6,
   };
   // repeated int64 id_list = 4;
   int id_list_size() const;
@@ -13878,15 +13887,25 @@ class GetImportStateResponse :
   ::PROTOBUF_NAMESPACE_ID::int64 row_count() const;
   void set_row_count(::PROTOBUF_NAMESPACE_ID::int64 value);
 
-  // int64 id = 6;
-  void clear_id();
-  ::PROTOBUF_NAMESPACE_ID::int64 id() const;
-  void set_id(::PROTOBUF_NAMESPACE_ID::int64 value);
-
   // .milvus.proto.common.ImportState state = 2;
   void clear_state();
   ::milvus::proto::common::ImportState state() const;
   void set_state(::milvus::proto::common::ImportState value);
+
+  // bool heuristic_data_queryable = 7;
+  void clear_heuristic_data_queryable();
+  bool heuristic_data_queryable() const;
+  void set_heuristic_data_queryable(bool value);
+
+  // bool heuristic_data_indexed = 8;
+  void clear_heuristic_data_indexed();
+  bool heuristic_data_indexed() const;
+  void set_heuristic_data_indexed(bool value);
+
+  // int64 id = 6;
+  void clear_id();
+  ::PROTOBUF_NAMESPACE_ID::int64 id() const;
+  void set_id(::PROTOBUF_NAMESPACE_ID::int64 value);
 
   // @@protoc_insertion_point(class_scope:milvus.proto.milvus.GetImportStateResponse)
  private:
@@ -13898,8 +13917,10 @@ class GetImportStateResponse :
   ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::milvus::proto::common::KeyValuePair > infos_;
   ::milvus::proto::common::Status* status_;
   ::PROTOBUF_NAMESPACE_ID::int64 row_count_;
-  ::PROTOBUF_NAMESPACE_ID::int64 id_;
   int state_;
+  bool heuristic_data_queryable_;
+  bool heuristic_data_indexed_;
+  ::PROTOBUF_NAMESPACE_ID::int64 id_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_milvus_2eproto;
 };
@@ -23724,6 +23745,20 @@ inline void SearchRequest::set_guarantee_timestamp(::PROTOBUF_NAMESPACE_ID::uint
   // @@protoc_insertion_point(field_set:milvus.proto.milvus.SearchRequest.guarantee_timestamp)
 }
 
+// int64 nq = 12;
+inline void SearchRequest::clear_nq() {
+  nq_ = PROTOBUF_LONGLONG(0);
+}
+inline ::PROTOBUF_NAMESPACE_ID::int64 SearchRequest::nq() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.SearchRequest.nq)
+  return nq_;
+}
+inline void SearchRequest::set_nq(::PROTOBUF_NAMESPACE_ID::int64 value) {
+  
+  nq_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.SearchRequest.nq)
+}
+
 // -------------------------------------------------------------------
 
 // Hits
@@ -27706,6 +27741,34 @@ inline void GetImportStateResponse::set_id(::PROTOBUF_NAMESPACE_ID::int64 value)
   
   id_ = value;
   // @@protoc_insertion_point(field_set:milvus.proto.milvus.GetImportStateResponse.id)
+}
+
+// bool heuristic_data_queryable = 7;
+inline void GetImportStateResponse::clear_heuristic_data_queryable() {
+  heuristic_data_queryable_ = false;
+}
+inline bool GetImportStateResponse::heuristic_data_queryable() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.GetImportStateResponse.heuristic_data_queryable)
+  return heuristic_data_queryable_;
+}
+inline void GetImportStateResponse::set_heuristic_data_queryable(bool value) {
+  
+  heuristic_data_queryable_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.GetImportStateResponse.heuristic_data_queryable)
+}
+
+// bool heuristic_data_indexed = 8;
+inline void GetImportStateResponse::clear_heuristic_data_indexed() {
+  heuristic_data_indexed_ = false;
+}
+inline bool GetImportStateResponse::heuristic_data_indexed() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.GetImportStateResponse.heuristic_data_indexed)
+  return heuristic_data_indexed_;
+}
+inline void GetImportStateResponse::set_heuristic_data_indexed(bool value) {
+  
+  heuristic_data_indexed_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.GetImportStateResponse.heuristic_data_indexed)
 }
 
 // -------------------------------------------------------------------

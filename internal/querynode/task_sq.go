@@ -19,37 +19,29 @@ package querynode
 import (
 	"context"
 	"fmt"
+
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"go.uber.org/zap"
-	"time"
-
-	"github.com/milvus-io/milvus/internal/log"
 )
-
-type DataScope = querypb.DataScope
 
 type sqTask interface {
 	task
-	CanDo() (bool, error)
-	//Timeout() bool
-	//GuaranteeTs() Timestamp
-	//TravelTs() Timestamp
-	//TimeoutTs() Timestamp
-	//DataScope() DataScope
 
 	SetErr(error)
 	GetErr() error
-	SetTimeRecorder()
-	GetTimeRecorder() *timerecord.TimeRecorder
 	Ctx() context.Context
 
-	CanMergeWith(sqTask) bool
-	Merge(sqTask)
+	GetTimeRecorder() *timerecord.TimeRecorder
 	GetCollectionID() UniqueID
-	ElapseSpan() time.Duration
+
+	CanDo() (bool, error)
+	Merge(sqTask)
+	CanMergeWith(sqTask) bool
 	Mergeable() bool
 	EstimateCpuUsage() int32 //
 }
@@ -58,13 +50,12 @@ var _ sqTask = (*sqBaseTask)(nil)
 
 type sqBaseTask struct {
 	baseTask
-	//dataScope DataScope
 
 	QS *queryShard
 
-	DbID         int64
-	CollectionID int64
-
+	DbID               int64
+	CollectionID       int64
+	DataScope          querypb.DataScope
 	TravelTimestamp    uint64
 	GuaranteeTimestamp uint64
 	TimeoutTimestamp   uint64
@@ -73,7 +64,7 @@ type sqBaseTask struct {
 }
 
 func (s *sqBaseTask) Execute(ctx context.Context) error {
-	panic("implement me")
+	return nil
 }
 
 func (s *sqBaseTask) SetErr(err error) {
@@ -84,57 +75,14 @@ func (s *sqBaseTask) GetErr() error {
 	return s.err
 }
 
-func (s *sqBaseTask) SetError(err error) {
-	s.err = err
-}
-
-// SetTimeRecorder sets the timeRecorder
-func (s *sqBaseTask) SetTimeRecorder() {
-	s.tr = timerecord.NewTimeRecorder("sqBaseTask")
-}
-
-func (s *sqBaseTask) GetTimeRecorder() *timerecord.TimeRecorder {
-	return s.tr
-}
-
-//
-//func (s *sqBaseTask) GuaranteeTs() Timestamp {
-//	return s.GuaranteeTimestamp
-//}
-//
-//// TravelTs returns the timestamp of a time travel search/query request
-//func (s *sqBaseTask) TravelTs() Timestamp {
-//	return s.TravelTimestamp
-//}
-//
-//// TimeoutTs returns the timestamp of timeout
-//func (s *sqBaseTask) TimeoutTs() Timestamp {
-//	return s.TimeoutTimestamp
-//}
-
-// ElapseSpan returns the duration from the beginning
-func (s *sqBaseTask) ElapseSpan() time.Duration {
-	return s.tr.ElapseSpan()
-}
-
-// RecordSpan returns the duration from last record
-func (s *sqBaseTask) RecordSpan() time.Duration {
-	return s.tr.RecordSpan()
-}
-
 // GetCollectionID return CollectionID.
 func (s *sqBaseTask) GetCollectionID() UniqueID {
 	return s.CollectionID
 }
 
-//// Type returns the type of this task
-//func (s *sqBaseTask) Type() MsgType {
-//	return s.msgType
-//}
-
-//func (s *sqBaseTask) DataScope() DataScope {
-//	return s.dataScope
-//}
+func (s *sqBaseTask) GetTimeRecorder() *timerecord.TimeRecorder {
+	return s.tr
+}
 
 func (s *sqBaseTask) Timeout() bool {
 	curTime := tsoutil.GetCurrentTime()
@@ -168,27 +116,36 @@ func (s *sqBaseTask) EstimateCpuUsage() int32 {
 }
 
 func (s *sqBaseTask) CanDo() (bool, error) {
-	collection, err := s.QS.historical.replica.getCollectionByID(s.CollectionID)
+	var collection *Collection
+	var err error
+	var tType tsType
+	if s.DataScope == querypb.DataScope_Streaming {
+		tType = tsTypeDML
+		collection, err = s.QS.streaming.replica.getCollectionByID(s.CollectionID)
+	} else if s.DataScope == querypb.DataScope_Historical {
+		tType = tsTypeDelta
+		collection, err = s.QS.historical.replica.getCollectionByID(s.CollectionID)
+	}
 	if err != nil {
 		return false, err
 	}
+
 	guaranteeTs := s.GuaranteeTimestamp
 	if guaranteeTs >= collection.getReleaseTime() {
 		err = fmt.Errorf("collection has been released, taskID = %d, collectionID = %d", s.ID(), s.CollectionID)
 		return false, err
 	}
 
-	serviceTime := s.QS.getServiceableTime(tsTypeDML)
+	serviceTime := s.QS.getServiceableTime(tType)
 	gt, _ := tsoutil.ParseTS(guaranteeTs)
 	st, _ := tsoutil.ParseTS(serviceTime)
-	if guaranteeTs > serviceTime && (len(collection.getVChannels()) > 0 || len(collection.getVDeltaChannels()) > 0) {
+	if guaranteeTs > serviceTime {
 		log.Debug("query msg can't do",
 			zap.Any("collectionID", s.CollectionID),
 			zap.Any("sm.GuaranteeTimestamp", gt),
 			zap.Any("serviceTime", st),
 			zap.Any("delta seconds", (guaranteeTs-serviceTime)/(1000*1000*1000)),
 			zap.Any("msgID", s.ID()))
-		s.GetTimeRecorder().RecordSpan()
 		return false, nil
 	}
 	return true, nil

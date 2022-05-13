@@ -118,7 +118,7 @@ func (ms *mqMsgStream) AsProducer(channels []string) {
 			ms.producerChannels = append(ms.producerChannels, channel)
 			return nil
 		}
-		err := retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200))
+		err := retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200), retry.MaxSleepTime(5*time.Second))
 		if err != nil {
 			errMsg := "Failed to create producer " + channel + ", error = " + err.Error()
 			panic(errMsg)
@@ -167,11 +167,13 @@ func (ms *mqMsgStream) AsConsumerWithPosition(channels []string, subName string,
 			ms.consumerChannels = append(ms.consumerChannels, channel)
 			return nil
 		}
-		err := retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200))
+		// TODO if know the former subscribe is invalid, should we use pulsarctl to accelerate recovery speed
+		err := retry.Do(context.TODO(), fn, retry.Attempts(50), retry.Sleep(time.Millisecond*200), retry.MaxSleepTime(5*time.Second))
 		if err != nil {
 			errMsg := "Failed to create consumer " + channel + ", error = " + err.Error()
 			panic(errMsg)
 		}
+		log.Info("Successfully create consumer", zap.String("channel", channel), zap.String("subname", subName))
 	}
 }
 
@@ -648,7 +650,7 @@ func (ms *MqTtMsgStream) AsConsumerWithPosition(channels []string, subName strin
 			ms.addConsumer(pc, channel)
 			return nil
 		}
-		err := retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200))
+		err := retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200), retry.MaxSleepTime(5*time.Second))
 		if err != nil {
 			errMsg := "Failed to create consumer " + channel + ", error = " + err.Error()
 			panic(errMsg)
@@ -873,7 +875,8 @@ func (ms *MqTtMsgStream) Seek(msgPositions []*internalpb.MsgPosition) error {
 		if len(mp.MsgID) == 0 {
 			return fmt.Errorf("when msgID's length equal to 0, please use AsConsumer interface")
 		}
-		if err = retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200)); err != nil {
+		err = retry.Do(context.TODO(), fn, retry.Attempts(20), retry.Sleep(time.Millisecond*200), retry.MaxSleepTime(5*time.Second))
+		if err != nil {
 			return fmt.Errorf("failed to seek, error %s", err.Error())
 		}
 		ms.addConsumer(consumer, mp.ChannelName)

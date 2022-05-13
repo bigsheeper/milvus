@@ -117,25 +117,38 @@ func TestShardCluster_Create(t *testing.T) {
 	})
 
 	t.Run("init segments", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{
+				initNodes: nodeEvents,
+			}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 			}, buildMockQueryNode)
 		defer sc.Close()
@@ -143,11 +156,16 @@ func TestShardCluster_Create(t *testing.T) {
 		for _, e := range segmentEvents {
 			sc.mut.RLock()
 			segment, has := sc.segments[e.segmentID]
+			_, inCluster := sc.pickNode(e)
 			sc.mut.RUnlock()
-			assert.True(t, has)
-			assert.Equal(t, e.segmentID, segment.segmentID)
-			assert.Equal(t, e.nodeID, segment.nodeID)
-			assert.Equal(t, e.state, segment.state)
+			if inCluster {
+				assert.True(t, has)
+				assert.Equal(t, e.segmentID, segment.segmentID)
+				assert.Contains(t, e.nodeIDs, segment.nodeID)
+				assert.Equal(t, e.state, segment.state)
+			} else {
+				assert.False(t, has)
+			}
 		}
 		assert.EqualValues(t, unavailable, sc.state.Load())
 	})
@@ -238,17 +256,17 @@ func TestShardCluster_nodeEvent(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 		}
@@ -310,27 +328,44 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 	replicaID := int64(0)
 
 	t.Run("from loading", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateLoading,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{
+				initNodes: nodeEvents,
+			}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
@@ -338,21 +373,21 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 
 		evtCh <- segmentEvent{
 			segmentID: 1,
-			nodeID:    1,
+			nodeIDs:   []int64{1},
 			state:     segmentStateLoading,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 3,
-			nodeID:    3,
+			nodeIDs:   []int64{3},
 			state:     segmentStateOffline,
 			eventType: segmentAdd,
 		}
@@ -373,7 +408,7 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 		// node id not match
 		evtCh <- segmentEvent{
 			segmentID: 1,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
@@ -386,59 +421,83 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 	})
 
 	t.Run("from loaded", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateLoaded,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
 		defer sc.Close()
 
+		// make reference greater than 0
+		allocs := sc.segmentAllocations(nil)
+
+		evtCh <- segmentEvent{
+			segmentID: 4,
+			nodeIDs:   []int64{4},
+			state:     segmentStateLoaded,
+			eventType: segmentAdd,
+		}
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 1,
-			nodeID:    1,
+			nodeIDs:   []int64{1},
 			state:     segmentStateLoading,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 3,
-			nodeID:    3,
+			nodeIDs:   []int64{3},
 			state:     segmentStateOffline,
 			eventType: segmentAdd,
 		}
+
 		assert.Eventually(t, func() bool {
 			seg, has := sc.getSegment(1)
 			return has && seg.nodeID == 1 && seg.state == segmentStateLoading
@@ -453,50 +512,151 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 			return has && seg.nodeID == 2 && seg.state == segmentStateLoaded
 		}, time.Second, time.Millisecond)
 
+		_, has := sc.getSegment(4)
+		assert.False(t, has)
+
+		sc.mut.RLock()
+		assert.Equal(t, 0, len(sc.legacySegments))
+		sc.mut.RUnlock()
+
+		sc.finishUsage(allocs)
+		sc.mut.RLock()
+		assert.Equal(t, 0, len(sc.legacySegments))
+		sc.mut.RUnlock()
 	})
 
-	t.Run("from offline", func(t *testing.T) {
+	t.Run("from loaded, node changed", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
+				state:     segmentStateLoaded,
+			},
+			{
+				segmentID: 2,
+				nodeIDs:   []int64{2},
+				state:     segmentStateLoaded,
+			},
+		}
+
+		evtCh := make(chan segmentEvent, 10)
+		sc := NewShardCluster(collectionID, replicaID, vchannelName,
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
+				initSegments: segmentEvents,
+				evtCh:        evtCh,
+			}, buildMockQueryNode)
+		defer sc.Close()
+
+		// make reference greater than 0
+		allocs := sc.segmentAllocations(nil)
+
+		// bring segment online in the other querynode
+		evtCh <- segmentEvent{
+			segmentID: 1,
+			nodeIDs:   []int64{2},
+			state:     segmentStateLoaded,
+			eventType: segmentAdd,
+		}
+
+		evtCh <- segmentEvent{
+			segmentID: 2,
+			nodeIDs:   []int64{1},
+			state:     segmentStateLoaded,
+			eventType: segmentAdd,
+		}
+
+		assert.Eventually(t, func() bool {
+			seg, has := sc.getSegment(1)
+			return has && seg.nodeID == 2 && seg.state == segmentStateLoaded
+		}, time.Second, time.Millisecond)
+
+		assert.Eventually(t, func() bool {
+			seg, has := sc.getSegment(2)
+			return has && seg.nodeID == 1 && seg.state == segmentStateLoaded
+		}, time.Second, time.Millisecond)
+
+		sc.mut.RLock()
+		assert.Equal(t, 2, len(sc.legacySegments))
+		assert.ElementsMatch(t, []shardSegmentInfo{
+			{segmentID: 1, nodeID: 1, state: segmentStateLoaded, inUse: 1},
+			{segmentID: 2, nodeID: 2, state: segmentStateLoaded, inUse: 1},
+		}, sc.legacySegments)
+		sc.mut.RUnlock()
+
+		sc.finishUsage(allocs)
+		sc.mut.RLock()
+		assert.Equal(t, 0, len(sc.legacySegments))
+		sc.mut.RUnlock()
+	})
+
+	t.Run("from offline", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
+		segmentEvents := []segmentEvent{
+			{
+				segmentID: 1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
 		defer sc.Close()
 		evtCh <- segmentEvent{
 			segmentID: 3,
-			nodeID:    3,
+			nodeIDs:   []int64{3},
 			state:     segmentStateOffline,
 			eventType: segmentAdd,
 		}
 		evtCh <- segmentEvent{
 			segmentID: 1,
-			nodeID:    1,
+			nodeIDs:   []int64{1},
 			state:     segmentStateLoading,
 			eventType: segmentAdd,
 		}
 
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
@@ -519,27 +679,42 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 	})
 
 	t.Run("remove segments", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
@@ -547,17 +722,17 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 
 		evtCh <- segmentEvent{
 			segmentID: 3,
-			nodeID:    3,
+			nodeIDs:   []int64{3},
 			eventType: segmentDel,
 		}
 		evtCh <- segmentEvent{
 			segmentID: 1,
-			nodeID:    1,
+			nodeIDs:   []int64{1},
 			eventType: segmentDel,
 		}
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			eventType: segmentDel,
 		}
 
@@ -577,27 +752,42 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 	})
 
 	t.Run("remove failed", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoading,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
@@ -606,20 +796,20 @@ func TestShardCluster_segmentEvent(t *testing.T) {
 		// non-exist segment
 		evtCh <- segmentEvent{
 			segmentID: 4,
-			nodeID:    4,
+			nodeIDs:   []int64{3},
 			eventType: segmentDel,
 		}
 		// segment node id not match
 		evtCh <- segmentEvent{
 			segmentID: 3,
-			nodeID:    4,
+			nodeIDs:   []int64{4},
 			eventType: segmentDel,
 		}
 
 		// use add segment as event process signal
 		evtCh <- segmentEvent{
 			segmentID: 2,
-			nodeID:    2,
+			nodeIDs:   []int64{2},
 			state:     segmentStateLoaded,
 			eventType: segmentAdd,
 		}
@@ -639,11 +829,26 @@ func TestShardCluster_SyncSegments(t *testing.T) {
 	replicaID := int64(0)
 
 	t.Run("sync new segments", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
@@ -679,27 +884,42 @@ func TestShardCluster_SyncSegments(t *testing.T) {
 	})
 
 	t.Run("sync existing segments", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 
 		evtCh := make(chan segmentEvent, 10)
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 				evtCh:        evtCh,
 			}, buildMockQueryNode)
@@ -742,26 +962,41 @@ func TestShardCluster_Search(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("search unavailable cluster", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 			}, buildMockQueryNode)
 
@@ -801,17 +1036,17 @@ func TestShardCluster_Search(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 3,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -848,17 +1083,17 @@ func TestShardCluster_Search(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 3,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -898,22 +1133,15 @@ func TestShardCluster_Search(t *testing.T) {
 				nodeAddr: "addr_2",
 			},
 		}
-
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
-				state:     segmentStateLoaded,
-			},
-			// segment belongs to node not registered
-			{
-				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -924,6 +1152,15 @@ func TestShardCluster_Search(t *testing.T) {
 			}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 			}, buildMockQueryNode)
+
+		//mock meta error
+		sc.mut.Lock()
+		sc.segments[3] = &shardSegmentInfo{
+			segmentID: 3,
+			nodeID:    3, // node does not exist
+			state:     segmentStateLoaded,
+		}
+		sc.mut.Unlock()
 
 		defer sc.Close()
 		require.EqualValues(t, available, sc.state.Load())
@@ -942,26 +1179,41 @@ func TestShardCluster_Query(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("query unavailable cluster", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+			{
+				nodeID:   3,
+				nodeAddr: "addr_3",
+			},
+		}
+
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateOffline,
 			},
 			{
 				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{3},
 				state:     segmentStateOffline,
 			},
 		}
 
 		sc := NewShardCluster(collectionID, replicaID, vchannelName,
-			&mockNodeDetector{}, &mockSegmentDetector{
+			&mockNodeDetector{initNodes: nodeEvents}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 			}, buildMockQueryNode)
 
@@ -999,17 +1251,17 @@ func TestShardCluster_Query(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 3,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1046,17 +1298,17 @@ func TestShardCluster_Query(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 3,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1099,18 +1351,12 @@ func TestShardCluster_Query(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
-				state:     segmentStateLoaded,
-			},
-			// segment belongs to node not registered
-			{
-				segmentID: 3,
-				nodeID:    3,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1121,6 +1367,15 @@ func TestShardCluster_Query(t *testing.T) {
 			}, &mockSegmentDetector{
 				initSegments: segmentEvents,
 			}, buildMockQueryNode)
+
+		//mock meta error
+		sc.mut.Lock()
+		sc.segments[3] = &shardSegmentInfo{
+			segmentID: 3,
+			nodeID:    3, // node does not exist
+			state:     segmentStateLoaded,
+		}
+		sc.mut.Unlock()
 
 		defer sc.Close()
 		require.EqualValues(t, available, sc.state.Load())
@@ -1154,12 +1409,12 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1179,8 +1434,8 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 		}
 		sc.mut.RUnlock()
 
-		assert.True(t, sc.segmentsInUse([]int64{1, 2}))
-		assert.True(t, sc.segmentsInUse([]int64{1, 2, -1}))
+		assert.True(t, sc.segmentsInUse([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}}))
+		assert.True(t, sc.segmentsInUse([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}, {nodeID: 2, segmentID: -1}}))
 
 		sc.finishUsage(allocs)
 		sc.mut.RLock()
@@ -1188,9 +1443,8 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 			assert.EqualValues(t, segment.inUse, 0)
 		}
 		sc.mut.RUnlock()
-
-		assert.False(t, sc.segmentsInUse([]int64{1, 2}))
-		assert.False(t, sc.segmentsInUse([]int64{1, 2, -1}))
+		assert.False(t, sc.segmentsInUse([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}}))
+		assert.False(t, sc.segmentsInUse([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}, {nodeID: 2, segmentID: -1}}))
 	})
 
 	t.Run("alloc & finish with modified alloc", func(t *testing.T) {
@@ -1208,12 +1462,12 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1264,12 +1518,12 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1283,24 +1537,24 @@ func TestShardCluster_ReferenceCount(t *testing.T) {
 			}, buildMockQueryNode)
 		defer sc.Close()
 
-		assert.True(t, sc.segmentsOnline([]int64{1, 2}))
-		assert.False(t, sc.segmentsOnline([]int64{1, 2, 3}))
+		assert.True(t, sc.segmentsOnline([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}}))
+		assert.False(t, sc.segmentsOnline([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}, {nodeID: 1, segmentID: 3}}))
 
 		sig := make(chan struct{})
 		go func() {
-			sc.waitSegmentsOnline([]int64{1, 2, 3})
+			sc.waitSegmentsOnline([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}, {nodeID: 1, segmentID: 3}})
 			close(sig)
 		}()
 
 		evtCh <- segmentEvent{
 			eventType: segmentAdd,
 			segmentID: 3,
-			nodeID:    1,
+			nodeIDs:   []int64{1, 4},
 			state:     segmentStateLoaded,
 		}
 
 		<-sig
-		assert.True(t, sc.segmentsOnline([]int64{1, 2, 3}))
+		assert.True(t, sc.segmentsOnline([]shardSegmentInfo{{nodeID: 1, segmentID: 1}, {nodeID: 2, segmentID: 2}, {nodeID: 1, segmentID: 3}}))
 	})
 }
 
@@ -1326,12 +1580,12 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1377,12 +1631,12 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1427,12 +1681,12 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1472,7 +1726,7 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		evtCh <- segmentEvent{
 			eventType: segmentAdd,
 			segmentID: 3,
-			nodeID:    1,
+			nodeIDs:   []int64{1},
 			state:     segmentStateLoaded,
 		}
 
@@ -1507,6 +1761,100 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		assert.False(t, has)
 	})
 
+	t.Run("load balance wait online and usage", func(t *testing.T) {
+		nodeEvents := []nodeEvent{
+			{
+				nodeID:   1,
+				nodeAddr: "addr_1",
+			},
+			{
+				nodeID:   2,
+				nodeAddr: "addr_2",
+			},
+		}
+
+		segmentEvents := []segmentEvent{
+			{
+				segmentID: 1,
+				nodeIDs:   []int64{1},
+				state:     segmentStateLoaded,
+			},
+			{
+				segmentID: 2,
+				nodeIDs:   []int64{2},
+				state:     segmentStateLoaded,
+			},
+		}
+		evtCh := make(chan segmentEvent, 10)
+		sc := NewShardCluster(collectionID, replicaID, vchannelName,
+			&mockNodeDetector{
+				initNodes: nodeEvents,
+			}, &mockSegmentDetector{
+				initSegments: segmentEvents,
+				evtCh:        evtCh,
+			}, buildMockQueryNode)
+		defer sc.Close()
+
+		// add rc to all segments
+		allocs := sc.segmentAllocations(nil)
+
+		sig := make(chan struct{})
+		go func() {
+			err := sc.HandoffSegments(&querypb.SegmentChangeInfo{
+				OnlineSegments: []*querypb.SegmentInfo{
+					{SegmentID: 1, NodeID: 2, CollectionID: collectionID, DmChannel: vchannelName, NodeIds: []UniqueID{1}},
+				},
+				OfflineSegments: []*querypb.SegmentInfo{
+					{SegmentID: 1, NodeID: 1, CollectionID: collectionID, DmChannel: vchannelName, NodeIds: []UniqueID{1}},
+				},
+			})
+
+			assert.NoError(t, err)
+			close(sig)
+		}()
+
+		sc.mut.RLock()
+		// still waiting online
+		assert.Equal(t, 0, len(sc.handoffs))
+		sc.mut.RUnlock()
+
+		evtCh <- segmentEvent{
+			eventType: segmentAdd,
+			segmentID: 1,
+			nodeIDs:   []int64{2},
+			state:     segmentStateLoaded,
+		}
+
+		// wait for handoff appended into list
+		assert.Eventually(t, func() bool {
+			sc.mut.RLock()
+			defer sc.mut.RUnlock()
+			return len(sc.handoffs) > 0
+		}, time.Second, time.Millisecond*10)
+
+		tmpAllocs := sc.segmentAllocations(nil)
+		for nodeID, segments := range tmpAllocs {
+			for _, segment := range segments {
+				if segment == int64(1) {
+					assert.Equal(t, int64(2), nodeID)
+				}
+			}
+		}
+		sc.finishUsage(tmpAllocs)
+		// rc shall be 0 now
+		sc.finishUsage(allocs)
+
+		// wait handoff finished
+		<-sig
+
+		sc.mut.RLock()
+		info, has := sc.segments[1]
+		sc.mut.RUnlock()
+
+		assert.True(t, has)
+		assert.Equal(t, int64(2), info.nodeID)
+	})
+
 	t.Run("handoff from non-exist node", func(t *testing.T) {
 		nodeEvents := []nodeEvent{
 			{
@@ -1522,12 +1870,12 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}
@@ -1568,12 +1916,12 @@ func TestShardCluster_HandoffSegments(t *testing.T) {
 		segmentEvents := []segmentEvent{
 			{
 				segmentID: 1,
-				nodeID:    1,
+				nodeIDs:   []int64{1},
 				state:     segmentStateLoaded,
 			},
 			{
 				segmentID: 2,
-				nodeID:    2,
+				nodeIDs:   []int64{2},
 				state:     segmentStateLoaded,
 			},
 		}

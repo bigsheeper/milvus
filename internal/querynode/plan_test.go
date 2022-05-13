@@ -18,11 +18,10 @@ package querynode
 
 import (
 	"context"
-	"math"
-	"testing"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+	"math"
+	"testing"
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -125,7 +124,6 @@ func TestPlan_PlaceholderGroup(t *testing.T) {
 	numQueries := holder.getNumOfQuery()
 	assert.Equal(t, int(numQueries), 2)
 
-	plan.delete()
 	holder.delete()
 	deleteCollection(collection)
 }

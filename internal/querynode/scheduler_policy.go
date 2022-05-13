@@ -12,7 +12,7 @@ func defaultScheduleSQPolicy(sqTasks *list.List, targetUsage int32) ([]sqTask, i
 	for e := sqTasks.Front(); e != nil; e = e.Next() {
 		t, _ := e.Value.(sqTask)
 		tUsage := t.EstimateCpuUsage()
-		if usage + tUsage > targetUsage {
+		if usage+tUsage > targetUsage {
 			break
 		}
 		usage += tUsage

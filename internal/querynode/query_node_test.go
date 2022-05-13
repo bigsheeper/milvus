@@ -204,7 +204,7 @@ func newQueryNodeMock() *QueryNode {
 	streamingReplica := newCollectionReplica(etcdKV)
 	historicalReplica := newCollectionReplica(etcdKV)
 	svr.historical = newHistorical(svr.queryNodeLoopCtx, historicalReplica, tsReplica)
-	svr.streaming = newStreaming(ctx, streamingReplica, factory, etcdKV, tsReplica)
+	svr.streaming = newStreaming(ctx, streamingReplica, tsReplica)
 	svr.dataSyncService = newDataSyncService(ctx, svr.streaming.replica, svr.historical.replica, tsReplica, factory)
 	svr.statsService = newStatsService(ctx, svr.historical.replica, factory)
 	svr.vectorStorage, err = factory.NewVectorStorageChunkManager(ctx)

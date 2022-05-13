@@ -308,9 +308,10 @@ message LoadBalanceRequest {
 //-------------------- internal meta proto------------------
 
 enum DataScope {
-  All = 0;
-  Streaming = 1;
-  Historical = 2;
+  UnKnown = 0;
+  All = 1;
+  Streaming = 2;
+  Historical = 3;
 }
 
 enum PartitionState {

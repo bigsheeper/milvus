@@ -35,10 +35,10 @@ func TestHistorical_Search(t *testing.T) {
 
 		collection, err := his.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
-		_, _, _, err = his.search(searchReqs, defaultCollectionID, []UniqueID{defaultPartitionID}, plan, Timestamp(0))
+		_, _, _, err = his.search(searchReq, defaultCollectionID, []UniqueID{defaultPartitionID})
 		assert.NoError(t, err)
 	})
 
@@ -49,13 +49,13 @@ func TestHistorical_Search(t *testing.T) {
 
 		collection, err := his.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		err = his.replica.removeCollection(defaultCollectionID)
 		assert.NoError(t, err)
 
-		_, _, _, err = his.search(searchReqs, defaultCollectionID, []UniqueID{}, plan, Timestamp(0))
+		_, _, _, err = his.search(searchReq, defaultCollectionID, []UniqueID{})
 		assert.Error(t, err)
 	})
 
@@ -66,13 +66,13 @@ func TestHistorical_Search(t *testing.T) {
 
 		collection, err := his.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		err = his.replica.removeCollection(defaultCollectionID)
 		assert.NoError(t, err)
 
-		_, _, _, err = his.search(searchReqs, defaultCollectionID, []UniqueID{defaultPartitionID}, plan, Timestamp(0))
+		_, _, _, err = his.search(searchReq, defaultCollectionID, []UniqueID{defaultPartitionID})
 		assert.Error(t, err)
 	})
 
@@ -83,7 +83,7 @@ func TestHistorical_Search(t *testing.T) {
 
 		collection, err := his.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		col, err := his.replica.getCollectionByID(defaultCollectionID)
@@ -93,7 +93,7 @@ func TestHistorical_Search(t *testing.T) {
 		err = his.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		_, _, _, err = his.search(searchReqs, defaultCollectionID, []UniqueID{}, plan, Timestamp(0))
+		_, _, _, err = his.search(searchReq, defaultCollectionID, []UniqueID{})
 		assert.Error(t, err)
 	})
 
@@ -104,13 +104,13 @@ func TestHistorical_Search(t *testing.T) {
 
 		collection, err := his.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		plan, searchReqs, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		err = his.replica.removePartition(defaultPartitionID)
 		assert.NoError(t, err)
 
-		res, ids, _, err := his.search(searchReqs, defaultCollectionID, []UniqueID{}, plan, Timestamp(0))
+		res, ids, _, err := his.search(searchReq, defaultCollectionID, []UniqueID{})
 		assert.Equal(t, 0, len(res))
 		assert.Equal(t, 0, len(ids))
 		assert.NoError(t, err)

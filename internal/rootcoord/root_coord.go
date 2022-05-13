@@ -2277,18 +2277,19 @@ func (c *Core) Import(ctx context.Context, req *milvuspb.ImportRequest) (*milvus
 	}
 
 	// Get collection/partition ID from collection/partition name.
-	var cID int64
-	var ok bool
-	c.MetaTable.ddLock.RLock()
-	defer c.MetaTable.ddLock.RUnlock()
-	if cID, ok = c.MetaTable.collName2ID[req.GetCollectionName()]; !ok {
-		log.Error("failed to find collection ID for collection name",
-			zap.String("collection name", req.GetCollectionName()))
-		return nil, fmt.Errorf("collection ID not found for collection name %s", req.GetCollectionName())
-	}
-	var pID int64
+	var cID UniqueID
 	var err error
+	if cID, err = c.MetaTable.GetCollectionIDByName(req.GetCollectionName()); err != nil {
+		log.Error("failed to find collection ID from its name",
+			zap.String("collection name", req.GetCollectionName()),
+			zap.Error(err))
+		return nil, err
+	}
+	var pID UniqueID
 	if pID, err = c.MetaTable.getPartitionByName(cID, req.GetPartitionName(), 0); err != nil {
+		log.Error("failed to get partition ID from its name",
+			zap.String("partition name", req.GetPartitionName()),
+			zap.Error(err))
 		return nil, err
 	}
 	log.Info("receive import request",
@@ -2357,22 +2358,19 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 		}, nil
 	}
 
-	// Reverse look up collection name on collection ID.
+	// Look up collection name on collection ID.
 	var colName string
-	c.MetaTable.ddLock.RLock()
-	defer c.MetaTable.ddLock.RUnlock()
-	for k, v := range c.MetaTable.collName2ID {
-		if v == ti.GetCollectionId() {
-			colName = k
-		}
-	}
-	if colName == "" {
-		log.Error("Collection name not found for collection ID", zap.Int64("collection ID", ti.GetCollectionId()))
+	var colMeta *etcdpb.CollectionInfo
+	if colMeta, err = c.MetaTable.GetCollectionByID(ti.GetCollectionId(), 0); err != nil {
+		log.Error("failed to get collection name",
+			zap.Int64("collection ID", ti.GetCollectionId()),
+			zap.Error(err))
 		return &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_CollectionNameNotFound,
-			Reason:    "Collection name not found for collection ID" + strconv.FormatInt(ti.GetCollectionId(), 10),
+			Reason:    "failed to get collection name for collection ID" + strconv.FormatInt(ti.GetCollectionId(), 10),
 		}, nil
 	}
+	colName = colMeta.GetSchema().GetName()
 
 	// When DataNode has done its thing, remove it from the busy node list.
 	func() {
@@ -2490,10 +2488,10 @@ func (c *Core) postImportPersistLoop(ctx context.Context, taskID int64, colID in
 	c.wg.Add(1)
 	c.checkSegmentLoadedLoop(ctx, taskID, colID, segIDs)
 	// Check if collection has any indexed fields. If so, start a loop to check segments' index states.
-	c.MetaTable.ddLock.RLock()
-	defer c.MetaTable.ddLock.RUnlock()
-	colMeta := c.MetaTable.collID2Meta[colID]
-	if len(colMeta.GetFieldIndexes()) != 0 {
+	if colMeta, err := c.MetaTable.GetCollectionByID(colID, 0); err != nil {
+		log.Error("failed to find meta for collection",
+			zap.Int64("collection ID", colID))
+	} else if len(colMeta.GetFieldIndexes()) != 0 {
 		c.wg.Add(1)
 		c.checkCompleteIndexLoop(ctx, taskID, colID, colName, segIDs)
 	}
@@ -2518,13 +2516,13 @@ func (c *Core) checkSegmentLoadedLoop(ctx context.Context, taskID int64, colID i
 					zap.Int64("task ID", taskID),
 					zap.Int64("collection ID", colID),
 					zap.Int64s("segment IDs", segIDs))
-			} else if len(resp.GetInfos()) == len(segIDs) {
+			} else if heuristicSegmentsReady(len(resp.GetInfos()), len(segIDs)) {
 				// Check if all segment info are loaded in queryNodes.
 				log.Info("(in check segment loaded loop) all import data segments loaded in queryNodes",
 					zap.Int64("task ID", taskID),
 					zap.Int64("collection ID", colID),
 					zap.Int64s("segment IDs", segIDs))
-				c.importManager.updateTaskStateCode(taskID, commonpb.ImportState_DataQueryable)
+				c.importManager.setTaskDataQueryable(taskID)
 				return
 			}
 		case <-expireTicker.C:
@@ -2550,10 +2548,10 @@ func (c *Core) checkCompleteIndexLoop(ctx context.Context, taskID int64, colID i
 			log.Info("(in check complete index loop) context done, exiting checkCompleteIndexLoop")
 			return
 		case <-ticker.C:
-			if ct, err := c.CountCompleteIndex(ctx, colName, colID, segIDs); err == nil && ct == len(segIDs) {
+			if ct, err := c.CountCompleteIndex(ctx, colName, colID, segIDs); err == nil && heuristicSegmentsReady(ct, len(segIDs)) {
 				log.Info("(in check complete index loop) all segment indices are ready!",
 					zap.Int64("task ID", taskID))
-				c.importManager.updateTaskStateCode(taskID, commonpb.ImportState_DataIndexed)
+				c.importManager.setTaskDataIndexed(taskID)
 				return
 			}
 		case <-expireTicker.C:
@@ -2754,4 +2752,11 @@ func (c *Core) ListCredUsers(ctx context.Context, in *milvuspb.ListCredUsersRequ
 		Status:    succStatus(),
 		Usernames: credInfo.Usernames,
 	}, nil
+}
+
+// heuristicSegmentsReady checks and returns if segments are ready based on count in a heuristic way.
+// We do this to avoid accidentally compacted segments.
+// This is just a temporary solution.
+func heuristicSegmentsReady(currCount int, expectedCount int) bool {
+	return currCount >= expectedCount-2 || float64(currCount)/float64(expectedCount) >= 0.8
 }

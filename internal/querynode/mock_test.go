@@ -18,6 +18,7 @@ package querynode
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -1030,6 +1031,53 @@ func saveBinLog(ctx context.Context,
 	return fieldBinlog, err
 }
 
+// saveDeltaLog saves delta logs into MinIO for testing purpose.
+func saveDeltaLog(collectionID UniqueID,
+	partitionID UniqueID,
+	segmentID UniqueID) ([]*datapb.FieldBinlog, error) {
+
+	binlogWriter := storage.NewDeleteBinlogWriter(schemapb.DataType_String, collectionID, partitionID, segmentID)
+	eventWriter, _ := binlogWriter.NextDeleteEventWriter()
+	dData := &storage.DeleteData{
+		Pks:      []storage.PrimaryKey{&storage.Int64PrimaryKey{Value: 1}, &storage.Int64PrimaryKey{Value: 2}},
+		Tss:      []Timestamp{100, 200},
+		RowCount: 2,
+	}
+
+	sizeTotal := 0
+	for i := int64(0); i < dData.RowCount; i++ {
+		int64PkValue := dData.Pks[i].(*storage.Int64PrimaryKey).Value
+		ts := dData.Tss[i]
+		eventWriter.AddOneStringToPayload(fmt.Sprintf("%d,%d", int64PkValue, ts))
+		sizeTotal += binary.Size(int64PkValue)
+		sizeTotal += binary.Size(ts)
+	}
+	eventWriter.SetEventTimestamp(100, 200)
+	binlogWriter.SetEventTimeStamp(100, 200)
+	binlogWriter.AddExtra("original_size", fmt.Sprintf("%v", sizeTotal))
+
+	binlogWriter.Finish()
+	buffer, _ := binlogWriter.GetBuffer()
+	blob := &storage.Blob{Key: "deltaLogPath1", Value: buffer}
+
+	kvs := make(map[string][]byte, 1)
+
+	// write delta log
+	pkFieldID := UniqueID(106)
+	fieldBinlog := make([]*datapb.FieldBinlog, 0)
+	log.Debug("[query node unittest] save delta log", zap.Int64("fieldID", pkFieldID))
+	key := JoinIDPath(collectionID, partitionID, segmentID, pkFieldID)
+	key += "delta" // append suffix 'delta' to avoid conflicts against binlog
+	kvs[key] = blob.Value[:]
+	fieldBinlog = append(fieldBinlog, &datapb.FieldBinlog{
+		FieldID: pkFieldID,
+		Binlogs: []*datapb.Binlog{{LogPath: key}},
+	})
+	log.Debug("[query node unittest] save delta log file to MinIO/S3")
+
+	return fieldBinlog, storage.NewLocalChunkManager(storage.RootPath(defaultLocalStorage)).MultiWrite(kvs)
+}
+
 func genSimpleTimestampFieldData(numRows int) []Timestamp {
 	times := make([]Timestamp, numRows)
 	for i := 0; i < numRows; i++ {
@@ -1228,16 +1276,11 @@ func genSimpleHistorical(ctx context.Context, tSafeReplica TSafeReplicaInterface
 }
 
 func genSimpleStreaming(ctx context.Context, tSafeReplica TSafeReplicaInterface) (*streaming, error) {
-	kv, err := genEtcdKV()
-	if err != nil {
-		return nil, err
-	}
-	fac := genFactory()
 	replica, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
 	}
-	s := newStreaming(ctx, replica, fac, kv, tSafeReplica)
+	s := newStreaming(ctx, replica, tSafeReplica)
 	r, err := genSimpleReplica()
 	if err != nil {
 		return nil, err
@@ -1362,13 +1405,13 @@ func genDSLByIndexType(schema *schemapb.CollectionSchema, indexType string) (str
 	return "", fmt.Errorf("Invalid indexType")
 }
 
-func genPlaceHolderGroup(nq int) ([]byte, error) {
+func genPlaceHolderGroup(nq int64) ([]byte, error) {
 	placeholderValue := &milvuspb.PlaceholderValue{
 		Tag:    "$0",
 		Type:   milvuspb.PlaceholderType_FloatVector,
 		Values: make([][]byte, 0),
 	}
-	for i := 0; i < nq; i++ {
+	for i := int64(0); i < nq; i++ {
 		var vec = make([]float32, defaultDim)
 		for j := 0; j < defaultDim; j++ {
 			vec[j] = rand.Float32()
@@ -1393,36 +1436,17 @@ func genPlaceHolderGroup(nq int) ([]byte, error) {
 	return placeGroupByte, nil
 }
 
-func genSearchPlanAndRequests(collection *Collection, indexType string) (*SearchPlan, []*searchRequest, error) {
+func genSearchPlanAndRequests(collection *Collection, indexType string, nq int64) (*searchRequest, error) {
 
-	var plan *SearchPlan
-	var err error
-	sm, err := genSearchMsg(collection.schema, defaultNQ, indexType)
-	if err != nil {
-		return nil, nil, err
+	iReq, _ := genSearchRequest(nq, indexType, collection.schema)
+	queryReq := &querypb.SearchRequest{
+		Req:             iReq,
+		DmlChannel:      defaultDMLChannel,
+		SegmentIDs:      []UniqueID{defaultSegmentID},
+		FromShardLeader: true,
+		Scope:           querypb.DataScope_Historical,
 	}
-	if sm.GetDslType() == commonpb.DslType_BoolExprV1 {
-		expr := sm.SerializedExprPlan
-		plan, err = createSearchPlanByExpr(collection, expr)
-		if err != nil {
-			return nil, nil, err
-		}
-	} else {
-		dsl := sm.Dsl
-		plan, err = createSearchPlan(collection, dsl)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	searchRequestBlob := sm.PlaceholderGroup
-	searchReq, err := parseSearchRequest(plan, searchRequestBlob)
-	if err != nil {
-		return nil, nil, err
-	}
-	searchRequests := make([]*searchRequest, 0)
-	searchRequests = append(searchRequests, searchReq)
-
-	return plan, searchRequests, nil
+	return newSearchRequest(collection, queryReq, queryReq.Req.GetPlaceholderGroup())
 }
 
 func genSimpleRetrievePlanExpr(schema *schemapb.CollectionSchema) ([]byte, error) {
@@ -1473,18 +1497,18 @@ func genSimpleRetrievePlan(collection *Collection) (*RetrievePlan, error) {
 	}
 	timestamp := retrieveMsg.RetrieveRequest.TravelTimestamp
 
-	plan, err := createRetrievePlanByExpr(collection, retrieveMsg.SerializedExprPlan, timestamp)
-	return plan, err
+	plan, err2 := createRetrievePlanByExpr(collection, retrieveMsg.SerializedExprPlan, timestamp)
+	return plan, err2
 }
 
-func genSearchRequest(nq int, indexType string, schema *schemapb.CollectionSchema) (*internalpb.SearchRequest, error) {
+func genSearchRequest(nq int64, indexType string, schema *schemapb.CollectionSchema) (*internalpb.SearchRequest, error) {
 	placeHolder, err := genPlaceHolderGroup(nq)
 	if err != nil {
 		return nil, err
 	}
-	simpleDSL, err := genDSLByIndexType(schema, indexType)
-	if err != nil {
-		return nil, err
+	simpleDSL, err2 := genDSLByIndexType(schema, indexType)
+	if err2 != nil {
+		return nil, err2
 	}
 	return &internalpb.SearchRequest{
 		Base:             genCommonMsgBase(commonpb.MsgType_Search),
@@ -1493,20 +1517,8 @@ func genSearchRequest(nq int, indexType string, schema *schemapb.CollectionSchem
 		Dsl:              simpleDSL,
 		PlaceholderGroup: placeHolder,
 		DslType:          commonpb.DslType_Dsl,
+		Nq:               nq,
 	}, nil
-}
-
-func genSearchMsg(schema *schemapb.CollectionSchema, nq int, indexType string) (*msgstream.SearchMsg, error) {
-	req, err := genSearchRequest(nq, indexType, schema)
-	if err != nil {
-		return nil, err
-	}
-	msg := &msgstream.SearchMsg{
-		BaseMsg:       genMsgStreamBaseMsg(),
-		SearchRequest: *req,
-	}
-	msg.SetTimeRecorder()
-	return msg, nil
 }
 
 func genRetrieveRequest(schema *schemapb.CollectionSchema) (*internalpb.RetrieveRequest, error) {
@@ -1586,7 +1598,7 @@ func checkSearchResult(nq int64, plan *SearchPlan, searchResult *SearchResult) e
 			return err
 		}
 
-		if result.TopK != defaultTopK {
+		if result.TopK != sliceTopKs[i] {
 			return fmt.Errorf("unexpected topK when checkSearchResult")
 		}
 		if result.NumQueries != int64(sInfo.sliceNQs[i]) {
@@ -1614,6 +1626,14 @@ func initConsumer(ctx context.Context, queryResultChannel Channel) (msgstream.Ms
 	stream.AsConsumer([]string{queryResultChannel}, defaultSubName)
 	stream.Start()
 	return stream, nil
+}
+
+func genSimpleSegmentInfo() *querypb.SegmentInfo {
+	return &querypb.SegmentInfo{
+		SegmentID:    defaultSegmentID,
+		CollectionID: defaultCollectionID,
+		PartitionID:  defaultPartitionID,
+	}
 }
 
 func genSimpleChangeInfo() *querypb.SealedSegmentsChangeInfo {
@@ -1701,7 +1721,9 @@ func genSimpleQueryNodeWithMQFactory(ctx context.Context, fac dependency.Factory
 	// init shard cluster service
 	node.ShardClusterService = newShardClusterService(node.etcdCli, node.session, node)
 
-	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx, node.historical, node.streaming, node.ShardClusterService, node.factory)
+	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx,
+		node.historical, node.streaming,
+		node.ShardClusterService, node.factory, node.scheduler)
 
 	node.UpdateStateCode(internalpb.StateCode_Healthy)
 

@@ -214,12 +214,14 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 
 		t.SearchRequest.DslType = commonpb.DslType_BoolExprV1
 		t.SearchRequest.SerializedExprPlan, err = proto.Marshal(plan)
+		t.SearchRequest.Topk = int64(topK)
 		if err != nil {
 			return err
 		}
 		log.Debug("Proxy::searchTask::PreExecute", zap.Any("plan.OutputFieldIds", plan.OutputFieldIds),
 			zap.Any("plan", plan.String()))
 	}
+
 	travelTimestamp := t.request.TravelTimestamp
 	if travelTimestamp == 0 {
 		travelTimestamp = t.BeginTs()
@@ -244,7 +246,7 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	t.DbID = 0 // todo
 	t.SearchRequest.Dsl = t.request.Dsl
 	t.SearchRequest.PlaceholderGroup = t.request.PlaceholderGroup
-
+	t.SearchRequest.Nq = int64(t.request.GetNq())
 	log.Info("search PreExecute done.",
 		zap.Any("requestID", t.Base.MsgID), zap.Any("requestType", "search"))
 	return nil
@@ -397,8 +399,9 @@ func (t *searchTask) searchShard(ctx context.Context, leaders *querypb.ShardLead
 
 	search := func(nodeID UniqueID, qn types.QueryNode) error {
 		req := &querypb.SearchRequest{
-			Req:           t.SearchRequest,
-			DmlChannel:    leaders.GetChannelName(),
+			Req:        t.SearchRequest,
+			DmlChannel: leaders.GetChannelName(),
+			Scope: querypb.DataScope_Historical,
 		}
 
 		result, err := qn.Search(ctx, req)

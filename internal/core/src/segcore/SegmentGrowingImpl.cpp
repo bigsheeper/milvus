@@ -38,65 +38,14 @@ SegmentGrowingImpl::PreDelete(int64_t size) {
     return reserved_begin;
 }
 
-std::shared_ptr<DeletedRecord::TmpBitmap>
-SegmentGrowingImpl::get_deleted_bitmap(int64_t del_barrier,
-                                       Timestamp query_timestamp,
-                                       int64_t insert_barrier,
-                                       bool force) const {
-    auto old = deleted_record_.get_lru_entry();
-    if (old->bitmap_ptr->size() == insert_barrier) {
-        if (old->del_barrier == del_barrier) {
-            return old;
-        }
-    }
-
-    auto current = old->clone(insert_barrier);
-    current->del_barrier = del_barrier;
-
-    auto bitmap = current->bitmap_ptr;
-
-    int64_t start, end;
-    if (del_barrier < old->del_barrier) {
-        start = del_barrier;
-        end = old->del_barrier;
-    } else {
-        start = old->del_barrier;
-        end = del_barrier;
-    }
-    for (auto del_index = start; del_index < end; ++del_index) {
-        // get uid in delete logs
-        auto uid = deleted_record_.pks_[del_index];
-
-        // map uid to corresponding offsets, select the max one, which should be the target
-        // the max one should be closest to query_timestamp, so the delete log should refer to it
-        int64_t the_offset = -1;
-        auto [iter_b, iter_e] = pk2offset_.equal_range(uid);
-
-        for (auto iter = iter_b; iter != iter_e; ++iter) {
-            auto offset = iter->second;
-            AssertInfo(offset < insert_barrier, "Timestamp offset is larger than insert barrier");
-            the_offset = std::max(the_offset, offset);
-            if (the_offset == -1) {
-                continue;
-            }
-            if (insert_record_.timestamps_[the_offset] >= query_timestamp) {
-                bitmap->reset(the_offset);
-            } else {
-                bitmap->set(the_offset);
-            }
-        }
-    }
-    this->deleted_record_.insert_lru_entry(current);
-    return current;
-}
-
 void
 SegmentGrowingImpl::mask_with_delete(BitsetType& bitset, int64_t ins_barrier, Timestamp timestamp) const {
     auto del_barrier = get_barrier(get_deleted_record(), timestamp);
     if (del_barrier == 0) {
         return;
     }
-    auto bitmap_holder = get_deleted_bitmap(del_barrier, timestamp, ins_barrier);
+    auto bitmap_holder =
+        get_deleted_bitmap(del_barrier, ins_barrier, deleted_record_, insert_record_, pk2offset_, timestamp);
     if (!bitmap_holder || !bitmap_holder->bitmap_ptr) {
         return;
     }
@@ -192,6 +141,28 @@ SegmentGrowingImpl::GetMemoryUsageInBytes() const {
     int64_t del_n = upper_align(deleted_record_.reserved, chunk_rows);
     total_bytes += del_n * (16 * 2);
     return total_bytes;
+}
+
+void
+SegmentGrowingImpl::LoadDeletedRecord(const LoadDeletedRecordInfo& info) {
+    AssertInfo(info.row_count > 0, "The row count of deleted record is 0");
+    AssertInfo(info.primary_keys, "Deleted primary keys is null");
+    AssertInfo(info.timestamps, "Deleted timestamps is null");
+    // step 1: get pks and timestamps
+    auto field_id = schema_->get_primary_field_id().value_or(FieldId(INVALID_FIELD_ID));
+    AssertInfo(field_id.get() != INVALID_FIELD_ID, "Primary key has invalid field id");
+    auto& field_meta = schema_->operator[](field_id);
+    int64_t size = info.row_count;
+    std::vector<PkType> pks(size);
+    ParsePksFromIDs(pks, field_meta.get_data_type(), *info.primary_keys);
+    auto timestamps = reinterpret_cast<const Timestamp*>(info.timestamps);
+
+    // step 2: fill pks and timestamps
+    deleted_record_.pks_.set_data_raw(0, pks.data(), size);
+    deleted_record_.timestamps_.set_data_raw(0, timestamps, size);
+    deleted_record_.ack_responder_.AddSegment(0, size);
+    deleted_record_.reserved.fetch_add(size);
+    deleted_record_.record_size_ = size;
 }
 
 SpanBase

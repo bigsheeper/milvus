@@ -54,7 +54,9 @@ func newHistorical(ctx context.Context,
 // close would release all resources in historical
 func (h *historical) close() {
 	// free collectionReplica
-	h.replica.freeAll()
+	if h.replica != nil {
+		h.replica.freeAll()
+	}
 }
 
 // // retrieve will retrieve from the segments in historical
@@ -95,8 +97,8 @@ func (h *historical) retrieve(collID UniqueID, partIDs []UniqueID, vcm storage.C
 	return retrieveResults, retrieveSegmentIDs, retrievePartIDs, nil
 }
 
-// retrieveBySegmentIDs retrieves records from segments specified by their IDs
-func (h *historical) retrieveBySegmentIDs(collID UniqueID, segmentIDs []UniqueID, vcm storage.ChunkManager, plan *RetrievePlan) (
+// retrieveSegments retrieves records from segments specified by their IDs
+func (h *historical) retrieveSegments(collID UniqueID, segmentIDs []UniqueID, vcm storage.ChunkManager, plan *RetrievePlan) (
 	retrieveResults []*segcorepb.RetrieveResults, err error) {
 
 	for _, segID := range segmentIDs {
@@ -119,8 +121,8 @@ func (h *historical) retrieveBySegmentIDs(collID UniqueID, segmentIDs []UniqueID
 }
 
 // search will search all the target segments in historical
-func (h *historical) search(searchReqs []*searchRequest, collID UniqueID, partIDs []UniqueID, plan *SearchPlan,
-	searchTs Timestamp) (searchResults []*SearchResult, searchSegmentIDs []UniqueID, searchPartIDs []UniqueID, err error) {
+// currently is used only in unittest
+func (h *historical) search(searchReq *searchRequest, collID UniqueID, partIDs []UniqueID) (searchResults []*SearchResult, searchSegmentIDs []UniqueID, searchPartIDs []UniqueID, err error) {
 
 	searchPartIDs, err = h.getTargetPartIDs(collID, partIDs)
 	if err != nil {
@@ -154,7 +156,7 @@ func (h *historical) search(searchReqs []*searchRequest, collID UniqueID, partID
 		segmentIDs = append(segmentIDs, segIDs...)
 	}
 
-	searchResults, searchSegmentIDs, err = h.searchSegments(segmentIDs, searchReqs, plan, searchTs)
+	searchResults, searchSegmentIDs, err = h.searchSegments(searchReq, segmentIDs)
 
 	return searchResults, searchSegmentIDs, searchPartIDs, err
 }
@@ -219,7 +221,7 @@ func (h *historical) getTargetPartIDs(collID UniqueID, partIDs []UniqueID) ([]Un
 
 // searchSegments performs search on listed segments
 // all segment ids are validated before calling this function
-func (h *historical) searchSegments(segIDs []UniqueID, searchReqs []*searchRequest, plan *SearchPlan, searchTs Timestamp) ([]*SearchResult, []UniqueID, error) {
+func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID) ([]*SearchResult, []UniqueID, error) {
 	// pre-fetch all the segment
 	// if error found, return before executing segment search
 	segments := make([]*Segment, 0, len(segIDs))
@@ -240,6 +242,9 @@ func (h *historical) searchSegments(segIDs []UniqueID, searchReqs []*searchReque
 	// calling segment search in goroutines
 	var wg sync.WaitGroup
 	for _, seg := range segments {
+		if serr != nil {
+			break
+		}
 		wg.Add(1)
 		go func(seg *Segment) {
 			defer wg.Done()
@@ -249,7 +254,7 @@ func (h *historical) searchSegments(segIDs []UniqueID, searchReqs []*searchReque
 			}
 			// record search time
 			tr := timerecord.NewTimeRecorder("searchOnSealed")
-			searchResult, err := seg.search(plan, searchReqs, []Timestamp{searchTs})
+			searchResult, err := seg.search(searchReq)
 
 			// update metrics
 			metrics.QueryNodeSQSegmentLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
@@ -268,8 +273,24 @@ func (h *historical) searchSegments(segIDs []UniqueID, searchReqs []*searchReque
 		}(seg)
 	}
 	wg.Wait()
+	fmt.Println("DDD", serr)
+	fmt.Println("DDD-1", searchResults)
 	if serr != nil {
+		deleteSearchResults(searchResults)
 		return nil, nil, serr
 	}
+	/*
+	if searchResults == nil {
+		searchResults = append(searchResults, &internalpb.SearchResults{
+			Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+			MetricType:     searchReq.plan.getMetricType(),
+			NumQueries:     searchReq.getNumOfQuery(),
+			TopK:           searchReq.plan.getTopK(),
+			SlicedBlob:     nil,
+			SlicedOffset:   1,
+			SlicedNumCount: 1,
+		})
+	}
+	*/
 	return searchResults, searchSegmentIDs, nil
 }

@@ -170,6 +170,9 @@ func deleteSearchResultDataBlobs(cSearchResultDataBlobs searchResultDataBlobs) {
 }
 
 func deleteSearchResults(results []*SearchResult) {
+	if len(results) == 0 {
+		return
+	}
 	for _, result := range results {
 		C.DeleteSearchResult(result.cSearchResult)
 	}

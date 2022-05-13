@@ -30,9 +30,7 @@ import (
 	"math"
 )
 
-func pipelineReduceRSearchResults(results []*internalpb.SearchResults, nq int64, topk int64, metricType string) (*internalpb.SearchResults, error) {
-	// reduce shard search results: unmarshal -> reduce -> marshal
-
+func reduceSearchResults(results []*internalpb.SearchResults, nq int64, topk int64, metricType string) (*internalpb.SearchResults, error) {
 	searchResultData, err := decodeSearchResults(results)
 	if err != nil {
 		log.Warn("shard leader decode search results errors", zap.Error(err))
@@ -165,6 +163,7 @@ func selectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffset
 
 func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb.SearchResultData, error) {
 	results := make([]*schemapb.SearchResultData, 0)
+	fmt.Println("AA11", results)
 	for _, partialSearchResult := range searchResults {
 		if partialSearchResult.SlicedBlob == nil {
 			continue
@@ -201,7 +200,7 @@ func encodeSearchResultData(searchResultData *schemapb.SearchResultData, nq int6
 	return
 }
 
-// TODO: largely based on function mergeRetrieveResults, need rewriting
+// TODO: largely based on function mergeSegcoreRetrieveResults, need rewriting
 func mergeInternalRetrieveResults(retrieveResults []*internalpb.RetrieveResults) (*internalpb.RetrieveResults, error) {
 	var ret *internalpb.RetrieveResults
 	var skipDupCnt int64
@@ -251,7 +250,7 @@ func mergeInternalRetrieveResults(retrieveResults []*internalpb.RetrieveResults)
 	return ret, nil
 }
 
-func mergeRetrieveResults(retrieveResults []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {
+func mergeSegcoreRetrieveResults(retrieveResults []*segcorepb.RetrieveResults) (*segcorepb.RetrieveResults, error) {
 	var ret *segcorepb.RetrieveResults
 	var skipDupCnt int64
 	var idSet = make(map[interface{}]struct{})

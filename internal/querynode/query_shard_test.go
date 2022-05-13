@@ -50,6 +50,8 @@ func genSimpleQueryShard(ctx context.Context) (*queryShard, error) {
 		return nil, err
 	}
 
+	scheduler := newTaskScheduler(ctx)
+
 	shardCluster := NewShardCluster(defaultCollectionID, defaultReplicaID, defaultDMLChannel,
 		&mockNodeDetector{}, &mockSegmentDetector{}, buildMockQueryNode)
 	shardClusterService := &ShardClusterService{
@@ -58,7 +60,7 @@ func genSimpleQueryShard(ctx context.Context) (*queryShard, error) {
 	shardClusterService.clusters.Store(defaultDMLChannel, shardCluster)
 
 	qs := newQueryShard(ctx, defaultCollectionID, defaultDMLChannel, defaultReplicaID, shardClusterService,
-		historical, streaming, localCM, remoteCM, false)
+		historical, streaming, localCM, remoteCM, false, scheduler.tsafeUpdateChan)
 	qs.deltaChannel = defaultDeltaChannel
 
 	err = qs.watchDMLTSafe()
@@ -218,7 +220,6 @@ func TestReduceSearchResultData(t *testing.T) {
 		topk       = 4
 		metricType = "L2"
 	)
-	plan := &SearchPlan{pkType: schemapb.DataType_Int64}
 	t.Run("case1", func(t *testing.T) {
 		ids := []int64{1, 2, 3, 4}
 		scores := []float32{-1.0, -2.0, -3.0, -4.0}
@@ -228,7 +229,7 @@ func TestReduceSearchResultData(t *testing.T) {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		res, err := reduceSearchResultData(dataArray, nq, topk, plan)
+		res, err := reduceSearchResultData(dataArray, nq, topk)
 		assert.Nil(t, err)
 		assert.Equal(t, ids, res.Ids.GetIntId().Data)
 		assert.Equal(t, scores, res.Scores)
@@ -245,7 +246,7 @@ func TestReduceSearchResultData(t *testing.T) {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		res, err := reduceSearchResultData(dataArray, nq, topk, plan)
+		res, err := reduceSearchResultData(dataArray, nq, topk)
 		assert.Nil(t, err)
 		assert.ElementsMatch(t, []int64{1, 5, 2, 3}, res.Ids.GetIntId().Data)
 	})

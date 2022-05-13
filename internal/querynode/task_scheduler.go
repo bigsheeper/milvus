@@ -136,14 +136,17 @@ func (s *taskScheduler) scheduleSQTasks() {
 			log.Info("QueryNode sop schedulerSQTasks")
 			return
 		case <-s.notifyChan:
+			log.Info("QueryNode taskScheduler notifyChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 
 		case <-s.receiveSQTaskChan:
+			log.Info("QueryNode taskScheduler receiveSQTaskChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 
 		case <-s.tsafeUpdateChan:
+			log.Info("QueryNode taskScheduler tsafeUpdateChan")
 			s.tryMergeSQTasks()
 			s.popAndAddToExecute()
 		}
@@ -153,7 +156,7 @@ func (s *taskScheduler) scheduleSQTasks() {
 func (s *taskScheduler) addSQTask(t sqTask, ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("taskScheduler AddSQTask timeout")
+		return fmt.Errorf("taskScheduler addSQTask context is done")
 	case <-s.ctx.Done():
 		return fmt.Errorf("taskScheduler stoped")
 	case s.executeSQTaskChan <- t:
@@ -197,6 +200,9 @@ func (s *taskScheduler) executeSQTasks() {
 					defer taskWg.Done()
 					s.processSQTask(t)
 					atomic.AddInt32(&s.cpuUsage, -t.EstimateCpuUsage())
+					if len(s.notifyChan) == 0 {
+						s.notifyChan <- true
+					}
 				}(t)
 
 				pendingTaskLen := len(s.executeSQTaskChan)
@@ -207,6 +213,9 @@ func (s *taskScheduler) executeSQTasks() {
 						defer taskWg.Done()
 						s.processSQTask(t)
 						atomic.AddInt32(&s.cpuUsage, -t.EstimateCpuUsage())
+						if len(s.notifyChan) == 0 {
+							s.notifyChan <- true
+						}
 					}(t)
 				}
 				log.Info("QueryNode taskScheduler executeSQTasks process tasks done", zap.Int("numOfTasks", pendingTaskLen+1))
@@ -233,6 +242,7 @@ func (s *taskScheduler) processSQTask(t sqTask) {
 	err = t.Execute(s.ctx)
 	if err != nil {
 		log.Warn(err.Error())
+		return
 	}
 	err = t.PostExecute(s.ctx)
 }

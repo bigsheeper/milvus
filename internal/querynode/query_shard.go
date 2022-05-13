@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"errors"
+	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"math"
 	"sync"
 	"time"
@@ -59,6 +60,8 @@ type queryShard struct {
 	vectorChunkManager *storage.VectorChunkManager
 	localCacheEnabled  bool
 	localCacheSize     int64
+	tsafeUpdateChan    chan bool
+	once               sync.Once
 }
 
 func newQueryShard(
@@ -72,6 +75,7 @@ func newQueryShard(
 	localChunkManager storage.ChunkManager,
 	remoteChunkManager storage.ChunkManager,
 	localCacheEnabled bool,
+	tsafeChan chan bool,
 ) *queryShard {
 	ctx, cancel := context.WithCancel(ctx)
 	qs := &queryShard{
@@ -88,14 +92,15 @@ func newQueryShard(
 		localCacheEnabled:  localCacheEnabled,
 		localCacheSize:     Params.QueryNodeCfg.CacheMemoryLimit,
 
-		watcherCond: sync.NewCond(&sync.Mutex{}),
+		watcherCond:     sync.NewCond(&sync.Mutex{}),
+		tsafeUpdateChan: tsafeChan,
 	}
 	deltaChannel, err := funcutil.ConvertChannelName(channel, Params.CommonCfg.RootCoordDml, Params.CommonCfg.RootCoordDelta)
 	if err != nil {
 		log.Warn("failed to convert dm channel to delta", zap.String("channel", channel), zap.Error(err))
 	}
 	qs.deltaChannel = deltaChannel
-
+	qs.initVectorChunkManager()
 	return qs
 }
 
@@ -247,6 +252,14 @@ func (q *queryShard) getServiceableTime(tp tsType) Timestamp {
 }
 
 func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
+	updated := false
+	defer func() {
+		log.Info("queryShard setServiceableTime",zap.Any("updated", updated),
+			zap.Any("len of tsafeUpdatechan", len(q.tsafeUpdateChan)))
+		if updated && len(q.tsafeUpdateChan) == 0 {
+			q.tsafeUpdateChan <- true
+		}
+	}()
 	switch tp {
 	case tsTypeDML:
 		ts := q.serviceDmTs.Load()
@@ -256,6 +269,7 @@ func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
 		for !q.serviceDmTs.CAS(ts, t) {
 			ts = q.serviceDmTs.Load()
 			if t < ts {
+				updated = true
 				return
 			}
 		}
@@ -267,8 +281,24 @@ func (q *queryShard) setServiceableTime(t Timestamp, tp tsType) {
 		for !q.serviceDeltaTs.CAS(ts, t) {
 			ts = q.serviceDeltaTs.Load()
 			if t < ts {
+				updated = true
 				return
 			}
+		}
+	}
+}
+
+func (q *queryShard) initVectorChunkManager() {
+	collection, _ := q.streaming.replica.getCollectionByID(q.collectionID)
+	if q.vectorChunkManager == nil {
+		var err error
+		q.vectorChunkManager, err = storage.NewVectorChunkManager(q.localChunkManager, q.remoteChunkManager,
+			&etcdpb.CollectionMeta{
+				ID:     q.collectionID,
+				Schema: collection.schema,
+			}, q.localCacheSize, q.localCacheEnabled)
+		if err != nil {
+			panic(err)
 		}
 	}
 }

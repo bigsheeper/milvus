@@ -34,7 +34,7 @@ import (
 )
 
 type task interface {
-	ID() UniqueID       // return ReqID
+	ID() UniqueID // return ReqID
 	Timestamp() Timestamp
 	PreExecute(ctx context.Context) error
 	Execute(ctx context.Context) error
@@ -596,8 +596,6 @@ func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 		zap.Any("collectionID", r.req.CollectionID),
 	)
 
-	r.node.queryShardService.releaseCollection(r.req.CollectionID)
-
 	err := r.releaseReplica(r.node.streaming.replica, replicaStreaming)
 	if err != nil {
 		return fmt.Errorf("release collection failed, collectionID = %d, err = %s", r.req.CollectionID, err)
@@ -612,18 +610,25 @@ func (r *releaseCollectionTask) Execute(ctx context.Context) error {
 
 	debug.FreeOSMemory()
 
+	r.node.queryShardService.releaseCollection(r.req.CollectionID)
+
 	log.Info("ReleaseCollection done", zap.Int64("collectionID", r.req.CollectionID))
 	return nil
 }
 
 func (r *releaseCollectionTask) releaseReplica(replica ReplicaInterface, replicaType ReplicaType) error {
+	// block search/query operation
+	replica.queryLock()
+
 	collection, err := replica.getCollectionByID(r.req.CollectionID)
 	if err != nil {
+		replica.queryUnlock()
 		return err
 	}
 	// set release time
 	log.Info("set release time", zap.Any("collectionID", r.req.CollectionID))
-	collection.setReleaseTime(r.Timestamp())
+	collection.setReleaseTime(r.req.Base.Timestamp)
+	replica.queryUnlock()
 
 	// remove all flow graphs of the target collection
 	var channels []Channel

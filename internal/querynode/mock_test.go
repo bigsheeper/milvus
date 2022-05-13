@@ -1573,12 +1573,7 @@ func checkSearchResult(nq int64, plan *SearchPlan, searchResult *SearchResult) e
 	sliceTopKs := []int64{topK, topK / 2, topK, topK, topK / 2}
 	sInfo := parseSliceInfo(sliceNQs, sliceTopKs, nq)
 
-	err := reduceSearchResultsAndFillData(plan, searchResults, 1, sInfo.sliceNQs, sInfo.sliceTopKs)
-	if err != nil {
-		return err
-	}
-
-	res, err := marshal(defaultCollectionID, UniqueID(0), searchResults, plan, 1, sInfo.sliceNQs, sInfo.sliceTopKs)
+	res, err := reduceSearchResultsAndFillData(plan, searchResults, 1, sInfo.sliceNQs, sInfo.sliceTopKs)
 	if err != nil {
 		return err
 	}

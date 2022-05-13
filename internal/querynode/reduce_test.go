@@ -105,6 +105,6 @@ func TestReduce_AllFunc(t *testing.T) {
 
 func TestReduce_nilPlan(t *testing.T) {
 	plan := &SearchPlan{}
-	err := reduceSearchResultsAndFillData(plan, nil, 1, nil, nil)
+	_, err := reduceSearchResultsAndFillData(plan, nil, 1, nil, nil)
 	assert.Error(t, err)
 }

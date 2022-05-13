@@ -164,11 +164,10 @@ func (s *searchTask) reduceResults(searchReq *searchRequest, results []*SearchRe
 	if !isEmpty {
 		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
 		numSegment := int64(len(results))
-		err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
+		blobs, err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
 		if err != nil {
 			return err
 		}
-		blobs, err := marshal(s.CollectionID, s.ID(), results, searchReq.plan, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
 		defer deleteSearchResultDataBlobs(blobs)
 		if err != nil {
 			log.Warn("marshal for historical results error", zap.Error(err))

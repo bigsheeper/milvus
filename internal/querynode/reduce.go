@@ -27,12 +27,7 @@ package querynode
 */
 import "C"
 import (
-	"errors"
 	"fmt"
-
-	"go.uber.org/zap"
-
-	"github.com/milvus-io/milvus/internal/log"
 )
 
 type sliceInfo struct {
@@ -78,13 +73,13 @@ func parseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *s
 }
 
 func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchResult,
-	numSegments int64, sliceNQs []int32, sliceTopKs []int32) error {
+	numSegments int64, sliceNQs []int32, sliceTopKs []int32) (searchResultDataBlobs, error) {
 	if plan.cSearchPlan == nil {
-		return errors.New("nil search plan")
+		return nil, fmt.Errorf("nil search plan")
 	}
 
 	if len(sliceNQs) != len(sliceTopKs) {
-		return fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
+		return nil, fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
 	}
 
 	cSearchResults := make([]C.CSearchResult, 0)
@@ -97,43 +92,10 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
 	var cNumSlices = C.int32_t(len(sliceNQs))
 
-	status := C.ReduceSearchResultsAndFillData(plan.cSearchPlan, cSearchResultPtr,
+	var cSearchResultDataBlobs searchResultDataBlobs
+	status := C.ReduceSearchResultsAndFillData(&cSearchResultDataBlobs, plan.cSearchPlan, cSearchResultPtr,
 		cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(&status, "ReduceSearchResultsAndFillData failed"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func marshal(collectionID UniqueID, msgID UniqueID,
-	searchResults []*SearchResult, plan *SearchPlan,
-	numSegments int, sliceNQs []int32, sliceTopKs []int32) (searchResultDataBlobs, error) {
-	log.Debug("start marshal...",
-		zap.Int64("collectionID", collectionID),
-		zap.Int64("msgID", msgID),
-		zap.Int32s("sliceNQs", sliceNQs),
-		zap.Int32s("sliceTopKs", sliceTopKs))
-
-	if len(sliceNQs) != len(sliceTopKs) {
-		return nil, fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
-	}
-
-	cSearchResults := make([]C.CSearchResult, 0)
-	for _, res := range searchResults {
-		cSearchResults = append(cSearchResults, res.cSearchResult)
-	}
-	cSearchResultPtr := (*C.CSearchResult)(&cSearchResults[0])
-
-	var cNumSegments = C.int32_t(numSegments)
-	var cSliceNQSPtr = (*C.int32_t)(&sliceNQs[0])
-	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
-	var cNumSlices = C.int32_t(len(sliceNQs))
-
-	var cSearchResultDataBlobs searchResultDataBlobs
-
-	status := C.Marshal(&cSearchResultDataBlobs, cSearchResultPtr, plan.cSearchPlan,
-		cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
-	if err := HandleCStatus(&status, "ReorganizeSearchResults failed"); err != nil {
 		return nil, err
 	}
 	return cSearchResultDataBlobs, nil

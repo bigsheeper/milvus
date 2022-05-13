@@ -241,6 +241,7 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 
 	// calling segment search in goroutines
 	var wg sync.WaitGroup
+	fmt.Println("segments:  ", len(segments))
 	for _, seg := range segments {
 		if serr != nil {
 			break
@@ -265,6 +266,7 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 			lock.Lock()
 			defer lock.Unlock()
 			if err != nil {
+				panic(err)
 				serr = err
 				return
 			}
@@ -280,17 +282,17 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 		return nil, nil, serr
 	}
 	/*
-	if searchResults == nil {
-		searchResults = append(searchResults, &internalpb.SearchResults{
-			Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
-			MetricType:     searchReq.plan.getMetricType(),
-			NumQueries:     searchReq.getNumOfQuery(),
-			TopK:           searchReq.plan.getTopK(),
-			SlicedBlob:     nil,
-			SlicedOffset:   1,
-			SlicedNumCount: 1,
-		})
-	}
+		if searchResults == nil {
+			searchResults = append(searchResults, &internalpb.SearchResults{
+				Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				MetricType:     searchReq.plan.getMetricType(),
+				NumQueries:     searchReq.getNumOfQuery(),
+				TopK:           searchReq.plan.getTopK(),
+				SlicedBlob:     nil,
+				SlicedOffset:   1,
+				SlicedNumCount: 1,
+			})
+		}
 	*/
 	return searchResults, searchSegmentIDs, nil
 }

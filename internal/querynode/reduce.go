@@ -78,6 +78,10 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 		return nil, fmt.Errorf("nil search plan")
 	}
 
+	if len(sliceNQs) == 0 {
+		return nil, fmt.Errorf("empty slice nqs is not allowed")
+	}
+
 	if len(sliceNQs) != len(sliceTopKs) {
 		return nil, fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
 	}

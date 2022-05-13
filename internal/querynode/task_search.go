@@ -162,8 +162,10 @@ func (s *searchTask) Notify(err error) {
 func (s *searchTask) reduceResults(searchReq *searchRequest, results []*SearchResult) error {
 	isEmpty := len(results) == 0
 	if !isEmpty {
+		fmt.Println("s.OrigNQs:", s.OrigNQs, ", s.OrigTopKs:", s.OrigTopKs, ", s.NQ:", s.NQ)
 		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
 		numSegment := int64(len(results))
+		fmt.Println("sInfo::", sInfo)
 		blobs, err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
 		if err != nil {
 			return err
@@ -316,6 +318,7 @@ func (s *searchTask) combinePlaceHolderGroups() {
 }
 
 func newSearchTask(ctx context.Context, src *querypb.SearchRequest) *searchTask {
+	fmt.Println("sheep >>>>>>>>>>>> src.Req.GetNq():", src.Req.GetNq())
 	target := &searchTask{
 		sqBaseTask: sqBaseTask{
 			baseTask: baseTask{

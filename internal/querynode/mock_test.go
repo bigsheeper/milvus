@@ -1598,7 +1598,7 @@ func checkSearchResult(nq int64, plan *SearchPlan, searchResult *SearchResult) e
 			return err
 		}
 
-		if result.TopK != defaultTopK {
+		if result.TopK != sliceTopKs[i] {
 			return fmt.Errorf("unexpected topK when checkSearchResult")
 		}
 		if result.NumQueries != int64(sInfo.sliceNQs[i]) {
@@ -1721,7 +1721,9 @@ func genSimpleQueryNodeWithMQFactory(ctx context.Context, fac dependency.Factory
 	// init shard cluster service
 	node.ShardClusterService = newShardClusterService(node.etcdCli, node.session, node)
 
-	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx, node.historical, node.streaming, node.ShardClusterService, node.factory)
+	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx,
+		node.historical, node.streaming,
+		node.ShardClusterService, node.factory, node.scheduler)
 
 	node.UpdateStateCode(internalpb.StateCode_Healthy)
 

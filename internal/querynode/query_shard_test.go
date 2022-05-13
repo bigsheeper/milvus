@@ -50,6 +50,8 @@ func genSimpleQueryShard(ctx context.Context) (*queryShard, error) {
 		return nil, err
 	}
 
+	scheduler := newTaskScheduler(ctx)
+
 	shardCluster := NewShardCluster(defaultCollectionID, defaultReplicaID, defaultDMLChannel,
 		&mockNodeDetector{}, &mockSegmentDetector{}, buildMockQueryNode)
 	shardClusterService := &ShardClusterService{
@@ -58,7 +60,7 @@ func genSimpleQueryShard(ctx context.Context) (*queryShard, error) {
 	shardClusterService.clusters.Store(defaultDMLChannel, shardCluster)
 
 	qs := newQueryShard(ctx, defaultCollectionID, defaultDMLChannel, defaultReplicaID, shardClusterService,
-		historical, streaming, localCM, remoteCM, false)
+		historical, streaming, localCM, remoteCM, false, scheduler.tsafeUpdateChan)
 	qs.deltaChannel = defaultDeltaChannel
 
 	err = qs.watchDMLTSafe()

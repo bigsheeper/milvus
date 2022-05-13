@@ -425,20 +425,16 @@ func TestSegment_segmentSearch(t *testing.T) {
 
 	plan, err := createSearchPlan(collection, dslString)
 	assert.NoError(t, err)
-	holder, err := parseSearchRequest(plan, placeGroupByte)
+	req, err := parseSearchRequest(plan, placeGroupByte)
 	assert.NoError(t, err)
 
-	placeholderGroups := make([]*searchRequest, 0)
-	placeholderGroups = append(placeholderGroups, holder)
-
-	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{0})
+	searchResult, err := segment.search(req)
 	assert.NoError(t, err)
 
 	err = checkSearchResult(nq, plan, searchResult)
 	assert.NoError(t, err)
 
-	plan.delete()
-	holder.delete()
+	req.delete()
 	deleteSegment(segment)
 	deleteCollection(collection)
 }

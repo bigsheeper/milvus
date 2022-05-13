@@ -300,6 +300,10 @@ func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
 		return nil, errors.New("null seg core pointer")
 	}
 
+	if searchReq.plan == nil {
+		return nil, fmt.Errorf("nil search plan")
+	}
+
 	var searchResult SearchResult
 	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
 	tr := timerecord.NewTimeRecorder("cgoSearch")

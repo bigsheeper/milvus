@@ -49,7 +49,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		res, _, _, err := streaming.search(searchReq,
@@ -68,7 +68,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		res, _, _, err := streaming.search(searchReq,
@@ -87,7 +87,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		col, err := streaming.replica.getCollectionByID(defaultCollectionID)
@@ -113,7 +113,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		col, err := streaming.replica.getCollectionByID(defaultCollectionID)
@@ -138,7 +138,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		err = streaming.replica.removePartition(defaultPartitionID)
@@ -160,7 +160,7 @@ func TestStreaming_search(t *testing.T) {
 
 		collection, err := streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
-		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap)
+		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
 		seg, err := streaming.replica.getSegmentByID(defaultSegmentID)

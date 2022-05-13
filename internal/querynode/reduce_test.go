@@ -88,26 +88,23 @@ func TestReduce_AllFunc(t *testing.T) {
 
 	plan, err := createSearchPlan(collection, dslString)
 	assert.NoError(t, err)
-	holder, err := parseSearchRequest(plan, placeGroupByte)
+	searchReq, err := parseSearchRequest(plan, placeGroupByte)
+	searchReq.timestamp = 0
 	assert.NoError(t, err)
 
-	placeholderGroups := make([]*searchRequest, 0)
-	placeholderGroups = append(placeholderGroups, holder)
-
-	searchResult, err := segment.search(plan, placeholderGroups, []Timestamp{0})
+	searchResult, err := segment.search(searchReq)
 	assert.NoError(t, err)
 
 	err = checkSearchResult(nq, plan, searchResult)
 	assert.NoError(t, err)
 
-	plan.delete()
-	holder.delete()
+	searchReq.delete()
 	deleteSegment(segment)
 	deleteCollection(collection)
 }
 
 func TestReduce_nilPlan(t *testing.T) {
 	plan := &SearchPlan{}
-	err := reduceSearchResultsAndFillData(plan, nil, 1)
+	err := reduceSearchResultsAndFillData(plan, nil, 1, nil, nil)
 	assert.Error(t, err)
 }

@@ -151,6 +151,23 @@ func (sr *searchRequest) delete() {
 	C.DeletePlaceholderGroup(sr.cPlaceholderGroup)
 }
 
+func parseSearchRequest(plan *SearchPlan, searchRequestBlob []byte) (*searchRequest, error) {
+	if len(searchRequestBlob) == 0 {
+		return nil, fmt.Errorf("empty search request")
+	}
+	var blobPtr = unsafe.Pointer(&searchRequestBlob[0])
+	blobSize := C.int64_t(len(searchRequestBlob))
+	var cPlaceholderGroup C.CPlaceholderGroup
+	status := C.ParsePlaceholderGroup(plan.cSearchPlan, blobPtr, blobSize, &cPlaceholderGroup)
+
+	if err := HandleCStatus(&status, "parser searchRequest failed"); err != nil {
+		return nil, err
+	}
+
+	var ret = &searchRequest{cPlaceholderGroup: cPlaceholderGroup, plan: plan}
+	return ret, nil
+}
+
 // RetrievePlan is a wrapper of the underlying C-structure C.CRetrievePlan
 type RetrievePlan struct {
 	cRetrievePlan C.CRetrievePlan

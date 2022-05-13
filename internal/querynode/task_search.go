@@ -126,6 +126,8 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 
 	partResults, _, err := s.QS.historical.searchSegments(searchReq, segmentIDs)
+	fmt.Println("CC:", partResults)
+	fmt.Println("CC-err:", partResults)
 	if err != nil {
 		return err
 	}
@@ -158,35 +160,50 @@ func (s *searchTask) Notify(err error) {
 
 // reduceResults reduce search results
 func (s *searchTask) reduceResults(searchReq *searchRequest, results []*SearchResult) error {
-	sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
-	numSegment := int64(len(results))
-	err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
-	if err != nil {
-		return err
-	}
-	blobs, err := marshal(s.CollectionID, s.ID(), results, searchReq.plan, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
-
-	defer deleteSearchResultDataBlobs(blobs)
-	if err != nil {
-		log.Warn("marshal for historical results error", zap.Error(err))
-		return err
-	}
-
-	for i := 0; i < len(s.originTasks); i++ {
-		blob, err := getSearchResultDataBlob(blobs, 0)
+	isEmpty := len(results) == 0
+	if !isEmpty {
+		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
+		numSegment := int64(len(results))
+		err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
 		if err != nil {
-			log.Warn("getSearchResultDataBlob for historical results error", zap.Error(err))
+			return err
 		}
-		bs := make([]byte, len(blob))
-		copy(bs, blob)
-		s.originTasks[i].Ret = &internalpb.SearchResults{
-			Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
-			MetricType:     s.MetricType,
-			NumQueries:     s.OrigNQs[i],
-			TopK:           s.OrigTopKs[i],
-			SlicedBlob:     bs,
-			SlicedOffset:   1,
-			SlicedNumCount: 1,
+		blobs, err := marshal(s.CollectionID, s.ID(), results, searchReq.plan, int(numSegment), sInfo.sliceNQs, sInfo.sliceTopKs)
+		defer deleteSearchResultDataBlobs(blobs)
+		if err != nil {
+			log.Warn("marshal for historical results error", zap.Error(err))
+			return err
+		}
+		for i := 0; i < len(s.originTasks); i++ {
+			blob, err := getSearchResultDataBlob(blobs, i)
+			if err != nil {
+				log.Warn("getSearchResultDataBlob for historical results error", zap.Error(err))
+				return err
+			}
+			bs := make([]byte, len(blob))
+			copy(bs, blob)
+			s.originTasks[i].Ret = &internalpb.SearchResults{
+				Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				MetricType:     s.MetricType,
+				NumQueries:     s.OrigNQs[i],
+				TopK:           s.OrigTopKs[i],
+				SlicedBlob:     bs,
+				SlicedOffset:   1,
+				SlicedNumCount: 1,
+			}
+		}
+
+	}else {
+		for i := 0; i < len(s.originTasks); i++ {
+			s.originTasks[i].Ret = &internalpb.SearchResults{
+				Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				MetricType:     s.MetricType,
+				NumQueries:     s.OrigNQs[i],
+				TopK:           s.OrigTopKs[i],
+				SlicedBlob:     nil,
+				SlicedOffset:   1,
+				SlicedNumCount: 1,
+			}
 		}
 	}
 	return nil

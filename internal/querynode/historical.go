@@ -242,6 +242,9 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 	// calling segment search in goroutines
 	var wg sync.WaitGroup
 	for _, seg := range segments {
+		if serr != nil {
+			break
+		}
 		wg.Add(1)
 		go func(seg *Segment) {
 			defer wg.Done()
@@ -270,8 +273,24 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 		}(seg)
 	}
 	wg.Wait()
+	fmt.Println("DDD", serr)
+	fmt.Println("DDD-1", searchResults)
 	if serr != nil {
+		deleteSearchResults(searchResults)
 		return nil, nil, serr
 	}
+	/*
+	if searchResults == nil {
+		searchResults = append(searchResults, &internalpb.SearchResults{
+			Status:         &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+			MetricType:     searchReq.plan.getMetricType(),
+			NumQueries:     searchReq.getNumOfQuery(),
+			TopK:           searchReq.plan.getTopK(),
+			SlicedBlob:     nil,
+			SlicedOffset:   1,
+			SlicedNumCount: 1,
+		})
+	}
+	*/
 	return searchResults, searchSegmentIDs, nil
 }

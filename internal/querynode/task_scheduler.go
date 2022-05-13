@@ -152,8 +152,8 @@ func (s *taskScheduler) scheduleSQTasks() {
 
 func (s *taskScheduler) addSQTask(t sqTask, ctx context.Context) error {
 	select {
-	case <-ctx.Done():
-		return fmt.Errorf("taskScheduler AddSQTask timeout")
+//	case <-ctx.Done():
+//		return fmt.Errorf("taskScheduler AddSQTask context is done")
 	case <-s.ctx.Done():
 		return fmt.Errorf("taskScheduler stoped")
 	case s.executeSQTaskChan <- t:
@@ -239,6 +239,7 @@ func (s *taskScheduler) processSQTask(t sqTask) {
 	err = t.Execute(s.ctx)
 	if err != nil {
 		log.Warn(err.Error())
+		return
 	}
 	err = t.PostExecute(s.ctx)
 }

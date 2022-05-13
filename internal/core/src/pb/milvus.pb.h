@@ -8071,6 +8071,7 @@ class SearchRequest :
     kBaseFieldNumber = 1,
     kTravelTimestampFieldNumber = 10,
     kGuaranteeTimestampFieldNumber = 11,
+    kNqFieldNumber = 12,
     kDslTypeFieldNumber = 7,
   };
   // repeated string partition_names = 4;
@@ -8180,6 +8181,11 @@ class SearchRequest :
   ::PROTOBUF_NAMESPACE_ID::uint64 guarantee_timestamp() const;
   void set_guarantee_timestamp(::PROTOBUF_NAMESPACE_ID::uint64 value);
 
+  // int64 nq = 12;
+  void clear_nq();
+  ::PROTOBUF_NAMESPACE_ID::int64 nq() const;
+  void set_nq(::PROTOBUF_NAMESPACE_ID::int64 value);
+
   // .milvus.proto.common.DslType dsl_type = 7;
   void clear_dsl_type();
   ::milvus::proto::common::DslType dsl_type() const;
@@ -8200,6 +8206,7 @@ class SearchRequest :
   ::milvus::proto::common::MsgBase* base_;
   ::PROTOBUF_NAMESPACE_ID::uint64 travel_timestamp_;
   ::PROTOBUF_NAMESPACE_ID::uint64 guarantee_timestamp_;
+  ::PROTOBUF_NAMESPACE_ID::int64 nq_;
   int dsl_type_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_milvus_2eproto;
@@ -23736,6 +23743,20 @@ inline void SearchRequest::set_guarantee_timestamp(::PROTOBUF_NAMESPACE_ID::uint
   
   guarantee_timestamp_ = value;
   // @@protoc_insertion_point(field_set:milvus.proto.milvus.SearchRequest.guarantee_timestamp)
+}
+
+// int64 nq = 12;
+inline void SearchRequest::clear_nq() {
+  nq_ = PROTOBUF_LONGLONG(0);
+}
+inline ::PROTOBUF_NAMESPACE_ID::int64 SearchRequest::nq() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.milvus.SearchRequest.nq)
+  return nq_;
+}
+inline void SearchRequest::set_nq(::PROTOBUF_NAMESPACE_ID::int64 value) {
+  
+  nq_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.milvus.SearchRequest.nq)
 }
 
 // -------------------------------------------------------------------

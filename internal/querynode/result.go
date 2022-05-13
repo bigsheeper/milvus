@@ -31,8 +31,6 @@ import (
 )
 
 func reduceSearchResults(results []*internalpb.SearchResults, nq int64, topk int64, metricType string) (*internalpb.SearchResults, error) {
-	// reduce shard search results: unmarshal -> reduce -> marshal
-
 	searchResultData, err := decodeSearchResults(results)
 	if err != nil {
 		log.Warn("shard leader decode search results errors", zap.Error(err))
@@ -165,6 +163,7 @@ func selectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffset
 
 func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb.SearchResultData, error) {
 	results := make([]*schemapb.SearchResultData, 0)
+	fmt.Println("AA11", results)
 	for _, partialSearchResult := range searchResults {
 		if partialSearchResult.SlicedBlob == nil {
 			continue

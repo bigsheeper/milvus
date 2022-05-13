@@ -644,10 +644,13 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		defer wg.Done()
 		streamingTask := newSearchTask(searchCtx, req)
 		streamingTask.QS = qs
+		streamingTask.DataScope = querypb.DataScope_Streaming
 		err2 := node.scheduler.addSQTask(streamingTask, ctx)
 		defer func() {
-			cancel()
-			errStreaming = err2
+			if err2 != nil {
+				errStreaming = err2
+				cancel()
+			}
 		}()
 		if err2 != nil {
 			return

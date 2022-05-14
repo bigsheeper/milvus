@@ -2404,7 +2404,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 				MsgType:  commonpb.MsgType_Search,
 				SourceID: Params.ProxyCfg.GetNodeID(),
 			},
-			ResultChannelID: strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10),
+			ReqID: Params.ProxyCfg.GetNodeID(),
 		},
 		request:            request,
 		qc:                 node.queryCoord,
@@ -2518,6 +2518,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		zap.Any("search_params", request.SearchParams),
 		zap.Uint64("travel_timestamp", travelTs),
 		zap.Uint64("guarantee_timestamp", guaranteeTs))
+	log.Debug("CZS:", zap.Any("result", qt.result))
 
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
@@ -2643,7 +2644,7 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 				MsgType:  commonpb.MsgType_Retrieve,
 				SourceID: Params.ProxyCfg.GetNodeID(),
 			},
-			ResultChannelID: strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10),
+			ReqID: Params.ProxyCfg.GetNodeID(),
 		},
 		request:            request,
 		qc:                 node.queryCoord,
@@ -3062,7 +3063,7 @@ func (node *Proxy) CalcDistance(ctx context.Context, request *milvuspb.CalcDista
 					MsgType:  commonpb.MsgType_Retrieve,
 					SourceID: Params.ProxyCfg.GetNodeID(),
 				},
-				ResultChannelID: strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10),
+				ReqID: Params.ProxyCfg.GetNodeID(),
 			},
 			request: queryRequest,
 			qc:      node.queryCoord,

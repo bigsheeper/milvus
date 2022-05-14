@@ -596,9 +596,9 @@ func TestImpl_Search(t *testing.T) {
 	node.queryShardService.addQueryShard(defaultCollectionID, defaultDMLChannel, defaultReplicaID)
 
 	_, err = node.Search(ctx, &queryPb.SearchRequest{
-		Req:           req,
-		IsShardLeader: true,
-		DmlChannel:    defaultDMLChannel,
+		Req:             req,
+		FromShardLeader: false,
+		DmlChannel:      defaultDMLChannel,
 	})
 	assert.NoError(t, err)
 }
@@ -619,9 +619,9 @@ func TestImpl_Query(t *testing.T) {
 	node.queryShardService.addQueryShard(defaultCollectionID, defaultDMLChannel, defaultReplicaID)
 
 	_, err = node.Query(ctx, &queryPb.QueryRequest{
-		Req:           req,
-		IsShardLeader: true,
-		DmlChannel:    defaultDMLChannel,
+		Req:             req,
+		FromShardLeader: false,
+		DmlChannel:      defaultDMLChannel,
 	})
 	assert.NoError(t, err)
 }

@@ -22,7 +22,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	//"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
 )
 
@@ -68,6 +68,7 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			zap.Error(err),
 		)
 	}
+	/*
 	p, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMax)
 	log.Debug("update tSafe:",
 		zap.Any("collectionID", stNode.collectionID),
@@ -75,6 +76,7 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		zap.Any("tSafe_p", p),
 		zap.Any("channel", stNode.vChannel),
 	)
+	*/
 
 	return []Msg{}
 }

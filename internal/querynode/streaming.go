@@ -24,10 +24,8 @@ import (
 
 	"go.uber.org/zap"
 
-	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 )
@@ -38,13 +36,12 @@ type streaming struct {
 
 	replica      ReplicaInterface
 	tSafeReplica TSafeReplicaInterface
-
-	msFactory msgstream.Factory
 }
 
-func newStreaming(ctx context.Context, replica ReplicaInterface, factory msgstream.Factory, etcdKV *etcdkv.EtcdKV, tSafeReplica TSafeReplicaInterface) *streaming {
+func newStreaming(ctx context.Context, replica ReplicaInterface, tSafeReplica TSafeReplicaInterface) *streaming {
 
 	return &streaming{
+		ctx:          ctx,
 		replica:      replica,
 		tSafeReplica: tSafeReplica,
 	}
@@ -56,9 +53,10 @@ func (s *streaming) start() {
 
 func (s *streaming) close() {
 	// TODO: stop stats
-
 	// free collectionReplica
-	s.replica.freeAll()
+	if s.replica != nil {
+		s.replica.freeAll()
+	}
 }
 
 func (s *streaming) retrieve(collID UniqueID, partIDs []UniqueID, plan *RetrievePlan, filters ...func(segment *Segment) bool) ([]*segcorepb.RetrieveResults, []UniqueID, []UniqueID, error) {
@@ -114,9 +112,11 @@ func (s *streaming) retrieve(collID UniqueID, partIDs []UniqueID, plan *Retrieve
 }
 
 // search will search all the target segments in streaming
-func (s *streaming) search(searchReqs []*searchRequest, collID UniqueID, partIDs []UniqueID, vChannel Channel,
-	plan *SearchPlan, searchTs Timestamp) ([]*SearchResult, []UniqueID, []UniqueID, error) {
+func (s *streaming) search(searchReq *searchRequest, collID UniqueID, partIDs []UniqueID,
+	vChannel Channel) ([]*SearchResult, []UniqueID, []UniqueID, error) {
 
+	fmt.Println(">>>>>>>>>>>> streaming search:", collID, ", ", partIDs, " ,", vChannel)
+	s.replica.printReplica()
 	searchResults := make([]*SearchResult, 0)
 	searchSegmentIDs := make([]UniqueID, 0)
 
@@ -216,7 +216,7 @@ func (s *streaming) search(searchReqs []*searchRequest, collID UniqueID, partIDs
 				//}
 
 				tr := timerecord.NewTimeRecorder("searchOnGrowing")
-				searchResult, err := seg.search(plan, searchReqs, []Timestamp{searchTs})
+				searchResult, err := seg.search(searchReq)
 				if err != nil {
 					err2 = err
 					return

@@ -59,8 +59,8 @@ static SearchResult
 empty_search_result(int64_t num_queries, int64_t topk, int64_t round_decimal, MetricType metric_type) {
     SearchResult final_result;
     SubSearchResult result(num_queries, topk, metric_type, round_decimal);
-    final_result.num_queries_ = num_queries;
-    final_result.topk_ = topk;
+    final_result.total_nq_ = num_queries;
+    final_result.unity_topK_ = topk;
     final_result.seg_offsets_ = std::move(result.mutable_seg_offsets());
     final_result.distances_ = std::move(result.mutable_distances());
     return final_result;
@@ -95,7 +95,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     } else {
         bitset_holder.resize(active_count, true);
     }
-
+    std::cout<<"Segcore visit search timestamp_" << timestamp_ << std::endl;
     segment->mask_with_timestamps(bitset_holder, timestamp_);
     bitset_holder.flip();
 
@@ -126,6 +126,7 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
         bitset_holder = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*(node.predicate_));
     }
 
+    std::cout<<"Segcore visit query timestamp_" << timestamp_ << std::endl;
     segment->mask_with_timestamps(bitset_holder, timestamp_);
     bitset_holder.flip();
 

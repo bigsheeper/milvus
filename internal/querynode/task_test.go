@@ -48,16 +48,15 @@ func TestTask_AddQueryChannel(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := addQueryChannelTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genAddQueryChanelRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {
@@ -210,16 +209,15 @@ func TestTask_watchDmChannelsTask(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := watchDmChannelsTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genWatchDMChannelsRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {
@@ -432,16 +430,15 @@ func TestTask_watchDeltaChannelsTask(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := watchDeltaChannelsTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genWatchDeltaChannelsRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {
@@ -523,16 +520,15 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := loadSegmentsTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genLoadEmptySegmentsRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {
@@ -660,16 +656,15 @@ func TestTask_releaseCollectionTask(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := releaseCollectionTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genReleaseCollectionRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {
@@ -751,16 +746,15 @@ func TestTask_releasePartitionTask(t *testing.T) {
 	}
 
 	t.Run("test timestamp", func(t *testing.T) {
+		timestamp := Timestamp(1000)
 		task := releasePartitionsTask{
+			baseTask: baseTask{
+				ts: timestamp,
+			},
 			req: genReleasePartitionsRequest(),
 		}
-		timestamp := Timestamp(1000)
-		task.req.Base.Timestamp = timestamp
 		resT := task.Timestamp()
 		assert.Equal(t, timestamp, resT)
-		task.req.Base = nil
-		resT = task.Timestamp()
-		assert.Equal(t, Timestamp(0), resT)
 	})
 
 	t.Run("test OnEnqueue", func(t *testing.T) {

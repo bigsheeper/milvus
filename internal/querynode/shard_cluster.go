@@ -723,9 +723,11 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest) 
 	var resultMut sync.Mutex
 	results := make([]*internalpb.SearchResults, 0, len(segAllocs)+1) // count(nodes) + 1(growing)
 
+	fmt.Println("segAllocs:", segAllocs)
 	for nodeID, segments := range segAllocs {
 		nodeReq := proto.Clone(req).(*querypb.SearchRequest)
-		nodeReq.IsShardLeader = false
+		nodeReq.FromShardLeader = true
+		nodeReq.Scope = querypb.DataScope_Historical
 		nodeReq.SegmentIDs = segments
 		node, ok := sc.getNode(nodeID)
 		if !ok { // meta dismatch, report error
@@ -781,7 +783,7 @@ func (sc *ShardCluster) Query(ctx context.Context, req *querypb.QueryRequest) ([
 
 	for nodeID, segments := range segAllocs {
 		nodeReq := proto.Clone(req).(*querypb.QueryRequest)
-		nodeReq.IsShardLeader = false
+		nodeReq.FromShardLeader = true
 		nodeReq.SegmentIDs = segments
 		node, ok := sc.getNode(nodeID)
 		if !ok { // meta dismatch, report error

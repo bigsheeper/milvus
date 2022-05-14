@@ -688,6 +688,19 @@ func (rct *releaseCollectionTask) execute(ctx context.Context) error {
 			return err
 		}
 
+		collInfo, err := rct.meta.getCollectionInfoByID(collectionID)
+		if err != nil {
+			log.Error("releaseCollectionTask: release collection end, getCollectionInfoByID occur error", zap.Int64("collectionID", rct.CollectionID), zap.Int64("msgID", rct.Base.MsgID), zap.Error(err))
+			rct.setResultInfo(err)
+			return err
+		}
+		err = rct.broker.invalidateCollectionMetaCache(ctx, collInfo.GetSchema().GetName())
+		if err != nil {
+			log.Error("releaseCollectionTask: release collection end, invalidateCollectionMetaCache occur error", zap.Int64("collectionID", rct.CollectionID), zap.Int64("msgID", rct.Base.MsgID), zap.Error(err))
+			rct.setResultInfo(err)
+			return err
+		}
+
 		// TODO(yah01): broadcast to all nodes? Or only nodes serve the collection
 		onlineNodeIDs := rct.cluster.onlineNodeIDs()
 		for _, nodeID := range onlineNodeIDs {

@@ -2043,6 +2043,15 @@ func (c *Core) ReleaseDQLMessageStream(ctx context.Context, in *proxypb.ReleaseD
 	return c.proxyClientManager.ReleaseDQLMessageStream(ctx, in)
 }
 
+// InvalidateCollectionMetaCache notifies RootCoord to release the collection cache in Proxies.
+func (c *Core) InvalidateCollectionMetaCache(ctx context.Context, in *proxypb.InvalidateCollMetaCacheRequest) (*commonpb.Status, error) {
+	if code, ok := c.checkHealthy(); !ok {
+		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+internalpb.StateCode_name[int32(code)]), nil
+	}
+	c.proxyClientManager.InvalidateCollectionMetaCache(ctx, in)
+	return succStatus(), nil
+}
+
 // SegmentFlushCompleted check whether segment flush has completed
 func (c *Core) SegmentFlushCompleted(ctx context.Context, in *datapb.SegmentFlushCompletedMsg) (*commonpb.Status, error) {
 	if code, ok := c.checkHealthy(); !ok {

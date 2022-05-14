@@ -585,6 +585,18 @@ type RootCoord interface {
 	// RootCoord just forwards this request to Proxy client
 	ReleaseDQLMessageStream(ctx context.Context, in *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error)
 
+	// InvalidateCollectionMetaCache notifies RootCoord to clear all the meta cache of specific collection in Proxies.
+	//
+	// ctx is the request to control request deadline and cancellation.
+	// request contains the request params, which are database id(not used) and collection id.
+	//
+	// The `ErrorCode` of `Status` is `Success` if drop index successfully;
+	// otherwise, the `ErrorCode` of `Status` will be `Error`, and the `Reason` of `Status` will record the fail cause.
+	// error is always nil
+	//
+	// RootCoord just forwards this request to Proxy client
+	InvalidateCollectionMetaCache(ctx context.Context, request *proxypb.InvalidateCollMetaCacheRequest) (*commonpb.Status, error)
+
 	// SegmentFlushCompleted notifies RootCoord that specified segment has been flushed
 	//
 	// ctx is the context to control request deadline and cancellation

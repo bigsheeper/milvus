@@ -113,30 +113,22 @@ func (p *proxyClientManager) InvalidateCollectionMetaCache(ctx context.Context, 
 		return
 	}
 
-	for k, f := range p.proxyClient {
-		err := func() error {
-			defer func() {
-				if err := recover(); err != nil {
-					log.Debug("call InvalidateCollectionMetaCache panic", zap.Int64("proxy id", k), zap.Any("msg", err))
-				}
-
-			}()
+	wg := &sync.WaitGroup{}
+	for _, f := range p.proxyClient {
+		f := f
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			sta, err := f.InvalidateCollectionMetaCache(ctx, request)
 			if err != nil {
-				return fmt.Errorf("grpc fail,error=%w", err)
+				log.Error("InvalidateCollectionMetaCache failed", zap.Error(err))
 			}
 			if sta.ErrorCode != commonpb.ErrorCode_Success {
-				return fmt.Errorf("message = %s", sta.Reason)
+				log.Error("InvalidateCollectionMetaCache failed", zap.String("status.Reason", sta.Reason))
 			}
-			return nil
 		}()
-		if err != nil {
-			log.Error("Failed to call invalidate collection meta", zap.Int64("proxy id", k), zap.Error(err))
-		} else {
-			log.Debug("send invalidate collection meta cache to proxy node", zap.Int64("node id", k))
-		}
-
 	}
+	wg.Wait()
 }
 
 func (p *proxyClientManager) ReleaseDQLMessageStream(ctx context.Context, in *proxypb.ReleaseDQLMessageStreamRequest) (*commonpb.Status, error) {

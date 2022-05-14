@@ -73,6 +73,31 @@ func (broker *globalMetaBroker) releaseDQLMessageStream(ctx context.Context, col
 	return nil
 }
 
+func (broker *globalMetaBroker) invalidateCollectionMetaCache(ctx context.Context, collectionName string) error {
+	ctx1, cancel1 := context.WithTimeout(ctx, timeoutForRPC)
+	defer cancel1()
+	req := &proxypb.InvalidateCollMetaCacheRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: 0, // TODO: msg type?
+		},
+		CollectionName: collectionName,
+	}
+
+	res, err := broker.rootCoord.InvalidateCollectionMetaCache(ctx1, req)
+	if err != nil {
+		log.Error("InvalidateCollMetaCacheRequest failed", zap.String("collectionName", collectionName), zap.Error(err))
+		return err
+	}
+	if res.ErrorCode != commonpb.ErrorCode_Success {
+		err = errors.New(res.Reason)
+		log.Error("InvalidateCollMetaCacheRequest failed", zap.String("collectionName", collectionName), zap.Error(err))
+		return err
+	}
+	log.Info("InvalidateCollMetaCacheRequest successfully", zap.String("collectionName", collectionName))
+
+	return nil
+}
+
 func (broker *globalMetaBroker) showPartitionIDs(ctx context.Context, collectionID UniqueID) ([]UniqueID, error) {
 	ctx2, cancel2 := context.WithTimeout(ctx, timeoutForRPC)
 	defer cancel2()

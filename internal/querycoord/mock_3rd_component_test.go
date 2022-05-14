@@ -238,6 +238,23 @@ func (rc *rootCoordMock) ReleaseDQLMessageStream(ctx context.Context, in *proxyp
 	}, nil
 }
 
+func (rc *rootCoordMock) InvalidateCollectionMetaCache(ctx context.Context, in *proxypb.InvalidateCollMetaCacheRequest) (*commonpb.Status, error) {
+	if rc.returnGrpcError {
+		return nil, errors.New("InvalidateCollectionMetaCache failed")
+	}
+
+	if rc.returnError {
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    "InvalidateCollectionMetaCache failed",
+		}, nil
+	}
+
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+	}, nil
+}
+
 func (rc *rootCoordMock) DescribeSegment(ctx context.Context, req *milvuspb.DescribeSegmentRequest) (*milvuspb.DescribeSegmentResponse, error) {
 	if rc.returnGrpcError {
 		return nil, errors.New("describe segment failed")

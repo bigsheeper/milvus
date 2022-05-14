@@ -304,6 +304,9 @@ func TestTriggerTask(t *testing.T) {
 	queryCoord, err := startQueryCoord(ctx)
 	assert.Nil(t, err)
 
+	err = queryCoord.meta.addCollection(defaultCollectionID, querypb.LoadType_LoadCollection, genDefaultCollectionSchema(false))
+	assert.NoError(t, err)
+
 	node1, err := startQueryNodeServer(ctx)
 	assert.Nil(t, err)
 	node2, err := startQueryNodeServer(ctx)
@@ -586,6 +589,9 @@ func Test_ReleaseCollectionExecuteFail(t *testing.T) {
 	node, err := startQueryNodeServer(ctx)
 	assert.Nil(t, err)
 	node.setRPCInterface(&node.releaseCollection, returnFailedResult)
+
+	err = queryCoord.meta.addCollection(defaultCollectionID, querypb.LoadType_LoadCollection, genDefaultCollectionSchema(false))
+	assert.NoError(t, err)
 
 	waitQueryNodeOnline(queryCoord.cluster, node.queryNodeID)
 	releaseCollectionTask := genReleaseCollectionTask(ctx, queryCoord)

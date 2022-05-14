@@ -124,7 +124,7 @@ func TestSearchTask_PreExecute(t *testing.T) {
 	err = rc.Start()
 	defer rc.Stop()
 	require.NoError(t, err)
-	err = InitMetaCache(rc)
+	err = InitMetaCache(rc, qc)
 	require.NoError(t, err)
 
 	err = qc.Start()
@@ -198,6 +198,7 @@ func TestSearchTask_PreExecute(t *testing.T) {
 		collID, err := globalMetaCache.GetCollectionID(context.TODO(), collName)
 		require.NoError(t, err)
 		task := getSearchTask(t, collName)
+		task.collectionName = collName
 
 		t.Run("show collection err", func(t *testing.T) {
 			qc.SetShowCollectionsFunc(func(ctx context.Context, request *querypb.ShowCollectionsRequest) (*querypb.ShowCollectionsResponse, error) {
@@ -406,7 +407,7 @@ func TestSearchTaskV2_Execute(t *testing.T) {
 	err = rc.Start()
 	require.NoError(t, err)
 	defer rc.Stop()
-	err = InitMetaCache(rc)
+	err = InitMetaCache(rc, qc)
 	require.NoError(t, err)
 
 	err = qc.Start()

@@ -83,20 +83,20 @@ ReduceHelper::Reduce() {
     if (valid_search_results.size() == 0) {
 	std::cout<<"Y6-:"<< i << std::endl;
         // TODO: return empty search result?
-        return;
+        // return;
     }
 
 	std::cout<<"Y7:"<< std::endl;
     for (int i = 0; i < num_slices_; i++) {
         // ReduceResultData for each slice
 	std::cout<<"Y8-:"<< i << std::endl;
-        ReduceResultData(i);
+        ReduceResultData(valid_search_results, i);
     }
     std::cout<<"Y9"<< std::endl;
     // after reduce, remove invalid primary_keys, distances and ids by `final_search_records`
-    for (int i = 0; i < num_segments_; i++) {
+    for (int i = 0; i < valid_search_results.size(); i++) {
     	std::cout<<"YX:"<< i << std::endl;
-        auto search_result = search_results_[i];
+        auto search_result = valid_search_results[i];
         if (search_result->result_offsets_.size() != 0) {
             std::vector<milvus::PkType> primary_keys;
             std::vector<float> distances;
@@ -119,7 +119,7 @@ ReduceHelper::Reduce() {
         auto search_result = search_results_[i];
     // fill target entry
     int j =0;
-    for (auto& search_result : search_results_) {
+    for (auto& search_result : valid_search_results) {
     	std::cout<<"YX-2:"<< j << std::endl;
         auto segment = static_cast<milvus::segcore::SegmentInterface*>(search_result->segment_);
         segment->FillTargetEntry(plan_, *search_result);
@@ -191,11 +191,11 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
 }
 
 void
-ReduceHelper::ReduceResultData(int slice_index) {
+ReduceHelper::ReduceResultData(std::vector<SearchResult*> valid_search_results, int slice_index) {
 	std::cout<<"Z1:"<< std::endl;
-    for (int i = 0; i < num_segments_; i++) {
+    for (int i = 0; i < valid_search_results.size(); i++) {
 	std::cout<<"Z2:-"<< i << std::endl;
-        auto search_result = search_results_[i];
+        auto search_result = valid_search_results[i];
         auto result_count = search_result->get_total_result_count();
         AssertInfo(search_result != nullptr, "search result must not equal to nullptr");
         AssertInfo(search_result->primary_keys_.size() == result_count, "incorrect search result primary key size");
@@ -220,10 +220,10 @@ ReduceHelper::ReduceResultData(int slice_index) {
     for (int64_t qi = nq_offset_begin; qi < nq_offset_end; qi++) {
 	std::cout<<"Z5:"<<  qi<< std::endl;
         std::vector<SearchResultPair> result_pairs;
-        for (int i = 0; i < num_segments_; i++) {
+        for (int i = 0; i < valid_search_results.size(); i++) {
 
 		std::cout<<"Z6step1: i== "<<  i<< "$"<< std::endl;
-            auto search_result = search_results_[i];
+            auto search_result = valid_search_results[i];
 		std::cout<<"Z6step2: i== "<<  i<< "$"<< std::endl;
             auto base_offset = search_result->get_result_count(qi);
 		std::cout<<"Z6step3: i== "<<  i<< "$"<< std::endl;
@@ -274,7 +274,7 @@ ReduceHelper::ReduceResultData(int slice_index) {
 
 	std::cout<<"ZX1:"<<  std::endl;
     // append search_records to final_search_records
-    for (int i = 0; i < num_segments_; i++) {
+    for (int i = 0; i < valid_search_results.size(); i++) {
 	std::cout<<"ZX2:-"<< i<<  std::endl;
         for (int j = 0; j < search_records[i].size(); j++) {
 		std::cout<<"ZX3:-"<< j<<  std::endl;

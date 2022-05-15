@@ -55,7 +55,7 @@ class ReduceHelper {
     FilterInvalidSearchResult(SearchResult* search_result);
 
     void
-    ReduceResultData(int slice_index);
+    ReduceResultData(std::vector<SearchResult*> valid_search_results, int slice_index);
 
     std::vector<char>
     GetSearchResultDataSlice(int slice_index_, int64_t result_count);

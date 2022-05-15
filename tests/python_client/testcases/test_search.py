@@ -1627,10 +1627,13 @@ class TestCollectionSearch(TestcaseBase):
         nb = 10
         collection_w, _, _, insert_ids_1, time_stamp_1 = \
             self.init_collection_general(prefix, True, nb, auto_id=auto_id, dim=default_dim)[0:5]
+        collection_w.release()
         # 2. insert for the second time
         log.info("test_search_travel_time_without_expression: inserting for the second time")
         _, entities, _, insert_ids_2, time_stamp_2 = cf.insert_data(collection_w, nb, auto_id=auto_id,
                                                                     dim=default_dim, insert_offset=nb)[0:5]
+        collection_w.num_entities
+        collection_w.load()
         # 3. extract vectors inserted for the second time
         entities_list = np.array(entities[0]).tolist()
         vectors = [entities_list[i][-1] for i in range(default_nq)]

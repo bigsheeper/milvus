@@ -95,7 +95,7 @@ func reduceSearchResultsAndFillData(plan *SearchPlan, searchResults []*SearchRes
 	var cSliceNQSPtr = (*C.int32_t)(&sliceNQs[0])
 	var cSliceTopKSPtr = (*C.int32_t)(&sliceTopKs[0])
 	var cNumSlices = C.int32_t(len(sliceNQs))
-
+	fmt.Println("R1:", numSegments)
 	var cSearchResultDataBlobs searchResultDataBlobs
 	status := C.ReduceSearchResultsAndFillData(&cSearchResultDataBlobs, plan.cSearchPlan, cSearchResultPtr,
 		cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)

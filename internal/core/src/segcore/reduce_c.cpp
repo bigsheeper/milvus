@@ -32,6 +32,7 @@ ReduceSearchResultsAndFillData(CSearchResultDataBlobs* cSearchResultDataBlobs,
                                int32_t num_slices) {
     try {
         // get SearchResult and SearchPlan
+	    std::cout<<"X1"<<std::endl;
         auto plan = static_cast<milvus::query::Plan*>(c_plan);
         AssertInfo(num_segments > 0, "num_segments must be greater than 0");
         std::vector<SearchResult*> search_results(num_segments);
@@ -39,6 +40,7 @@ ReduceSearchResultsAndFillData(CSearchResultDataBlobs* cSearchResultDataBlobs,
             search_results[i] = static_cast<SearchResult*>(c_search_results[i]);
         }
 
+	    std::cout<<"X2"<<std::endl;
         // get slice_nqs and slice_topKs
         auto slice_nqs_vec = std::vector<int64_t>(num_slices);
         auto slice_topKs_vec = std::vector<int64_t>(num_slices);
@@ -47,10 +49,14 @@ ReduceSearchResultsAndFillData(CSearchResultDataBlobs* cSearchResultDataBlobs,
             slice_topKs_vec[i] = slice_topKs[i];
         }
 
+	    std::cout<<"X3"<<std::endl;
         auto reduce_helper = milvus::segcore::ReduceHelper(search_results, plan, slice_nqs_vec, slice_topKs_vec);
+	    std::cout<<"X4"<<std::endl;
         reduce_helper.Reduce();
+	    std::cout<<"X5"<<std::endl;
         reduce_helper.Marshal();
 
+	    std::cout<<"X6"<<std::endl;
         // set final result ptr
         *cSearchResultDataBlobs = reduce_helper.GetSearchResultDataBlobs();
         return milvus::SuccessCStatus();

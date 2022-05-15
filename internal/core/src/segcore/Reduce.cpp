@@ -62,26 +62,38 @@ ReduceHelper::Initialize() {
 void
 ReduceHelper::Reduce() {
     std::vector<SearchResult*> valid_search_results;
+    std::cout<<"Y1"<<std::endl;
     // get primary keys for duplicates removal
+    int i =0;
     for (auto search_result : search_results_) {
+	    i++;
+    	std::cout<<"Y2-:"<< i << std::endl;
         FilterInvalidSearchResult(search_result);
+    	std::cout<<"Y3-:"<< i << std::endl;
         if (search_result->get_total_result_count() > 0) {
+    		std::cout<<"Y4-:"<< i << std::endl;
             auto segment = static_cast<SegmentInterface*>(search_result->segment_);
             segment->FillPrimaryKeys(plan_, *search_result);
             valid_search_results.emplace_back(search_result);
         }
+	std::cout<<"Y5-:"<< i << std::endl;
     }
     if (valid_search_results.size() == 0) {
+	std::cout<<"Y6-:"<< i << std::endl;
         // TODO: return empty search result?
         return;
     }
 
+	std::cout<<"Y7:"<< std::endl;
     for (int i = 0; i < num_slices_; i++) {
         // ReduceResultData for each slice
+	std::cout<<"Y8-:"<< i << std::endl;
         ReduceResultData(i);
     }
+    std::cout<<"Y9"<< std::endl;
     // after reduce, remove invalid primary_keys, distances and ids by `final_search_records`
     for (int i = 0; i < num_segments_; i++) {
+    	std::cout<<"YX:"<< i << std::endl;
         auto search_result = search_results_[i];
         if (search_result->result_offsets_.size() != 0) {
             std::vector<milvus::PkType> primary_keys;
@@ -101,8 +113,12 @@ ReduceHelper::Reduce() {
         search_result->real_topK_per_nq_ = std::move(final_real_topKs_[i]);
     }
 
+    	std::cout<<"YX-1:"<< std::endl;
+        auto search_result = search_results_[i];
     // fill target entry
+    int j =0;
     for (auto& search_result : search_results_) {
+    	std::cout<<"YX-2:"<< j << std::endl;
         auto segment = static_cast<milvus::segcore::SegmentInterface*>(search_result->segment_);
         segment->FillTargetEntry(plan_, *search_result);
     }
@@ -174,7 +190,9 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
 
 void
 ReduceHelper::ReduceResultData(int slice_index) {
+	std::cout<<"Z1:"<< std::endl;
     for (int i = 0; i < num_segments_; i++) {
+	std::cout<<"Z2:-"<< i << std::endl;
         auto search_result = search_results_[i];
         auto result_count = search_result->get_total_result_count();
         AssertInfo(search_result != nullptr, "search result must not equal to nullptr");
@@ -182,12 +200,14 @@ ReduceHelper::ReduceResultData(int slice_index) {
         AssertInfo(search_result->distances_.size() == result_count, "incorrect search result distance size");
     }
 
+	std::cout<<"Z3:"<< std::endl;
     auto nq_offset_begin = nq_slice_offsets_[slice_index];
     auto nq_offset_end = nq_slice_offsets_[slice_index + 1];
     AssertInfo(nq_offset_begin < nq_offset_end,
                "illegal nq offsets when ReduceResultData, nq_offset_begin = " + std::to_string(nq_offset_begin) +
                    ", nq_offset_end = " + std::to_string(nq_offset_end));
 
+	std::cout<<"Z4:"<< std::endl;
     // `search_records` records the search result offsets
     std::vector<std::vector<int64_t>> search_records(num_segments_);
     std::unordered_set<milvus::PkType> pk_set;
@@ -196,19 +216,30 @@ ReduceHelper::ReduceResultData(int slice_index) {
     // reduce search results
     int64_t result_offset = 0;
     for (int64_t qi = nq_offset_begin; qi < nq_offset_end; qi++) {
+	std::cout<<"Z5:"<<  qi<< std::endl;
         std::vector<SearchResultPair> result_pairs;
         for (int i = 0; i < num_segments_; i++) {
+		std::cout<<"Z6step1:"<<  i<< std::endl;
             auto search_result = search_results_[i];
+		std::cout<<"Z6step2:"<<  i<< std::endl;
             auto base_offset = search_result->get_result_count(qi);
+		std::cout<<"Z6step3:"<<  i<< std::endl;
             auto primary_key = search_result->primary_keys_[base_offset];
+		std::cout<<"Z6step4:"<<  i<< std::endl;
             auto distance = search_result->distances_[base_offset];
+		std::cout<<"Z6step5:"<<  i<< std::endl;
             result_pairs.emplace_back(primary_key, distance, search_result, i, base_offset,
                                       base_offset + search_result->real_topK_per_nq_[qi]);
+		std::cout<<"Z6step6:"<<  i<< std::endl;
         }
 
+		std::cout<<"Z7:"<< std::endl;
         pk_set.clear();
         int64_t last_nq_result_offset = result_offset;
+	int j = 0;
         while (result_offset - last_nq_result_offset < slice_topKs_[slice_index]) {
+		j++;
+		std::cout<<"Z8-:"<<  j << std::endl;
             std::sort(result_pairs.begin(), result_pairs.end(), std::greater<>());
             auto& pilot = result_pairs[0];
             auto index = pilot.segment_index_;
@@ -231,13 +262,17 @@ ReduceHelper::ReduceResultData(int slice_index) {
         }
     }
 
+	std::cout<<"Z9-:"<<  std::endl;
     if (skip_dup_cnt > 0) {
         LOG_SEGCORE_DEBUG_ << "skip duplicated search result, count = " << skip_dup_cnt;
     }
 
+	std::cout<<"ZX1:"<<  std::endl;
     // append search_records to final_search_records
     for (int i = 0; i < num_segments_; i++) {
+	std::cout<<"ZX2:-"<< i<<  std::endl;
         for (int j = 0; j < search_records[i].size(); j++) {
+		std::cout<<"ZX3:-"<< j<<  std::endl;
             final_search_records_[i].emplace_back(search_records[i][j]);
         }
     }

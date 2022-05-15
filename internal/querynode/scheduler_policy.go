@@ -18,6 +18,7 @@ func defaultScheduleSQPolicy(sqTasks *list.List, targetUsage int32) ([]sqTask, i
 		usage += tUsage
 		sqTasks.Remove(e)
 		ret = append(ret, t)
+		break
 	}
 	return ret, usage
 }

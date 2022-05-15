@@ -71,13 +71,16 @@ ReduceHelper::Reduce() {
         FilterInvalidSearchResult(search_result);
     	std::cout<<"Y3-:"<< i << std::endl;
         if (search_result->get_total_result_count() > 0) {
-    		std::cout<<"Y4-:"<< i << std::endl;
+    		std::cout<<"Y4- x-1: i=="<< i << "$"<< std::endl;
             auto segment = static_cast<SegmentInterface*>(search_result->segment_);
             segment->FillPrimaryKeys(plan_, *search_result);
+    		std::cout<<"Y4- x-2: i=="<< i << "$"<< std::endl;
             valid_search_results.emplace_back(search_result);
+    		std::cout<<"Y4- x-3: i=="<< i << "$"<< std::endl;
         }
 	std::cout<<"Y5-:"<< i << std::endl;
     }
+    search_results_ = valid_search_results;
     if (valid_search_results.size() == 0) {
 	std::cout<<"Y6-:"<< i << std::endl;
         // TODO: return empty search result?
@@ -219,18 +222,21 @@ ReduceHelper::ReduceResultData(int slice_index) {
 	std::cout<<"Z5:"<<  qi<< std::endl;
         std::vector<SearchResultPair> result_pairs;
         for (int i = 0; i < num_segments_; i++) {
-		std::cout<<"Z6step1:"<<  i<< std::endl;
+
+		std::cout<<"Z6step1: i== "<<  i<< "$"<< std::endl;
             auto search_result = search_results_[i];
-		std::cout<<"Z6step2:"<<  i<< std::endl;
+		std::cout<<"Z6step2: i== "<<  i<< "$"<< std::endl;
             auto base_offset = search_result->get_result_count(qi);
-		std::cout<<"Z6step3:"<<  i<< std::endl;
+		std::cout<<"Z6step3: i== "<<  i<< "$"<< std::endl;
+		std::cout<<"Z6step3: baseoffset== "<<  base_offset<< "$"<< std::endl;
+		std::cout<<"Z6step3: lenofPK== "<<  search_result->primary_keys_.size()<< "$"<< std::endl;
             auto primary_key = search_result->primary_keys_[base_offset];
-		std::cout<<"Z6step4:"<<  i<< std::endl;
+		std::cout<<"Z6step4: i== "<<  i<< "$"<< std::endl;
             auto distance = search_result->distances_[base_offset];
-		std::cout<<"Z6step5:"<<  i<< std::endl;
+		std::cout<<"Z6step5: i== "<<  i<< "$"<< std::endl;
             result_pairs.emplace_back(primary_key, distance, search_result, i, base_offset,
                                       base_offset + search_result->real_topK_per_nq_[qi]);
-		std::cout<<"Z6step6:"<<  i<< std::endl;
+		std::cout<<"Z6step6: i== "<<  i<< "$"<< std::endl;
         }
 
 		std::cout<<"Z7:"<< std::endl;

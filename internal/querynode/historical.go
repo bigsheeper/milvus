@@ -246,9 +246,9 @@ func (h *historical) searchSegments(searchReq *searchRequest, segIDs []UniqueID)
 		if serr != nil {
 			break
 		}
-		wg.Add(1)
-		go func(seg *Segment) {
-			defer wg.Done()
+		//wg.Add(1)
+		 func(seg *Segment) {
+		//	defer wg.Done()
 			if !seg.getOnService() {
 				log.Warn("segment no on service", zap.Int64("segmentID", seg.segmentID))
 				return

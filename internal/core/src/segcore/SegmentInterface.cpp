@@ -18,8 +18,10 @@ namespace milvus::segcore {
 void
 SegmentInternalInterface::FillPrimaryKeys(const query::Plan* plan, SearchResult& results) const {
     std::shared_lock lck(mutex_);
+    std::cout <<"S1"<<std::endl;
     AssertInfo(plan, "empty plan");
     auto size = results.distances_.size();
+    std::cout <<"S2: size=="<< size << "$"<<std::endl;
     AssertInfo(results.seg_offsets_.size() == size, "Size of result distances is not equal to size of ids");
     Assert(results.primary_keys_.size() == 0);
     results.primary_keys_.resize(size);
@@ -35,6 +37,7 @@ SegmentInternalInterface::FillPrimaryKeys(const query::Plan* plan, SearchResult&
     std::vector<PkType> pks(size);
     ParsePksFromFieldData(pks, *field_data.get());
     results.primary_keys_ = std::move(pks);
+    std::cout <<"S3: pk=="<< results.primary_keys_.size() << "$"<<std::endl;
 }
 
 void

@@ -80,7 +80,6 @@ ReduceHelper::Reduce() {
         }
 	std::cout<<"Y5-:"<< i << std::endl;
     }
-    search_results_ = valid_search_results;
     if (valid_search_results.size() == 0) {
 	std::cout<<"Y6-:"<< i << std::endl;
         // TODO: return empty search result?

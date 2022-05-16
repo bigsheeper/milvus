@@ -55,6 +55,7 @@ type Cache interface {
 	GetCollectionSchema(ctx context.Context, collectionName string) (*schemapb.CollectionSchema, error)
 	GetShards(ctx context.Context, withCache bool, collectionName string, qc types.QueryCoord) ([]*querypb.ShardLeadersList, error)
 	RemoveCollection(ctx context.Context, collectionName string)
+	RemoveCollectionsByID(ctx context.Context, collectionID UniqueID)
 	RemovePartition(ctx context.Context, collectionName string, partitionName string)
 
 	// GetCredentialInfo operate credential cache
@@ -457,6 +458,16 @@ func (m *MetaCache) RemoveCollection(ctx context.Context, collectionName string)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.collInfo, collectionName)
+}
+
+func (m *MetaCache) RemoveCollectionsByID(ctx context.Context, collectionID UniqueID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, v := range m.collInfo {
+		if v.collID == collectionID {
+			delete(m.collInfo, k)
+		}
+	}
 }
 
 func (m *MetaCache) RemovePartition(ctx context.Context, collectionName, partitionName string) {

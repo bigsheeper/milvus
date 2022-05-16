@@ -19,6 +19,7 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"strconv"
 
 	"github.com/golang/protobuf/proto"
@@ -324,9 +325,6 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		return fmt.Errorf("encodeDdOperation fail, error = %w", err)
 	}
 
-	// get all aliases before meta table updated
-	aliases := t.core.MetaTable.ListAliases(collMeta.ID)
-
 	// use lambda function here to guarantee all resources to be released
 	dropCollectionFn := func() error {
 		// lock for ddl operation
@@ -375,10 +373,16 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
-		return err
+	// invalidate all Collection meta caches by collectionID
+	req := proxypb.InvalidateCollMetaCacheRequest{
+		Base: &commonpb.MsgBase{
+			Timestamp: ts,
+			SourceID:  t.core.session.ServerID,
+		},
+		CollectionID: collMeta.ID,
 	}
-	if err = t.core.ExpireMetaCache(ctx, aliases, ts); err != nil {
+	err = t.core.proxyClientManager.InvalidateCollectionMetaCache(ctx, &req)
+	if err != nil {
 		return err
 	}
 
@@ -575,6 +579,7 @@ func (t *CreatePartitionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// TODO: why not expire alias
 	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
 		return err
 	}
@@ -664,6 +669,7 @@ func (t *DropPartitionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// TODO: why not expire alias
 	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
 		return err
 	}

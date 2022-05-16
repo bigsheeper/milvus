@@ -41,7 +41,7 @@ func TestGlobalMetaBroker_RootCoord(t *testing.T) {
 	t.Run("successCase", func(t *testing.T) {
 		err = handler.releaseDQLMessageStream(ctx, defaultCollectionID)
 		assert.Nil(t, err)
-		err = handler.invalidateCollectionMetaCache(ctx, "collection1")
+		err = handler.invalidateCollectionMetaCache(ctx, defaultCollectionID)
 		assert.NoError(t, err)
 		enableIndex, _, err := handler.getIndexBuildID(ctx, defaultCollectionID, defaultSegmentID)
 		assert.Nil(t, err)
@@ -54,7 +54,7 @@ func TestGlobalMetaBroker_RootCoord(t *testing.T) {
 		rootCoord.returnError = true
 		err = handler.releaseDQLMessageStream(ctx, defaultCollectionID)
 		assert.Error(t, err)
-		err = handler.invalidateCollectionMetaCache(ctx, "collection1")
+		err = handler.invalidateCollectionMetaCache(ctx, defaultCollectionID)
 		assert.Error(t, err)
 		_, _, err = handler.getIndexBuildID(ctx, defaultCollectionID, defaultSegmentID)
 		assert.Error(t, err)
@@ -67,7 +67,7 @@ func TestGlobalMetaBroker_RootCoord(t *testing.T) {
 		rootCoord.returnGrpcError = true
 		err = handler.releaseDQLMessageStream(ctx, defaultCollectionID)
 		assert.Error(t, err)
-		err = handler.invalidateCollectionMetaCache(ctx, "collection1")
+		err = handler.invalidateCollectionMetaCache(ctx, defaultCollectionID)
 		assert.Error(t, err)
 		_, _, err = handler.getIndexBuildID(ctx, defaultCollectionID, defaultSegmentID)
 		assert.Error(t, err)

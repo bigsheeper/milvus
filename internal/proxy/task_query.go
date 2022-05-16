@@ -133,8 +133,12 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 		}
 	}
 
-	if !t.checkIfLoaded(collID, t.PartitionIDs) {
-		return fmt.Errorf("collection:%v or partition:%v not loaded into memory", collectionName, t.request.GetPartitionNames())
+	loaded, err := t.checkIfLoaded(collID, t.PartitionIDs)
+	if err != nil {
+		return fmt.Errorf("checkIfLoaded failed when query, collection:%v or partition:%v", collectionName, t.request.GetPartitionNames())
+	}
+	if !loaded {
+		return fmt.Errorf("collection:%v or partition:%v not loaded into memory when query", collectionName, t.request.GetPartitionNames())
 	}
 
 	schema, _ := globalMetaCache.GetCollectionSchema(ctx, collectionName)
@@ -378,19 +382,14 @@ func (t *queryTask) queryShard(ctx context.Context, leaders *querypb.ShardLeader
 	return nil
 }
 
-func (t *queryTask) checkIfLoaded(collectionID UniqueID, queryPartitionIDs []UniqueID) bool {
+func (t *queryTask) checkIfLoaded(collectionID UniqueID, queryPartitionIDs []UniqueID) (bool, error) {
 	// check if collection was loaded into QueryNode
 	info, err := globalMetaCache.GetCollectionInfo(t.ctx, t.collectionName)
 	if err != nil {
-		log.Warn("fail to check if collection is loaded",
-			zap.Int64("requestID", t.Base.MsgID),
-			zap.Int64("collectionID", collectionID),
-			zap.String("requestType", "query"),
-			zap.Error(err))
-		return false
+		return false, fmt.Errorf("GetCollectionInfo failed, collectionID = %d, err = %s", collectionID, err)
 	}
 	if info.isLoaded {
-		return true
+		return true, nil
 	}
 
 	// If request to query partitions
@@ -406,25 +405,13 @@ func (t *queryTask) checkIfLoaded(collectionID UniqueID, queryPartitionIDs []Uni
 			PartitionIDs: queryPartitionIDs,
 		})
 		if err != nil {
-			log.Warn("fail to show partitions by QueryCoord",
-				zap.Int64("requestID", t.Base.MsgID),
-				zap.Int64("collectionID", collectionID),
-				zap.Int64s("partitionIDs", queryPartitionIDs),
-				zap.String("requestType", "query"),
-				zap.Error(err))
-			return false
+			return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, err = %s", collectionID, queryPartitionIDs, err)
 		}
-
-		if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-			log.Warn("fail to show partitions by QueryCoord",
-				zap.Int64("collectionID", collectionID),
-				zap.Int64s("partitionIDs", queryPartitionIDs),
-				zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "query"),
-				zap.String("reason", resp.GetStatus().GetReason()))
-			return false
+		if resp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+			return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, reason = %s", collectionID, queryPartitionIDs, resp.GetStatus().GetReason())
 		}
 		// Current logic: show partitions won't return error if the given partitions are all loaded
-		return true
+		return true, nil
 	}
 
 	// If request to query collection and collection is not fully loaded
@@ -438,28 +425,20 @@ func (t *queryTask) checkIfLoaded(collectionID UniqueID, queryPartitionIDs []Uni
 		CollectionID: collectionID,
 	})
 	if err != nil {
-		log.Warn("fail to show partitions by QueryCoord",
-			zap.Int64("requestID", t.Base.MsgID),
-			zap.Int64("collectionID", collectionID),
-			zap.String("requestType", "query"),
-			zap.Error(err))
-		return false
+		return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, err = %s", collectionID, queryPartitionIDs, err)
 	}
-
-	if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-		log.Warn("fail to show partitions by QueryCoord",
-			zap.Int64("collectionID", collectionID),
-			zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "query"),
-			zap.String("reason", resp.GetStatus().GetReason()))
-		return false
+	if resp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+		return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, reason = %s", collectionID, queryPartitionIDs, resp.GetStatus().GetReason())
 	}
 
 	if len(resp.GetPartitionIDs()) > 0 {
-		log.Warn("collection not fully loaded, query on these partitions", zap.Int64s("partitionIDs", resp.GetPartitionIDs()))
-		return true
+		log.Warn("collection not fully loaded, query on these partitions",
+			zap.Int64("collectionID", collectionID),
+			zap.Int64s("partitionIDs", resp.GetPartitionIDs()))
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 // IDs2Expr converts ids slices to bool expresion with specified field name

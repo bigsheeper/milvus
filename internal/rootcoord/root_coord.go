@@ -964,7 +964,7 @@ func (c *Core) RemoveIndex(ctx context.Context, collName string, indexName strin
 }
 
 // ExpireMetaCache will call invalidate collection meta cache
-func (c *Core) ExpireMetaCache(ctx context.Context, collNames []string, ts typeutil.Timestamp) {
+func (c *Core) ExpireMetaCache(ctx context.Context, collNames []string, ts typeutil.Timestamp) error {
 	for _, collName := range collNames {
 		req := proxypb.InvalidateCollMetaCacheRequest{
 			Base: &commonpb.MsgBase{
@@ -975,8 +975,13 @@ func (c *Core) ExpireMetaCache(ctx context.Context, collNames []string, ts typeu
 			},
 			CollectionName: collName,
 		}
-		c.proxyClientManager.InvalidateCollectionMetaCache(ctx, &req)
+		err := c.proxyClientManager.InvalidateCollectionMetaCache(ctx, &req)
+		if err != nil {
+			// TODO: try to expire all or directly return err?
+			return err
+		}
 	}
+	return nil
 }
 
 // Register register rootcoord at etcd
@@ -1264,7 +1269,9 @@ func (c *Core) reSendDdMsg(ctx context.Context, force bool) error {
 	}
 
 	if invalidateCache {
-		c.ExpireMetaCache(ctx, []string{collName}, ts)
+		if err = c.ExpireMetaCache(ctx, []string{collName}, ts); err != nil {
+			return err
+		}
 	}
 
 	// Update DDOperation in etcd
@@ -2040,7 +2047,11 @@ func (c *Core) ReleaseDQLMessageStream(ctx context.Context, in *proxypb.ReleaseD
 	if code, ok := c.checkHealthy(); !ok {
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+internalpb.StateCode_name[int32(code)]), nil
 	}
-	return c.proxyClientManager.ReleaseDQLMessageStream(ctx, in)
+	err := c.proxyClientManager.ReleaseDQLMessageStream(ctx, in)
+	if err != nil {
+		return failStatus(commonpb.ErrorCode_UnexpectedError, err.Error()), nil
+	}
+	return succStatus(), nil
 }
 
 // InvalidateCollectionMetaCache notifies RootCoord to release the collection cache in Proxies.
@@ -2048,7 +2059,10 @@ func (c *Core) InvalidateCollectionMetaCache(ctx context.Context, in *proxypb.In
 	if code, ok := c.checkHealthy(); !ok {
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+internalpb.StateCode_name[int32(code)]), nil
 	}
-	c.proxyClientManager.InvalidateCollectionMetaCache(ctx, in)
+	err := c.proxyClientManager.InvalidateCollectionMetaCache(ctx, in)
+	if err != nil {
+		return failStatus(commonpb.ErrorCode_UnexpectedError, err.Error()), nil
+	}
 	return succStatus(), nil
 }
 

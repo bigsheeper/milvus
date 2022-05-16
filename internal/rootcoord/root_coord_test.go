@@ -102,6 +102,13 @@ func (p *proxyMock) ReleaseDQLMessageStream(ctx context.Context, request *proxyp
 	}, nil
 }
 
+func (p *proxyMock) InvalidateCredentialCache(ctx context.Context, request *proxypb.InvalidateCredCacheRequest) (*commonpb.Status, error) {
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+		Reason:    "",
+	}, nil
+}
+
 type dataMock struct {
 	types.DataCoord
 	randVal int

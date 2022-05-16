@@ -205,7 +205,9 @@ func TestSearchTask_PreExecute(t *testing.T) {
 				return nil, errors.New("mock")
 			})
 
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show collection status unexpected error", func(t *testing.T) {
@@ -218,7 +220,9 @@ func TestSearchTask_PreExecute(t *testing.T) {
 				}, nil
 			})
 
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 			assert.Error(t, task.PreExecute(ctx))
 			qc.ResetShowCollectionsFunc()
 		})
@@ -232,14 +236,18 @@ func TestSearchTask_PreExecute(t *testing.T) {
 					},
 				}, nil
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show partition status unexpected error", func(t *testing.T) {
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, errors.New("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show partitions success", func(t *testing.T) {
@@ -250,7 +258,9 @@ func TestSearchTask_PreExecute(t *testing.T) {
 					},
 				}, nil
 			})
-			assert.True(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.NoError(t, err)
+			assert.True(t, loaded)
 			qc.ResetShowPartitionsFunc()
 		})
 
@@ -268,12 +278,16 @@ func TestSearchTask_PreExecute(t *testing.T) {
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, errors.New("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, errors.New("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err = task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return &querypb.ShowPartitionsResponse{
@@ -283,7 +297,9 @@ func TestSearchTask_PreExecute(t *testing.T) {
 					PartitionIDs: []UniqueID{1},
 				}, nil
 			})
-			assert.True(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err = task.checkIfLoaded(collID, []UniqueID{})
+			assert.NoError(t, err)
+			assert.True(t, loaded)
 		})
 
 		qc.ResetShowCollectionsFunc()

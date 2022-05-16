@@ -375,8 +375,12 @@ func (t *DropCollectionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts)
-	t.core.ExpireMetaCache(ctx, aliases, ts)
+	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
+		return err
+	}
+	if err = t.core.ExpireMetaCache(ctx, aliases, ts); err != nil {
+		return err
+	}
 
 	// Update DDOperation in etcd
 	return t.core.MetaTable.txn.Save(DDMsgSendPrefix, strconv.FormatBool(true))
@@ -571,7 +575,9 @@ func (t *CreatePartitionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts)
+	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
+		return err
+	}
 
 	// Update DDOperation in etcd
 	return t.core.MetaTable.txn.Save(DDMsgSendPrefix, strconv.FormatBool(true))
@@ -658,7 +664,9 @@ func (t *DropPartitionReqTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts)
+	if err = t.core.ExpireMetaCache(ctx, []string{t.Req.CollectionName}, ts); err != nil {
+		return err
+	}
 
 	//notify query service to release partition
 	// TODO::xige-16, reOpen when queryCoord support release partitions after load collection
@@ -1111,9 +1119,7 @@ func (t *DropAliasReqTask) Execute(ctx context.Context) error {
 		return fmt.Errorf("meta table drop alias failed, error = %w", err)
 	}
 
-	t.core.ExpireMetaCache(ctx, []string{t.Req.Alias}, ts)
-
-	return nil
+	return t.core.ExpireMetaCache(ctx, []string{t.Req.Alias}, ts)
 }
 
 // AlterAliasReqTask alter alias request task
@@ -1142,7 +1148,5 @@ func (t *AlterAliasReqTask) Execute(ctx context.Context) error {
 		return fmt.Errorf("meta table alter alias failed, error = %w", err)
 	}
 
-	t.core.ExpireMetaCache(ctx, []string{t.Req.Alias}, ts)
-
-	return nil
+	return t.core.ExpireMetaCache(ctx, []string{t.Req.Alias}, ts)
 }

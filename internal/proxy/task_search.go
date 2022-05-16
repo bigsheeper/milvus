@@ -115,8 +115,12 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 
 	// check if collection/partitions are loaded into query node
-	if !t.checkIfLoaded(collID, t.PartitionIDs) {
-		return fmt.Errorf("collection:%v or partitions:%v not loaded into memory", collectionName, t.request.GetPartitionNames())
+	loaded, err := t.checkIfLoaded(collID, t.PartitionIDs)
+	if err != nil {
+		return fmt.Errorf("checkIfLoaded failed when search, collection:%v or partition:%v", collectionName, t.request.GetPartitionNames())
+	}
+	if !loaded {
+		return fmt.Errorf("collection:%v or partition:%v not loaded into memory when search", collectionName, t.request.GetPartitionNames())
 	}
 
 	// TODO(dragondriver): necessary to check if partition was loaded into query node?
@@ -427,19 +431,14 @@ func (t *searchTask) searchShard(ctx context.Context, leaders *querypb.ShardLead
 	return nil
 }
 
-func (t *searchTask) checkIfLoaded(collectionID UniqueID, searchPartitionIDs []UniqueID) bool {
+func (t *searchTask) checkIfLoaded(collectionID UniqueID, searchPartitionIDs []UniqueID) (bool, error) {
 	// check if collection was loaded into QueryNode
 	info, err := globalMetaCache.GetCollectionInfo(t.ctx, t.collectionName)
 	if err != nil {
-		log.Warn("fail to check if collection is loaded",
-			zap.Int64("requestID", t.Base.MsgID),
-			zap.Int64("collectionID", collectionID),
-			zap.String("requestType", "search"),
-			zap.Error(err))
-		return false
+		return false, fmt.Errorf("GetCollectionInfo failed, collectionID = %d, err = %s", collectionID, err)
 	}
 	if info.isLoaded {
-		return true
+		return true, nil
 	}
 
 	// If request to search partitions
@@ -455,25 +454,14 @@ func (t *searchTask) checkIfLoaded(collectionID UniqueID, searchPartitionIDs []U
 			PartitionIDs: searchPartitionIDs,
 		})
 		if err != nil {
-			log.Warn("fail to show partitions by QueryCoord",
-				zap.Int64("requestID", t.Base.MsgID),
-				zap.Int64("collectionID", collectionID),
-				zap.Int64s("partitionIDs", searchPartitionIDs),
-				zap.String("requestType", "search"),
-				zap.Error(err))
-			return false
+			return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, err = %s", collectionID, searchPartitionIDs, err)
 		}
 
 		if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-			log.Warn("fail to show partitions by QueryCoord",
-				zap.Int64("collectionID", collectionID),
-				zap.Int64s("partitionIDs", searchPartitionIDs),
-				zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "search"),
-				zap.String("reason", resp.GetStatus().GetReason()))
-			return false
+			return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, reason = %s", collectionID, searchPartitionIDs, resp.GetStatus().GetReason())
 		}
 		// Current logic: show partitions won't return error if the given partitions are all loaded
-		return true
+		return true, nil
 	}
 
 	// If request to search collection and collection is not fully loaded
@@ -487,28 +475,21 @@ func (t *searchTask) checkIfLoaded(collectionID UniqueID, searchPartitionIDs []U
 		CollectionID: collectionID,
 	})
 	if err != nil {
-		log.Warn("fail to show partitions by QueryCoord",
-			zap.Int64("requestID", t.Base.MsgID),
-			zap.Int64("collectionID", collectionID),
-			zap.String("requestType", "search"),
-			zap.Error(err))
-		return false
+		return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, err = %s", collectionID, searchPartitionIDs, err)
 	}
 
 	if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-		log.Warn("fail to show partitions by QueryCoord",
-			zap.Int64("collectionID", collectionID),
-			zap.Int64("requestID", t.Base.MsgID), zap.String("requestType", "search"),
-			zap.String("reason", resp.GetStatus().GetReason()))
-		return false
+		return false, fmt.Errorf("showPartitions failed, collectionID = %d, partitionIDs = %v, reason = %s", collectionID, searchPartitionIDs, resp.GetStatus().GetReason())
 	}
 
 	if len(resp.GetPartitionIDs()) > 0 {
-		log.Warn("collection not fully loaded, search on these partitions", zap.Int64s("partitionIDs", resp.GetPartitionIDs()))
-		return true
+		log.Warn("collection not fully loaded, search on these partitions",
+			zap.Int64("collectionID", collectionID),
+			zap.Int64s("partitionIDs", resp.GetPartitionIDs()))
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb.SearchResultData, error) {

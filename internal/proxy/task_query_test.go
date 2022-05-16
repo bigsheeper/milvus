@@ -221,7 +221,9 @@ func TestCheckIfLoaded(t *testing.T) {
 				return nil, fmt.Errorf("mock")
 			})
 
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show collection status unexpected error", func(t *testing.T) {
@@ -234,7 +236,9 @@ func TestCheckIfLoaded(t *testing.T) {
 				}, nil
 			})
 
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 			assert.Error(t, task.PreExecute(ctx))
 			qc.ResetShowCollectionsFunc()
 		})
@@ -248,14 +252,18 @@ func TestCheckIfLoaded(t *testing.T) {
 					},
 				}, nil
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show partition status unexpected error", func(t *testing.T) {
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, fmt.Errorf("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 		})
 
 		t.Run("show partitions success", func(t *testing.T) {
@@ -266,7 +274,9 @@ func TestCheckIfLoaded(t *testing.T) {
 					},
 				}, nil
 			})
-			assert.True(t, task.checkIfLoaded(collID, []UniqueID{1}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{1})
+			assert.NoError(t, err)
+			assert.True(t, loaded)
 			qc.ResetShowPartitionsFunc()
 		})
 
@@ -284,12 +294,16 @@ func TestCheckIfLoaded(t *testing.T) {
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, fmt.Errorf("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err := task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return nil, fmt.Errorf("mock error")
 			})
-			assert.False(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err = task.checkIfLoaded(collID, []UniqueID{})
+			assert.Error(t, err)
+			assert.False(t, loaded)
 
 			qc.SetShowPartitionsFunc(func(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
 				return &querypb.ShowPartitionsResponse{
@@ -299,7 +313,9 @@ func TestCheckIfLoaded(t *testing.T) {
 					PartitionIDs: []UniqueID{1},
 				}, nil
 			})
-			assert.True(t, task.checkIfLoaded(collID, []UniqueID{}))
+			loaded, err = task.checkIfLoaded(collID, []UniqueID{})
+			assert.NoError(t, err)
+			assert.True(t, loaded)
 		})
 
 		qc.ResetShowCollectionsFunc()

@@ -32,6 +32,7 @@ static int ef = 50;
 
 const auto schema = []() {
     auto schema = std::make_shared<Schema>();
+    schema->AddDebugField("counter", DataType::INT64);
     schema->AddDebugField("fakevec", DataType::VECTOR_FLOAT, dim, MetricType::METRIC_L2);
     return schema;
 }();
@@ -40,6 +41,13 @@ const auto plan = [] {
     std::string hnsw_dsl = R"({
         "bool": {
             "must": [
+             {
+                 "range": {
+                     "counter": {
+                         "LT": 5
+                     }
+                 }
+             },
             {
                 "vector": {
                     "fakevec": {
@@ -87,7 +95,7 @@ Create_Index_HNSW(int n, int num_segments) {
         {knowhere::INDEX_FILE_SLICE_SIZE_IN_MEGABYTE, 4},
     };
     auto index = knowhere::VecIndexFactory::GetInstance().CreateVecIndex(index_type);
-    auto vec = reinterpret_cast<const float*>(dataset_.cols_[0].data());
+    auto vec = reinterpret_cast<const float*>(dataset_.cols_[1].data());
     auto xb_dataset = knowhere::GenDataset(N, dim, vec);
     index->Train(xb_dataset, conf);
     index->AddWithoutIds(xb_dataset, conf);

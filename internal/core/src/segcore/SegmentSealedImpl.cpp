@@ -149,7 +149,7 @@ SegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& info) {
         AssertInfo(fields_data_[field_offset.get()].empty(), "field data already exists");
 
         if (field_meta.is_vector()) {
-            AssertInfo(!vecindexs_.is_ready(field_offset), "field data can't be loaded when indexing exists");
+//            AssertInfo(!vecindexs_.is_ready(field_offset), "field data can't be loaded when indexing exists");
             fields_data_[field_offset.get()] = std::move(vec_data);
         } else {
             AssertInfo(!scalar_indexings_[field_offset.get()], "scalar indexing not cleared");
@@ -317,15 +317,29 @@ SegmentSealedImpl::vector_search(int64_t vec_count,
     auto& field_meta = schema_->operator[](field_offset);
 
     AssertInfo(field_meta.is_vector(), "The meta type of vector field is not vector type");
+
+    auto search_index = false;
     if (get_bit(vecindex_ready_bitset_, field_offset)) {
         AssertInfo(vecindexs_.is_ready(field_offset),
                    "vector indexes isn't ready for field " + std::to_string(field_offset.get()));
+        search_index = true;
+        auto field_indexing = vecindexs_.get_field_indexing(field_offset);
+        // TODO: config hits `30000`
+        std::cout << "bitset.count = " << bitset.count_1() << std::endl;
+        std::cout << "index type = " << field_indexing->indexing_->index_type() << std::endl;
+        if (bitset.size() - bitset.count_1() < 30000 && field_indexing->indexing_->index_type() == knowhere::IndexEnum::INDEX_HNSW) {
+            search_index = false;
+        }
+    }
+
+    if (search_index) {
         query::SearchOnSealed(*schema_, vecindexs_, search_info, query_data, query_count, bitset, output, id_);
         return;
     } else if (!get_bit(field_data_ready_bitset_, field_offset)) {
         PanicInfo("Field Data is not loaded");
     }
 
+    std::cout << "do bf" << std::endl;
     query::dataset::SearchDataset dataset;
     dataset.query_data = query_data;
     dataset.num_queries = query_count;

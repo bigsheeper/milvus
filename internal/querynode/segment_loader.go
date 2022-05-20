@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
+
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
@@ -304,6 +306,16 @@ func (loader *segmentLoader) loadVecFieldData(segment *Segment, vecFieldInfos ma
 				return err
 			}
 			log.Debug("load vector field's index data done", zap.Int64("segmentID", segment.ID()), zap.Int64("fieldID", fieldID))
+			// TODO: get param
+			for _, param := range indexInfo.GetIndexParams() {
+				if param.Key == "index_type" && param.Value == indexparamcheck.IndexHNSW {
+					err := loader.loadFiledBinlogData(segment, []*datapb.FieldBinlog{fieldInfo.fieldBinlog})
+					if err != nil {
+						return err
+					}
+					log.Debug("load vector field's binlog data done", zap.Int64("segmentID", segment.ID()), zap.Int64("fieldID", fieldID))
+				}
+			}
 		}
 		segment.setVectorFieldInfo(fieldID, fieldInfo)
 	}

@@ -464,7 +464,8 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 
 		for _, im := range fgm.segmentsToFlush {
 			// send del done signal
-			fm.flushDelData(nil, im, fgm.endPositions[0])
+			err = fm.flushDelData(nil, im, fgm.endPositions[0])
+			assert.NoError(t, err)
 		}
 		wg.Wait()
 		require.Equal(t, 0, len(colRep.newSegments))
@@ -573,7 +574,8 @@ func TestFlowGraphInsertBufferNode_AutoFlush(t *testing.T) {
 		wg.Add(len(fgm.segmentsToFlush))
 		for _, im := range fgm.segmentsToFlush {
 			// send del done signal
-			fm.flushDelData(nil, im, fgm.endPositions[0])
+			err = fm.flushDelData(nil, im, fgm.endPositions[0])
+			assert.NoError(t, err)
 		}
 		wg.Wait()
 		require.Equal(t, 0, len(colRep.newSegments))

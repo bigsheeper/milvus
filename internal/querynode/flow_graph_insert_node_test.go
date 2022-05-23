@@ -96,7 +96,8 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.insert(insertData, defaultSegmentID, wg)
+		err = insertNode.insert(insertData, defaultSegmentID, wg)
+		assert.NoError(t, err)
 	})
 
 	t.Run("test segment insert error", func(t *testing.T) {
@@ -120,7 +121,8 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		insertData.insertRecords[defaultSegmentID] = insertData.insertRecords[defaultSegmentID][:len(insertData.insertRecords[defaultSegmentID])/2]
-		insertNode.insert(insertData, defaultSegmentID, wg)
+		err = insertNode.insert(insertData, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 
 	t.Run("test no target segment", func(t *testing.T) {
@@ -129,7 +131,8 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 		insertNode := newInsertNode(streaming)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.insert(nil, defaultSegmentID, wg)
+		err = insertNode.insert(nil, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 
 	t.Run("test invalid segmentType", func(t *testing.T) {
@@ -145,9 +148,15 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 			true)
 		assert.NoError(t, err)
 
+		collection, err := streaming.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+		insertData, err := genFlowGraphInsertData(collection.schema, defaultMsgLength)
+		assert.NoError(t, err)
+
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.insert(nil, defaultSegmentID, wg)
+		err = insertNode.insert(insertData, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 }
 
@@ -172,12 +181,14 @@ func TestFlowGraphInsertNode_delete(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.insert(insertData, defaultSegmentID, wg)
+		err = insertNode.insert(insertData, defaultSegmentID, wg)
+		assert.NoError(t, err)
 
 		deleteData, err := genFlowGraphDeleteData()
 		assert.NoError(t, err)
 		wg.Add(1)
-		insertNode.delete(deleteData, defaultSegmentID, wg)
+		err = insertNode.delete(deleteData, defaultSegmentID, wg)
+		assert.NoError(t, err)
 	})
 
 	t.Run("test only delete", func(t *testing.T) {
@@ -197,7 +208,8 @@ func TestFlowGraphInsertNode_delete(t *testing.T) {
 		assert.NoError(t, err)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.delete(deleteData, defaultSegmentID, wg)
+		err = insertNode.delete(deleteData, defaultSegmentID, wg)
+		assert.NoError(t, err)
 	})
 
 	t.Run("test segment delete error", func(t *testing.T) {
@@ -218,7 +230,8 @@ func TestFlowGraphInsertNode_delete(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		deleteData.deleteTimestamps[defaultSegmentID] = deleteData.deleteTimestamps[defaultSegmentID][:len(deleteData.deleteTimestamps)/2]
-		insertNode.delete(deleteData, defaultSegmentID, wg)
+		err = insertNode.delete(deleteData, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 
 	t.Run("test no target segment", func(t *testing.T) {
@@ -227,7 +240,8 @@ func TestFlowGraphInsertNode_delete(t *testing.T) {
 		insertNode := newInsertNode(streaming)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		insertNode.delete(nil, defaultSegmentID, wg)
+		err = insertNode.delete(nil, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 }
 
@@ -318,7 +332,9 @@ func TestFlowGraphInsertNode_operate(t *testing.T) {
 			},
 		}
 		msg := []flowgraph.Msg{&iMsg}
-		insertNode.Operate(msg)
+		assert.Panics(t, func() {
+			insertNode.Operate(msg)
+		})
 	})
 
 	t.Run("test partition not exist", func(t *testing.T) {
@@ -343,7 +359,9 @@ func TestFlowGraphInsertNode_operate(t *testing.T) {
 			},
 		}
 		msg := []flowgraph.Msg{&iMsg}
-		insertNode.Operate(msg)
+		assert.Panics(t, func() {
+			insertNode.Operate(msg)
+		})
 	})
 
 	t.Run("test invalid input length", func(t *testing.T) {
@@ -405,7 +423,7 @@ func TestFilterSegmentsByPKs(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, len(pks), 0)
 		_, _, err = filterSegmentsByPKs(nil, timestamps, segment)
-		assert.NotNil(t, err)
+		assert.NoError(t, err)
 		_, _, err = filterSegmentsByPKs([]primaryKey{pk0, pk1, pk2, pk3, pk4}, timestamps, nil)
 		assert.NotNil(t, err)
 	})
@@ -435,7 +453,7 @@ func TestFilterSegmentsByPKs(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, len(pks), 0)
 		_, _, err = filterSegmentsByPKs(nil, timestamps, segment)
-		assert.NotNil(t, err)
+		assert.NoError(t, err)
 		_, _, err = filterSegmentsByPKs([]primaryKey{pk0, pk1, pk2, pk3, pk4}, timestamps, nil)
 		assert.NotNil(t, err)
 	})

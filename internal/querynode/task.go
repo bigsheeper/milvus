@@ -274,12 +274,20 @@ func (w *watchDmChannelsTask) Execute(ctx context.Context) (err error) {
 
 	// update partition info from unFlushedSegments and loadMeta
 	for _, info := range req.Infos {
-		w.node.streaming.replica.addPartition(collectionID, info.PartitionID)
-		w.node.historical.replica.addPartition(collectionID, info.PartitionID)
+		if err := w.node.streaming.replica.addPartition(collectionID, info.PartitionID); err != nil {
+			return err
+		}
+		if err := w.node.historical.replica.addPartition(collectionID, info.PartitionID); err != nil {
+			return err
+		}
 	}
 	for _, partitionID := range req.GetLoadMeta().GetPartitionIDs() {
-		w.node.historical.replica.addPartition(collectionID, partitionID)
-		w.node.streaming.replica.addPartition(collectionID, partitionID)
+		if err := w.node.historical.replica.addPartition(collectionID, partitionID); err != nil {
+			return err
+		}
+		if err := w.node.streaming.replica.addPartition(collectionID, partitionID); err != nil {
+			return err
+		}
 	}
 
 	log.Info("loading growing segments in WatchDmChannels...",

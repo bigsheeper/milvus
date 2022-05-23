@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/milvus-io/milvus/internal/proto/schemapb"
 )
 
 func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
@@ -129,4 +131,58 @@ func TestDataSyncService_DeltaFlowGraphs(t *testing.T) {
 
 	dataSyncService.close()
 	assert.Len(t, dataSyncService.deltaChannel2FlowGraph, 0)
+}
+
+func TestDataSyncService_checkReplica(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streamingReplica, err := genSimpleReplica()
+	assert.NoError(t, err)
+
+	historicalReplica, err := genSimpleReplica()
+	assert.NoError(t, err)
+
+	fac := genFactory()
+	assert.NoError(t, err)
+
+	tSafe := newTSafeReplica()
+	dataSyncService := newDataSyncService(ctx, streamingReplica, historicalReplica, tSafe, fac)
+	assert.NotNil(t, dataSyncService)
+	defer dataSyncService.close()
+
+	t.Run("test checkReplica", func(t *testing.T) {
+		err = dataSyncService.checkReplica(defaultCollectionID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("test collection doesn't exist", func(t *testing.T) {
+		err = dataSyncService.streamingReplica.removeCollection(defaultCollectionID)
+		assert.NoError(t, err)
+		err = dataSyncService.checkReplica(defaultCollectionID)
+		assert.Error(t, err)
+
+		err = dataSyncService.historicalReplica.removeCollection(defaultCollectionID)
+		assert.NoError(t, err)
+		err = dataSyncService.checkReplica(defaultCollectionID)
+		assert.Error(t, err)
+
+		coll := dataSyncService.historicalReplica.addCollection(defaultCollectionID, genTestCollectionSchema(schemapb.DataType_Int64))
+		assert.NotNil(t, coll)
+		coll = dataSyncService.streamingReplica.addCollection(defaultCollectionID, genTestCollectionSchema(schemapb.DataType_Int64))
+		assert.NotNil(t, coll)
+	})
+
+	t.Run("test different loadType", func(t *testing.T) {
+		coll, err := dataSyncService.historicalReplica.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+		coll.setLoadType(loadTypePartition)
+
+		err = dataSyncService.checkReplica(defaultCollectionID)
+		assert.Error(t, err)
+
+		coll, err = dataSyncService.streamingReplica.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+		coll.setLoadType(loadTypePartition)
+	})
 }

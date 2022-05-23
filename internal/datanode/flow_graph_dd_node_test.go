@@ -148,7 +148,10 @@ func TestFlowGraph_DDNode_Operate(to *testing.T) {
 				factory := dependency.NewDefaultFactory(true)
 				deltaStream, err := factory.NewMsgStream(context.Background())
 				assert.Nil(t, err)
+				deltaStream.SetRepackFunc(msgstream.DefaultRepackFunc)
+				deltaStream.AsProducer([]string{"DataNode-test-delta-channel-0"})
 				ddn := ddNode{
+					ctx:                context.Background(),
 					collectionID:       test.ddnCollID,
 					deltaMsgStream:     deltaStream,
 					vchannelName:       "ddn_drop_msg",
@@ -208,8 +211,11 @@ func TestFlowGraph_DDNode_Operate(to *testing.T) {
 				factory := dependency.NewDefaultFactory(true)
 				deltaStream, err := factory.NewMsgStream(context.Background())
 				assert.Nil(t, err)
+				deltaStream.SetRepackFunc(msgstream.DefaultRepackFunc)
+				deltaStream.AsProducer([]string{"DataNode-test-delta-channel-0"})
 				// Prepare ddNode states
 				ddn := ddNode{
+					ctx:             context.Background(),
 					flushedSegments: []*datapb.SegmentInfo{fs},
 					collectionID:    test.ddnCollID,
 					deltaMsgStream:  deltaStream,
@@ -254,15 +260,21 @@ func TestFlowGraph_DDNode_Operate(to *testing.T) {
 				factory := dependency.NewDefaultFactory(true)
 				deltaStream, err := factory.NewMsgStream(context.Background())
 				assert.Nil(t, err)
+				deltaStream.SetRepackFunc(msgstream.DefaultRepackFunc)
+				deltaStream.AsProducer([]string{"DataNode-test-delta-channel-0"})
 				// Prepare ddNode states
 				ddn := ddNode{
+					ctx:            context.Background(),
 					collectionID:   test.ddnCollID,
 					deltaMsgStream: deltaStream,
 				}
 
 				// Prepare delete messages
 				var dMsg msgstream.TsMsg = &msgstream.DeleteMsg{
-					BaseMsg: msgstream.BaseMsg{EndTimestamp: test.MsgEndTs},
+					BaseMsg: msgstream.BaseMsg{
+						EndTimestamp: test.MsgEndTs,
+						HashValues:   []uint32{0},
+					},
 					DeleteRequest: internalpb.DeleteRequest{
 						Base:         &commonpb.MsgBase{MsgType: commonpb.MsgType_Delete},
 						CollectionID: test.inMsgCollID,

@@ -852,14 +852,15 @@ func TestTask_releasePartitionTask(t *testing.T) {
 		node, err := genSimpleQueryNode(ctx)
 		assert.NoError(t, err)
 
-		col, err := node.historical.replica.getCollectionByID(defaultCollectionID)
+		hisCol, err := node.historical.replica.getCollectionByID(defaultCollectionID)
+		assert.NoError(t, err)
+		strCol, err := node.streaming.replica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
 
-		err = node.historical.replica.removePartition(defaultPartitionID)
-		assert.NoError(t, err)
-
-		col.addVDeltaChannels([]Channel{defaultDeltaChannel})
-		col.setLoadType(loadTypePartition)
+		hisCol.addVDeltaChannels([]Channel{defaultDeltaChannel})
+		strCol.addVDeltaChannels([]Channel{defaultDeltaChannel})
+		hisCol.setLoadType(loadTypePartition)
+		strCol.setLoadType(loadTypePartition)
 
 		/*
 			err = node.queryService.addQueryCollection(defaultCollectionID)

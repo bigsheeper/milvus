@@ -47,7 +47,8 @@ func TestFlowGraphDeleteNode_delete(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		deleteNode.delete(deleteData, defaultSegmentID, wg)
+		err = deleteNode.delete(deleteData, defaultSegmentID, wg)
+		assert.NoError(t, err)
 	})
 
 	t.Run("test segment delete error", func(t *testing.T) {
@@ -69,7 +70,8 @@ func TestFlowGraphDeleteNode_delete(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		deleteData.deleteTimestamps[defaultSegmentID] = deleteData.deleteTimestamps[defaultSegmentID][:len(deleteData.deleteTimestamps)/2]
-		deleteNode.delete(deleteData, defaultSegmentID, wg)
+		err = deleteNode.delete(deleteData, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 
 	t.Run("test no target segment", func(t *testing.T) {
@@ -78,7 +80,8 @@ func TestFlowGraphDeleteNode_delete(t *testing.T) {
 		deleteNode := newDeleteNode(historical)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		deleteNode.delete(nil, defaultSegmentID, wg)
+		err = deleteNode.delete(nil, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 
 	t.Run("test invalid segmentType", func(t *testing.T) {
@@ -96,7 +99,8 @@ func TestFlowGraphDeleteNode_delete(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		deleteNode.delete(&deleteData{}, defaultSegmentID, wg)
+		err = deleteNode.delete(&deleteData{}, defaultSegmentID, wg)
+		assert.Error(t, err)
 	})
 }
 
@@ -184,7 +188,9 @@ func TestFlowGraphDeleteNode_operate(t *testing.T) {
 			},
 		}
 		msg := []flowgraph.Msg{&dMsg}
-		deleteNode.Operate(msg)
+		assert.Panics(t, func() {
+			deleteNode.Operate(msg)
+		})
 	})
 
 	t.Run("test partition not exist", func(t *testing.T) {
@@ -209,7 +215,9 @@ func TestFlowGraphDeleteNode_operate(t *testing.T) {
 			},
 		}
 		msg := []flowgraph.Msg{&dMsg}
-		deleteNode.Operate(msg)
+		assert.Panics(t, func() {
+			deleteNode.Operate(msg)
+		})
 	})
 
 	t.Run("test invalid input length", func(t *testing.T) {

@@ -54,7 +54,8 @@ func TestFlowGraphFilterDeleteNode_filterInvalidDeleteMessage(t *testing.T) {
 		msg := genDeleteMsg(defaultCollectionID, schemapb.DataType_Int64, defaultDelLength)
 		fg, err := getFilterDeleteNode(ctx)
 		assert.NoError(t, err)
-		res := fg.filterInvalidDeleteMessage(msg)
+		res, err := fg.filterInvalidDeleteMessage(msg)
+		assert.NoError(t, err)
 		assert.NotNil(t, res)
 	})
 
@@ -63,8 +64,11 @@ func TestFlowGraphFilterDeleteNode_filterInvalidDeleteMessage(t *testing.T) {
 		msg.CollectionID = UniqueID(1003)
 		fg, err := getFilterDeleteNode(ctx)
 		assert.NoError(t, err)
-		res := fg.filterInvalidDeleteMessage(msg)
+		fg.collectionID = UniqueID(1003)
+		res, err := fg.filterInvalidDeleteMessage(msg)
+		assert.Error(t, err)
 		assert.Nil(t, res)
+		fg.collectionID = defaultCollectionID
 	})
 
 	t.Run("test delete not target collection", func(t *testing.T) {
@@ -72,7 +76,8 @@ func TestFlowGraphFilterDeleteNode_filterInvalidDeleteMessage(t *testing.T) {
 		fg, err := getFilterDeleteNode(ctx)
 		assert.NoError(t, err)
 		fg.collectionID = UniqueID(1000)
-		res := fg.filterInvalidDeleteMessage(msg)
+		res, err := fg.filterInvalidDeleteMessage(msg)
+		assert.NoError(t, err)
 		assert.Nil(t, res)
 	})
 
@@ -82,10 +87,14 @@ func TestFlowGraphFilterDeleteNode_filterInvalidDeleteMessage(t *testing.T) {
 		assert.NoError(t, err)
 		msg.Timestamps = make([]Timestamp, 0)
 		msg.Int64PrimaryKeys = make([]IntPrimaryKey, 0)
-		res := fg.filterInvalidDeleteMessage(msg)
+		msg.PrimaryKeys = &schemapb.IDs{}
+		msg.NumRows = 0
+		res, err := fg.filterInvalidDeleteMessage(msg)
+		assert.NoError(t, err)
 		assert.Nil(t, res)
 		msg.PrimaryKeys = storage.ParsePrimaryKeys2IDs([]primaryKey{})
-		res = fg.filterInvalidDeleteMessage(msg)
+		res, err = fg.filterInvalidDeleteMessage(msg)
+		assert.NoError(t, err)
 		assert.Nil(t, res)
 	})
 }

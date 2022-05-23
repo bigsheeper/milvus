@@ -36,10 +36,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/milvus-io/milvus/internal/util/funcutil"
-
-	"github.com/milvus-io/milvus/internal/metrics"
-	"github.com/milvus-io/milvus/internal/util/timerecord"
+	"go.uber.org/atomic"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/golang/protobuf/proto"
@@ -47,6 +44,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -54,6 +52,8 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/cgoconverter"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 )
 
 type segmentType = commonpb.SegmentState
@@ -76,7 +76,6 @@ type IndexedFieldInfo struct {
 
 // Segment is a wrapper of the underlying C-structure segment.
 type Segment struct {
-	segPtrMu   sync.RWMutex // guards segmentPtr
 	segmentPtr C.CSegmentInterface
 
 	segmentID    UniqueID
@@ -89,11 +88,8 @@ type Segment struct {
 	lastMemSize  int64
 	lastRowCount int64
 
-	rmMutex          sync.RWMutex // guards recentlyModified
-	recentlyModified bool
-
-	typeMu      sync.Mutex // guards builtIndex
-	segmentType segmentType
+	recentlyModified atomic.Bool
+	segmentType      atomic.Int32
 
 	idBinlogRowSizes []int64
 
@@ -117,27 +113,19 @@ func (s *Segment) getIDBinlogRowSizes() []int64 {
 }
 
 func (s *Segment) setRecentlyModified(modify bool) {
-	s.rmMutex.Lock()
-	defer s.rmMutex.Unlock()
-	s.recentlyModified = modify
+	s.recentlyModified.Store(modify)
 }
 
 func (s *Segment) getRecentlyModified() bool {
-	s.rmMutex.RLock()
-	defer s.rmMutex.RUnlock()
-	return s.recentlyModified
+	return s.recentlyModified.Load()
 }
 
 func (s *Segment) setType(segType segmentType) {
-	s.typeMu.Lock()
-	defer s.typeMu.Unlock()
-	s.segmentType = segType
+	s.segmentType.Store(int32(segType))
 }
 
 func (s *Segment) getType() segmentType {
-	s.typeMu.Lock()
-	defer s.typeMu.Unlock()
-	return s.segmentType
+	return segmentType(s.segmentType.Load())
 }
 
 func (s *Segment) getOnService() bool {
@@ -194,7 +182,7 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 			zap.Int64("collectionID", collectionID),
 			zap.Int64("partitionID", partitionID),
 			zap.Int64("segmentID", segmentID),
-			zap.Int32("segment type", int32(segType)),
+			zap.String("segmentType", segType.String()),
 			zap.Error(err))
 		return nil, err
 	}
@@ -203,11 +191,10 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 		zap.Int64("collectionID", collectionID),
 		zap.Int64("partitionID", partitionID),
 		zap.Int64("segmentID", segmentID),
-		zap.Int32("segmentType", int32(segType)))
+		zap.String("segmentType", segType.String()))
 
 	var segment = &Segment{
 		segmentPtr:        segmentPtr,
-		segmentType:       segType,
 		segmentID:         segmentID,
 		partitionID:       partitionID,
 		collectionID:      collectionID,
@@ -217,6 +204,7 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 
 		pkFilter: bloom.NewWithEstimates(bloomFilterSize, maxBloomFalsePositive),
 	}
+	segment.setType(segType)
 
 	return segment, nil
 }
@@ -226,15 +214,8 @@ func deleteSegment(segment *Segment) {
 		void
 		deleteSegment(CSegmentInterface segment);
 	*/
-	if segment.segmentPtr == nil {
-		return
-	}
-
-	segment.segPtrMu.Lock()
-	defer segment.segPtrMu.Unlock()
 	cPtr := segment.segmentPtr
 	C.DeleteSegment(cPtr)
-	segment.segmentPtr = nil
 
 	log.Info("delete segment from memory", zap.Int64("collectionID", segment.collectionID), zap.Int64("partitionID", segment.partitionID), zap.Int64("segmentID", segment.ID()))
 
@@ -246,11 +227,6 @@ func (s *Segment) getRowCount() int64 {
 		long int
 		getRowCount(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
-	if s.segmentPtr == nil {
-		return -1
-	}
 	var rowCount = C.GetRowCount(s.segmentPtr)
 	return int64(rowCount)
 }
@@ -260,11 +236,6 @@ func (s *Segment) getDeletedCount() int64 {
 		long int
 		getDeletedCount(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
-	if s.segmentPtr == nil {
-		return -1
-	}
 	var deletedCount = C.GetDeletedCount(s.segmentPtr)
 	return int64(deletedCount)
 }
@@ -274,11 +245,6 @@ func (s *Segment) getMemSize() int64 {
 		long int
 		GetMemoryUsageInBytes(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
-	if s.segmentPtr == nil {
-		return -1
-	}
 	var memoryUsageInBytes = C.GetMemoryUsageInBytes(s.segmentPtr)
 
 	return int64(memoryUsageInBytes)
@@ -296,11 +262,6 @@ func (s *Segment) search(plan *SearchPlan,
 			long int* result_ids,
 			float* result_distances);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
-	if s.segmentPtr == nil {
-		return nil, errors.New("null seg core pointer")
-	}
 	cPlaceholderGroups := make([]C.CPlaceholderGroup, 0)
 	for _, pg := range searchRequests {
 		cPlaceholderGroups = append(cPlaceholderGroups, (*pg).cPlaceholderGroup)
@@ -310,7 +271,7 @@ func (s *Segment) search(plan *SearchPlan,
 	ts := C.uint64_t(timestamp[0])
 	cPlaceHolderGroup := cPlaceholderGroups[0]
 
-	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
+	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.getType().String()))
 	tr := timerecord.NewTimeRecorder("cgoSearch")
 	status := C.Search(s.segmentPtr, plan.cSearchPlan, cPlaceHolderGroup, ts, &searchResult.cSearchResult, C.int64_t(s.segmentID))
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
@@ -333,19 +294,13 @@ func HandleCProto(cRes *C.CProto, msg proto.Message) error {
 }
 
 func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
-	if s.segmentPtr == nil {
-		return nil, errors.New("null seg core pointer")
-	}
-
 	var retrieveResult RetrieveResult
 	ts := C.uint64_t(plan.Timestamp)
 	tr := timerecord.NewTimeRecorder("cgoRetrieve")
 	status := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, ts, &retrieveResult.cRetrieveResult)
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
 		metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	log.Debug("do retrieve on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
+	log.Debug("do retrieve on segment", zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.getType().String()))
 	if err := HandleCStatus(&status, "Retrieve failed"); err != nil {
 		return nil, err
 	}
@@ -582,9 +537,7 @@ func (s *Segment) segmentPreInsert(numOfRecords int) (int64, error) {
 		long int
 		PreInsert(CSegmentInterface c_segment, long int size);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentType != segmentTypeGrowing {
+	if s.getType() != segmentTypeGrowing {
 		return 0, nil
 	}
 	var offset int64
@@ -601,22 +554,14 @@ func (s *Segment) segmentPreDelete(numOfRecords int) int64 {
 		long int
 		PreDelete(CSegmentInterface c_segment, long int size);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	var offset = C.PreDelete(s.segmentPtr, C.int64_t(int64(numOfRecords)))
 
 	return int64(offset)
 }
 
 func (s *Segment) segmentInsert(offset int64, entityIDs []UniqueID, timestamps []Timestamp, record *segcorepb.InsertRecord) error {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentType != segmentTypeGrowing {
+	if s.getType() != segmentTypeGrowing {
 		return nil
-	}
-
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
 	}
 
 	insertRecordBlob, err := proto.Marshal(record)
@@ -656,12 +601,6 @@ func (s *Segment) segmentDelete(offset int64, entityIDs []primaryKey, timestamps
 	*/
 	if len(entityIDs) <= 0 {
 		return fmt.Errorf("empty pks to delete")
-	}
-
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
 	}
 
 	if len(entityIDs) != len(timestamps) {
@@ -718,12 +657,7 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *sche
 		CStatus
 		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
-	}
-	if s.segmentType != segmentTypeSealed {
+	if s.getType() != segmentTypeSealed {
 		errMsg := fmt.Sprintln("segmentLoadFieldData failed, illegal segment type ", s.segmentType, "segmentID = ", s.ID())
 		return errors.New(errMsg)
 	}
@@ -754,12 +688,6 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *sche
 }
 
 func (s *Segment) segmentLoadDeletedRecord(primaryKeys []primaryKey, timestamps []Timestamp, rowCount int64) error {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
-	}
-
 	if len(primaryKeys) <= 0 {
 		return fmt.Errorf("empty pks to delete")
 	}
@@ -828,13 +756,7 @@ func (s *Segment) segmentLoadIndexData(bytesIndex [][]byte, indexInfo *querypb.F
 		return err
 	}
 
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
-	if s.segmentPtr == nil {
-		return errors.New("null seg core pointer")
-	}
-
-	if s.segmentType != segmentTypeSealed {
+	if s.getType() != segmentTypeSealed {
 		errMsg := fmt.Sprintln("updateSegmentIndex failed, illegal segment type ", s.segmentType, "segmentID = ", s.ID())
 		return errors.New(errMsg)
 	}

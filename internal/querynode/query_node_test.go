@@ -325,45 +325,6 @@ func genSimpleQueryNodeToTestWatchChangeInfo(ctx context.Context) (*QueryNode, e
 	return node, nil
 }
 
-func TestQueryNode_adjustByChangeInfo(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	t.Run("test cleanup segments", func(t *testing.T) {
-		defer wg.Done()
-		node, err := genSimpleQueryNodeToTestWatchChangeInfo(ctx)
-		assert.NoError(t, err)
-
-		err = node.removeSegments(genSimpleChangeInfo())
-		assert.NoError(t, err)
-	})
-
-	wg.Add(1)
-	t.Run("test cleanup segments no segment", func(t *testing.T) {
-		defer wg.Done()
-		node, err := genSimpleQueryNodeToTestWatchChangeInfo(ctx)
-		assert.NoError(t, err)
-
-		err = node.historical.replica.removeSegment(defaultSegmentID)
-		assert.NoError(t, err)
-
-		segmentChangeInfos := genSimpleChangeInfo()
-		segmentChangeInfos.Infos[0].OnlineSegments = nil
-		segmentChangeInfos.Infos[0].OfflineNodeID = Params.QueryNodeCfg.GetNodeID()
-
-		/*
-			qc, err := node.queryService.getQueryCollection(defaultCollectionID)
-			assert.NoError(t, err)
-			qc.globalSegmentManager.removeGlobalSealedSegmentInfo(defaultSegmentID)
-		*/
-		err = node.removeSegments(segmentChangeInfos)
-		assert.Error(t, err)
-	})
-	wg.Wait()
-}
-
 func TestQueryNode_watchChangeInfo(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

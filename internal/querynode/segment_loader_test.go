@@ -790,7 +790,8 @@ func newMockReplicaInterface() *mockReplicaInterface {
 func TestSegmentLoader_getFieldType_err(t *testing.T) {
 	loader := &segmentLoader{}
 	// nor growing or sealed.
-	segment := &Segment{segmentType: 200}
+	segment := &Segment{}
+	segment.setType(200)
 	_, err := loader.getFieldType(segment, 100)
 	assert.Error(t, err)
 }
@@ -800,11 +801,12 @@ func TestSegmentLoader_getFieldType(t *testing.T) {
 	loader := &segmentLoader{streamingReplica: replica, historicalReplica: replica}
 
 	// failed to get collection.
-	segment := &Segment{segmentType: segmentTypeSealed}
+	segment := &Segment{}
+	segment.setType(segmentTypeSealed)
 	_, err := loader.getFieldType(segment, 100)
 	assert.Error(t, err)
 
-	segment.segmentType = segmentTypeGrowing
+	segment.setType(segmentTypeGrowing)
 	_, err = loader.getFieldType(segment, 100)
 	assert.Error(t, err)
 
@@ -823,12 +825,12 @@ func TestSegmentLoader_getFieldType(t *testing.T) {
 		}, nil
 	}
 
-	segment.segmentType = segmentTypeGrowing
+	segment.setType(segmentTypeGrowing)
 	fieldType, err := loader.getFieldType(segment, 100)
 	assert.NoError(t, err)
 	assert.Equal(t, schemapb.DataType_Int64, fieldType)
 
-	segment.segmentType = segmentTypeSealed
+	segment.setType(segmentTypeSealed)
 	fieldType, err = loader.getFieldType(segment, 100)
 	assert.NoError(t, err)
 	assert.Equal(t, schemapb.DataType_Int64, fieldType)

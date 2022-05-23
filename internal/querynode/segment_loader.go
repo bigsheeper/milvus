@@ -714,7 +714,7 @@ func deletePk(replica ReplicaInterface, deleteData *deleteData, segmentID Unique
 		return
 	}
 
-	if targetSegment.segmentType != segmentTypeSealed {
+	if targetSegment.getType() != segmentTypeSealed {
 		return
 	}
 

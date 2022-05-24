@@ -85,7 +85,7 @@ type ReplicaInterface interface {
 	hasPartition(partitionID UniqueID) bool
 	// getPartitionNum returns num of partitions
 	getPartitionNum() int
-	// getSegmentIDs returns growing or sealed segment ids by segment type
+	// getSegmentIDs returns segment ids
 	getSegmentIDs(partitionID UniqueID, dataScope DataScope) ([]UniqueID, error)
 	// getSegmentIDsByVChannel returns segment ids which virtual channel is vChannel
 	getSegmentIDsByVChannel(partitionID UniqueID, vChannel Channel) ([]UniqueID, error)
@@ -97,7 +97,7 @@ type ReplicaInterface interface {
 	setSegment(segment *Segment) error
 	// removeSegment removes a segment from collectionReplica
 	removeSegment(segmentID UniqueID, dataScope DataScope) error
-	// getSegmentByID returns the Segment by segmentID and segType
+	// getSegmentByID returns the segment which id is segmentID
 	getSegmentByID(segmentID UniqueID, dataScope DataScope) (*Segment, error)
 	// hasSegment returns true if collectionReplica has the segment, false otherwise
 	hasSegment(segmentID UniqueID, dataScope DataScope) (bool, error)

@@ -34,6 +34,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
@@ -70,7 +72,7 @@ type ReplicaInterface interface {
 	// getPKFieldIDsByCollectionID returns vector field ids of collection
 	getPKFieldIDByCollectionID(collectionID UniqueID) (FieldID, error)
 	// getSegmentInfosByColID return segments info by collectionID
-	getSegmentInfosByColID(collectionID UniqueID, dataScope DataScope) ([]*querypb.SegmentInfo, error)
+	getSegmentInfosByColID(collectionID UniqueID) ([]*querypb.SegmentInfo, error)
 
 	// partition
 	// addPartition adds a new partition to collection
@@ -130,8 +132,6 @@ type metaReplica struct {
 	sealedSegments  map[UniqueID]*Segment
 
 	excludedSegments map[UniqueID][]*datapb.SegmentInfo // map[collectionID]segmentIDs
-
-	etcdKV *etcdkv.EtcdKV
 }
 
 // getSegmentsMemSize get the memory size in bytes of all the Segments
@@ -166,6 +166,26 @@ func (replica *metaReplica) checkDataScope(dataScope DataScope) error {
 		return fmt.Errorf("unexpected dataScope %s", dataScope.String())
 	}
 	return nil
+}
+
+func (replica *metaReplica) dataScope2SegType(dataScope DataScope) (segmentType, error) {
+	if dataScope == querypb.DataScope_Streaming {
+		return segmentTypeGrowing, nil
+	}
+	if dataScope == querypb.DataScope_Historical {
+		return segmentTypeSealed, nil
+	}
+	return commonpb.SegmentState_SegmentStateNone, fmt.Errorf("unexpected dataScope %s", dataScope.String())
+}
+
+func (replica *metaReplica) segType2DataScope(segType segmentType) (DataScope, error) {
+	if segType == segmentTypeGrowing {
+		return querypb.DataScope_Streaming, nil
+	}
+	if segType == segmentTypeSealed {
+		return querypb.DataScope_Historical, nil
+	}
+	return querypb.DataScope_UnKnown, fmt.Errorf("unexpected segmentType %s", segType.String())
 }
 
 //----------------------------------------------------------------------------------------------------- collection
@@ -350,31 +370,25 @@ func (replica *metaReplica) getFieldsByCollectionIDPrivate(collectionID UniqueID
 }
 
 // getSegmentInfosByColID return segments info by collectionID
-func (replica *metaReplica) getSegmentInfosByColID(collectionID UniqueID, dataScope DataScope) ([]*querypb.SegmentInfo, error) {
+func (replica *metaReplica) getSegmentInfosByColID(collectionID UniqueID) ([]*querypb.SegmentInfo, error) {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
 
-	if err := replica.checkDataScope(dataScope); err != nil {
-		return nil, err
-	}
-
 	segmentInfos := make([]*querypb.SegmentInfo, 0)
-	collection, ok := replica.collections[collectionID]
+	_, ok := replica.collections[collectionID]
 	if !ok {
 		// collection not exist, so result segmentInfos is empty
 		return segmentInfos, nil
 	}
 
-	for _, partitionID := range collection.partitionIDs {
-		partition, ok := replica.partitions[partitionID]
-		if !ok {
-			return nil, fmt.Errorf("the meta of collection %d and partition %d are inconsistent in QueryNode", collectionID, partitionID)
+	for _, segment := range replica.growingSegments {
+		if segment.collectionID == collectionID {
+			segmentInfo := replica.getSegmentInfo(segment)
+			segmentInfos = append(segmentInfos, segmentInfo)
 		}
-		for _, segmentID := range partition.segmentIDs {
-			segment, ok := replica.segments[segmentID]
-			if !ok {
-				return nil, fmt.Errorf("the meta of partition %d and segment %d are inconsistent in QueryNode", partitionID, segmentID)
-			}
+	}
+	for _, segment := range replica.sealedSegments {
+		if segment.collectionID == collectionID {
 			segmentInfo := replica.getSegmentInfo(segment)
 			segmentInfos = append(segmentInfos, segmentInfo)
 		}
@@ -537,7 +551,8 @@ func (replica *metaReplica) addSegment(segmentID UniqueID, partitionID UniqueID,
 	replica.mu.Lock()
 	defer replica.mu.Unlock()
 
-	if err := replica.checkDataScope(dataScope); err != nil {
+	segType, err := replica.dataScope2SegType(dataScope)
+	if err != nil {
 		return err
 	}
 
@@ -549,7 +564,7 @@ func (replica *metaReplica) addSegment(segmentID UniqueID, partitionID UniqueID,
 	if err != nil {
 		return err
 	}
-	return replica.addSegmentPrivate(segmentID, partitionID, seg)
+	return replica.addSegmentPrivate(segmentID, partitionID, seg, dataScope)
 }
 
 // addSegmentPrivate is private function in collectionReplica, to add a new segment to collectionReplica
@@ -581,11 +596,16 @@ func (replica *metaReplica) addSegmentPrivate(segmentID UniqueID, partitionID Un
 func (replica *metaReplica) setSegment(segment *Segment) error {
 	replica.mu.Lock()
 	defer replica.mu.Unlock()
-	_, err := replica.getCollectionByIDPrivate(segment.collectionID)
+	dataScope, err := replica.segType2DataScope(segment.getType())
 	if err != nil {
 		return err
 	}
-	return replica.addSegmentPrivate(segment.segmentID, segment.partitionID, segment)
+
+	_, err = replica.getCollectionByIDPrivate(segment.collectionID)
+	if err != nil {
+		return err
+	}
+	return replica.addSegmentPrivate(segment.segmentID, segment.partitionID, segment, dataScope)
 }
 
 // removeSegment removes a segment from collectionReplica
@@ -673,33 +693,25 @@ func (replica *metaReplica) hasSegmentPrivate(segmentID UniqueID, dataScope Data
 func (replica *metaReplica) getSegmentNum(dataScope DataScope) int {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
-	return len(replica.segments)
+
+	if err := replica.checkDataScope(dataScope); err != nil {
+		return 0
+	}
+
+	switch dataScope {
+	case querypb.DataScope_Streaming:
+		return len(replica.growingSegments)
+	case querypb.DataScope_Historical:
+		return len(replica.sealedSegments)
+	}
+
+	return 0
 }
 
 //  getSegmentStatistics returns the statistics of segments in collectionReplica
 func (replica *metaReplica) getSegmentStatistics() []*internalpb.SegmentStats {
-	replica.mu.RLock()
-	defer replica.mu.RUnlock()
-
-	var statisticData = make([]*internalpb.SegmentStats, 0)
-
-	for segmentID, segment := range replica.segments {
-		currentMemSize := segment.getMemSize()
-		segment.lastMemSize = currentMemSize
-		segmentNumOfRows := segment.getRowCount()
-
-		stat := internalpb.SegmentStats{
-			SegmentID:        segmentID,
-			MemorySize:       currentMemSize,
-			NumRows:          segmentNumOfRows,
-			RecentlyModified: segment.getRecentlyModified(),
-		}
-
-		statisticData = append(statisticData, &stat)
-		segment.setRecentlyModified(false)
-	}
-
-	return statisticData
+	// TODO: deprecated, please delete
+	return nil
 }
 
 //  removeExcludedSegments will remove excludedSegments from collectionReplica
@@ -745,23 +757,19 @@ func (replica *metaReplica) freeAll() {
 
 	replica.collections = make(map[UniqueID]*Collection)
 	replica.partitions = make(map[UniqueID]*Partition)
-	replica.segments = make(map[UniqueID]*Segment)
+	replica.growingSegments = make(map[UniqueID]*Segment)
+	replica.sealedSegments = make(map[UniqueID]*Segment)
 }
 
 // newCollectionReplica returns a new ReplicaInterface
 func newCollectionReplica(etcdKv *etcdkv.EtcdKV) ReplicaInterface {
-	collections := make(map[UniqueID]*Collection)
-	partitions := make(map[UniqueID]*Partition)
-	segments := make(map[UniqueID]*Segment)
-	excludedSegments := make(map[UniqueID][]*datapb.SegmentInfo)
-
 	var replica ReplicaInterface = &metaReplica{
-		collections: collections,
-		partitions:  partitions,
-		segments:    segments,
+		collections:     make(map[UniqueID]*Collection),
+		partitions:      make(map[UniqueID]*Partition),
+		growingSegments: make(map[UniqueID]*Segment),
+		sealedSegments:  make(map[UniqueID]*Segment),
 
-		excludedSegments: excludedSegments,
-		etcdKV:           etcdKv,
+		excludedSegments: make(map[UniqueID][]*datapb.SegmentInfo),
 	}
 
 	return replica

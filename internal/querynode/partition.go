@@ -59,6 +59,11 @@ func (p *Partition) getSegmentIDs(dataScope DataScope) []UniqueID {
 		dst := make([]UniqueID, len(p.sealedSegmentIDs))
 		copy(dst, p.sealedSegmentIDs)
 		return dst
+	//case querypb.DataScope_All:
+	//	dst := make([]UniqueID, len(p.growingSegmentIDs)+len(p.sealedSegmentIDs))
+	//	copy(dst, p.growingSegmentIDs)
+	//	copy(dst[len(p.growingSegmentIDs):], p.sealedSegmentIDs)
+	//	return dst
 	default:
 		return []UniqueID{}
 	}

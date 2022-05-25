@@ -226,7 +226,7 @@ func TestStreaming_search(t *testing.T) {
 		searchReq, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, defaultNQ)
 		assert.NoError(t, err)
 
-		seg, err := streaming.getSegmentByID(defaultSegmentID)
+		seg, err := streaming.getSegmentByID(defaultSegmentID, segmentTypeGrowing)
 		assert.NoError(t, err)
 
 		seg.segmentPtr = nil

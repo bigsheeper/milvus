@@ -40,7 +40,7 @@ func TestStreaming_retrieve(t *testing.T) {
 	insertMsg, err := genSimpleInsertMsg(collection.schema, defaultMsgLength)
 	assert.NoError(t, err)
 
-	segment, err := streaming.getSegmentByID(defaultSegmentID)
+	segment, err := streaming.getSegmentByID(defaultSegmentID, segmentTypeGrowing)
 	assert.NoError(t, err)
 
 	offset, err := segment.segmentPreInsert(len(insertMsg.RowIDs))

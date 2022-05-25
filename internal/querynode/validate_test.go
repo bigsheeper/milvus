@@ -20,7 +20,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,8 +67,7 @@ func TestQueryShardHistorical_validateSegmentIDs(t *testing.T) {
 		assert.NoError(t, err)
 		err = his.addPartition(defaultCollectionID, defaultPartitionID+1)
 		assert.NoError(t, err)
-		pkType := schemapb.DataType_Int64
-		schema := genTestCollectionSchema(pkType)
+		schema := genTestCollectionSchema()
 		seg, err := genSealedSegment(schema,
 			defaultCollectionID,
 			defaultPartitionID+1,

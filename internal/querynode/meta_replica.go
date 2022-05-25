@@ -37,7 +37,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
-	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -728,7 +727,7 @@ func (replica *metaReplica) freeAll() {
 }
 
 // newCollectionReplica returns a new ReplicaInterface
-func newCollectionReplica(etcdKv *etcdkv.EtcdKV) ReplicaInterface {
+func newCollectionReplica() ReplicaInterface {
 	var replica ReplicaInterface = &metaReplica{
 		collections:     make(map[UniqueID]*Collection),
 		partitions:      make(map[UniqueID]*Partition),

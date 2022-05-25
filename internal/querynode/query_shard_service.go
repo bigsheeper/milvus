@@ -40,8 +40,7 @@ type queryShardService struct {
 
 	factory dependency.Factory
 
-	historical   ReplicaInterface
-	streaming    ReplicaInterface
+	metaReplica  ReplicaInterface
 	tSafeReplica TSafeReplicaInterface
 
 	shardClusterService *ShardClusterService
@@ -51,7 +50,7 @@ type queryShardService struct {
 	scheduler           *taskScheduler
 }
 
-func newQueryShardService(ctx context.Context, historical ReplicaInterface, streaming ReplicaInterface, tSafeReplica TSafeReplicaInterface, clusterService *ShardClusterService, factory dependency.Factory, scheduler *taskScheduler) *queryShardService {
+func newQueryShardService(ctx context.Context, metaReplica ReplicaInterface, tSafeReplica TSafeReplicaInterface, clusterService *ShardClusterService, factory dependency.Factory, scheduler *taskScheduler) *queryShardService {
 	queryShardServiceCtx, queryShardServiceCancel := context.WithCancel(ctx)
 
 	path := Params.LoadWithDefault("localStorage.Path", "/tmp/milvus/data")
@@ -64,8 +63,7 @@ func newQueryShardService(ctx context.Context, historical ReplicaInterface, stre
 		cancel:              queryShardServiceCancel,
 		queryShards:         make(map[Channel]*queryShard),
 		queryChannels:       make(map[int64]*queryChannel),
-		historical:          historical,
-		streaming:           streaming,
+		metaReplica:         metaReplica,
 		tSafeReplica:        tSafeReplica,
 		shardClusterService: clusterService,
 		localChunkManager:   localChunkManager,

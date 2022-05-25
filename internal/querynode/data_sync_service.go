@@ -36,10 +36,9 @@ type dataSyncService struct {
 	dmlChannel2FlowGraph   map[Channel]*queryNodeFlowGraph
 	deltaChannel2FlowGraph map[Channel]*queryNodeFlowGraph
 
-	streamingReplica  ReplicaInterface
-	historicalReplica ReplicaInterface
-	tSafeReplica      TSafeReplicaInterface
-	msFactory         msgstream.Factory
+	metaReplica  ReplicaInterface
+	tSafeReplica TSafeReplicaInterface
+	msFactory    msgstream.Factory
 }
 
 // addFlowGraphsForDMLChannels add flowGraphs to dmlChannel2FlowGraph
@@ -58,7 +57,7 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 		}
 		newFlowGraph, err := newQueryNodeFlowGraph(dsService.ctx,
 			collectionID,
-			dsService.streamingReplica,
+			dsService.metaReplica,
 			dsService.tSafeReplica,
 			channel,
 			dsService.msFactory)
@@ -98,7 +97,7 @@ func (dsService *dataSyncService) addFlowGraphsForDeltaChannels(collectionID Uni
 		}
 		newFlowGraph, err := newQueryNodeDeltaFlowGraph(dsService.ctx,
 			collectionID,
-			dsService.historicalReplica,
+			dsService.metaReplica,
 			dsService.tSafeReplica,
 			channel,
 			dsService.msFactory)
@@ -212,8 +211,7 @@ func (dsService *dataSyncService) removeFlowGraphsByDeltaChannels(channels []Cha
 
 // newDataSyncService returns a new dataSyncService
 func newDataSyncService(ctx context.Context,
-	streamingReplica ReplicaInterface,
-	historicalReplica ReplicaInterface,
+	metaReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
 	factory msgstream.Factory) *dataSyncService {
 
@@ -221,8 +219,7 @@ func newDataSyncService(ctx context.Context,
 		ctx:                    ctx,
 		dmlChannel2FlowGraph:   make(map[Channel]*queryNodeFlowGraph),
 		deltaChannel2FlowGraph: make(map[Channel]*queryNodeFlowGraph),
-		streamingReplica:       streamingReplica,
-		historicalReplica:      historicalReplica,
+		metaReplica:            metaReplica,
 		tSafeReplica:           tSafeReplica,
 		msFactory:              factory,
 	}

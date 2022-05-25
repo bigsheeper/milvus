@@ -48,8 +48,7 @@ import (
 
 // segmentLoader is only responsible for loading the field data from binlog
 type segmentLoader struct {
-	historicalReplica ReplicaInterface
-	streamingReplica  ReplicaInterface
+	metaReplica ReplicaInterface
 
 	dataCoord types.DataCoord
 
@@ -774,8 +773,7 @@ func (loader *segmentLoader) checkSegmentSize(collectionID UniqueID, segmentLoad
 }
 
 func newSegmentLoader(
-	historicalReplica ReplicaInterface,
-	streamingReplica ReplicaInterface,
+	metaReplica ReplicaInterface,
 	etcdKV *etcdkv.EtcdKV,
 	cm storage.ChunkManager,
 	factory msgstream.Factory) *segmentLoader {
@@ -797,8 +795,7 @@ func newSegmentLoader(
 	}
 
 	loader := &segmentLoader{
-		historicalReplica: historicalReplica,
-		streamingReplica:  streamingReplica,
+		metaReplica: metaReplica,
 
 		cm:     cm,
 		etcdKV: etcdKV,

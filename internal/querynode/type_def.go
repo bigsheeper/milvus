@@ -52,9 +52,6 @@ type TimeRange struct {
 // loadType is load collection or load partition
 type loadType = querypb.LoadType
 
-// DataScope indicates the streaming data or historical data
-type DataScope = querypb.DataScope
-
 const (
 	loadTypeCollection = querypb.LoadType_LoadCollection
 	loadTypePartition  = querypb.LoadType_LoadPartition

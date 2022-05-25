@@ -29,7 +29,6 @@ package querynode
 */
 import "C"
 import (
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -49,32 +48,27 @@ func (p *Partition) ID() UniqueID {
 }
 
 // getSegmentIDs returns segment ids by DataScope
-func (p *Partition) getSegmentIDs(dataScope DataScope) []UniqueID {
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+func (p *Partition) getSegmentIDs(segType segmentType) []UniqueID {
+	switch segType {
+	case segmentTypeGrowing:
 		dst := make([]UniqueID, len(p.growingSegmentIDs))
 		copy(dst, p.growingSegmentIDs)
 		return dst
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		dst := make([]UniqueID, len(p.sealedSegmentIDs))
 		copy(dst, p.sealedSegmentIDs)
 		return dst
-	//case querypb.DataScope_All:
-	//	dst := make([]UniqueID, len(p.growingSegmentIDs)+len(p.sealedSegmentIDs))
-	//	copy(dst, p.growingSegmentIDs)
-	//	copy(dst[len(p.growingSegmentIDs):], p.sealedSegmentIDs)
-	//	return dst
 	default:
 		return []UniqueID{}
 	}
 }
 
 // addSegmentID add segmentID to segmentIDs
-func (p *Partition) addSegmentID(segmentID UniqueID, dataScope DataScope) {
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+func (p *Partition) addSegmentID(segmentID UniqueID, segType segmentType) {
+	switch segType {
+	case segmentTypeGrowing:
 		p.growingSegmentIDs = append(p.growingSegmentIDs, segmentID)
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		p.sealedSegmentIDs = append(p.sealedSegmentIDs, segmentID)
 	default:
 		return
@@ -83,7 +77,7 @@ func (p *Partition) addSegmentID(segmentID UniqueID, dataScope DataScope) {
 }
 
 // removeSegmentID removes segmentID from segmentIDs
-func (p *Partition) removeSegmentID(segmentID UniqueID, dataScope DataScope) {
+func (p *Partition) removeSegmentID(segmentID UniqueID, segType segmentType) {
 	deleteFunc := func(segmentIDs []UniqueID) []UniqueID {
 		tmpIDs := make([]UniqueID, 0)
 		for _, id := range segmentIDs {
@@ -93,10 +87,10 @@ func (p *Partition) removeSegmentID(segmentID UniqueID, dataScope DataScope) {
 		}
 		return tmpIDs
 	}
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+	switch segType {
+	case segmentTypeGrowing:
 		p.growingSegmentIDs = deleteFunc(p.growingSegmentIDs)
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		p.sealedSegmentIDs = deleteFunc(p.sealedSegmentIDs)
 	default:
 		return

@@ -34,8 +34,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
-
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
@@ -86,23 +84,23 @@ type ReplicaInterface interface {
 	// getPartitionNum returns num of partitions
 	getPartitionNum() int
 	// getSegmentIDs returns segment ids
-	getSegmentIDs(partitionID UniqueID, dataScope DataScope) ([]UniqueID, error)
+	getSegmentIDs(partitionID UniqueID, segType segmentType) ([]UniqueID, error)
 	// getSegmentIDsByVChannel returns segment ids which virtual channel is vChannel
 	getSegmentIDsByVChannel(partitionID UniqueID, vChannel Channel) ([]UniqueID, error)
 
 	// segment
 	// addSegment add a new segment to collectionReplica
-	addSegment(segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, dataScope DataScope) error
+	addSegment(segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, segType segmentType) error
 	// setSegment adds a segment to collectionReplica
 	setSegment(segment *Segment) error
 	// removeSegment removes a segment from collectionReplica
-	removeSegment(segmentID UniqueID, dataScope DataScope) error
+	removeSegment(segmentID UniqueID, segType segmentType) error
 	// getSegmentByID returns the segment which id is segmentID
-	getSegmentByID(segmentID UniqueID, dataScope DataScope) (*Segment, error)
+	getSegmentByID(segmentID UniqueID, segType segmentType) (*Segment, error)
 	// hasSegment returns true if collectionReplica has the segment, false otherwise
-	hasSegment(segmentID UniqueID, dataScope DataScope) (bool, error)
+	hasSegment(segmentID UniqueID, segType segmentType) (bool, error)
 	// getSegmentNum returns num of segments in collectionReplica
-	getSegmentNum(dataScope DataScope) int
+	getSegmentNum(segType segmentType) int
 	//  getSegmentStatistics returns the statistics of segments in collectionReplica
 	getSegmentStatistics() []*internalpb.SegmentStats
 
@@ -159,33 +157,6 @@ func (replica *metaReplica) printReplica() {
 	log.Info("growingSegments in collectionReplica", zap.Any("info", replica.growingSegments))
 	log.Info("sealedSegments in collectionReplica", zap.Any("info", replica.sealedSegments))
 	log.Info("excludedSegments in collectionReplica", zap.Any("info", replica.excludedSegments))
-}
-
-func (replica *metaReplica) checkDataScope(dataScope DataScope) error {
-	if dataScope != querypb.DataScope_Streaming && dataScope != querypb.DataScope_Historical {
-		return fmt.Errorf("unexpected dataScope %s", dataScope.String())
-	}
-	return nil
-}
-
-func (replica *metaReplica) dataScope2SegType(dataScope DataScope) (segmentType, error) {
-	if dataScope == querypb.DataScope_Streaming {
-		return segmentTypeGrowing, nil
-	}
-	if dataScope == querypb.DataScope_Historical {
-		return segmentTypeSealed, nil
-	}
-	return commonpb.SegmentState_SegmentStateNone, fmt.Errorf("unexpected dataScope %s", dataScope.String())
-}
-
-func (replica *metaReplica) segType2DataScope(segType segmentType) (DataScope, error) {
-	if segType == segmentTypeGrowing {
-		return querypb.DataScope_Streaming, nil
-	}
-	if segType == segmentTypeSealed {
-		return querypb.DataScope_Historical, nil
-	}
-	return querypb.DataScope_UnKnown, fmt.Errorf("unexpected segmentType %s", segType.String())
 }
 
 //----------------------------------------------------------------------------------------------------- collection
@@ -448,13 +419,13 @@ func (replica *metaReplica) removePartitionPrivate(partitionID UniqueID, locked 
 	}
 
 	// delete segments
-	for _, segmentID := range partition.getSegmentIDs(querypb.DataScope_Streaming) {
+	for _, segmentID := range partition.getSegmentIDs(segmentTypeGrowing) {
 		// try to delete, ignore error
-		_ = replica.removeSegmentPrivate(segmentID, querypb.DataScope_Streaming)
+		_ = replica.removeSegmentPrivate(segmentID, segmentTypeGrowing)
 	}
-	for _, segmentID := range partition.getSegmentIDs(querypb.DataScope_Historical) {
+	for _, segmentID := range partition.getSegmentIDs(segmentTypeSealed) {
 		// try to delete, ignore error
-		_ = replica.removeSegmentPrivate(segmentID, querypb.DataScope_Historical)
+		_ = replica.removeSegmentPrivate(segmentID, segmentTypeSealed)
 	}
 
 	collection.removePartitionID(partitionID)
@@ -502,28 +473,24 @@ func (replica *metaReplica) getPartitionNum() int {
 }
 
 // getSegmentIDs returns segment ids
-func (replica *metaReplica) getSegmentIDs(partitionID UniqueID, dataScope DataScope) ([]UniqueID, error) {
+func (replica *metaReplica) getSegmentIDs(partitionID UniqueID, segType segmentType) ([]UniqueID, error) {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
 
-	if err := replica.checkDataScope(dataScope); err != nil {
-		return nil, err
-	}
-
-	return replica.getSegmentIDsPrivate(partitionID, dataScope)
+	return replica.getSegmentIDsPrivate(partitionID, segType)
 }
 
 // getSegmentIDsByVChannel returns segment ids which virtual channel is vChannel
 func (replica *metaReplica) getSegmentIDsByVChannel(partitionID UniqueID, vChannel Channel) ([]UniqueID, error) {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
-	segmentIDs, err := replica.getSegmentIDsPrivate(partitionID, querypb.DataScope_Streaming)
+	segmentIDs, err := replica.getSegmentIDsPrivate(partitionID, segmentTypeGrowing)
 	if err != nil {
 		return nil, err
 	}
 	segmentIDsTmp := make([]UniqueID, 0)
 	for _, segmentID := range segmentIDs {
-		segment, err := replica.getSegmentByIDPrivate(segmentID, querypb.DataScope_Streaming)
+		segment, err := replica.getSegmentByIDPrivate(segmentID, segmentTypeGrowing)
 		if err != nil {
 			return nil, err
 		}
@@ -536,25 +503,20 @@ func (replica *metaReplica) getSegmentIDsByVChannel(partitionID UniqueID, vChann
 }
 
 // getSegmentIDsPrivate is private function in collectionReplica, it returns segment ids
-func (replica *metaReplica) getSegmentIDsPrivate(partitionID UniqueID, dataScope DataScope) ([]UniqueID, error) {
+func (replica *metaReplica) getSegmentIDsPrivate(partitionID UniqueID, segType segmentType) ([]UniqueID, error) {
 	partition, err2 := replica.getPartitionByIDPrivate(partitionID)
 	if err2 != nil {
 		return nil, err2
 	}
 
-	return partition.getSegmentIDs(dataScope), nil
+	return partition.getSegmentIDs(segType), nil
 }
 
 //----------------------------------------------------------------------------------------------------- segment
 // addSegment add a new segment to collectionReplica
-func (replica *metaReplica) addSegment(segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, dataScope DataScope) error {
+func (replica *metaReplica) addSegment(segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, segType segmentType) error {
 	replica.mu.Lock()
 	defer replica.mu.Unlock()
-
-	segType, err := replica.dataScope2SegType(dataScope)
-	if err != nil {
-		return err
-	}
 
 	collection, err := replica.getCollectionByIDPrivate(collectionID)
 	if err != nil {
@@ -564,28 +526,32 @@ func (replica *metaReplica) addSegment(segmentID UniqueID, partitionID UniqueID,
 	if err != nil {
 		return err
 	}
-	return replica.addSegmentPrivate(segmentID, partitionID, seg, dataScope)
+	return replica.addSegmentPrivate(segmentID, partitionID, seg, segType)
 }
 
 // addSegmentPrivate is private function in collectionReplica, to add a new segment to collectionReplica
-func (replica *metaReplica) addSegmentPrivate(segmentID UniqueID, partitionID UniqueID, segment *Segment, dataScope DataScope) error {
+func (replica *metaReplica) addSegmentPrivate(segmentID UniqueID, partitionID UniqueID, segment *Segment, segType segmentType) error {
 	partition, err := replica.getPartitionByIDPrivate(partitionID)
 	if err != nil {
 		return err
 	}
 
-	ok, err := replica.hasSegmentPrivate(segmentID, dataScope)
+	ok, err := replica.hasSegmentPrivate(segmentID, segType)
 	if err != nil {
 		return err
 	}
 	if ok {
 		return nil
 	}
-	partition.addSegmentID(segmentID, dataScope)
+	partition.addSegmentID(segmentID, segType)
 
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+	switch segType {
+	case segmentTypeGrowing:
 		replica.growingSegments[segmentID] = segment
+	case segmentTypeSealed:
+		replica.sealedSegments[segmentID] = segment
+	default:
+		return fmt.Errorf("unexpected segment type, segmentID = %d, segmentType = %s", segmentID, segType.String())
 	}
 
 	metrics.QueryNodeNumSegments.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Inc()
@@ -596,28 +562,31 @@ func (replica *metaReplica) addSegmentPrivate(segmentID UniqueID, partitionID Un
 func (replica *metaReplica) setSegment(segment *Segment) error {
 	replica.mu.Lock()
 	defer replica.mu.Unlock()
-	dataScope, err := replica.segType2DataScope(segment.getType())
+
+	if segment == nil {
+		return fmt.Errorf("nil segment when setSegment")
+	}
+
+	_, err := replica.getCollectionByIDPrivate(segment.collectionID)
 	if err != nil {
 		return err
 	}
 
-	_, err = replica.getCollectionByIDPrivate(segment.collectionID)
-	if err != nil {
-		return err
-	}
-	return replica.addSegmentPrivate(segment.segmentID, segment.partitionID, segment, dataScope)
+	segType := segment.getType()
+	return replica.addSegmentPrivate(segment.segmentID, segment.partitionID, segment, segType)
 }
 
 // removeSegment removes a segment from collectionReplica
-func (replica *metaReplica) removeSegment(segmentID UniqueID, dataScope DataScope) error {
+func (replica *metaReplica) removeSegment(segmentID UniqueID, segType segmentType) error {
 	replica.mu.Lock()
 	defer replica.mu.Unlock()
-	return replica.removeSegmentPrivate(segmentID, dataScope)
+
+	return replica.removeSegmentPrivate(segmentID, segType)
 }
 
 // removeSegmentPrivate is private function in collectionReplica, to remove a segment from collectionReplica
-func (replica *metaReplica) removeSegmentPrivate(segmentID UniqueID, dataScope DataScope) error {
-	segment, err := replica.getSegmentByIDPrivate(segmentID, dataScope)
+func (replica *metaReplica) removeSegmentPrivate(segmentID UniqueID, segType segmentType) error {
+	segment, err := replica.getSegmentByIDPrivate(segmentID, segType)
 	if err != nil {
 		return err
 	}
@@ -626,14 +595,14 @@ func (replica *metaReplica) removeSegmentPrivate(segmentID UniqueID, dataScope D
 	if err2 != nil {
 		return err
 	}
-	partition.removeSegmentID(segmentID, dataScope)
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+	partition.removeSegmentID(segmentID, segType)
+	switch segType {
+	case segmentTypeGrowing:
 		delete(replica.growingSegments, segmentID)
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		delete(replica.sealedSegments, segmentID)
 	default:
-		err = fmt.Errorf("unexpected dataScope, segmentID = %d, dataScope = %s", segmentID, dataScope.String())
+		err = fmt.Errorf("unexpected segment type, segmentID = %d, segmentType = %s", segmentID, segType.String())
 	}
 	deleteSegment(segment)
 
@@ -642,75 +611,72 @@ func (replica *metaReplica) removeSegmentPrivate(segmentID UniqueID, dataScope D
 }
 
 // getSegmentByID returns the segment which id is segmentID
-func (replica *metaReplica) getSegmentByID(segmentID UniqueID, dataScope DataScope) (*Segment, error) {
+func (replica *metaReplica) getSegmentByID(segmentID UniqueID, segType segmentType) (*Segment, error) {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
-	return replica.getSegmentByIDPrivate(segmentID, dataScope)
+	return replica.getSegmentByIDPrivate(segmentID, segType)
 }
 
 // getSegmentByIDPrivate is private function in collectionReplica, it returns the segment which id is segmentID
-func (replica *metaReplica) getSegmentByIDPrivate(segmentID UniqueID, dataScope DataScope) (*Segment, error) {
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+func (replica *metaReplica) getSegmentByIDPrivate(segmentID UniqueID, segType segmentType) (*Segment, error) {
+	switch segType {
+	case segmentTypeGrowing:
 		segment, ok := replica.growingSegments[segmentID]
 		if !ok {
 			return nil, fmt.Errorf("cannot find growing segment %d in QueryNode", segmentID)
 		}
 		return segment, nil
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		segment, ok := replica.sealedSegments[segmentID]
 		if !ok {
 			return nil, fmt.Errorf("cannot find sealed segment %d in QueryNode", segmentID)
 		}
 		return segment, nil
 	default:
-		return nil, fmt.Errorf("invalid DataScope, segmentID = %d, dataScope = %s", segmentID, dataScope.String())
+		return nil, fmt.Errorf("unexpected segment type, segmentID = %d, segmentType = %s", segmentID, segType.String())
 	}
 }
 
 // hasSegment returns true if collectionReplica has the segment, false otherwise
-func (replica *metaReplica) hasSegment(segmentID UniqueID, dataScope DataScope) (bool, error) {
+func (replica *metaReplica) hasSegment(segmentID UniqueID, segType segmentType) (bool, error) {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
-	return replica.hasSegmentPrivate(segmentID, dataScope)
+	return replica.hasSegmentPrivate(segmentID, segType)
 }
 
 // hasSegmentPrivate is private function in collectionReplica, to check if collectionReplica has the segment
-func (replica *metaReplica) hasSegmentPrivate(segmentID UniqueID, dataScope DataScope) (bool, error) {
-	switch dataScope {
-	case querypb.DataScope_Streaming:
+func (replica *metaReplica) hasSegmentPrivate(segmentID UniqueID, segType segmentType) (bool, error) {
+	switch segType {
+	case segmentTypeGrowing:
 		_, ok := replica.growingSegments[segmentID]
 		return ok, nil
-	case querypb.DataScope_Historical:
+	case segmentTypeSealed:
 		_, ok := replica.sealedSegments[segmentID]
 		return ok, nil
 	default:
-		return false, fmt.Errorf("unexpected dataScope, segmentID = %d, dataScope = %s", segmentID, dataScope.String())
+		return false, fmt.Errorf("unexpected segment type, segmentID = %d, segmentType = %s", segmentID, segType.String())
 	}
 }
 
 // getSegmentNum returns num of segments in collectionReplica
-func (replica *metaReplica) getSegmentNum(dataScope DataScope) int {
+func (replica *metaReplica) getSegmentNum(segType segmentType) int {
 	replica.mu.RLock()
 	defer replica.mu.RUnlock()
 
-	if err := replica.checkDataScope(dataScope); err != nil {
+	switch segType {
+	case segmentTypeGrowing:
+		return len(replica.growingSegments)
+	case segmentTypeSealed:
+		return len(replica.sealedSegments)
+	default:
+		log.Error("unexpected segment type", zap.String("segmentType", segType.String()))
 		return 0
 	}
-
-	switch dataScope {
-	case querypb.DataScope_Streaming:
-		return len(replica.growingSegments)
-	case querypb.DataScope_Historical:
-		return len(replica.sealedSegments)
-	}
-
-	return 0
 }
 
 //  getSegmentStatistics returns the statistics of segments in collectionReplica
 func (replica *metaReplica) getSegmentStatistics() []*internalpb.SegmentStats {
-	// TODO: deprecated, please delete
+	// TODO: deprecated
 	return nil
 }
 

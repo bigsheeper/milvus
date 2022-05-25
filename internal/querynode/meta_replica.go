@@ -264,9 +264,7 @@ func (replica *metaReplica) getPartitionIDs(collectionID UniqueID) ([]UniqueID, 
 		return nil, err
 	}
 
-	parID := make([]UniqueID, len(collection.partitionIDs))
-	copy(parID, collection.partitionIDs)
-	return parID, nil
+	return collection.getPartitionIDs(), nil
 }
 
 func (replica *metaReplica) getIndexedFieldIDByCollectionIDPrivate(collectionID UniqueID, segment *Segment) ([]FieldID, error) {

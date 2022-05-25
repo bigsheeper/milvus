@@ -87,8 +87,7 @@ func (q *queryShardService) addQueryShard(collectionID UniqueID, channel Channel
 		channel,
 		replicaID,
 		q.shardClusterService,
-		q.historical,
-		q.streaming,
+		q.metaReplica,
 		q.tSafeReplica,
 		q.localChunkManager,
 		q.remoteChunkManager,
@@ -147,7 +146,7 @@ func (q *queryShardService) getQueryChannel(collectionID int64) *queryChannel {
 	qc, ok := q.queryChannels[collectionID]
 	if !ok {
 		queryStream, _ := q.factory.NewQueryMsgStream(q.ctx)
-		qc = NewQueryChannel(collectionID, q.shardClusterService, queryStream, q.streaming)
+		qc = NewQueryChannel(collectionID, q.shardClusterService, queryStream, q.metaReplica)
 		q.queryChannels[collectionID] = qc
 	}
 

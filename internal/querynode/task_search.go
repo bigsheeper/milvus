@@ -77,6 +77,7 @@ func (s *searchTask) init() error {
 	return nil
 }
 
+// TODO: merge searchOnStreaming and searchOnHistorical?
 func (s *searchTask) searchOnStreaming() error {
 	// check ctx timeout
 	if !funcutil.CheckCtxValid(s.Ctx()) {
@@ -84,7 +85,7 @@ func (s *searchTask) searchOnStreaming() error {
 	}
 
 	// check if collection has been released, check streaming since it's released first
-	_, err := s.QS.streaming.getCollectionByID(s.CollectionID)
+	_, err := s.QS.metaReplica.getCollectionByID(s.CollectionID)
 	if err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ func (s *searchTask) searchOnStreaming() error {
 	defer searchReq.delete()
 
 	// TODO add context
-	partResults, _, _, sErr := searchStreaming(s.QS.streaming, searchReq, s.CollectionID, s.iReq.GetPartitionIDs(), s.req.GetDmlChannel())
+	partResults, _, _, sErr := searchStreaming(s.QS.metaReplica, searchReq, s.CollectionID, s.iReq.GetPartitionIDs(), s.req.GetDmlChannel())
 	if sErr != nil {
 		log.Debug("failed to search streaming data", zap.Int64("collectionID", s.CollectionID), zap.Error(sErr))
 		return sErr
@@ -119,7 +120,7 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 
 	// check if collection has been released, check streaming since it's released first
-	_, err := s.QS.streaming.getCollectionByID(s.CollectionID)
+	_, err := s.QS.metaReplica.getCollectionByID(s.CollectionID)
 	if err != nil {
 		return err
 	}
@@ -138,7 +139,7 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 	defer searchReq.delete()
 
-	partResults, _, _, err := searchHistorical(s.QS.historical, searchReq, s.CollectionID, nil, segmentIDs)
+	partResults, _, _, err := searchHistorical(s.QS.metaReplica, searchReq, s.CollectionID, nil, segmentIDs)
 	if err != nil {
 		return err
 	}

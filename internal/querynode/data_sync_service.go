@@ -44,23 +44,16 @@ type dataSyncService struct {
 // checkReplica used to check replica info before init flow graph, it's a private method of dataSyncService
 func (dsService *dataSyncService) checkReplica(collectionID UniqueID) error {
 	// check if the collection exists
-	hisColl, err := dsService.historicalReplica.getCollectionByID(collectionID)
+	coll, err := dsService.metaReplica.getCollectionByID(collectionID)
 	if err != nil {
 		return err
 	}
-	strColl, err := dsService.streamingReplica.getCollectionByID(collectionID)
-	if err != nil {
-		return err
-	}
-	if hisColl.getLoadType() != strColl.getLoadType() {
-		return fmt.Errorf("inconsistent loadType of collection, collectionID = %d", collectionID)
-	}
-	for _, channel := range hisColl.getVChannels() {
+	for _, channel := range coll.getVChannels() {
 		if _, err := dsService.tSafeReplica.getTSafe(channel); err != nil {
 			return fmt.Errorf("getTSafe failed, err = %s", err)
 		}
 	}
-	for _, channel := range hisColl.getVDeltaChannels() {
+	for _, channel := range coll.getVDeltaChannels() {
 		if _, err := dsService.tSafeReplica.getTSafe(channel); err != nil {
 			return fmt.Errorf("getTSafe failed, err = %s", err)
 		}

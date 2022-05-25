@@ -18,7 +18,7 @@ type queryChannel struct {
 	closeCh      chan struct{}
 	collectionID int64
 
-	streaming      ReplicaInterface
+	metaReplica    ReplicaInterface
 	queryMsgStream msgstream.MsgStream
 	shardCluster   *ShardClusterService
 	asConsumeOnce  sync.Once
@@ -26,12 +26,12 @@ type queryChannel struct {
 }
 
 // NewQueryChannel create a query channel with provided shardCluster, query msgstream and collection id
-func NewQueryChannel(collectionID int64, scs *ShardClusterService, qms msgstream.MsgStream, streaming ReplicaInterface) *queryChannel {
+func NewQueryChannel(collectionID int64, scs *ShardClusterService, qms msgstream.MsgStream, metaReplica ReplicaInterface) *queryChannel {
 	return &queryChannel{
 		closeCh:      make(chan struct{}),
 		collectionID: collectionID,
 
-		streaming:      streaming,
+		metaReplica:    metaReplica,
 		queryMsgStream: qms,
 		shardCluster:   scs,
 	}
@@ -124,7 +124,7 @@ func (qc *queryChannel) adjustByChangeInfo(msg *msgstream.SealedSegmentsChangeIn
 				q.globalSegmentManager.addGlobalSegmentInfo(segment)
 				// 2. update excluded segment, cluster have been loaded sealed segments,
 				// so we need to avoid getting growing segment from flow graph.*/
-			qc.streaming.addExcludedSegments(segment.CollectionID, []*datapb.SegmentInfo{
+			qc.metaReplica.addExcludedSegments(segment.CollectionID, []*datapb.SegmentInfo{
 				{
 					ID:            segment.SegmentID,
 					CollectionID:  segment.CollectionID,

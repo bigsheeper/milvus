@@ -17,8 +17,8 @@ extern "C" {
 
 typedef void* CCollection;
 
-CCollection
-NewCollection(const char* schema_proto_blob);
+CStatus
+NewCollection(const char* schema_proto_blob, CCollection* c_collection);
 
 CStatus
 DeleteCollection(CCollection collection);

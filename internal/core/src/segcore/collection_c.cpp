@@ -34,11 +34,12 @@ NewCollection(const char* schema_proto_blob, CCollection* c_collection) {
 CStatus
 DeleteCollection(CCollection collection) {
     try {
-        auto col = (milvus::segcore::Collection*)collection;
+        auto col = reinterpret_cast<milvus::segcore::Collection*>(collection);
         delete col;
 #ifdef __linux__
         malloc_trim(0);
 #endif
+        return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
     }

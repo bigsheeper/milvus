@@ -138,7 +138,7 @@ LoadIndexFromBinarySet(CIndex index, CBinarySet c_binary_set) {
 CStatus
 QueryOnFloatVecIndex(CIndex index, int64_t float_value_num, const float* vectors, CIndexQueryResult* res) {
     try {
-        auto cIndex = (milvus::indexbuilder::VecIndexCreator*)index;
+        auto cIndex = reinterpret_cast<milvus::indexbuilder::VecIndexCreator*>(index);
         auto dim = cIndex->dim();
         auto row_nums = float_value_num / dim;
         auto query_ds = knowhere::GenDataset(row_nums, dim, vectors);
@@ -157,7 +157,7 @@ QueryOnFloatVecIndexWithParam(CIndex index,
                               const char* serialized_search_params,
                               CIndexQueryResult* res) {
     try {
-        auto cIndex = (milvus::indexbuilder::VecIndexCreator*)index;
+        auto cIndex = reinterpret_cast<milvus::indexbuilder::VecIndexCreator*>(index);
         auto dim = cIndex->dim();
         auto row_nums = float_value_num / dim;
         auto query_ds = knowhere::GenDataset(row_nums, dim, vectors);
@@ -172,7 +172,7 @@ QueryOnFloatVecIndexWithParam(CIndex index,
 CStatus
 QueryOnBinaryVecIndex(CIndex index, int64_t data_size, const uint8_t* vectors, CIndexQueryResult* res) {
     try {
-        auto cIndex = (milvus::indexbuilder::VecIndexCreator*)index;
+        auto cIndex = reinterpret_cast<milvus::indexbuilder::VecIndexCreator*>(index);
         auto dim = cIndex->dim();
         auto row_nums = (data_size * 8) / dim;
         auto query_ds = knowhere::GenDataset(row_nums, dim, vectors);
@@ -191,7 +191,7 @@ QueryOnBinaryVecIndexWithParam(CIndex index,
                                const char* serialized_search_params,
                                CIndexQueryResult* res) {
     try {
-        auto cIndex = (milvus::indexbuilder::VecIndexCreator*)index;
+        auto cIndex = reinterpret_cast<milvus::indexbuilder::VecIndexCreator*>(index);
         auto dim = cIndex->dim();
         auto row_nums = (data_size * 8) / dim;
         auto query_ds = knowhere::GenDataset(row_nums, dim, vectors);
@@ -217,7 +217,7 @@ CreateQueryResult(CIndexQueryResult* res) {
 CStatus
 NqOfQueryResult(CIndexQueryResult res, int64_t* nq) {
     try {
-        auto c_res = (milvus::indexbuilder::VecIndexCreator::QueryResult*)res;
+        auto c_res = reinterpret_cast<milvus::indexbuilder::VecIndexCreator::QueryResult*>(res);
         *nq = c_res->nq;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
@@ -228,7 +228,7 @@ NqOfQueryResult(CIndexQueryResult res, int64_t* nq) {
 CStatus
 TopkOfQueryResult(CIndexQueryResult res, int64_t* topK) {
     try {
-        auto c_res = (milvus::indexbuilder::VecIndexCreator::QueryResult*)res;
+        auto c_res = reinterpret_cast<milvus::indexbuilder::VecIndexCreator::QueryResult*>(res);
         *topK = c_res->topk;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
@@ -239,7 +239,7 @@ TopkOfQueryResult(CIndexQueryResult res, int64_t* topK) {
 CStatus
 GetIdsOfQueryResult(CIndexQueryResult res, int64_t* ids) {
     try {
-        auto c_res = (milvus::indexbuilder::VecIndexCreator::QueryResult*)res;
+        auto c_res = reinterpret_cast<milvus::indexbuilder::VecIndexCreator::QueryResult*>(res);
         auto nq = c_res->nq;
         auto k = c_res->topk;
         // TODO: how could we avoid memory copy whenever this called
@@ -253,7 +253,7 @@ GetIdsOfQueryResult(CIndexQueryResult res, int64_t* ids) {
 CStatus
 GetDistancesOfQueryResult(CIndexQueryResult res, float* distances) {
     try {
-        auto c_res = (milvus::indexbuilder::VecIndexCreator::QueryResult*)res;
+        auto c_res = reinterpret_cast<milvus::indexbuilder::VecIndexCreator::QueryResult*>(res);
         auto nq = c_res->nq;
         auto k = c_res->topk;
         // TODO: how could we avoid memory copy whenever this called
@@ -267,7 +267,7 @@ GetDistancesOfQueryResult(CIndexQueryResult res, float* distances) {
 CStatus
 DeleteIndexQueryResult(CIndexQueryResult res) {
     try {
-        auto c_res = (milvus::indexbuilder::VecIndexCreator::QueryResult*)res;
+        auto c_res = reinterpret_cast<milvus::indexbuilder::VecIndexCreator::QueryResult*>(res);
         delete c_res;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {

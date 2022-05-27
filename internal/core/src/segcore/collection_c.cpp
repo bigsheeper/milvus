@@ -21,7 +21,7 @@
 
 CStatus
 NewCollection(const char* schema_proto_blob, CCollection* c_collection) {
-    try{
+    try {
         auto proto = std::string(schema_proto_blob);
         auto collection = std::make_unique<milvus::segcore::Collection>(proto);
         *c_collection = collection.release();
@@ -33,12 +33,12 @@ NewCollection(const char* schema_proto_blob, CCollection* c_collection) {
 
 CStatus
 DeleteCollection(CCollection collection) {
-    try{
+    try {
         auto col = (milvus::segcore::Collection*)collection;
         delete col;
-    #ifdef __linux__
+#ifdef __linux__
         malloc_trim(0);
-    #endif
+#endif
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
     }

@@ -36,19 +36,19 @@ ParsePlaceholderGroup(CSearchPlan plan,
                       const int64_t blob_size,
                       CPlaceholderGroup* res_placeholder_group);
 
-int64_t
-GetNumOfQueries(CPlaceholderGroup placeholder_group);
+CStatus
+GetNumOfQueries(CPlaceholderGroup placeholder_group, int64_t* nq);
 
-int64_t
-GetTopK(CSearchPlan plan);
+CStatus
+GetTopK(CSearchPlan plan, int64_t* topK);
 
-const char*
-GetMetricType(CSearchPlan plan);
+CStatus
+GetMetricType(CSearchPlan plan, const char* metric_type);
 
-void
+CStatus
 DeleteSearchPlan(CSearchPlan plan);
 
-void
+CStatus
 DeletePlaceholderGroup(CPlaceholderGroup placeholder_group);
 
 CStatus
@@ -57,7 +57,7 @@ CreateRetrievePlanByExpr(CCollection c_col,
                          const int64_t size,
                          CRetrievePlan* res_plan);
 
-void
+CStatus
 DeleteRetrievePlan(CRetrievePlan plan);
 
 #ifdef __cplusplus

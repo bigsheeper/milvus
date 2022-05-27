@@ -52,24 +52,24 @@ NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id, CSe
 
 CStatus
 DeleteSegment(CSegmentInterface c_segment) {
-try {
-    auto s = (milvus::segcore::SegmentInterface*)c_segment;
-    delete s;
-    return milvus::SuccessCStatus();
-} catch (std::exception& e) {
-    return milvus::FailureCStatus(UnexpectedError, e.what());
-}
+    try {
+        auto s = (milvus::segcore::SegmentInterface*)c_segment;
+        delete s;
+        return milvus::SuccessCStatus();
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 CStatus
 DeleteSearchResult(CSearchResult search_result) {
-    try{
-    auto res = (milvus::SearchResult*)search_result;
-    delete res;
+    try {
+        auto res = (milvus::SearchResult*)search_result;
+        delete res;
         return milvus::SuccessCStatus();
-} catch (std::exception& e) {
-    return milvus::FailureCStatus(UnexpectedError, e.what());
-}
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 CStatus
@@ -98,8 +98,8 @@ Search(CSegmentInterface c_segment,
 
 CStatus
 DeleteRetrieveResult(CRetrieveResult* retrieve_result) {
-    try{
-    std::free((void*)(retrieve_result->proto_blob));
+    try {
+        std::free((void*)(retrieve_result->proto_blob));
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
@@ -128,9 +128,8 @@ Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp, 
 CStatus
 GetMemoryUsageInBytes(CSegmentInterface c_segment, int64_t* mem_size) {
     try {
-    auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-    auto mem_usage_in_bytes = segment->GetMemoryUsageInBytes();
-    return mem_size;
+        auto segment = (milvus::segcore::SegmentInterface*)c_segment;
+        *mem_size = segment->GetMemoryUsageInBytes();
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
@@ -138,27 +137,25 @@ GetMemoryUsageInBytes(CSegmentInterface c_segment, int64_t* mem_size) {
 }
 
 CStatus
-GetRowCount(CSegmentInterface c_segment, int64_t row_count) {
-    try{
-    auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-    auto row_count = segment->get_row_count();
-    return row_count;
+GetRowCount(CSegmentInterface c_segment, int64_t* row_count) {
+    try {
+        auto segment = (milvus::segcore::SegmentInterface*)c_segment;
+        *row_count = segment->get_row_count();
         return milvus::SuccessCStatus();
-} catch (std::exception& e) {
-    return milvus::FailureCStatus(UnexpectedError, e.what());
-}
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 CStatus
 GetDeletedCount(CSegmentInterface c_segment, int64_t* deleted_count) {
-    try{
-    auto segment = (milvus::segcore::SegmentGrowing*)c_segment;
-    auto deleted_count = segment->get_deleted_count();
-    return deleted_count;
+    try {
+        auto segment = (milvus::segcore::SegmentGrowing*)c_segment;
+        *deleted_count = segment->get_deleted_count();
         return milvus::SuccessCStatus();
-} catch (std::exception& e) {
-    return milvus::FailureCStatus(UnexpectedError, e.what());
-}
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 //////////////////////////////    interfaces for growing segment    //////////////////////////////
@@ -215,14 +212,14 @@ Delete(CSegmentInterface c_segment,
 
 CStatus
 PreDelete(CSegmentInterface c_segment, int64_t size, int64_t* offset) {
-    try{
-    auto segment = (milvus::segcore::SegmentInterface*)c_segment;
+    try {
+        auto segment = (milvus::segcore::SegmentInterface*)c_segment;
 
-    return segment->PreDelete(size);
+        *offset = segment->PreDelete(size);
         return milvus::SuccessCStatus();
-} catch (std::exception& e) {
-    return milvus::FailureCStatus(UnexpectedError, e.what());
-}
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 //////////////////////////////    interfaces for sealed segment    //////////////////////////////

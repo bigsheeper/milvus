@@ -55,7 +55,7 @@ CStatus
 GetMemoryUsageInBytes(CSegmentInterface c_segment, int64_t* mem_size);
 
 CStatus
-GetRowCount(CSegmentInterface c_segment, int64_t row_count);
+GetRowCount(CSegmentInterface c_segment, int64_t* row_count);
 
 CStatus
 GetDeletedCount(CSegmentInterface c_segment, int64_t* deleted_count);

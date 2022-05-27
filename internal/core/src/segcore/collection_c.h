@@ -20,11 +20,8 @@ typedef void* CCollection;
 CCollection
 NewCollection(const char* schema_proto_blob);
 
-void
+CStatus
 DeleteCollection(CCollection collection);
-
-const char*
-GetCollectionName(CCollection collection);
 
 #ifdef __cplusplus
 }

@@ -23,41 +23,53 @@
 #include "google/protobuf/text_format.h"
 
 //////////////////////////////    common interfaces    //////////////////////////////
-CSegmentInterface
-NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id) {
-    auto col = (milvus::segcore::Collection*)collection;
+CStatus
+NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id, CSegmentInterface* c_segment) {
+    try {
+        auto col = (milvus::segcore::Collection*)collection;
 
-    std::unique_ptr<milvus::segcore::SegmentInterface> segment;
-    switch (seg_type) {
-        case Growing: {
-            auto seg = milvus::segcore::CreateGrowingSegment(col->get_schema(), segment_id);
-            seg->disable_small_index();
-            segment = std::move(seg);
-            break;
+        std::unique_ptr<milvus::segcore::SegmentInterface> segment;
+        switch (seg_type) {
+            case Growing: {
+                auto seg = milvus::segcore::CreateGrowingSegment(col->get_schema(), segment_id);
+                seg->disable_small_index();
+                segment = std::move(seg);
+                break;
+            }
+            case Sealed:
+            case Indexing:
+                segment = milvus::segcore::CreateSealedSegment(col->get_schema(), segment_id);
+                break;
+            default:
+                AssertInfo(false, "invalid segment type " + std::to_string(seg_type));
+                break;
         }
-        case Sealed:
-        case Indexing:
-            segment = milvus::segcore::CreateSealedSegment(col->get_schema(), segment_id);
-            break;
-        default:
-            LOG_SEGCORE_ERROR_ << "invalid segment type " << (int32_t)seg_type;
-            break;
+        *c_segment = segment.release();
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
     }
-
-    return (void*)segment.release();
 }
 
-void
+CStatus
 DeleteSegment(CSegmentInterface c_segment) {
-    // TODO: use dynamic cast, and return c status
+try {
     auto s = (milvus::segcore::SegmentInterface*)c_segment;
     delete s;
+    return milvus::SuccessCStatus();
+} catch (std::exception& e) {
+    return milvus::FailureCStatus(UnexpectedError, e.what());
+}
 }
 
-void
+CStatus
 DeleteSearchResult(CSearchResult search_result) {
+    try{
     auto res = (milvus::SearchResult*)search_result;
     delete res;
+        return milvus::SuccessCStatus();
+} catch (std::exception& e) {
+    return milvus::FailureCStatus(UnexpectedError, e.what());
+}
 }
 
 CStatus
@@ -84,9 +96,14 @@ Search(CSegmentInterface c_segment,
     }
 }
 
-void
+CStatus
 DeleteRetrieveResult(CRetrieveResult* retrieve_result) {
+    try{
     std::free((void*)(retrieve_result->proto_blob));
+        return milvus::SuccessCStatus();
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
 CStatus
@@ -108,26 +125,40 @@ Retrieve(CSegmentInterface c_segment, CRetrievePlan c_plan, uint64_t timestamp, 
     }
 }
 
-int64_t
-GetMemoryUsageInBytes(CSegmentInterface c_segment) {
+CStatus
+GetMemoryUsageInBytes(CSegmentInterface c_segment, int64_t* mem_size) {
+    try {
     auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-    auto mem_size = segment->GetMemoryUsageInBytes();
+    auto mem_usage_in_bytes = segment->GetMemoryUsageInBytes();
     return mem_size;
+        return milvus::SuccessCStatus();
+    } catch (std::exception& e) {
+        return milvus::FailureCStatus(UnexpectedError, e.what());
+    }
 }
 
-int64_t
-GetRowCount(CSegmentInterface c_segment) {
+CStatus
+GetRowCount(CSegmentInterface c_segment, int64_t row_count) {
+    try{
     auto segment = (milvus::segcore::SegmentInterface*)c_segment;
     auto row_count = segment->get_row_count();
     return row_count;
+        return milvus::SuccessCStatus();
+} catch (std::exception& e) {
+    return milvus::FailureCStatus(UnexpectedError, e.what());
+}
 }
 
-// TODO: segmentInterface implement get_deleted_count()
-int64_t
-GetDeletedCount(CSegmentInterface c_segment) {
+CStatus
+GetDeletedCount(CSegmentInterface c_segment, int64_t* deleted_count) {
+    try{
     auto segment = (milvus::segcore::SegmentGrowing*)c_segment;
     auto deleted_count = segment->get_deleted_count();
     return deleted_count;
+        return milvus::SuccessCStatus();
+} catch (std::exception& e) {
+    return milvus::FailureCStatus(UnexpectedError, e.what());
+}
 }
 
 //////////////////////////////    interfaces for growing segment    //////////////////////////////
@@ -170,11 +201,11 @@ Delete(CSegmentInterface c_segment,
        const uint8_t* ids,
        const uint64_t ids_size,
        const uint64_t* timestamps) {
-    auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-    auto pks = std::make_unique<milvus::proto::schema::IDs>();
-    auto suc = pks->ParseFromArray(ids, ids_size);
-    AssertInfo(suc, "failed to parse pks from ids");
     try {
+        auto segment = (milvus::segcore::SegmentInterface*)c_segment;
+        auto pks = std::make_unique<milvus::proto::schema::IDs>();
+        auto suc = pks->ParseFromArray(ids, ids_size);
+        AssertInfo(suc, "failed to parse pks from ids");
         auto res = segment->Delete(reserved_offset, size, pks.get(), timestamps);
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
@@ -182,11 +213,16 @@ Delete(CSegmentInterface c_segment,
     }
 }
 
-int64_t
-PreDelete(CSegmentInterface c_segment, int64_t size) {
+CStatus
+PreDelete(CSegmentInterface c_segment, int64_t size, int64_t* offset) {
+    try{
     auto segment = (milvus::segcore::SegmentInterface*)c_segment;
 
     return segment->PreDelete(size);
+        return milvus::SuccessCStatus();
+} catch (std::exception& e) {
+    return milvus::FailureCStatus(UnexpectedError, e.what());
+}
 }
 
 //////////////////////////////    interfaces for sealed segment    //////////////////////////////

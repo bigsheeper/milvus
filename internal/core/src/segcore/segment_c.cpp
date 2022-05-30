@@ -45,6 +45,7 @@ NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id, CSe
                 break;
         }
         *c_segment = segment.release();
+        return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
     }

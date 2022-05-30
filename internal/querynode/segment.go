@@ -175,9 +175,15 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 	var segmentPtr C.CSegmentInterface
 	switch segType {
 	case segmentTypeSealed:
-		segmentPtr = C.NewSegment(collection.collectionPtr, C.Sealed, C.int64_t(segmentID))
+		status := C.NewSegment(collection.collectionPtr, C.Sealed, C.int64_t(segmentID), &segmentPtr)
+		if err := HandleCStatus(&status, "NewSegment failed"); err != nil {
+			return nil, err
+		}
 	case segmentTypeGrowing:
-		segmentPtr = C.NewSegment(collection.collectionPtr, C.Growing, C.int64_t(segmentID))
+		status := C.NewSegment(collection.collectionPtr, C.Growing, C.int64_t(segmentID), &segmentPtr)
+		if err := HandleCStatus(&status, "NewSegment failed"); err != nil {
+			return nil, err
+		}
 	default:
 		err := fmt.Errorf("illegal segment type %d when create segment  %d", segType, segmentID)
 		log.Error("create new segment error",
@@ -210,24 +216,26 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 	return segment, nil
 }
 
-func deleteSegment(segment *Segment) {
+func deleteSegment(segment *Segment) error {
 	/*
 		void
 		deleteSegment(CSegmentInterface segment);
 	*/
 	if segment.segmentPtr == nil {
-		return
+		return fmt.Errorf("segment has been deleted")
 	}
 
 	segment.segPtrMu.Lock()
 	defer segment.segPtrMu.Unlock()
 	cPtr := segment.segmentPtr
-	C.DeleteSegment(cPtr)
+	status := C.DeleteSegment(cPtr)
+	if err := HandleCStatus(&status, "DeleteCollection failed"); err != nil {
+		return err
+	}
 	segment.segmentPtr = nil
 
 	log.Info("delete segment from memory", zap.Int64("collectionID", segment.collectionID), zap.Int64("partitionID", segment.partitionID), zap.Int64("segmentID", segment.ID()))
-
-	segment = nil
+	return nil
 }
 
 func (s *Segment) getRowCount() int64 {
@@ -240,7 +248,12 @@ func (s *Segment) getRowCount() int64 {
 	if s.segmentPtr == nil {
 		return -1
 	}
-	var rowCount = C.GetRowCount(s.segmentPtr)
+	var rowCount C.int64_t
+	status := C.GetRowCount(s.segmentPtr, &rowCount)
+	if err := HandleCStatus(&status, "GetRowCount failed"); err != nil {
+		log.Error(err.Error())
+		return 0
+	}
 	return int64(rowCount)
 }
 
@@ -254,7 +267,12 @@ func (s *Segment) getDeletedCount() int64 {
 	if s.segmentPtr == nil {
 		return -1
 	}
-	var deletedCount = C.GetDeletedCount(s.segmentPtr)
+	var deletedCount C.int64_t
+	status := C.GetDeletedCount(s.segmentPtr, &deletedCount)
+	if err := HandleCStatus(&status, "GetDeleteCollection failed"); err != nil {
+		log.Error(err.Error())
+		return 0
+	}
 	return int64(deletedCount)
 }
 

@@ -162,12 +162,12 @@ generate_index(void* raw_data, knowhere::Config conf, int64_t dim, int64_t topK,
 }
 
 std::tuple<CCollection, CSegmentInterface>
-generate_collection_and_segment(std::string schema_string) {
+generate_collection_and_segment(std::string schema_string=get_default_schema_config(), SegmentType segType=Growing) {
     CCollection collection = nullptr;
     auto status = NewCollection(schema_string.data(), &collection);
     EXPECT_EQ(status.error_code, Success);
     CSegmentInterface segment = nullptr;
-    status = NewSegment(collection, Growing, -1, &segment);
+    status = NewSegment(collection, segType, -1, &segment);
     EXPECT_EQ(status.error_code, Success);
     return std::make_tuple(collection, segment);
 }
@@ -182,7 +182,7 @@ TEST(CApiTest, CollectionTest) {
 }
 
 TEST(CApiTest, SegmentTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     DeleteCollection(collection);
     DeleteSegment(segment);
 }
@@ -198,7 +198,7 @@ serialize(const Message* msg) {
 }
 
 TEST(CApiTest, InsertTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     auto col = reinterpret_cast<milvus::segcore::Collection*>(collection);
 
     int N = 10000;
@@ -217,7 +217,7 @@ TEST(CApiTest, InsertTest) {
 }
 
 TEST(CApiTest, DeleteTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     std::vector<int64_t> delete_row_ids = {100000, 100001, 100002};
     auto ids = std::make_unique<IdArray>();
@@ -237,7 +237,7 @@ TEST(CApiTest, DeleteTest) {
 }
 
 TEST(CApiTest, MultiDeleteGrowingSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 10;
@@ -315,7 +315,7 @@ TEST(CApiTest, MultiDeleteGrowingSegment) {
 }
 
 TEST(CApiTest, MultiDeleteSealedSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config(), Sealed);
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 10;
@@ -421,7 +421,7 @@ TEST(CApiTest, MultiDeleteSealedSegment) {
 }
 
 TEST(CApiTest, DeleteRepeatedPksFromGrowingSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 10;
@@ -489,7 +489,7 @@ TEST(CApiTest, DeleteRepeatedPksFromGrowingSegment) {
 }
 
 TEST(CApiTest, DeleteRepeatedPksFromSealedSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config(), Sealed);
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 20;
@@ -576,7 +576,7 @@ TEST(CApiTest, DeleteRepeatedPksFromSealedSegment) {
 }
 
 TEST(CApiTest, InsertSamePkAfterDeleteOnGrowingSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 10;
@@ -648,7 +648,7 @@ TEST(CApiTest, InsertSamePkAfterDeleteOnGrowingSegment) {
 }
 
 TEST(CApiTest, InsertSamePkAfterDeleteOnSealedSegment) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config(), Sealed);
     auto col = (milvus::segcore::Collection*)collection;
 
     int N = 10;
@@ -727,7 +727,7 @@ TEST(CApiTest, InsertSamePkAfterDeleteOnSealedSegment) {
 }
 
 TEST(CApiTest, SearchTest) {
-    auto [c_collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [c_collection, segment] = generate_collection_and_segment();
     auto col = (milvus::segcore::Collection*)c_collection;
 
     int N = 10000;
@@ -790,7 +790,7 @@ TEST(CApiTest, SearchTest) {
 }
 
 TEST(CApiTest, SearchTestWithExpr) {
-    auto [c_collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [c_collection, segment] = generate_collection_and_segment();
     auto col = (milvus::segcore::Collection*)c_collection;
 
     int N = 10000;
@@ -843,7 +843,7 @@ TEST(CApiTest, SearchTestWithExpr) {
 }
 
 TEST(CApiTest, RetrieveTestWithExpr) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
     auto schema = ((milvus::segcore::Collection*)collection)->get_schema();
     auto plan = std::make_unique<query::RetrievePlan>(*schema);
 
@@ -878,7 +878,7 @@ TEST(CApiTest, RetrieveTestWithExpr) {
 }
 
 TEST(CApiTest, GetMemoryUsageInBytesTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     int64_t old_memory_usage_size;
     auto status = GetMemoryUsageInBytes(segment, &old_memory_usage_size);
@@ -910,7 +910,7 @@ TEST(CApiTest, GetMemoryUsageInBytesTest) {
 }
 
 TEST(CApiTest, GetDeletedCountTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     std::vector<int64_t> delete_row_ids = {100000, 100001, 100002};
     auto ids = std::make_unique<IdArray>();
@@ -936,7 +936,7 @@ TEST(CApiTest, GetDeletedCountTest) {
 }
 
 TEST(CApiTest, GetRowCountTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     auto schema = ((milvus::segcore::Collection*)collection)->get_schema();
     int N = 10000;
@@ -994,7 +994,7 @@ CheckSearchResultDuplicate(const std::vector<CSearchResult>& results) {
 }
 
 TEST(CApiTest, ReduceRemoveDuplicates) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     auto schema = ((milvus::segcore::Collection*)collection)->get_schema();
     int N = 10000;
@@ -1102,7 +1102,7 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
 
 void
 testReduceSearchWithExpr(int N, int topK, int num_queries) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     auto schema = ((milvus::segcore::Collection*)collection)->get_schema();
     auto dataset = DataGen(schema, N);
@@ -2761,7 +2761,7 @@ TEST(CApiTest, Indexing_Expr_With_binary_Predicate_Term) {
 }
 
 TEST(CApiTest, SealedSegmentTest) {
-    auto [collection, segment] = generate_collection_and_segment(get_default_schema_config());
+    auto [collection, segment] = generate_collection_and_segment();
 
     int N = 10000;
     std::default_random_engine e(67);
@@ -3071,7 +3071,7 @@ TEST(CApiTest, SealedSegment_search_float_With_Expr_Predicate_Range) {
     constexpr auto TOPK = 5;
 
     std::string schema_string = generate_collection_schema("L2", DIM, false);
-    auto [collection, segment] = generate_collection_and_segment(schema_string);
+    auto [collection, segment] = generate_collection_and_segment(schema_string, Sealed);
     auto schema = ((segcore::Collection*)collection)->get_schema();
 
     auto N = ROW_COUNT;

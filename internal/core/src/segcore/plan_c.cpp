@@ -85,18 +85,6 @@ GetTopK(CSearchPlan plan, int64_t* topK) {
 }
 
 CStatus
-GetMetricType(CSearchPlan plan, const char* metric_type) {
-    try {
-        auto search_plan = reinterpret_cast<milvus::query::Plan*>(plan);
-        auto metric_str = milvus::MetricTypeToName(search_plan->plan_node_->search_info_.metric_type_);
-        metric_type = strdup(metric_str.c_str());
-        return milvus::SuccessCStatus();
-    } catch (std::exception& e) {
-        return milvus::FailureCStatus(UnexpectedError, e.what());
-    }
-}
-
-CStatus
 DeleteSearchPlan(CSearchPlan cPlan) {
     try {
         auto plan = reinterpret_cast<milvus::query::Plan*>(cPlan);

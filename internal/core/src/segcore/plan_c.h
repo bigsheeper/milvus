@@ -43,9 +43,6 @@ CStatus
 GetTopK(CSearchPlan plan, int64_t* topK);
 
 CStatus
-GetMetricType(CSearchPlan plan, const char* metric_type);
-
-CStatus
 DeleteSearchPlan(CSearchPlan plan);
 
 CStatus

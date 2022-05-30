@@ -82,6 +82,7 @@ func (q *queryTask) queryOnStreaming() error {
 		return sErr
 	}
 
+	q.tr.RecordSpan()
 	mergedResult, err := mergeSegcoreRetrieveResults(sResults)
 	if err != nil {
 		return err
@@ -92,6 +93,7 @@ func (q *queryTask) queryOnStreaming() error {
 		Ids:        mergedResult.Ids,
 		FieldsData: mergedResult.FieldsData,
 	}
+	q.reduceDur = q.tr.RecordSpan()
 	return nil
 }
 

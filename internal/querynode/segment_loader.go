@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"path"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"sync"
 
@@ -113,6 +114,7 @@ func (loader *segmentLoader) loadSegment(req *querypb.LoadSegmentsRequest, segme
 		for _, s := range newSegments {
 			deleteSegment(s)
 		}
+		debug.FreeOSMemory()
 	}
 
 	for _, info := range req.Infos {
@@ -206,6 +208,10 @@ func (loader *segmentLoader) loadSegmentInternal(segment *Segment,
 	if err != nil {
 		return err
 	}
+
+	// TODO(xige-16): Optimize the data loading process and reduce data copying
+	// for now, there will be multiple copies in the process of data loading into segCore
+	defer debug.FreeOSMemory()
 
 	var fieldBinlogs []*datapb.FieldBinlog
 	if segment.getType() == segmentTypeSealed {

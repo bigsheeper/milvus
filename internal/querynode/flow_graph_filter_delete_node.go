@@ -71,11 +71,15 @@ func (fddNode *filterDeleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 
 	var dMsg = deleteMsg{
-		deleteMessages: make([]*msgstream.DeleteMsg, 0),
+		deleteData: newDeleteData(),
 		timeRange: TimeRange{
 			timestampMin: msgStreamMsg.TimestampMin(),
 			timestampMax: msgStreamMsg.TimestampMax(),
 		},
+	}
+
+	if fddNode.metaReplica.getSegmentNum(segmentTypeSealed) != 0 {
+		return []Msg{&dMsg}
 	}
 
 	for _, msg := range msgStreamMsg.TsMessages() {
@@ -89,7 +93,21 @@ func (fddNode *filterDeleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 				panic(err)
 			}
 			if resMsg != nil {
-				dMsg.deleteMessages = append(dMsg.deleteMessages, resMsg)
+				log.Debug("delete in historical replica",
+					zap.Any("collectionID", resMsg.CollectionID),
+					zap.Any("collectionName", resMsg.CollectionName),
+					zap.Int64("numPKs", resMsg.NumRows),
+					zap.Int("numTS", len(resMsg.Timestamps)),
+					zap.Any("timestampBegin", resMsg.BeginTs()),
+					zap.Any("timestampEnd", resMsg.EndTs()),
+				)
+				err = processDeleteMessages(fddNode.metaReplica, segmentTypeSealed, resMsg, dMsg.deleteData)
+				if err != nil {
+					// error occurs when missing meta info or unexpected pk type, should not happen
+					err = fmt.Errorf("processDeleteMessages failed, collectionID = %d, err = %s", resMsg.CollectionID, err)
+					log.Error(err.Error())
+					panic(err)
+				}
 			}
 		default:
 			log.Warn("invalid message type in filterDeleteNode", zap.String("message type", msg.Type().String()))

@@ -21,13 +21,11 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
-	"github.com/milvus-io/milvus/internal/util/trace"
 )
 
 type primaryKey = storage.PrimaryKey
@@ -40,7 +38,7 @@ var newVarCharPrimaryKey = storage.NewVarCharPrimaryKey
 // deleteNode is the one of nodes in delta flow graph
 type deleteNode struct {
 	baseNode
-	metaReplica ReplicaInterface // historical
+	//metaReplica ReplicaInterface // historical
 }
 
 // Name returns the name of deleteNode
@@ -75,58 +73,21 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		return []Msg{}
 	}
 
-	var spans []opentracing.Span
-	for _, msg := range dMsg.deleteMessages {
-		sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
-		spans = append(spans, sp)
-		msg.SetTraceCtx(ctx)
-	}
-
-	// 1. filter segment by bloom filter
-	for i, delMsg := range dMsg.deleteMessages {
-		traceID, _, _ := trace.InfoFromSpan(spans[i])
-		log.Debug("delete in historical replica",
-			zap.Any("collectionID", delMsg.CollectionID),
-			zap.Any("collectionName", delMsg.CollectionName),
-			zap.Int64("numPKs", delMsg.NumRows),
-			zap.Int("numTS", len(delMsg.Timestamps)),
-			zap.Any("timestampBegin", delMsg.BeginTs()),
-			zap.Any("timestampEnd", delMsg.EndTs()),
-			zap.Any("segmentNum", dNode.metaReplica.getSegmentNum(segmentTypeSealed)),
-			zap.Any("traceID", traceID),
-		)
-
-		if dNode.metaReplica.getSegmentNum(segmentTypeSealed) != 0 {
-			err := processDeleteMessages(dNode.metaReplica, segmentTypeSealed, delMsg, delData)
-			if err != nil {
-				// error occurs when missing meta info or unexpected pk type, should not happen
-				err = fmt.Errorf("deleteNode processDeleteMessages failed, collectionID = %d, err = %s", delMsg.CollectionID, err)
-				log.Error(err.Error())
-				panic(err)
-			}
-		}
-	}
-
-	// 2. do preDelete
+	// 1. do preDelete
 	for segmentID, pks := range delData.deleteIDs {
-		segment, err := dNode.metaReplica.getSegmentByID(segmentID, segmentTypeSealed)
-		if err != nil {
-			// should not happen, segment should be created before
-			err = fmt.Errorf("deleteNode getSegmentByID failed, err = %s", err)
-			log.Error(err.Error())
-			panic(err)
-		}
+		segment := delData.deleteSegments[segmentID]
 		offset := segment.segmentPreDelete(len(pks))
 		delData.deleteOffset[segmentID] = offset
 	}
 
-	// 3. do delete
+	// 2. do delete
 	wg := sync.WaitGroup{}
 	for segmentID := range delData.deleteOffset {
 		segmentID := segmentID
+		segment := delData.deleteSegments[segmentID]
 		wg.Add(1)
 		go func() {
-			err := dNode.delete(delData, segmentID, &wg)
+			err := dNode.delete(delData, segment, &wg)
 			if err != nil {
 				// error occurs when segment cannot be found, calling cgo function delete failed and etc...
 				err = fmt.Errorf("segment delete failed, segmentID = %d, err = %s", segmentID, err)
@@ -140,35 +101,27 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	var res Msg = &serviceTimeMsg{
 		timeRange: dMsg.timeRange,
 	}
-	for _, sp := range spans {
-		sp.Finish()
-	}
 
 	return []Msg{res}
 }
 
-// delete will do delete operation at segment which id is segmentID
-func (dNode *deleteNode) delete(deleteData *deleteData, segmentID UniqueID, wg *sync.WaitGroup) error {
+// delete will do delete operation on Segment
+func (dNode *deleteNode) delete(deleteData *deleteData, segment *Segment, wg *sync.WaitGroup) error {
 	defer wg.Done()
-	targetSegment, err := dNode.metaReplica.getSegmentByID(segmentID, segmentTypeSealed)
-	if err != nil {
-		return fmt.Errorf("getSegmentByID failed, err = %s", err)
-	}
-
-	if targetSegment.segmentType != segmentTypeSealed {
-		return fmt.Errorf("unexpected segmentType when delete, segmentID = %d, segmentType = %s", segmentID, targetSegment.segmentType.String())
-	}
-
+	segmentID := segment.ID()
 	ids := deleteData.deleteIDs[segmentID]
 	timestamps := deleteData.deleteTimestamps[segmentID]
 	offset := deleteData.deleteOffset[segmentID]
 
-	err = targetSegment.segmentDelete(offset, ids, timestamps)
+	err := segment.segmentDelete(offset, ids, timestamps)
 	if err != nil {
 		return fmt.Errorf("segmentDelete failed, segmentID = %d", segmentID)
 	}
 
-	log.Debug("Do delete done", zap.Int("len", len(deleteData.deleteIDs[segmentID])), zap.Int64("segmentID", segmentID), zap.Any("SegmentType", targetSegment.segmentType))
+	log.Debug("Do delete done",
+		zap.Int("len", len(deleteData.deleteIDs[segmentID])),
+		zap.Int64("segmentID", segmentID),
+		zap.Any("SegmentType", segment.getType().String()))
 	return nil
 }
 
@@ -182,7 +135,6 @@ func newDeleteNode(metaReplica ReplicaInterface) *deleteNode {
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &deleteNode{
-		baseNode:    baseNode,
-		metaReplica: metaReplica,
+		baseNode: baseNode,
 	}
 }

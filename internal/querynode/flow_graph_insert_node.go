@@ -31,6 +31,7 @@ import (
 // insertNode is one of the nodes in query flow graph
 type insertNode struct {
 	baseNode
+	collection *Collection
 }
 
 // Name returns the name of insertNode
@@ -58,6 +59,9 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	if iMsg == nil {
 		return []Msg{}
 	}
+
+	iNode.collection.RLock()
+	defer iNode.collection.RUnlock()
 
 	// 1. do preInsert
 	iData := iMsg.insertData
@@ -171,7 +175,7 @@ func (iNode *insertNode) delete(deleteData *deleteData, segment *Segment, wg *sy
 }
 
 // newInsertNode returns a new insertNode
-func newInsertNode(metaReplica ReplicaInterface) *insertNode {
+func newInsertNode(metaReplica ReplicaInterface, collectionID UniqueID) (*insertNode, error) {
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
@@ -179,7 +183,14 @@ func newInsertNode(metaReplica ReplicaInterface) *insertNode {
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
-	return &insertNode{
-		baseNode: baseNode,
+	col, err := metaReplica.getCollectionByID(collectionID)
+	if err != nil {
+		// QueryNode should add collection before start flow graph
+		return nil, fmt.Errorf("getCollectionByID failed, collectionID = %d", collectionID)
 	}
+
+	return &insertNode{
+		baseNode:   baseNode,
+		collection: col,
+	}, nil
 }

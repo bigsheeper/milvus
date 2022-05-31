@@ -42,13 +42,13 @@ import (
 // filterDmNode is one of the nodes in query node flow graph
 type filterDmNode struct {
 	baseNode
-	collectionID UniqueID
-	metaReplica  ReplicaInterface
+	collection  *Collection
+	metaReplica ReplicaInterface
 }
 
 // Name returns the name of filterDmNode
 func (fdmNode *filterDmNode) Name() string {
-	return fmt.Sprintf("fdmNode-%d", fdmNode.collectionID)
+	return fmt.Sprintf("fdmNode-%d", fdmNode.collection.ID())
 }
 
 // Operate handles input messages, to filter invalid insert messages
@@ -87,6 +87,9 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			timestampMax: msgStreamMsg.TimestampMax(),
 		},
 	}
+
+	fdmNode.collection.RLock()
+	defer fdmNode.collection.RUnlock()
 
 	insertMessages := make([]*msgstream.InsertMsg, 0)
 	for i, msg := range msgStreamMsg.TsMessages() {
@@ -132,10 +135,10 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		}
 	}
 
-	err := processInsertMessages(fdmNode.collectionID, fdmNode.metaReplica, insertMessages, iMsg.insertData)
+	err := processInsertMessages(fdmNode.collection, fdmNode.metaReplica, insertMessages, iMsg.insertData)
 	if err != nil {
 		// error occurs when missing meta info, should not happen
-		err = fmt.Errorf("processInsertMessages failed, collectionID = %d, err = %s", fdmNode.collectionID, err)
+		err = fmt.Errorf("processInsertMessages failed, collectionID = %d, err = %s", fdmNode.collection.ID(), err)
 		log.Error(err.Error())
 		panic(err)
 	}
@@ -164,18 +167,12 @@ func (fdmNode *filterDmNode) filterInvalidDeleteMessage(msg *msgstream.DeleteMsg
 	msg.SetTraceCtx(ctx)
 	defer sp.Finish()
 
-	if msg.CollectionID != fdmNode.collectionID {
+	if msg.CollectionID != fdmNode.collection.ID() {
 		// filter out msg which not belongs to the current collection
 		return nil, nil
 	}
 
-	// check if collection exist
-	col, err := fdmNode.metaReplica.getCollectionByID(msg.CollectionID)
-	if err != nil {
-		// QueryNode should add collection before start flow graph
-		return nil, fmt.Errorf("filter invalid delete message, collection does not exist, collectionID = %d", msg.CollectionID)
-	}
-	if col.getLoadType() == loadTypePartition {
+	if fdmNode.collection.getLoadType() == loadTypePartition {
 		if !fdmNode.metaReplica.hasPartition(msg.PartitionID) {
 			// filter out msg which not belongs to the loaded partitions
 			return nil, nil
@@ -203,20 +200,14 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 	defer sp.Finish()
 
 	// check if the collection from message is target collection
-	if msg.CollectionID != fdmNode.collectionID {
+	if msg.CollectionID != fdmNode.collection.ID() {
 		//log.Debug("filter invalid insert message, collection is not the target collection",
 		//	zap.Any("collectionID", msg.CollectionID),
 		//	zap.Any("partitionID", msg.PartitionID))
 		return nil, nil
 	}
 
-	// check if collection exists
-	col, err := fdmNode.metaReplica.getCollectionByID(msg.CollectionID)
-	if err != nil {
-		// QueryNode should add collection before start flow graph
-		return nil, fmt.Errorf("filter invalid insert message, collection does not exist, collectionID = %d", msg.CollectionID)
-	}
-	if col.getLoadType() == loadTypePartition {
+	if fdmNode.collection.getLoadType() == loadTypePartition {
 		if !fdmNode.metaReplica.hasPartition(msg.PartitionID) {
 			// filter out msg which not belongs to the loaded partitions
 			return nil, nil
@@ -226,7 +217,7 @@ func (fdmNode *filterDmNode) filterInvalidInsertMessage(msg *msgstream.InsertMsg
 	// Check if the segment is in excluded segments,
 	// messages after seekPosition may contain the redundant data from flushed slice of segment,
 	// so we need to compare the endTimestamp of received messages and position's timestamp.
-	excludedSegments, err := fdmNode.metaReplica.getExcludedSegments(fdmNode.collectionID)
+	excludedSegments, err := fdmNode.metaReplica.getExcludedSegments(fdmNode.collection.ID())
 	if err != nil {
 		// QueryNode should addExcludedSegments for the current collection before start flow graph
 		return nil, err
@@ -290,22 +281,17 @@ func processDeleteMessages(replica ReplicaInterface, segType segmentType, msg *m
 	return nil
 }
 
-func processInsertMessages(collectionID UniqueID, replica ReplicaInterface, insertMessages []*msgstream.InsertMsg, iData *insertData) error {
+func processInsertMessages(col *Collection, replica ReplicaInterface, insertMessages []*msgstream.InsertMsg, iData *insertData) error {
 	// hash insertMessages to insertData
 	// sort timestamps ensures that the data in iData.insertRecords is sorted in ascending order of timestamp
 	// avoiding re-sorting in segCore, which will need data copying
 	sort.Slice(insertMessages, func(i, j int) bool {
 		return insertMessages[i].BeginTs() < insertMessages[j].BeginTs()
 	})
-	col, err := replica.getCollectionByID(collectionID)
-	if err != nil {
-		// should not happen, QueryNode should create collection before start flow graph
-		return err
-	}
 	for _, insertMsg := range insertMessages {
 		// if loadType is loadCollection, check if partition exists, if not, create partition
 		if col.getLoadType() == loadTypeCollection {
-			err = replica.addPartition(insertMsg.CollectionID, insertMsg.PartitionID)
+			err := replica.addPartition(insertMsg.CollectionID, insertMsg.PartitionID)
 			if err != nil {
 				// error occurs only when collection cannot be found, should not happen
 				return err
@@ -338,7 +324,7 @@ func processInsertMessages(collectionID UniqueID, replica ReplicaInterface, inse
 		} else {
 			typeutil.MergeFieldData(iData.insertRecords[insertMsg.SegmentID], insertRecord.FieldsData)
 		}
-		pks, err := getPrimaryKeys(insertMsg, replica)
+		pks, err := getPrimaryKeys(insertMsg, col)
 		if err != nil {
 			// error occurs when cannot find collection or data is misaligned, should not happen
 			return err
@@ -357,19 +343,11 @@ func processInsertMessages(collectionID UniqueID, replica ReplicaInterface, inse
 
 // TODO: remove this function to proper file
 // getPrimaryKeys would get primary keys by insert messages
-func getPrimaryKeys(msg *msgstream.InsertMsg, metaReplica ReplicaInterface) ([]primaryKey, error) {
+func getPrimaryKeys(msg *msgstream.InsertMsg, collection *Collection) ([]primaryKey, error) {
 	if err := msg.CheckAligned(); err != nil {
 		log.Warn("misaligned messages detected", zap.Error(err))
 		return nil, err
 	}
-	collectionID := msg.GetCollectionID()
-
-	collection, err := metaReplica.getCollectionByID(collectionID)
-	if err != nil {
-		log.Warn(err.Error())
-		return nil, err
-	}
-
 	return getPKs(msg, collection.schema)
 }
 
@@ -495,7 +473,7 @@ func filterSegmentsByPKs(pks []primaryKey, timestamps []Timestamp, segment *Segm
 }
 
 // newFilteredDmNode returns a new filterDmNode
-func newFilteredDmNode(metaReplica ReplicaInterface, collectionID UniqueID) *filterDmNode {
+func newFilteredDmNode(metaReplica ReplicaInterface, collectionID UniqueID) (*filterDmNode, error) {
 
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
@@ -504,9 +482,15 @@ func newFilteredDmNode(metaReplica ReplicaInterface, collectionID UniqueID) *fil
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
-	return &filterDmNode{
-		baseNode:     baseNode,
-		collectionID: collectionID,
-		metaReplica:  metaReplica,
+	col, err := metaReplica.getCollectionByID(collectionID)
+	if err != nil {
+		// QueryNode should add collection before start flow graph
+		return nil, fmt.Errorf("getCollectionByID failed, collectionID = %d", collectionID)
 	}
+
+	return &filterDmNode{
+		baseNode:    baseNode,
+		collection:  col,
+		metaReplica: metaReplica,
+	}, nil
 }

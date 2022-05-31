@@ -38,7 +38,7 @@ var newVarCharPrimaryKey = storage.NewVarCharPrimaryKey
 // deleteNode is the one of nodes in delta flow graph
 type deleteNode struct {
 	baseNode
-	//metaReplica ReplicaInterface // historical
+	collection *Collection
 }
 
 // Name returns the name of deleteNode
@@ -72,6 +72,9 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	if dMsg == nil {
 		return []Msg{}
 	}
+
+	dNode.collection.RLock()
+	defer dNode.collection.RUnlock()
 
 	// 1. do preDelete
 	for segmentID, pks := range delData.deleteIDs {
@@ -126,7 +129,7 @@ func (dNode *deleteNode) delete(deleteData *deleteData, segment *Segment, wg *sy
 }
 
 // newDeleteNode returns a new deleteNode
-func newDeleteNode(metaReplica ReplicaInterface) *deleteNode {
+func newDeleteNode(metaReplica ReplicaInterface, collectionID UniqueID) (*deleteNode, error) {
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
@@ -134,7 +137,14 @@ func newDeleteNode(metaReplica ReplicaInterface) *deleteNode {
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
-	return &deleteNode{
-		baseNode: baseNode,
+	col, err := metaReplica.getCollectionByID(collectionID)
+	if err != nil {
+		// QueryNode should add collection before start flow graph
+		return nil, fmt.Errorf("getCollectionByID failed, collectionID = %d", collectionID)
 	}
+
+	return &deleteNode{
+		baseNode:   baseNode,
+		collection: col,
+	}, nil
 }

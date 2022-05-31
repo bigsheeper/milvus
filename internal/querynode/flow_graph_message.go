@@ -17,7 +17,7 @@
 package querynode
 
 import (
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 )
 
@@ -29,20 +29,58 @@ type MsgStreamMsg = flowgraph.MsgStreamMsg
 
 // insertMsg is an implementation of interface Msg
 type insertMsg struct {
-	insertMessages []*msgstream.InsertMsg
-	deleteMessages []*msgstream.DeleteMsg
-	timeRange      TimeRange
+	insertData *insertData
+	deleteData *deleteData
+	timeRange  TimeRange
 }
 
 // deleteMsg is an implementation of interface Msg
 type deleteMsg struct {
-	deleteMessages []*msgstream.DeleteMsg
-	timeRange      TimeRange
+	deleteData *deleteData
+	timeRange  TimeRange
 }
 
 // serviceTimeMsg is an implementation of interface Msg
 type serviceTimeMsg struct {
 	timeRange TimeRange
+}
+
+// insertData stores the valid insert data
+type insertData struct {
+	insertIDs        map[UniqueID][]int64 // rowIDs
+	insertTimestamps map[UniqueID][]Timestamp
+	insertRecords    map[UniqueID][]*schemapb.FieldData
+	insertOffset     map[UniqueID]int64
+	insertPKs        map[UniqueID][]primaryKey // pks
+	insertSegments   map[UniqueID]*Segment     // pks
+}
+
+// deleteData stores the valid delete data
+type deleteData struct {
+	deleteIDs        map[UniqueID][]primaryKey // pks
+	deleteTimestamps map[UniqueID][]Timestamp
+	deleteSegments   map[UniqueID]*Segment
+	deleteOffset     map[UniqueID]int64
+}
+
+func newDeleteData() *deleteData {
+	return &deleteData{
+		deleteIDs:        make(map[UniqueID][]primaryKey),
+		deleteTimestamps: make(map[UniqueID][]Timestamp),
+		deleteSegments:   make(map[UniqueID]*Segment),
+		deleteOffset:     make(map[UniqueID]int64),
+	}
+}
+
+func newInsertData() *insertData {
+	return &insertData{
+		insertIDs:        make(map[UniqueID][]int64),
+		insertTimestamps: make(map[UniqueID][]Timestamp),
+		insertRecords:    make(map[UniqueID][]*schemapb.FieldData),
+		insertOffset:     make(map[UniqueID]int64),
+		insertPKs:        make(map[UniqueID][]primaryKey),
+		insertSegments:   make(map[UniqueID]*Segment),
+	}
 }
 
 // TimeTick returns timestamp of insertMsg

@@ -210,13 +210,13 @@ func (s *searchTask) reduceResults(searchReq *searchRequest, results []*SearchRe
 		}
 		defer deleteSearchResultDataBlobs(blobs)
 		if err != nil {
-			log.Debug("marshal for historical results error", zap.Error(err))
+			log.Error("reduceSearchResultsAndFillData failed when reduceResults", zap.Error(err))
 			return err
 		}
 		for i := 0; i < cnt; i++ {
 			blob, err := getSearchResultDataBlob(blobs, i)
 			if err != nil {
-				log.Debug("getSearchResultDataBlob for historical results error", zap.Error(err))
+				log.Error("getSearchResultDataBlob failed when reduceResults", zap.Error(err))
 				return err
 			}
 			bs := make([]byte, len(blob))

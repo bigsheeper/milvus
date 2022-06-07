@@ -124,7 +124,7 @@ func getReqSlices(nqOfReqs []int64, nqPerSlice int64) ([]int32, error) {
 func getSearchResultDataBlob(cSearchResultDataBlobs searchResultDataBlobs, blobIndex int) ([]byte, error) {
 	var blob C.CProto
 	status := C.GetSearchResultDataBlob(&blob, cSearchResultDataBlobs, C.int32_t(blobIndex))
-	if err := HandleCStatus(&status, "marshal failed"); err != nil {
+	if err := HandleCStatus(&status, "GetSearchResultDataBlob failed"); err != nil {
 		return nil, err
 	}
 	return GetCProtoBlob(&blob), nil

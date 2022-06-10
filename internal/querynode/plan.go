@@ -81,13 +81,6 @@ func (plan *SearchPlan) getTopK() int64 {
 	return int64(topK)
 }
 
-func (plan *SearchPlan) getMetricType() string {
-	cMetricType := C.GetMetricType(plan.cSearchPlan)
-	defer C.free(unsafe.Pointer(cMetricType))
-	metricType := C.GoString(cMetricType)
-	return metricType
-}
-
 func (plan *SearchPlan) delete() {
 	C.DeleteSearchPlan(plan.cSearchPlan)
 }

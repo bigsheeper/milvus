@@ -15,6 +15,8 @@
 extern "C" {
 #endif
 
+#include "common/type_c.h"
+
 typedef void* CCollection;
 
 CStatus

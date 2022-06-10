@@ -18,9 +18,11 @@ package querycoord
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -99,7 +101,7 @@ func TestShuffleSegmentsToQueryNode(t *testing.T) {
 	assert.Nil(t, err)
 	node1Session := node1.session
 	node1ID := node1.queryNodeID
-	cluster.registerNode(baseCtx, node1Session, node1ID, disConnect)
+	cluster.RegisterNode(baseCtx, node1Session, node1ID, disConnect)
 	waitQueryNodeOnline(cluster, node1ID)
 
 	t.Run("Test shuffleSegmentsToQueryNode", func(t *testing.T) {
@@ -114,9 +116,9 @@ func TestShuffleSegmentsToQueryNode(t *testing.T) {
 	assert.Nil(t, err)
 	node2Session := node2.session
 	node2ID := node2.queryNodeID
-	cluster.registerNode(baseCtx, node2Session, node2ID, disConnect)
+	cluster.RegisterNode(baseCtx, node2Session, node2ID, disConnect)
 	waitQueryNodeOnline(cluster, node2ID)
-	cluster.stopNode(node1ID)
+	cluster.StopNode(node1ID)
 
 	t.Run("Test shuffleSegmentsToQueryNodeV2", func(t *testing.T) {
 		err = shuffleSegmentsToQueryNodeV2(baseCtx, reqs, cluster, meta, false, nil, nil, -1)
@@ -132,6 +134,44 @@ func TestShuffleSegmentsToQueryNode(t *testing.T) {
 		assert.Equal(t, node2ID, secondReq.DstNodeID)
 	})
 
+	cluster.StopNode(node2ID)
+
+	t.Run("Test shuffleSegmentsToQueryNodeV2 ctx", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err = shuffleSegmentsToQueryNodeV2(ctx, reqs, cluster, meta, true, nil, nil, -1)
+		assert.Error(t, err)
+
+		assert.True(t, errors.Is(err, context.Canceled))
+	})
+
 	err = removeAllSession()
 	assert.Nil(t, err)
+}
+
+func Test_waitWithContext(t *testing.T) {
+	t.Run("normal wait", func(t *testing.T) {
+		ctx := context.Background()
+
+		err := waitWithContext(ctx, time.Millisecond)
+		assert.NoError(t, err)
+	})
+
+	t.Run("context canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := waitWithContext(ctx, time.Second)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, context.Canceled))
+	})
+
+	t.Run("context deadline", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+
+		err := waitWithContext(ctx, time.Second)
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded))
+	})
 }

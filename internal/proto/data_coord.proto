@@ -49,6 +49,11 @@ service DataCoord {
   // https://wiki.lfaidata.foundation/display/MIL/MEP+24+--+Support+bulk+load
   rpc Import(ImportTaskRequest) returns (ImportTaskResponse) {}
   rpc UpdateSegmentStatistics(UpdateSegmentStatisticsRequest) returns (common.Status) {}
+
+  rpc AcquireSegmentLock(AcquireSegmentLockRequest) returns (common.Status) {}
+  rpc ReleaseSegmentLock(ReleaseSegmentLockRequest) returns (common.Status) {}
+
+  rpc AddSegment(AddSegmentRequest) returns(common.Status) {}
 }
 
 service DataNode {
@@ -66,6 +71,8 @@ service DataNode {
   rpc Import(ImportTaskRequest) returns(common.Status) {}
 
   rpc ResendSegmentStats(ResendSegmentStatsRequest) returns(ResendSegmentStatsResponse) {}
+
+  rpc AddSegment(AddSegmentRequest) returns(common.Status) {}
 }
 
 message FlushRequest {
@@ -87,6 +94,7 @@ message SegmentIDRequest {
   string channel_name = 2;
   int64 collectionID = 3;
   int64 partitionID = 4;
+  bool isImport = 5;
 }
 
 message AssignSegmentIDRequest {
@@ -175,6 +183,17 @@ message GetPartitionStatisticsResponse {
 message GetSegmentInfoChannelRequest {
 }
 
+message AcquireSegmentLockRequest {
+  common.MsgBase base = 1;
+  int64 nodeID = 2;
+  repeated int64 segmentIDs = 3;
+}
+
+message ReleaseSegmentLockRequest {
+  common.MsgBase base = 1;
+  int64 nodeID = 2;
+  repeated int64 segmentIDs = 3;
+}
 
 message VchannelInfo {
   int64 collectionID = 1;
@@ -497,4 +516,13 @@ message ResendSegmentStatsRequest {
 message ResendSegmentStatsResponse {
   common.Status status = 1;
   repeated int64 seg_resent = 2;
+}
+
+message AddSegmentRequest {
+  common.MsgBase base = 1;
+  int64 segment_id = 2;
+  string channel_name = 3;
+  int64 collection_id = 4;
+  int64 partition_id = 5;
+  int64 row_num = 6;
 }

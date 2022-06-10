@@ -45,7 +45,7 @@ func shuffleSegmentsToQueryNode(ctx context.Context, reqs []*querypb.LoadSegment
 	}
 
 	for {
-		onlineNodeIDs := cluster.onlineNodeIDs()
+		onlineNodeIDs := cluster.OnlineNodeIDs()
 		if len(onlineNodeIDs) == 0 {
 			err := errors.New("no online QueryNode to allocate")
 			log.Error("shuffleSegmentsToQueryNode failed", zap.Error(err))
@@ -117,7 +117,7 @@ func shuffleSegmentsToQueryNodeV2(ctx context.Context, reqs []*querypb.LoadSegme
 		memUsageRate := make(map[int64]float64)
 		var onlineNodeIDs []int64
 		if replicaID == -1 {
-			onlineNodeIDs = cluster.onlineNodeIDs()
+			onlineNodeIDs = cluster.OnlineNodeIDs()
 		} else {
 			replica, err := metaCache.getReplicaByID(replicaID)
 			if err != nil {
@@ -125,7 +125,7 @@ func shuffleSegmentsToQueryNodeV2(ctx context.Context, reqs []*querypb.LoadSegme
 			}
 			replicaNodes := replica.GetNodeIds()
 			for _, nodeID := range replicaNodes {
-				if ok, err := cluster.isOnline(nodeID); err == nil && ok {
+				if ok, err := cluster.IsOnline(nodeID); err == nil && ok {
 					onlineNodeIDs = append(onlineNodeIDs, nodeID)
 				}
 			}
@@ -135,34 +135,22 @@ func shuffleSegmentsToQueryNodeV2(ctx context.Context, reqs []*querypb.LoadSegme
 			log.Error("shuffleSegmentsToQueryNode failed", zap.Error(err))
 			return err
 		}
+		onlineNodeIDs = nodesFilter(onlineNodeIDs, includeNodeIDs, excludeNodeIDs)
 
 		var availableNodeIDs []int64
-		for _, nodeID := range onlineNodeIDs {
-			// nodeID not in includeNodeIDs
-			if len(includeNodeIDs) > 0 && !nodeIncluded(nodeID, includeNodeIDs) {
-				continue
-			}
-
-			// nodeID in excludeNodeIDs
-			if nodeIncluded(nodeID, excludeNodeIDs) {
-				continue
-			}
-			// statistic nodeInfo, used memory, memory usage of every query node
-			nodeInfo, err := cluster.getNodeInfoByID(nodeID)
-			if err != nil {
-				log.Warn("shuffleSegmentsToQueryNodeV2: getNodeInfoByID failed", zap.Error(err))
-				continue
-			}
-			queryNodeInfo := nodeInfo.(*queryNode)
+		nodes := getNodeInfos(cluster, onlineNodeIDs)
+		for _, nodeInfo := range nodes {
 			// avoid allocate segment to node which memUsageRate is high
-			if queryNodeInfo.memUsageRate >= Params.QueryCoordCfg.OverloadedMemoryThresholdPercentage {
-				log.Info("shuffleSegmentsToQueryNodeV2: queryNode memUsageRate large than MaxMemUsagePerNode", zap.Int64("nodeID", nodeID), zap.Float64("current rate", queryNodeInfo.memUsageRate))
+			if nodeInfo.memUsageRate >= Params.QueryCoordCfg.OverloadedMemoryThresholdPercentage {
+				log.Info("shuffleSegmentsToQueryNodeV2: queryNode memUsageRate large than MaxMemUsagePerNode",
+					zap.Int64("nodeID", nodeInfo.id),
+					zap.Float64("memoryUsageRate", nodeInfo.memUsageRate))
 				continue
 			}
 
 			// update totalMem, memUsage, memUsageRate
-			totalMem[nodeID], memUsage[nodeID], memUsageRate[nodeID] = queryNodeInfo.totalMem, queryNodeInfo.memUsage, queryNodeInfo.memUsageRate
-			availableNodeIDs = append(availableNodeIDs, nodeID)
+			totalMem[nodeInfo.id], memUsage[nodeInfo.id], memUsageRate[nodeInfo.id] = nodeInfo.totalMem, nodeInfo.memUsage, nodeInfo.memUsageRate
+			availableNodeIDs = append(availableNodeIDs, nodeInfo.id)
 		}
 		if len(availableNodeIDs) > 0 {
 			log.Info("shuffleSegmentsToQueryNodeV2: shuffle segment to available QueryNode", zap.Int64s("available nodeIDs", availableNodeIDs))
@@ -214,8 +202,23 @@ func shuffleSegmentsToQueryNodeV2(ctx context.Context, reqs []*querypb.LoadSegme
 			}
 		}
 
-		time.Sleep(shuffleWaitInterval)
+		err := waitWithContext(ctx, shuffleWaitInterval)
+		if err != nil {
+			return err
+		}
 	}
+}
+
+// waitWithContext util function to wait for provided duration or context done.
+func waitWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
 func nodeIncluded(nodeID int64, includeNodeIDs []int64) bool {
@@ -226,4 +229,24 @@ func nodeIncluded(nodeID int64, includeNodeIDs []int64) bool {
 	}
 
 	return false
+}
+
+func nodesFilter(nodes []UniqueID, include []UniqueID, exclude []UniqueID) []UniqueID {
+	result := make([]UniqueID, 0)
+
+	for _, node := range nodes {
+		// nodeID not in includeNodeIDs
+		if len(include) > 0 && !nodeIncluded(node, include) {
+			continue
+		}
+
+		// nodeID in excludeNodeIDs
+		if nodeIncluded(node, exclude) {
+			continue
+		}
+
+		result = append(result, node)
+	}
+
+	return result
 }

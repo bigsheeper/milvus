@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -137,8 +138,6 @@ func (node *Proxy) ReleaseDQLMessageStream(ctx context.Context, request *proxypb
 	if !node.checkHealthy() {
 		return unhealthyStatus(), nil
 	}
-
-	_ = node.chMgr.removeDQLStream(request.CollectionID)
 
 	logutil.Logger(ctx).Debug("complete to release DQL message stream",
 		zap.Any("role", typeutil.ProxyRole),
@@ -2181,6 +2180,8 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 	}
 	method := "Insert"
 	tr := timerecord.NewTimeRecorder(method)
+	receiveSize := proto.Size(request)
+	metrics.ProxyMutationReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(receiveSize))
 
 	defer func() {
 		metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
@@ -2288,7 +2289,8 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
-	metrics.ProxyInsertVectors.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(it.result.InsertCnt))
+	successCnt := it.result.InsertCnt - int64(len(it.result.ErrIndex))
+	metrics.ProxyInsertVectors.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(successCnt))
 	metrics.ProxyMutationLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.InsertLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 	return it.result, nil
 }
@@ -2300,6 +2302,9 @@ func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) 
 	traceID, _, _ := trace.InfoFromSpan(sp)
 	log.Info("Start processing delete request in Proxy", zap.String("traceID", traceID))
 	defer log.Info("Finish processing delete request in Proxy", zap.String("traceID", traceID))
+
+	receiveSize := proto.Size(request)
+	metrics.ProxyMutationReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(receiveSize))
 
 	if !node.checkHealthy() {
 		return &milvuspb.MutationResult{
@@ -2412,10 +2417,10 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 			},
 			ReqID: Params.ProxyCfg.GetNodeID(),
 		},
-		request:            request,
-		qc:                 node.queryCoord,
-		tr:                 timerecord.NewTimeRecorder("search"),
-		getQueryNodePolicy: defaultGetQueryNodePolicy,
+		request:  request,
+		qc:       node.queryCoord,
+		tr:       timerecord.NewTimeRecorder("search"),
+		shardMgr: node.shardMgr,
 	}
 
 	travelTs := request.TravelTimestamp
@@ -2531,6 +2536,11 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 	searchDur := tr.ElapseSpan().Milliseconds()
 	metrics.ProxySearchLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10),
 		metrics.SearchLabel).Observe(float64(searchDur))
+
+	if qt.result != nil {
+		sentSize := proto.Size(qt.result)
+		metrics.ProxyReadReqSendBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(sentSize))
+	}
 	return qt.result, nil
 }
 
@@ -2651,10 +2661,10 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 			},
 			ReqID: Params.ProxyCfg.GetNodeID(),
 		},
-		request:            request,
-		qc:                 node.queryCoord,
-		getQueryNodePolicy: defaultGetQueryNodePolicy,
-		queryShardPolicy:   roundRobinPolicy,
+		request:          request,
+		qc:               node.queryCoord,
+		queryShardPolicy: roundRobinPolicy,
+		shardMgr:         node.shardMgr,
 	}
 
 	method := "Query"
@@ -2745,10 +2755,14 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 
 	metrics.ProxySearchLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10),
 		metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	return &milvuspb.QueryResults{
+
+	ret := &milvuspb.QueryResults{
 		Status:     qt.result.Status,
 		FieldsData: qt.result.FieldsData,
-	}, nil
+	}
+	sentSize := proto.Size(qt.result)
+	metrics.ProxyReadReqSendBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(sentSize))
+	return ret, nil
 }
 
 // CreateAlias create alias for collection, then you can search the collection with alias.
@@ -3064,8 +3078,8 @@ func (node *Proxy) CalcDistance(ctx context.Context, request *milvuspb.CalcDista
 			qc:      node.queryCoord,
 			ids:     ids.IdArray,
 
-			getQueryNodePolicy: defaultGetQueryNodePolicy,
-			queryShardPolicy:   roundRobinPolicy,
+			queryShardPolicy: roundRobinPolicy,
+			shardMgr:         node.shardMgr,
 		}
 
 		items := []zapcore.Field{
@@ -3611,26 +3625,31 @@ func (node *Proxy) Import(ctx context.Context, req *milvuspb.ImportRequest) (*mi
 			zap.Error(err))
 		resp.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
 		resp.Status.Reason = err.Error()
-		return resp, err
+		return resp, nil
 	}
 	chNames, err := node.chMgr.getVChannels(collID)
 	if err != nil {
-		err = node.chMgr.createDMLMsgStream(collID)
-		if err != nil {
-			return nil, err
-		}
-		chNames, err = node.chMgr.getVChannels(collID)
-		if err != nil {
-			return nil, err
-		}
+		log.Error("failed to get virtual channels",
+			zap.Error(err),
+			zap.String("collection", req.GetCollectionName()),
+			zap.Int64("collection_id", collID))
+		resp.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
+		resp.Status.Reason = err.Error()
+		return resp, nil
 	}
 	req.ChannelNames = chNames
 	if req.GetPartitionName() == "" {
 		req.PartitionName = Params.CommonCfg.DefaultPartitionName
 	}
 	// Call rootCoord to finish import.
-	resp, err = node.rootCoord.Import(ctx, req)
-	return resp, err
+	respFromRC, err := node.rootCoord.Import(ctx, req)
+	if err != nil {
+		log.Error("failed to execute bulk load request", zap.Error(err))
+		resp.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
+		resp.Status.Reason = err.Error()
+		return resp, nil
+	}
+	return respFromRC, nil
 }
 
 // GetImportState checks import task state from datanode

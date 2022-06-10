@@ -61,6 +61,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
+	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 )
 
 // make sure QueryNode implements types.QueryNode
@@ -90,8 +91,7 @@ type QueryNode struct {
 	initOnce sync.Once
 
 	// internal components
-	historical ReplicaInterface
-	streaming  ReplicaInterface
+	metaReplica ReplicaInterface
 
 	// tSafeReplica
 	tSafeReplica TSafeReplicaInterface
@@ -112,9 +112,8 @@ type QueryNode struct {
 	factory   dependency.Factory
 	scheduler *taskScheduler
 
-	session        *sessionutil.Session
-	eventCh        <-chan *sessionutil.SessionEvent
-	sessionManager *SessionManager
+	session *sessionutil.Session
+	eventCh <-chan *sessionutil.SessionEvent
 
 	vectorStorage storage.ChunkManager
 	cacheStorage  storage.ChunkManager
@@ -204,74 +203,6 @@ func (node *QueryNode) InitSegcore() {
 	C.SegcoreSetIndexSliceSize(cIndexSliceSize)
 }
 
-func (node *QueryNode) initServiceDiscovery() error {
-	if node.session == nil {
-		return errors.New("session is nil")
-	}
-
-	sessions, rev, err := node.session.GetSessions(typeutil.ProxyRole)
-	if err != nil {
-		log.Warn("QueryNode failed to init service discovery", zap.Error(err))
-		return err
-	}
-	log.Info("QueryNode success to get Proxy sessions", zap.Any("sessions", sessions))
-
-	nodes := make([]*NodeInfo, 0, len(sessions))
-	for _, session := range sessions {
-		info := &NodeInfo{
-			NodeID:  session.ServerID,
-			Address: session.Address,
-		}
-		nodes = append(nodes, info)
-	}
-
-	node.sessionManager.Startup(nodes)
-
-	node.eventCh = node.session.WatchServices(typeutil.ProxyRole, rev+1, nil)
-	return nil
-}
-
-func (node *QueryNode) watchService(ctx context.Context) {
-	defer node.wg.Done()
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("watch service shutdown")
-			return
-		case event, ok := <-node.eventCh:
-			if !ok {
-				// ErrCompacted is handled inside SessionWatcher
-				log.Error("Session Watcher channel closed", zap.Int64("server id", node.session.ServerID))
-				// need to call stop in separate goroutine
-				go node.Stop()
-				if node.session.TriggerKill {
-					if p, err := os.FindProcess(os.Getpid()); err == nil {
-						p.Signal(syscall.SIGINT)
-					}
-				}
-				return
-			}
-			node.handleSessionEvent(ctx, event)
-		}
-	}
-}
-
-func (node *QueryNode) handleSessionEvent(ctx context.Context, event *sessionutil.SessionEvent) {
-	info := &NodeInfo{
-		NodeID:  event.Session.ServerID,
-		Address: event.Session.Address,
-	}
-	switch event.EventType {
-	case sessionutil.SessionAddEvent:
-		node.sessionManager.AddSession(info)
-	case sessionutil.SessionDelEvent:
-		node.sessionManager.DeleteSession(info)
-	default:
-		log.Warn("receive unknown service event type",
-			zap.Any("type", event.EventType))
-	}
-}
-
 // Init function init historical and streaming module to manage segments
 func (node *QueryNode) Init() error {
 	var initError error = nil
@@ -304,22 +235,17 @@ func (node *QueryNode) Init() error {
 		node.etcdKV = etcdkv.NewEtcdKV(node.etcdCli, Params.EtcdCfg.MetaRootPath)
 		log.Info("queryNode try to connect etcd success", zap.Any("MetaRootPath", Params.EtcdCfg.MetaRootPath))
 
-		node.streaming = newCollectionReplica(node.etcdKV)
-		node.historical = newCollectionReplica(node.etcdKV)
+		node.metaReplica = newCollectionReplica()
 
 		node.loader = newSegmentLoader(
-			node.historical,
-			node.streaming,
+			node.metaReplica,
 			node.etcdKV,
 			node.vectorStorage,
 			node.factory)
 
-		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx, node.streaming, node.historical, node.tSafeReplica, node.factory)
+		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx, node.metaReplica, node.tSafeReplica, node.factory)
 
 		node.InitSegcore()
-
-		// TODO: add session creator to node
-		node.sessionManager = NewSessionManager(withSessionCreator(defaultSessionCreator()))
 
 		log.Info("query node init successfully",
 			zap.Any("queryNodeID", Params.QueryNodeCfg.GetNodeID()),
@@ -340,18 +266,10 @@ func (node *QueryNode) Start() error {
 	go node.watchChangeInfo()
 	//go node.statsService.start()
 
-	// watch proxy
-	if err := node.initServiceDiscovery(); err != nil {
-		return err
-	}
-
-	node.wg.Add(1)
-	go node.watchService(node.queryNodeLoopCtx)
-
 	// create shardClusterService for shardLeader functions.
 	node.ShardClusterService = newShardClusterService(node.etcdCli, node.session, node)
 	// create shard-level query service
-	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx, node.historical, node.streaming, node.tSafeReplica,
+	node.queryShardService = newQueryShardService(node.queryNodeLoopCtx, node.metaReplica, node.tSafeReplica,
 		node.ShardClusterService, node.factory, node.scheduler)
 
 	Params.QueryNodeCfg.CreatedTime = time.Now()
@@ -377,12 +295,8 @@ func (node *QueryNode) Stop() error {
 		node.dataSyncService.close()
 	}
 
-	// release streaming first for query/search holds query lock in streaming collection
-	if node.streaming != nil {
-		node.streaming.freeAll()
-	}
-	if node.historical != nil {
-		node.historical.freeAll()
+	if node.metaReplica != nil {
+		node.metaReplica.freeAll()
 	}
 
 	if node.queryShardService != nil {
@@ -412,7 +326,23 @@ func (node *QueryNode) watchChangeInfo() {
 		case <-node.queryNodeLoopCtx.Done():
 			log.Info("query node watchChangeInfo close")
 			return
-		case resp := <-watchChan:
+		case resp, ok := <-watchChan:
+			if !ok {
+				log.Warn("querynode failed to watch channel, return")
+				return
+			}
+
+			if err := resp.Err(); err != nil {
+				log.Warn("query watch channel canceled", zap.Error(resp.Err()))
+				// https://github.com/etcd-io/etcd/issues/8980
+				if resp.Err() == v3rpc.ErrCompacted {
+					go node.watchChangeInfo()
+					return
+				}
+				// if watch loop return due to event canceled, the datanode is not functional anymore
+				log.Panic("querynoe3 is not functional for event canceled", zap.Error(err))
+				return
+			}
 			for _, event := range resp.Events {
 				switch event.Type {
 				case mvccpb.PUT:

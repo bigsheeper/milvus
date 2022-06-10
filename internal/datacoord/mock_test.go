@@ -60,13 +60,22 @@ func (m *MockAllocator) allocID(ctx context.Context) (UniqueID, error) {
 var _ allocator = (*FailsAllocator)(nil)
 
 // FailsAllocator allocator that fails
-type FailsAllocator struct{}
+type FailsAllocator struct {
+	allocTsSucceed bool
+	allocIDSucceed bool
+}
 
 func (a *FailsAllocator) allocTimestamp(_ context.Context) (Timestamp, error) {
+	if a.allocTsSucceed {
+		return 0, nil
+	}
 	return 0, errors.New("always fail")
 }
 
 func (a *FailsAllocator) allocID(_ context.Context) (UniqueID, error) {
+	if a.allocIDSucceed {
+		return 0, nil
+	}
 	return 0, errors.New("always fail")
 }
 
@@ -100,7 +109,7 @@ func newTestSchema() *schemapb.CollectionSchema {
 		Description: "schema for test used",
 		AutoID:      false,
 		Fields: []*schemapb.FieldSchema{
-			{FieldID: 1, Name: "field1", IsPrimaryKey: false, Description: "field no.1", DataType: schemapb.DataType_VarChar, TypeParams: []*commonpb.KeyValuePair{{Key: "max_length_per_row", Value: "100"}}},
+			{FieldID: 1, Name: "field1", IsPrimaryKey: false, Description: "field no.1", DataType: schemapb.DataType_VarChar, TypeParams: []*commonpb.KeyValuePair{{Key: "max_length", Value: "100"}}},
 			{FieldID: 2, Name: "field2", IsPrimaryKey: false, Description: "field no.2", DataType: schemapb.DataType_FloatVector},
 		},
 	}
@@ -206,6 +215,10 @@ func (c *mockDataNodeClient) Compaction(ctx context.Context, req *datapb.Compact
 }
 
 func (c *mockDataNodeClient) Import(ctx context.Context, in *datapb.ImportTaskRequest) (*commonpb.Status, error) {
+	return &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}, nil
+}
+
+func (c *mockDataNodeClient) AddSegment(ctx context.Context, req *datapb.AddSegmentRequest) (*commonpb.Status, error) {
 	return &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}, nil
 }
 

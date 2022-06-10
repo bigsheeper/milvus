@@ -18,6 +18,8 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/grpcclient"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -50,15 +52,11 @@ type queryTask struct {
 	runningGroup    *errgroup.Group
 	runningGroupCtx context.Context
 
-	getQueryNodePolicy getQueryNodePolicy
-	queryShardPolicy   pickShardPolicy
+	queryShardPolicy pickShardPolicy
+	shardMgr         *shardClientMgr
 }
 
 func (t *queryTask) PreExecute(ctx context.Context) error {
-	if t.getQueryNodePolicy == nil {
-		t.getQueryNodePolicy = defaultGetQueryNodePolicy
-	}
-
 	if t.queryShardPolicy == nil {
 		t.queryShardPolicy = roundRobinPolicy
 	}
@@ -240,11 +238,10 @@ func (t *queryTask) Execute(ctx context.Context) error {
 	defer tr.Elapse("done")
 
 	executeQuery := func(withCache bool) error {
-		shards, err := globalMetaCache.GetShards(ctx, withCache, t.collectionName, t.qc)
+		shards, err := globalMetaCache.GetShards(ctx, withCache, t.collectionName)
 		if err != nil {
 			return err
 		}
-
 		t.resultBuf = make(chan *internalpb.RetrieveResults, len(shards))
 		t.toReduceResults = make([]*internalpb.RetrieveResults, 0, len(shards))
 		t.runningGroup, t.runningGroupCtx = errgroup.WithContext(ctx)
@@ -271,7 +268,7 @@ func (t *queryTask) Execute(ctx context.Context) error {
 	}
 
 	err := executeQuery(WithCache)
-	if err == errInvalidShardLeaders {
+	if errors.Is(err, errInvalidShardLeaders) || funcutil.IsGrpcErr(err) || errors.Is(err, grpcclient.ErrConnect) {
 		log.Warn("invalid shard leaders cache, updating shardleader caches and retry search")
 		return executeQuery(WithoutCache)
 	}
@@ -353,7 +350,7 @@ func (t *queryTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
-func (t *queryTask) queryShard(ctx context.Context, leaders []queryNode, channelID string) error {
+func (t *queryTask) queryShard(ctx context.Context, leaders []nodeInfo, channelID string) error {
 	query := func(nodeID UniqueID, qn types.QueryNode) error {
 		req := &querypb.QueryRequest{
 			Req:        t.RetrieveRequest,
@@ -362,9 +359,13 @@ func (t *queryTask) queryShard(ctx context.Context, leaders []queryNode, channel
 		}
 
 		result, err := qn.Query(ctx, req)
-		if err != nil || result.GetStatus().GetErrorCode() == commonpb.ErrorCode_NotShardLeader {
-			log.Warn("QueryNode query returns error", zap.Int64("nodeID", nodeID),
+		if err != nil {
+			log.Warn("QueryNode query return error", zap.Int64("nodeID", nodeID), zap.String("channel", channelID),
 				zap.Error(err))
+			return err
+		}
+		if result.GetStatus().GetErrorCode() == commonpb.ErrorCode_NotShardLeader {
+			log.Warn("QueryNode is not shardLeader", zap.Int64("nodeID", nodeID), zap.String("channel", channelID))
 			return errInvalidShardLeaders
 		}
 		if result.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
@@ -378,7 +379,7 @@ func (t *queryTask) queryShard(ctx context.Context, leaders []queryNode, channel
 		return nil
 	}
 
-	err := t.queryShardPolicy(t.TraceCtx(), t.getQueryNodePolicy, query, leaders)
+	err := t.queryShardPolicy(t.TraceCtx(), t.shardMgr, query, leaders)
 	if err != nil {
 		log.Warn("fail to Query to all shard leaders", zap.Int64("taskID", t.ID()), zap.Any("shard leaders", leaders))
 		return err

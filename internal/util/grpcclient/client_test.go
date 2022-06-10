@@ -17,7 +17,10 @@
 package grpcclient
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,4 +35,18 @@ func TestClientBase_SetRole(t *testing.T) {
 func TestClientBase_GetRole(t *testing.T) {
 	base := ClientBase{}
 	assert.Equal(t, "", base.GetRole())
+}
+
+func TestClientBase_connect(t *testing.T) {
+	t.Run("failed to connect", func(t *testing.T) {
+		base := ClientBase{
+			getAddrFunc: func() (string, error) {
+				return "", nil
+			},
+			DialTimeout: time.Millisecond,
+		}
+		err := base.connect(context.Background())
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrConnect))
+	})
 }

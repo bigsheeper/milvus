@@ -95,9 +95,10 @@ SegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
     AssertInfo(!get_bit(index_ready_bitset_, field_id),
                "vector index has been exist at " + std::to_string(field_id.get()));
     if (row_count_opt_.has_value()) {
-        AssertInfo(row_count_opt_.value() == row_count, "load data has different row count from other columns");
-    } else {
-        row_count_opt_ = row_count;
+        AssertInfo(row_count_opt_.value() == row_count,
+                   "field (" + std::to_string(field_id.get()) + ") data has different row count (" +
+                       std::to_string(row_count) + ") than other column's row count (" +
+                       std::to_string(row_count_opt_.value()) + ")");
     }
     AssertInfo(!vector_indexings_.is_ready(field_id), "vec index is not ready");
     vector_indexings_.append_field_indexing(field_id, GetMetricType(metric_type_str), index);
@@ -124,9 +125,10 @@ SegmentSealedImpl::LoadScalarIndex(const LoadIndexInfo& info) {
     AssertInfo(!get_bit(index_ready_bitset_, field_id),
                "scalar index has been exist at " + std::to_string(field_id.get()));
     if (row_count_opt_.has_value()) {
-        AssertInfo(row_count_opt_.value() == row_count, "load data has different row count from other columns");
-    } else {
-        row_count_opt_ = row_count;
+        AssertInfo(row_count_opt_.value() == row_count,
+                   "field (" + std::to_string(field_id.get()) + ") data has different row count (" +
+                       std::to_string(row_count) + ") than other column's row count (" +
+                       std::to_string(row_count_opt_.value()) + ")");
     }
 
     scalar_indexings_[field_id] = index;
@@ -168,6 +170,12 @@ SegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& info) {
     auto field_id = FieldId(info.field_id);
     AssertInfo(info.field_data != nullptr, "Field info blob is null");
     auto size = info.row_count;
+    if (row_count_opt_.has_value()) {
+        AssertInfo(row_count_opt_.value() == size, "field (" + std::to_string(field_id.get()) +
+                                                       ") data has different row count (" + std::to_string(size) +
+                                                       ") than other column's row count (" +
+                                                       std::to_string(row_count_opt_.value()) + ")");
+    }
 
     if (SystemProperty::Instance().IsSystem(field_id)) {
         auto system_field_type = SystemProperty::Instance().GetSystemFieldType(field_id);
@@ -775,19 +783,19 @@ SegmentSealedImpl::mask_with_timestamps(BitsetType& bitset_chunk, Timestamp time
 
     // range == (size_, size_) and size_ is this->timestamps_.size().
     // it means these data are all useful, we don't need to update bitset_chunk.
-    // It can be thought of as an AND operation with another bitmask that is all 1s, but it is not necessary to do so.
+    // It can be thought of as an OR operation with another bitmask that is all 0s, but it is not necessary to do so.
     if (range.first == range.second && range.first == timestamps_data.size()) {
         // just skip
         return;
     }
-    // range == (0, 0). it means these data can not be used, directly set bitset_chunk to all 0s.
-    // It can be thought of as an AND operation with another bitmask that is all 0s.
+    // range == (0, 0). it means these data can not be used, directly set bitset_chunk to all 1s.
+    // It can be thought of as an OR operation with another bitmask that is all 1s.
     if (range.first == range.second && range.first == 0) {
-        bitset_chunk.reset();
+        bitset_chunk.set();
         return;
     }
     auto mask = TimestampIndex::GenerateBitset(timestamp, range, timestamps_data.data(), timestamps_data.size());
-    bitset_chunk &= mask;
+    bitset_chunk |= mask;
 }
 
 }  // namespace milvus::segcore

@@ -35,7 +35,6 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/logutil"
@@ -90,7 +89,8 @@ type Proxy struct {
 
 	metricsCacheManager *metricsinfo.MetricsCacheManager
 
-	session *sessionutil.Session
+	session  *sessionutil.Session
+	shardMgr *shardClientMgr
 
 	factory dependency.Factory
 
@@ -111,6 +111,7 @@ func NewProxy(ctx context.Context, factory dependency.Factory) (*Proxy, error) {
 		cancel:         cancel,
 		factory:        factory,
 		searchResultCh: make(chan *internalpb.SearchResults, n),
+		shardMgr:       newShardClientMgr(),
 	}
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
 	logutil.Logger(ctx).Debug("create a new Proxy instance", zap.Any("state", node.stateCode.Load()))
@@ -158,30 +159,6 @@ func (node *Proxy) Init() error {
 	}
 	log.Info("init session for Proxy done")
 
-	if node.queryCoord != nil {
-		log.Debug("create query channel for Proxy")
-		resp, err := node.queryCoord.CreateQueryChannel(node.ctx, &querypb.CreateQueryChannelRequest{})
-		if err != nil {
-			log.Warn("failed to create query channel for Proxy", zap.Error(err))
-			return err
-		}
-
-		if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
-			log.Warn("failed to create query channel for Proxy",
-				zap.String("error_code", resp.Status.ErrorCode.String()),
-				zap.String("reason", resp.Status.Reason))
-			return errors.New(resp.Status.Reason)
-		}
-
-		// TODO SearchResultChannelNames and RetrieveResultChannelNames should not be part in the Param table
-		// we should maintain a separate map for search result
-		Params.ProxyCfg.SearchResultChannelNames = []string{resp.QueryResultChannel}
-		Params.ProxyCfg.RetrieveResultChannelNames = []string{resp.QueryResultChannel}
-		log.Debug("Proxy CreateQueryChannel success", zap.Any("SearchResultChannelNames", Params.ProxyCfg.SearchResultChannelNames))
-		log.Debug("Proxy CreateQueryChannel success", zap.Any("RetrieveResultChannelNames", Params.ProxyCfg.RetrieveResultChannelNames))
-		log.Debug("create query channel for Proxy done", zap.String("QueryResultChannel", resp.QueryResultChannel))
-	}
-
 	node.factory.Init(&Params)
 	log.Debug("init parameters for factory", zap.String("role", typeutil.ProxyRole), zap.Any("parameters", Params.ServiceParam))
 
@@ -221,8 +198,7 @@ func (node *Proxy) Init() error {
 
 	log.Debug("create channels manager", zap.String("role", typeutil.ProxyRole))
 	dmlChannelsFunc := getDmlChannelsFunc(node.ctx, node.rootCoord)
-	dqlChannelsFunc := getDqlChannelsFunc(node.ctx, node.session.ServerID, node.queryCoord)
-	chMgr := newChannelsMgrImpl(dmlChannelsFunc, defaultInsertRepackFunc, dqlChannelsFunc, nil, node.factory)
+	chMgr := newChannelsMgrImpl(dmlChannelsFunc, defaultInsertRepackFunc, node.factory)
 	node.chMgr = chMgr
 	log.Debug("create channels manager done", zap.String("role", typeutil.ProxyRole))
 
@@ -245,7 +221,7 @@ func (node *Proxy) Init() error {
 	log.Debug("create metrics cache manager done", zap.String("role", typeutil.ProxyRole))
 
 	log.Debug("init meta cache", zap.String("role", typeutil.ProxyRole))
-	if err := InitMetaCache(node.rootCoord, node.queryCoord); err != nil {
+	if err := InitMetaCache(node.rootCoord, node.queryCoord, node.shardMgr); err != nil {
 		log.Warn("failed to init meta cache", zap.Error(err), zap.String("role", typeutil.ProxyRole))
 		return err
 	}
@@ -403,6 +379,10 @@ func (node *Proxy) Stop() error {
 	}
 
 	node.session.Revoke(time.Second)
+
+	if node.shardMgr != nil {
+		node.shardMgr.Close()
+	}
 
 	// https://github.com/milvus-io/milvus/issues/12282
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)

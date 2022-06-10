@@ -53,7 +53,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/internal/util/cgoconverter"
 )
 
 type segmentType = commonpb.SegmentState
@@ -76,7 +75,6 @@ type IndexedFieldInfo struct {
 
 // Segment is a wrapper of the underlying C-structure segment.
 type Segment struct {
-	segPtrMu   sync.RWMutex // guards segmentPtr
 	segmentPtr C.CSegmentInterface
 
 	segmentID    UniqueID
@@ -225,8 +223,6 @@ func deleteSegment(segment *Segment) error {
 		return fmt.Errorf("segment has been deleted")
 	}
 
-	segment.segPtrMu.Lock()
-	defer segment.segPtrMu.Unlock()
 	cPtr := segment.segmentPtr
 	status := C.DeleteSegment(cPtr)
 	if err := HandleCStatus(&status, "DeleteCollection failed"); err != nil {
@@ -235,7 +231,6 @@ func deleteSegment(segment *Segment) error {
 	segment.segmentPtr = nil
 
 	log.Info("delete segment from memory", zap.Int64("collectionID", segment.collectionID), zap.Int64("partitionID", segment.partitionID), zap.Int64("segmentID", segment.ID()))
-	return nil
 }
 
 func (s *Segment) getRowCount() int64 {
@@ -243,8 +238,6 @@ func (s *Segment) getRowCount() int64 {
 		long int
 		getRowCount(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -262,8 +255,6 @@ func (s *Segment) getDeletedCount() int64 {
 		long int
 		getDeletedCount(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -281,8 +272,6 @@ func (s *Segment) getMemSize() int64 {
 		long int
 		GetMemoryUsageInBytes(CSegmentInterface c_segment);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -301,8 +290,6 @@ func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
 			long int* result_ids,
 			float* result_distances);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
@@ -312,7 +299,7 @@ func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
 	}
 
 	var searchResult SearchResult
-	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
+	log.Debug("do search on segment", zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.segmentType.String()))
 	tr := timerecord.NewTimeRecorder("cgoSearch")
 	status := C.Search(s.segmentPtr, searchReq.plan.cSearchPlan, searchReq.cPlaceholderGroup,
 		C.uint64_t(searchReq.timestamp), &searchResult.cSearchResult, C.int64_t(s.segmentID))
@@ -323,20 +310,7 @@ func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
 	return &searchResult, nil
 }
 
-// HandleCProto deal with the result proto returned from CGO
-func HandleCProto(cRes *C.CProto, msg proto.Message) error {
-	// Standalone CProto is protobuf created by C side,
-	// Passed from c side
-	// memory is managed manually
-	lease, blob := cgoconverter.UnsafeGoBytes(&cRes.proto_blob, int(cRes.proto_size))
-	defer cgoconverter.Release(lease)
-
-	return proto.Unmarshal(blob, msg)
-}
-
 func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock()
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
@@ -347,7 +321,7 @@ func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, erro
 	status := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, ts, &retrieveResult.cRetrieveResult)
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
 		metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	log.Debug("do retrieve on segment", zap.Int64("segmentID", s.segmentID), zap.Int32("segmentType", int32(s.segmentType)))
+	log.Debug("do retrieve on segment", zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.segmentType.String()))
 	if err := HandleCStatus(&status, "Retrieve failed"); err != nil {
 		return nil, err
 	}
@@ -584,8 +558,6 @@ func (s *Segment) segmentPreInsert(numOfRecords int) (int64, error) {
 		long int
 		PreInsert(CSegmentInterface c_segment, long int size);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentType != segmentTypeGrowing {
 		return 0, nil
 	}
@@ -603,16 +575,12 @@ func (s *Segment) segmentPreDelete(numOfRecords int) int64 {
 		long int
 		PreDelete(CSegmentInterface c_segment, long int size);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	var offset = C.PreDelete(s.segmentPtr, C.int64_t(int64(numOfRecords)))
 
 	return int64(offset)
 }
 
 func (s *Segment) segmentInsert(offset int64, entityIDs []UniqueID, timestamps []Timestamp, record *segcorepb.InsertRecord) error {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentType != segmentTypeGrowing {
 		return fmt.Errorf("unexpected segmentType when segmentInsert, segmentType = %s", s.segmentType.String())
 	}
@@ -642,7 +610,7 @@ func (s *Segment) segmentInsert(offset int64, entityIDs []UniqueID, timestamps [
 	if err := HandleCStatus(&status, "Insert failed"); err != nil {
 		return err
 	}
-
+	metrics.QueryNodeNumEntities.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Add(float64(numOfRow))
 	s.setRecentlyModified(true)
 	return nil
 }
@@ -660,8 +628,6 @@ func (s *Segment) segmentDelete(offset int64, entityIDs []primaryKey, timestamps
 		return fmt.Errorf("empty pks to delete")
 	}
 
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -720,8 +686,6 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *sche
 		CStatus
 		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
 	*/
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -756,8 +720,6 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *sche
 }
 
 func (s *Segment) segmentLoadDeletedRecord(primaryKeys []primaryKey, timestamps []Timestamp, rowCount int64) error {
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -830,8 +792,6 @@ func (s *Segment) segmentLoadIndexData(bytesIndex [][]byte, indexInfo *querypb.F
 		return err
 	}
 
-	s.segPtrMu.RLock()
-	defer s.segPtrMu.RUnlock() // thread safe guaranteed by segCore, use RLock
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}

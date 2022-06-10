@@ -58,6 +58,9 @@ type MockDataCoord struct {
 	setSegmentStateResp  *datapb.SetSegmentStateResponse
 	importResp           *datapb.ImportTaskResponse
 	updateSegStatResp    *commonpb.Status
+	acquireSegLockResp   *commonpb.Status
+	releaseSegLockResp   *commonpb.Status
+	addSegmentResp       *commonpb.Status
 }
 
 func (m *MockDataCoord) Init() error {
@@ -177,6 +180,18 @@ func (m *MockDataCoord) Import(ctx context.Context, req *datapb.ImportTaskReques
 
 func (m *MockDataCoord) UpdateSegmentStatistics(ctx context.Context, req *datapb.UpdateSegmentStatisticsRequest) (*commonpb.Status, error) {
 	return m.updateSegStatResp, m.err
+}
+
+func (m *MockDataCoord) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
+	return m.acquireSegLockResp, m.err
+}
+
+func (m *MockDataCoord) ReleaseSegmentLock(ctx context.Context, req *datapb.ReleaseSegmentLockRequest) (*commonpb.Status, error) {
+	return m.releaseSegLockResp, m.err
+}
+
+func (m *MockDataCoord) AddSegment(ctx context.Context, req *datapb.AddSegmentRequest) (*commonpb.Status, error) {
+	return m.addSegmentResp, m.err
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -416,6 +431,39 @@ func Test_NewServer(t *testing.T) {
 			},
 		}
 		resp, err := server.UpdateSegmentStatistics(ctx, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, resp)
+	})
+
+	t.Run("acquire segment reference lock", func(t *testing.T) {
+		server.dataCoord = &MockDataCoord{
+			acquireSegLockResp: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_Success,
+			},
+		}
+		resp, err := server.AcquireSegmentLock(ctx, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, resp)
+	})
+
+	t.Run("release segment reference lock", func(t *testing.T) {
+		server.dataCoord = &MockDataCoord{
+			releaseSegLockResp: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_Success,
+			},
+		}
+		resp, err := server.ReleaseSegmentLock(ctx, nil)
+		assert.Nil(t, err)
+		assert.NotNil(t, resp)
+	})
+
+	t.Run("add segment", func(t *testing.T) {
+		server.dataCoord = &MockDataCoord{
+			addSegmentResp: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_Success,
+			},
+		}
+		resp, err := server.AddSegment(ctx, nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, resp)
 	})

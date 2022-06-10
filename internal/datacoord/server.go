@@ -127,11 +127,15 @@ type Server struct {
 	flushCh chan UniqueID
 	factory dependency.Factory
 
-	session *sessionutil.Session
-	eventCh <-chan *sessionutil.SessionEvent
+	session   *sessionutil.Session
+	dnEventCh <-chan *sessionutil.SessionEvent
+	icEventCh <-chan *sessionutil.SessionEvent
+	qcEventCh <-chan *sessionutil.SessionEvent
 
 	dataNodeCreator        dataNodeCreatorFunc
 	rootCoordClientCreator rootCoordCreatorFunc
+
+	segReferManager *SegmentReferenceManager
 }
 
 // ServerHelper datacoord server injection helper
@@ -349,38 +353,32 @@ func (s *Server) initGarbageCollection() error {
 	var cli *minio.Client
 	var err error
 	if Params.DataCoordCfg.EnableGarbageCollection {
+		var creds *credentials.Credentials
+		if Params.MinioCfg.UseIAM {
+			creds = credentials.NewIAM(Params.MinioCfg.IAMEndpoint)
+		} else {
+			creds = credentials.NewStaticV4(Params.MinioCfg.AccessKeyID, Params.MinioCfg.SecretAccessKey, "")
+		}
+		// TODO: We call minio.New in different places with same procedures to call several functions.
+		// We should abstract this to a focade function to avoid applying changes to only one place.
 		cli, err = minio.New(Params.MinioCfg.Address, &minio.Options{
-			Creds:  credentials.NewStaticV4(Params.MinioCfg.AccessKeyID, Params.MinioCfg.SecretAccessKey, ""),
+			Creds:  creds,
 			Secure: Params.MinioCfg.UseSSL,
 		})
 		if err != nil {
-			return err
-		}
-
-		checkBucketFn := func() error {
-			has, err := cli.BucketExists(context.TODO(), Params.MinioCfg.BucketName)
-			if err != nil {
-				return err
-			}
-			if !has {
-				err = cli.MakeBucket(context.TODO(), Params.MinioCfg.BucketName, minio.MakeBucketOptions{})
-				if err != nil {
-					return err
-				}
-			}
-			return nil
+			return fmt.Errorf("failed to create minio client: %v", err)
 		}
 		// retry times shall be two, just to prevent
 		// 1. bucket not exists
 		// 2. bucket is created by other componnent
 		// 3. datacoord try to create but failed with bucket already exists error
-		err = retry.Do(s.ctx, checkBucketFn, retry.Attempts(2))
+		err = retry.Do(s.ctx, getCheckBucketFn(cli), retry.Attempts(2))
 		if err != nil {
 			return err
 		}
 	}
 
-	s.garbageCollector = newGarbageCollector(s.meta, GcOption{
+	s.garbageCollector = newGarbageCollector(s.meta, s.segReferManager, GcOption{
 		cli:        cli,
 		enabled:    Params.DataCoordCfg.EnableGarbageCollection,
 		bucketName: Params.MinioCfg.BucketName,
@@ -391,6 +389,23 @@ func (s *Server) initGarbageCollection() error {
 		dropTolerance:    Params.DataCoordCfg.GCDropTolerance,
 	})
 	return nil
+}
+
+// here we use variable for test convenience
+var getCheckBucketFn = func(cli *minio.Client) func() error {
+	return func() error {
+		has, err := cli.BucketExists(context.TODO(), Params.MinioCfg.BucketName)
+		if err != nil {
+			return err
+		}
+		if !has {
+			err = cli.MakeBucket(context.TODO(), Params.MinioCfg.BucketName, minio.MakeBucketOptions{})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 func (s *Server) initServiceDiscovery() error {
@@ -413,8 +428,31 @@ func (s *Server) initServiceDiscovery() error {
 	s.cluster.Startup(s.ctx, datanodes)
 
 	// TODO implement rewatch logic
-	s.eventCh = s.session.WatchServices(typeutil.DataNodeRole, rev+1, nil)
-	return nil
+	s.dnEventCh = s.session.WatchServices(typeutil.DataNodeRole, rev+1, nil)
+
+	icSessions, icRevision, err := s.session.GetSessions(typeutil.IndexCoordRole)
+	if err != nil {
+		log.Error("DataCoord get IndexCoord session failed", zap.Error(err))
+		return err
+	}
+	serverIDs := make([]UniqueID, 0, len(icSessions))
+	for _, session := range icSessions {
+		serverIDs = append(serverIDs, session.ServerID)
+	}
+	s.icEventCh = s.session.WatchServices(typeutil.IndexCoordRole, icRevision+1, nil)
+
+	qcSessions, qcRevision, err := s.session.GetSessions(typeutil.QueryCoordRole)
+	if err != nil {
+		log.Error("DataCoord get QueryCoord session failed", zap.Error(err))
+		return err
+	}
+	for _, session := range qcSessions {
+		serverIDs = append(serverIDs, session.ServerID)
+	}
+	s.qcEventCh = s.session.WatchServices(typeutil.QueryCoordRole, qcRevision+1, nil)
+
+	s.segReferManager, err = NewSegmentReferenceManager(s.kvClient, serverIDs)
+	return err
 }
 
 func (s *Server) startSegmentManager() {
@@ -628,7 +666,7 @@ func (s *Server) watchService(ctx context.Context) {
 		case <-ctx.Done():
 			log.Info("watch service shutdown")
 			return
-		case event, ok := <-s.eventCh:
+		case event, ok := <-s.dnEventCh:
 			if !ok {
 				// ErrCompacted in handled inside SessionWatcher
 				// So there is some other error occurred, closing DataCoord server
@@ -648,6 +686,56 @@ func (s *Server) watchService(ctx context.Context) {
 					}
 				}()
 				return
+			}
+		case event, ok := <-s.icEventCh:
+			if !ok {
+				// ErrCompacted in handled inside SessionWatcher
+				// So there is some other error occurred, closing DataCoord server
+				logutil.Logger(s.ctx).Error("watch service channel closed", zap.Int64("serverID", s.session.ServerID))
+				go s.Stop()
+				if s.session.TriggerKill {
+					if p, err := os.FindProcess(os.Getpid()); err == nil {
+						p.Signal(syscall.SIGINT)
+					}
+				}
+				return
+			}
+			switch event.EventType {
+			case sessionutil.SessionAddEvent:
+				log.Info("there is a new IndexCoord online", zap.Int64("serverID", event.Session.ServerID))
+
+			case sessionutil.SessionDelEvent:
+				log.Warn("there is IndexCoord offline", zap.Int64("serverID", event.Session.ServerID))
+				if err := retry.Do(ctx, func() error {
+					return s.segReferManager.ReleaseSegmentsLockByNodeID(event.Session.ServerID)
+				}, retry.Attempts(100)); err != nil {
+					panic(err)
+				}
+			}
+		case event, ok := <-s.qcEventCh:
+			if !ok {
+				// ErrCompacted in handled inside SessionWatcher
+				// So there is some other error occurred, closing DataCoord server
+				logutil.Logger(s.ctx).Error("watch service channel closed", zap.Int64("serverID", s.session.ServerID))
+				go s.Stop()
+				if s.session.TriggerKill {
+					if p, err := os.FindProcess(os.Getpid()); err == nil {
+						p.Signal(syscall.SIGINT)
+					}
+				}
+				return
+			}
+			switch event.EventType {
+			case sessionutil.SessionAddEvent:
+				log.Info("there is a new QueryCoord online", zap.Int64("serverID", event.Session.ServerID))
+
+			case sessionutil.SessionDelEvent:
+				log.Warn("there is QueryCoord offline", zap.Int64("serverID", event.Session.ServerID))
+				if err := retry.Do(ctx, func() error {
+					return s.segReferManager.ReleaseSegmentsLockByNodeID(event.Session.ServerID)
+				}, retry.Attempts(100)); err != nil {
+					panic(err)
+				}
 			}
 		}
 	}

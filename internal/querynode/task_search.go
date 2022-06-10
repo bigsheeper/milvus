@@ -30,6 +30,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -81,6 +82,7 @@ func (s *searchTask) init() error {
 	return nil
 }
 
+// TODO: merge searchOnStreaming and searchOnHistorical?
 func (s *searchTask) searchOnStreaming() error {
 	// check ctx timeout
 	if !funcutil.CheckCtxValid(s.Ctx()) {
@@ -88,7 +90,7 @@ func (s *searchTask) searchOnStreaming() error {
 	}
 
 	// check if collection has been released, check streaming since it's released first
-	_, err := s.QS.streaming.getCollectionByID(s.CollectionID)
+	_, err := s.QS.metaReplica.getCollectionByID(s.CollectionID)
 	if err != nil {
 		return err
 	}
@@ -107,7 +109,7 @@ func (s *searchTask) searchOnStreaming() error {
 	defer searchReq.delete()
 
 	// TODO add context
-	partResults, _, _, sErr := searchStreaming(s.QS.streaming, searchReq, s.CollectionID, s.iReq.GetPartitionIDs(), s.req.GetDmlChannel())
+	partResults, _, _, sErr := searchStreaming(s.QS.metaReplica, searchReq, s.CollectionID, s.iReq.GetPartitionIDs(), s.req.GetDmlChannel())
 	if sErr != nil {
 		log.Debug("failed to search streaming data", zap.Int64("collectionID", s.CollectionID), zap.Error(sErr))
 		return sErr
@@ -123,7 +125,7 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 
 	// check if collection has been released, check streaming since it's released first
-	_, err := s.QS.streaming.getCollectionByID(s.CollectionID)
+	_, err := s.QS.metaReplica.getCollectionByID(s.CollectionID)
 	if err != nil {
 		return err
 	}
@@ -142,7 +144,7 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 	defer searchReq.delete()
 
-	partResults, _, _, err := searchHistorical(s.QS.historical, searchReq, s.CollectionID, nil, segmentIDs)
+	partResults, _, _, err := searchHistorical(s.QS.metaReplica, searchReq, s.CollectionID, nil, segmentIDs)
 	if err != nil {
 		return err
 	}
@@ -160,6 +162,11 @@ func (s *searchTask) Execute(ctx context.Context) error {
 }
 
 func (s *searchTask) Notify(err error) {
+	if len(s.otherTasks) > 0 {
+		metrics.QueryNodeSearchGroupSize.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(len(s.otherTasks) + 1))
+		metrics.QueryNodeSearchGroupNQ.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(s.NQ))
+		metrics.QueryNodeSearchGroupTopK.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(s.TopK))
+	}
 	s.done <- err
 	for i := 0; i < len(s.otherTasks); i++ {
 		s.otherTasks[i].Notify(err)
@@ -174,7 +181,9 @@ func (s *searchTask) estimateCPUUsage() {
 		segmentNum := int64(len(s.req.GetSegmentIDs()))
 		s.cpu = int32(s.NQ * segmentNum / 2)
 	}
-	if s.cpu > s.maxCPU {
+	if s.cpu <= 0 {
+		s.cpu = 5
+	} else if s.cpu > s.maxCPU {
 		s.cpu = s.maxCPU
 	}
 }

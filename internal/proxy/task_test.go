@@ -27,15 +27,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/allocator"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
+
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/milvus-io/milvus/internal/allocator"
 	"github.com/milvus-io/milvus/internal/common"
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
-
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -123,7 +123,7 @@ func constructCollectionSchemaByDataType(collectionName string, fieldName2DataTy
 		if dataType == schemapb.DataType_VarChar {
 			fieldSchema.TypeParams = []*commonpb.KeyValuePair{
 				{
-					Key:   "max_length_per_row",
+					Key:   "max_length",
 					Value: strconv.Itoa(testMaxVarCharLength),
 				},
 			}
@@ -1087,47 +1087,12 @@ func TestCreateCollectionTask(t *testing.T) {
 
 func TestDropCollectionTask(t *testing.T) {
 	Params.Init()
-	rc := NewRootCoordMock()
-	rc.Start()
-	defer rc.Stop()
-	qc := NewQueryCoordMock()
-	qc.Start()
-	defer qc.Stop()
-	ctx := context.Background()
-	InitMetaCache(rc, qc)
-
-	master := newMockGetChannelsService()
-	query := newMockGetChannelsService()
-	factory := newSimpleMockMsgStreamFactory()
-	channelMgr := newChannelsMgrImpl(master.GetChannels, nil, query.GetChannels, nil, factory)
-	defer channelMgr.removeAllDMLStream()
 
 	prefix := "TestDropCollectionTask"
 	dbName := ""
 	collectionName := prefix + funcutil.GenRandomStr()
+	ctx := context.Background()
 
-	shardsNum := int32(2)
-	int64Field := "int64"
-	floatVecField := "fvec"
-	dim := 128
-
-	schema := constructCollectionSchema(int64Field, floatVecField, dim, collectionName)
-	marshaledSchema, err := proto.Marshal(schema)
-	assert.NoError(t, err)
-
-	createColReq := &milvuspb.CreateCollectionRequest{
-		Base: &commonpb.MsgBase{
-			MsgType:   commonpb.MsgType_DropCollection,
-			MsgID:     100,
-			Timestamp: 100,
-		},
-		DbName:         dbName,
-		CollectionName: collectionName,
-		Schema:         marshaledSchema,
-		ShardsNum:      shardsNum,
-	}
-
-	//CreateCollection
 	task := &dropCollectionTask{
 		Condition: NewTaskCondition(ctx),
 		DropCollectionRequest: &milvuspb.DropCollectionRequest{
@@ -1139,38 +1104,58 @@ func TestDropCollectionTask(t *testing.T) {
 			DbName:         dbName,
 			CollectionName: collectionName,
 		},
-		ctx:       ctx,
-		chMgr:     channelMgr,
-		rootCoord: rc,
-		result:    nil,
+		ctx:    ctx,
+		result: nil,
 	}
-	task.PreExecute(ctx)
 
-	assert.Equal(t, commonpb.MsgType_DropCollection, task.Type())
+	task.SetID(100)
 	assert.Equal(t, UniqueID(100), task.ID())
+	assert.Equal(t, DropCollectionTaskName, task.Name())
+	assert.Equal(t, commonpb.MsgType_DropCollection, task.Type())
+	task.SetTs(100)
 	assert.Equal(t, Timestamp(100), task.BeginTs())
 	assert.Equal(t, Timestamp(100), task.EndTs())
+
+	err := task.PreExecute(ctx)
+	assert.NoError(t, err)
 	assert.Equal(t, Params.ProxyCfg.GetNodeID(), task.GetBase().GetSourceID())
-	// missing collectionID in globalMetaCache
-	err = task.Execute(ctx)
-	assert.NotNil(t, err)
-	// createCollection in RootCood and fill GlobalMetaCache
-	rc.CreateCollection(ctx, createColReq)
-	globalMetaCache.GetCollectionID(ctx, collectionName)
 
-	// success to drop collection
-	err = task.Execute(ctx)
-	assert.Nil(t, err)
-
-	// illegal name
 	task.CollectionName = "#0xc0de"
 	err = task.PreExecute(ctx)
-	assert.NotNil(t, err)
-
+	assert.Error(t, err)
 	task.CollectionName = collectionName
-	err = task.PreExecute(ctx)
-	assert.Nil(t, err)
 
+	cache := newMockCache()
+	chMgr := newMockChannelsMgr()
+	rc := newMockRootCoord()
+
+	globalMetaCache = cache
+	task.chMgr = chMgr
+	task.rootCoord = rc
+
+	cache.setGetIDFunc(func(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
+		return 0, errors.New("mock")
+	})
+	err = task.Execute(ctx)
+	assert.Error(t, err)
+	cache.setGetIDFunc(func(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
+		return 0, nil
+	})
+
+	rc.DropCollectionFunc = func(ctx context.Context, request *milvuspb.DropCollectionRequest) (*commonpb.Status, error) {
+		return nil, errors.New("mock")
+	}
+	err = task.Execute(ctx)
+	assert.Error(t, err)
+	rc.DropCollectionFunc = func(ctx context.Context, request *milvuspb.DropCollectionRequest) (*commonpb.Status, error) {
+		return &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}, nil
+	}
+
+	// normal case
+	err = task.Execute(ctx)
+	assert.NoError(t, err)
+	err = task.PostExecute(ctx)
+	assert.NoError(t, err)
 }
 
 func TestHasCollectionTask(t *testing.T) {
@@ -1182,7 +1167,8 @@ func TestHasCollectionTask(t *testing.T) {
 	qc.Start()
 	defer qc.Stop()
 	ctx := context.Background()
-	InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	InitMetaCache(rc, qc, mgr)
 	prefix := "TestHasCollectionTask"
 	dbName := ""
 	collectionName := prefix + funcutil.GenRandomStr()
@@ -1267,7 +1253,8 @@ func TestDescribeCollectionTask(t *testing.T) {
 	qc.Start()
 	defer qc.Stop()
 	ctx := context.Background()
-	InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	InitMetaCache(rc, qc, mgr)
 	prefix := "TestDescribeCollectionTask"
 	dbName := ""
 	collectionName := prefix + funcutil.GenRandomStr()
@@ -1329,7 +1316,8 @@ func TestDescribeCollectionTask_ShardsNum1(t *testing.T) {
 	qc.Start()
 	defer qc.Stop()
 	ctx := context.Background()
-	InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	InitMetaCache(rc, qc, mgr)
 	prefix := "TestDescribeCollectionTask"
 	dbName := ""
 	collectionName := prefix + funcutil.GenRandomStr()
@@ -1393,7 +1381,8 @@ func TestDescribeCollectionTask_ShardsNum2(t *testing.T) {
 	qc.Start()
 	defer qc.Stop()
 	ctx := context.Background()
-	InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	InitMetaCache(rc, qc, mgr)
 	prefix := "TestDescribeCollectionTask"
 	dbName := ""
 	collectionName := prefix + funcutil.GenRandomStr()
@@ -1649,7 +1638,6 @@ func TestTask_Int64PrimaryKey(t *testing.T) {
 	var err error
 
 	Params.Init()
-	Params.ProxyCfg.RetrieveResultChannelNames = []string{funcutil.GenRandomStr()}
 
 	rc := NewRootCoordMock()
 	rc.Start()
@@ -1660,7 +1648,8 @@ func TestTask_Int64PrimaryKey(t *testing.T) {
 
 	ctx := context.Background()
 
-	err = InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	err = InitMetaCache(rc, qc, mgr)
 	assert.NoError(t, err)
 
 	shardsNum := int32(2)
@@ -1723,13 +1712,11 @@ func TestTask_Int64PrimaryKey(t *testing.T) {
 	assert.NoError(t, err)
 
 	dmlChannelsFunc := getDmlChannelsFunc(ctx, rc)
-	query := newMockGetChannelsService()
 	factory := newSimpleMockMsgStreamFactory()
-	chMgr := newChannelsMgrImpl(dmlChannelsFunc, nil, query.GetChannels, nil, factory)
+	chMgr := newChannelsMgrImpl(dmlChannelsFunc, nil, factory)
 	defer chMgr.removeAllDMLStream()
-	defer chMgr.removeAllDQLStream()
 
-	err = chMgr.createDMLMsgStream(collectionID)
+	_, err = chMgr.getOrCreateDmlStream(collectionID)
 	assert.NoError(t, err)
 	pchans, err := chMgr.getChannels(collectionID)
 	assert.NoError(t, err)
@@ -1905,7 +1892,6 @@ func TestTask_VarCharPrimaryKey(t *testing.T) {
 	var err error
 
 	Params.Init()
-	Params.ProxyCfg.RetrieveResultChannelNames = []string{funcutil.GenRandomStr()}
 
 	rc := NewRootCoordMock()
 	rc.Start()
@@ -1916,7 +1902,8 @@ func TestTask_VarCharPrimaryKey(t *testing.T) {
 
 	ctx := context.Background()
 
-	err = InitMetaCache(rc, qc)
+	mgr := newShardClientMgr()
+	err = InitMetaCache(rc, qc, mgr)
 	assert.NoError(t, err)
 
 	shardsNum := int32(2)
@@ -1980,13 +1967,11 @@ func TestTask_VarCharPrimaryKey(t *testing.T) {
 	assert.NoError(t, err)
 
 	dmlChannelsFunc := getDmlChannelsFunc(ctx, rc)
-	query := newMockGetChannelsService()
 	factory := newSimpleMockMsgStreamFactory()
-	chMgr := newChannelsMgrImpl(dmlChannelsFunc, nil, query.GetChannels, nil, factory)
+	chMgr := newChannelsMgrImpl(dmlChannelsFunc, nil, factory)
 	defer chMgr.removeAllDMLStream()
-	defer chMgr.removeAllDQLStream()
 
-	err = chMgr.createDMLMsgStream(collectionID)
+	_, err = chMgr.getOrCreateDmlStream(collectionID)
 	assert.NoError(t, err)
 	pchans, err := chMgr.getChannels(collectionID)
 	assert.NoError(t, err)

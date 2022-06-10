@@ -42,9 +42,19 @@ pipeline {
             defaultValue: 'master-latest'
         )
         string(
-            description: 'Pod Nums',
-            name: 'pod_nums',
-            defaultValue: '1'
+            description: 'Etcd Image Repository',
+            name: 'etcd_image_repository',
+            defaultValue: "milvusdb/etcd"
+        )
+        string(
+            description: 'Etcd Image Tag',
+            name: 'etcd_image_tag',
+            defaultValue: "3.5.0-debian-10-r115"
+        )
+        string(
+            description: 'Query Replic Nums',
+            name: 'querynode_nums',
+            defaultValue: '3'
         )
         booleanParam(
             description: 'Keep Env',
@@ -76,17 +86,24 @@ pipeline {
                 container('main') {
                     dir ('tests/python_client/chaos') {
                         script {
-                        sh "yq -i '.kafka.enabled = true' cluster-values.yaml"
-                        sh "yq -i '.pulsar.enabled = false' cluster-values.yaml"
-                        sh "cat cluster-values.yaml"
+                        sh"""    
+                        yq -i '.kafka.enabled = true' cluster-values.yaml
+                        yq -i '.pulsar.enabled = false' cluster-values.yaml
+
+                        yq -i '.queryNode.replicas = "${params.querynode_nums}"' cluster-values.yaml
+                        yq -i '.etcd.image.repository = "${params.etcd_image_repository}"' cluster-values.yaml
+                        yq -i '.etcd.image.tag = "${params.etcd_image_tag}"' cluster-values.yaml
+                        yq -i '.etcd.image.repository = "${params.etcd_image_repository}"' standalone-values.yaml
+                        yq -i '.etcd.image.tag = "${params.etcd_image_tag}"' standalone-values.yaml
+                        """
                         }
                         }
                     }
-                }            
+                }
         }
         stage ('Deploy Milvus') {
             options {
-              timeout(time: 10, unit: 'MINUTES')   // timeout on this stage
+              timeout(time: 15, unit: 'MINUTES')   // timeout on this stage
             }
             steps {
                 container('main') {
@@ -101,7 +118,6 @@ pipeline {
                             }
                             sh "echo ${image_tag_modified}"
                             sh "echo ${params.chaos_type}"
-                            sh "docker pull ${params.image_repository}:${image_tag_modified}"
                             sh "helm repo add milvus https://milvus-io.github.io/milvus-helm"
                             sh "helm repo update"
                             if ("${params.pod_name}" == "standalone"){
@@ -121,7 +137,7 @@ pipeline {
                             }
                             sh "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"
                             sh "kubectl wait --for=condition=Ready pod -l release=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"
-                            sh "kubectl get pods -o wide -o wide|grep ${env.RELEASE_NAME}"
+                            sh "kubectl get pods -o wide|grep ${env.RELEASE_NAME}"
                             }
                         }
                     }

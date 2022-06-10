@@ -81,6 +81,9 @@ type DataNode interface {
 	// ResendSegmentStats resend un-flushed segment stats back upstream to DataCoord by resending DataNode time tick message.
 	// It returns a list of segments to be sent.
 	ResendSegmentStats(ctx context.Context, req *datapb.ResendSegmentStatsRequest) (*datapb.ResendSegmentStatsResponse, error)
+
+	// AddSegment puts the given segment to current DataNode's flow graph.
+	AddSegment(ctx context.Context, req *datapb.AddSegmentRequest) (*commonpb.Status, error)
 }
 
 // DataNodeComponent is used by grpc server of DataNode
@@ -281,6 +284,13 @@ type DataCoord interface {
 
 	// UpdateSegmentStatistics updates a segment's stats.
 	UpdateSegmentStatistics(ctx context.Context, req *datapb.UpdateSegmentStatisticsRequest) (*commonpb.Status, error)
+
+	AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error)
+	ReleaseSegmentLock(ctx context.Context, req *datapb.ReleaseSegmentLockRequest) (*commonpb.Status, error)
+
+	// AddSegment looks for the right DataNode given channel name, and triggers AddSegment call on that DataNode to
+	// add the segment into this DataNode.
+	AddSegment(ctx context.Context, req *datapb.AddSegmentRequest) (*commonpb.Status, error)
 }
 
 // DataCoordComponent defines the interface of DataCoord component.
@@ -349,6 +359,8 @@ type IndexCoordComponent interface {
 
 	// SetEtcdClient set etcd client for IndexCoordComponent
 	SetEtcdClient(etcdClient *clientv3.Client)
+
+	SetDataCoord(dataCoor DataCoord) error
 
 	// UpdateStateCode updates state code for IndexCoordComponent
 	//  `stateCode` is current statement of this IndexCoordComponent, indicating whether it's healthy.
@@ -1187,16 +1199,6 @@ type QueryNode interface {
 	Component
 	TimeTickProvider
 
-	// AddQueryChannel notifies QueryNode to subscribe a query channel and be a producer of a query result channel.
-	// `ctx` is the context to control request deadline and cancellation.
-	// `req` contains the request params, which are collection id, query channel and query result channel.
-	//
-	// Return UnexpectedError code in status:
-	//     If QueryNode isn't in HEALTHY: states not HEALTHY or dynamic checks not HEALTHY.
-	// Return Success code in status:
-	//     Subscribe a query channel and be a producer of a query result channel.
-	AddQueryChannel(ctx context.Context, req *querypb.AddQueryChannelRequest) (*commonpb.Status, error)
-	RemoveQueryChannel(ctx context.Context, req *querypb.RemoveQueryChannelRequest) (*commonpb.Status, error)
 	WatchDmChannels(ctx context.Context, req *querypb.WatchDmChannelsRequest) (*commonpb.Status, error)
 	WatchDeltaChannels(ctx context.Context, req *querypb.WatchDeltaChannelsRequest) (*commonpb.Status, error)
 	// LoadSegments notifies QueryNode to load the sealed segments from storage. The load tasks are sync to this
@@ -1244,7 +1246,6 @@ type QueryCoord interface {
 	ShowPartitions(ctx context.Context, req *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error)
 	LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error)
 	ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error)
-	CreateQueryChannel(ctx context.Context, req *querypb.CreateQueryChannelRequest) (*querypb.CreateQueryChannelResponse, error)
 	GetPartitionStates(ctx context.Context, req *querypb.GetPartitionStatesRequest) (*querypb.GetPartitionStatesResponse, error)
 	GetSegmentInfo(ctx context.Context, req *querypb.GetSegmentInfoRequest) (*querypb.GetSegmentInfoResponse, error)
 	LoadBalance(ctx context.Context, req *querypb.LoadBalanceRequest) (*commonpb.Status, error)

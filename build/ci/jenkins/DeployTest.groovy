@@ -56,11 +56,11 @@ pipeline {
         string(
             description: 'Etcd Image Tag',
             name: 'etcd_image_tag',
-            defaultValue: "3.5.0-debian-10-r117"
+            defaultValue: "3.5.0-debian-10-r115"
         )
         string(
-            description: 'Query Replic Nums',
-            name: 'querynode_replica_nums',
+            description: 'Querynode Nums',
+            name: 'querynode_nums',
             defaultValue: '3'
         )
         string(
@@ -105,7 +105,7 @@ pipeline {
                     dir ('tests/python_client/deploy') {
                         script {
                         sh """
-                        yq -i '.queryNode.replicas = "${params.querynode_replica_nums}"' cluster-values.yaml
+                        yq -i '.queryNode.replicas = "${params.querynode_nums}"' cluster-values.yaml
                         yq -i '.etcd.image.repository = "${params.etcd_image_repository}"' cluster-values.yaml
                         yq -i '.etcd.image.tag = "${params.etcd_image_tag}"' cluster-values.yaml
                         yq -i '.etcd.image.repository = "${params.etcd_image_repository}"' standalone-values.yaml
@@ -119,7 +119,7 @@ pipeline {
         }
         stage ('First Milvus Deployment') {
             options {
-              timeout(time: 10, unit: 'MINUTES')   // timeout on this stage
+              timeout(time: 15, unit: 'MINUTES')   // timeout on this stage
             }
             steps {
                 container('main') {
@@ -152,8 +152,6 @@ pipeline {
                             sh "echo ${new_image_tag_modified} > new_image_tag_modified.txt"
                             stash includes: 'new_image_tag_modified.txt', name: 'new_image_tag_modified'
                             env.new_image_tag_modified = new_image_tag_modified
-                            sh "docker pull ${params.old_image_repository}:${old_image_tag_modified}"
-                            sh "docker pull ${params.new_image_repository}:${new_image_tag_modified}"
                             if ("${params.deploy_task}" == "reinstall"){
                                 echo "reinstall Milvus with new image tag"
                                 old_image_tag_modified = new_image_tag_modified
@@ -176,13 +174,16 @@ pipeline {
                             }
                             sh "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"
                             sh "kubectl wait --for=condition=Ready pod -l release=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"
-                            sh "kubectl get pods|grep ${env.RELEASE_NAME}"
+                            sh "kubectl get pods -o wide|grep ${env.RELEASE_NAME}"
                             }
                         }
                     }
                 }
         }
         stage ('Run first test') {
+            options {
+              timeout(time: 30, unit: 'MINUTES')   // timeout on this stage
+            }           
             steps {
                 container('main') {
                     dir ('tests/python_client/deploy/scripts') {
@@ -216,7 +217,21 @@ pipeline {
                 }
             }
         }
+        stage ('Export log for first deployment') {
 
+            steps {
+                container('main') {
+                    dir ('tests/python_client/deploy') {
+                        script {
+                        echo "get pod status"
+                        sh "kubectl get pods -o wide|grep ${env.RELEASE_NAME} || true"
+                        echo "collecte logs"
+                        sh "bash ../../scripts/export_log_k8s.sh ${env.NAMESPACE} ${env.RELEASE_NAME} k8s_log/${env.RELEASE_NAME}/first_deployment || echo 'export log failed'"
+                        }
+                    }
+                }
+            }
+        }
         stage ('Restart Milvus') {
             options {
               timeout(time: 15, unit: 'MINUTES')   // timeout on this stage
@@ -266,7 +281,7 @@ pipeline {
                             }
                             sh "kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"
                             sh "kubectl wait --for=condition=Ready pod -l release=${env.RELEASE_NAME} -n ${env.NAMESPACE} --timeout=360s"                               
-                            sh "kubectl get pods|grep ${env.RELEASE_NAME}"
+                            sh "kubectl get pods -o wide|grep ${env.RELEASE_NAME}"
                         }
                     }
                 }
@@ -275,6 +290,9 @@ pipeline {
         }
 
         stage ('Run Second Test') {
+            options {
+              timeout(time: 30, unit: 'MINUTES')   // timeout on this stage
+            }
             steps {
                 container('main') {
                     dir ('tests/python_client/deploy/scripts') {
@@ -300,17 +318,17 @@ pipeline {
         always {
             echo 'upload logs'
             container('main') {
-                dir ('tests/python_client/chaos') {
+                dir ('tests/python_client/deploy') {
                     script {
                         echo "get pod status"
-                        sh "kubectl get pods|grep ${env.RELEASE_NAME} || true"
+                        sh "kubectl get pods -o wide|grep ${env.RELEASE_NAME} || true"
                         echo "collecte logs"
-                        sh "bash ../../scripts/export_log_k8s.sh ${env.NAMESPACE} ${env.RELEASE_NAME} k8s_log/${env.RELEASE_NAME} || echo 'export log failed'"
+                        sh "bash ../../scripts/export_log_k8s.sh ${env.NAMESPACE} ${env.RELEASE_NAME} k8s_log/${env.RELEASE_NAME}/second_deployment || echo 'export log failed'"
                         echo "upload logs"
                         sh "tar -zcvf artifacts-${env.RELEASE_NAME}-logs.tar.gz k8s_log/ --remove-files || true"
                         archiveArtifacts artifacts: "artifacts-${env.RELEASE_NAME}-logs.tar.gz", allowEmptyArchive: true
                         if ("${params.keep_env}" == "false"){
-                            sh "bash scripts/uninstall_milvus.sh ${env.RELEASE_NAME}"
+                            sh "bash ../chaos/scripts/uninstall_milvus.sh ${env.RELEASE_NAME}"
                         }
                     }
                 }

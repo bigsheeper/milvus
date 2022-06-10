@@ -60,11 +60,6 @@ type UniqueID = typeutil.UniqueID
 // Timestamp is an alias for the Int64 type
 type Timestamp = typeutil.Timestamp
 
-type queryChannelInfo struct {
-	requestChannel  string
-	responseChannel string
-}
-
 // Params is param table of query coordinator
 var Params paramtable.ComponentParam
 
@@ -351,7 +346,7 @@ func (qc *QueryCoord) watchNodeLoop() {
 		}
 	}
 
-	offlineNodeIDs := qc.cluster.offlineNodeIDs()
+	offlineNodeIDs := qc.cluster.OfflineNodeIDs()
 	if len(offlineNodeIDs) != 0 {
 		loadBalanceSegment := &querypb.LoadBalanceRequest{
 			Base: &commonpb.MsgBase{
@@ -376,7 +371,7 @@ func (qc *QueryCoord) watchNodeLoop() {
 	}
 
 	// TODO silverxia add Rewatch logic
-	qc.eventChan = qc.session.WatchServices(typeutil.QueryNodeRole, qc.cluster.getSessionVersion()+1, nil)
+	qc.eventChan = qc.session.WatchServices(typeutil.QueryNodeRole, qc.cluster.GetSessionVersion()+1, nil)
 	qc.handleNodeEvent(ctx)
 }
 
@@ -393,7 +388,7 @@ func (qc *QueryCoord) allocateNode(nodeID int64) error {
 	return nil
 }
 func (qc *QueryCoord) getUnallocatedNodes() []int64 {
-	onlines := qc.cluster.onlineNodeIDs()
+	onlines := qc.cluster.OnlineNodeIDs()
 	var ret []int64
 	for _, n := range onlines {
 		replica, err := qc.meta.getReplicasByNodeID(n)
@@ -409,10 +404,14 @@ func (qc *QueryCoord) getUnallocatedNodes() []int64 {
 }
 
 func (qc *QueryCoord) handleNodeEvent(ctx context.Context) {
+	offlineNodeCh := make(chan UniqueID, 100)
+	go qc.loadBalanceNodeLoop(ctx, offlineNodeCh)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+
 		case event, ok := <-qc.eventChan:
 			if !ok {
 				// ErrCompacted is handled inside SessionWatcher
@@ -425,11 +424,12 @@ func (qc *QueryCoord) handleNodeEvent(ctx context.Context) {
 				}
 				return
 			}
+
 			switch event.EventType {
 			case sessionutil.SessionAddEvent:
 				serverID := event.Session.ServerID
 				log.Info("start add a QueryNode to cluster", zap.Any("nodeID", serverID))
-				err := qc.cluster.registerNode(ctx, event.Session, serverID, disConnect)
+				err := qc.cluster.RegisterNode(ctx, event.Session, serverID, disConnect)
 				if err != nil {
 					log.Error("QueryCoord failed to register a QueryNode", zap.Int64("nodeID", serverID), zap.String("error info", err.Error()))
 					continue
@@ -444,35 +444,69 @@ func (qc *QueryCoord) handleNodeEvent(ctx context.Context) {
 			case sessionutil.SessionDelEvent:
 				serverID := event.Session.ServerID
 				log.Info("get a del event after QueryNode down", zap.Int64("nodeID", serverID))
-				nodeExist := qc.cluster.hasNode(serverID)
+				nodeExist := qc.cluster.HasNode(serverID)
 				if !nodeExist {
 					log.Error("QueryNode not exist", zap.Int64("nodeID", serverID))
 					continue
 				}
 
-				qc.cluster.stopNode(serverID)
-				loadBalanceSegment := &querypb.LoadBalanceRequest{
-					Base: &commonpb.MsgBase{
-						MsgType:  commonpb.MsgType_LoadBalanceSegments,
-						SourceID: qc.session.ServerID,
-					},
-					SourceNodeIDs: []int64{serverID},
-					BalanceReason: querypb.TriggerCondition_NodeDown,
-				}
-
-				baseTask := newBaseTask(qc.loopCtx, querypb.TriggerCondition_NodeDown)
-				loadBalanceTask := &loadBalanceTask{
-					baseTask:           baseTask,
-					LoadBalanceRequest: loadBalanceSegment,
-					broker:             qc.broker,
-					cluster:            qc.cluster,
-					meta:               qc.meta,
-				}
-				qc.metricsCacheManager.InvalidateSystemInfoMetrics()
-				//TODO:: deal enqueue error
-				qc.scheduler.Enqueue(loadBalanceTask)
-				log.Info("start a loadBalance task", zap.Any("task", loadBalanceTask))
+				qc.cluster.StopNode(serverID)
+				offlineNodeCh <- serverID
 			}
+		}
+	}
+}
+
+func (qc *QueryCoord) loadBalanceNodeLoop(ctx context.Context, offlineNodeCh chan UniqueID) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case node := <-offlineNodeCh:
+			loadBalanceSegment := &querypb.LoadBalanceRequest{
+				Base: &commonpb.MsgBase{
+					MsgType:  commonpb.MsgType_LoadBalanceSegments,
+					SourceID: qc.session.ServerID,
+				},
+				SourceNodeIDs: []int64{node},
+				BalanceReason: querypb.TriggerCondition_NodeDown,
+			}
+
+			baseTask := newBaseTaskWithRetry(qc.loopCtx, querypb.TriggerCondition_NodeDown, 0)
+			loadBalanceTask := &loadBalanceTask{
+				baseTask:           baseTask,
+				LoadBalanceRequest: loadBalanceSegment,
+				broker:             qc.broker,
+				cluster:            qc.cluster,
+				meta:               qc.meta,
+			}
+			qc.metricsCacheManager.InvalidateSystemInfoMetrics()
+			//TODO:: deal enqueue error
+			err := qc.scheduler.Enqueue(loadBalanceTask)
+			if err != nil {
+				log.Warn("failed to enqueue LoadBalance task into the scheduler",
+					zap.Int64("nodeID", node),
+					zap.Error(err))
+				offlineNodeCh <- node
+				continue
+			}
+
+			log.Info("start a loadBalance task",
+				zap.Int64("nodeID", node),
+				zap.Int64("taskID", loadBalanceTask.getTaskID()))
+
+			err = loadBalanceTask.waitToFinish()
+			if err != nil {
+				log.Warn("failed to process LoadBalance task",
+					zap.Int64("nodeID", node),
+					zap.Error(err))
+				offlineNodeCh <- node
+				continue
+			}
+
+			log.Info("LoadBalance task done, offline node is removed",
+				zap.Int64("nodeID", node))
 		}
 	}
 }
@@ -565,7 +599,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 					nodeID2SegmentInfos := make(map[int64]map[UniqueID]*querypb.SegmentInfo)
 					for _, nodeID := range onlineNodeIDs {
 						if _, ok := nodeID2MemUsage[nodeID]; !ok {
-							nodeInfo, err := qc.cluster.getNodeInfoByID(nodeID)
+							nodeInfo, err := qc.cluster.GetNodeInfoByID(nodeID)
 							if err != nil {
 								log.Warn("loadBalanceSegmentLoop: get node info from QueryNode failed",
 									zap.Int64("nodeID", nodeID), zap.Int64("collection", replica.CollectionID), zap.Int64("replica", replica.ReplicaID),
@@ -581,7 +615,7 @@ func (qc *QueryCoord) loadBalanceSegmentLoop() {
 						leastSegmentInfos := make(map[UniqueID]*querypb.SegmentInfo)
 						segmentInfos := qc.meta.getSegmentInfosByNodeAndCollection(nodeID, replica.GetCollectionID())
 						for _, segmentInfo := range segmentInfos {
-							leastInfo, err := qc.cluster.getSegmentInfoByID(ctx, segmentInfo.SegmentID)
+							leastInfo, err := qc.cluster.GetSegmentInfoByID(ctx, segmentInfo.SegmentID)
 							if err != nil {
 								log.Warn("loadBalanceSegmentLoop: get segment info from QueryNode failed", zap.Int64("nodeID", nodeID),
 									zap.Int64("collection", replica.CollectionID), zap.Int64("replica", replica.ReplicaID),

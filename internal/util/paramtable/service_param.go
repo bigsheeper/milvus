@@ -234,13 +234,17 @@ func (p *PulsarConfig) initMaxMessageSize() {
 
 // --- kafka ---
 type KafkaConfig struct {
-	Base    *BaseTable
-	Address string
+	Base         *BaseTable
+	Address      string
+	SaslUsername string
+	SaslPassword string
 }
 
 func (k *KafkaConfig) init(base *BaseTable) {
 	k.Base = base
 	k.initAddress()
+	k.initSaslUsername()
+	k.initSaslPassword()
 }
 
 func (k *KafkaConfig) initAddress() {
@@ -249,6 +253,14 @@ func (k *KafkaConfig) initAddress() {
 		panic(err)
 	}
 	k.Address = addr
+}
+
+func (k *KafkaConfig) initSaslUsername() {
+	k.SaslUsername = k.Base.LoadWithDefault("kafka.saslUsername", "")
+}
+
+func (k *KafkaConfig) initSaslPassword() {
+	k.SaslPassword = k.Base.LoadWithDefault("kafka.saslPassword", "")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -284,6 +296,8 @@ type MinioConfig struct {
 	UseSSL          bool
 	BucketName      string
 	RootPath        string
+	UseIAM          bool
+	IAMEndpoint     string
 }
 
 func (p *MinioConfig) init(base *BaseTable) {
@@ -295,6 +309,8 @@ func (p *MinioConfig) init(base *BaseTable) {
 	p.initUseSSL()
 	p.initBucketName()
 	p.initRootPath()
+	p.initUseIAM()
+	p.initIAMEndpoint()
 }
 
 func (p *MinioConfig) initAddress() {
@@ -343,4 +359,14 @@ func (p *MinioConfig) initRootPath() {
 		panic(err)
 	}
 	p.RootPath = rootPath
+}
+
+func (p *MinioConfig) initUseIAM() {
+	useIAM := p.Base.LoadWithDefault("minio.useIAM", DefaultMinioUseIAM)
+	p.UseIAM, _ = strconv.ParseBool(useIAM)
+}
+
+func (p *MinioConfig) initIAMEndpoint() {
+	iamEndpoint := p.Base.LoadWithDefault("minio.iamEndpoint", DefaultMinioIAMEndpoint)
+	p.IAMEndpoint = iamEndpoint
 }

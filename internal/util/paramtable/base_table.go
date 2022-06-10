@@ -43,6 +43,8 @@ const (
 	DefaultMinioSecretAccessKey = "minioadmin"
 	DefaultMinioUseSSL          = "false"
 	DefaultMinioBucketName      = "a-bucket"
+	DefaultMinioUseIAM          = "false"
+	DefaultMinioIAMEndpoint     = ""
 	DefaultEtcdEndpoints        = "localhost:2379"
 	DefaultInsertBufferSize     = "16777216"
 	DefaultEnvPrefix            = "milvus"
@@ -145,10 +147,10 @@ func (gp *BaseTable) Load(key string) (string, error) {
 	return gp.params.Load(strings.ToLower(key))
 }
 
-// Load2 loads an object with multiple @keys, return the first successful value.
+// LoadWithPriority loads an object with multiple @keys, return the first successful value.
 // If all keys not exist, return error.
 // This is to be compatible with old configuration file.
-func (gp *BaseTable) Load2(keys []string) (string, error) {
+func (gp *BaseTable) LoadWithPriority(keys []string) (string, error) {
 	for _, key := range keys {
 		if str, err := gp.params.Load(strings.ToLower(key)); err == nil {
 			return str, nil
@@ -499,6 +501,18 @@ func (gp *BaseTable) loadMinioConfig() {
 		minioBucketName = gp.LoadWithDefault("minio.bucketName", DefaultMinioBucketName)
 	}
 	gp.Save("_MinioBucketName", minioBucketName)
+
+	minioUseIAM := os.Getenv("MINIO_USE_IAM")
+	if minioUseIAM == "" {
+		minioUseIAM = gp.LoadWithDefault("minio.useIAM", DefaultMinioUseIAM)
+	}
+	gp.Save("_MinioUseIAM", minioUseIAM)
+
+	minioIAMEndpoint := os.Getenv("MINIO_IAM_ENDPOINT")
+	if minioIAMEndpoint == "" {
+		minioIAMEndpoint = gp.LoadWithDefault("minio.iamEndpoint", DefaultMinioIAMEndpoint)
+	}
+	gp.Save("_MinioIAMEndpoint", minioIAMEndpoint)
 }
 
 func (gp *BaseTable) loadDataNodeConfig() {

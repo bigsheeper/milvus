@@ -60,6 +60,12 @@ minio:
   useSSL: false # Access to MinIO/S3 with SSL
   bucketName: "a-bucket" # Bucket name in MinIO/S3
   rootPath: files # The root path where the message is stored in MinIO/S3
+  # Whether to use AWS IAM role to access S3 instead of access/secret keys
+  # For more infomation, refer to https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html
+  useIAM: false 
+  # Custom endpoint for fetch IAM role credentials. 
+  # Leave it empty if you want to use AWS default endpoint
+  iamEndpoint: "" 
 
 # Milvus supports three MQ: rocksmq(based on RockDB), Pulsar and Kafka, which should be reserved in config what you use.
 # There is a note about enabling priority if we config multiple mq in this file
@@ -75,6 +81,8 @@ pulsar:
 # If you want to enable kafka, needs to comment the pulsar configs
 #kafka:
 #  brokerList: localhost1:9092,localhost2:9092,localhost3:9092
+#  saslUsername: username
+#  saslPassword: password
 
 rocksmq:
   # please adjust in embedded Milvus: /tmp/milvus/rdb_data
@@ -154,6 +162,7 @@ queryCoord:
 queryNode:
   cacheSize: 32 # GB, default 32 GB, `cacheSize` is the memory used for caching data for faster query. The `cacheSize` must be less than system memory size.
   port: 21123
+  loadMemoryUsageFactor: 3 # The multiply factor of calculating the memory usage while loading segments
 
   stats:
     publishInterval: 1000 # Interval for querynode to report node information (milliseconds)
@@ -161,12 +170,6 @@ queryNode:
     flowGraph:
       maxQueueLength: 1024 # Maximum length of task queue in flowgraph
       maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
-  msgStream:
-    search:
-      recvBufSize: 512 # msgPack channel buffer size
-      pulsarBufSize: 512 # pulsar channel buffer size
-    searchResult:
-      recvBufSize: 64 # msgPack channel buffer size
   # Segcore will divide a segment into multiple chunks to enbale small index
   segcore:
     chunkRows: 32768 # The number of vectors in a chunk.
@@ -203,7 +206,7 @@ dataCoord:
 
   segment:
     maxSize: 512 # Maximum size of a segment in MB
-    sealProportion: 0.75 # It's the minimum proportion for a segment which can be sealed
+    sealProportion: 0.25 # It's the minimum proportion for a segment which can be sealed
     assignmentExpiration: 2000 # The time of the assignment expiration in ms
     maxLife: 86400 # The max lifetime of segment in seconds, 24*60*60
 
@@ -301,6 +304,9 @@ common:
   # please adjust in embedded Milvus: local
   storageType: minio
 
+
   security:
     authorizationEnabled: false
-    tlsEnabled: false
+    # tls mode values [0, 1, 2]
+    # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
+    tlsMode: 0

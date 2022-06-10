@@ -40,7 +40,8 @@ var newVarCharPrimaryKey = storage.NewVarCharPrimaryKey
 // deleteNode is the one of nodes in delta flow graph
 type deleteNode struct {
 	baseNode
-	replica ReplicaInterface // historical
+	collectionID UniqueID
+	metaReplica  ReplicaInterface // historical
 }
 
 // Name returns the name of deleteNode
@@ -82,6 +83,14 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		msg.SetTraceCtx(ctx)
 	}
 
+	collection, err := dNode.metaReplica.getCollectionByID(dNode.collectionID)
+	if err != nil {
+		// QueryNode should add collection before start flow graph
+		panic(fmt.Errorf("%s getCollectionByID failed, collectionID = %d", dNode.Name(), dNode.collectionID))
+	}
+	collection.RLock()
+	defer collection.RUnlock()
+
 	// 1. filter segment by bloom filter
 	for i, delMsg := range dMsg.deleteMessages {
 		traceID, _, _ := trace.InfoFromSpan(spans[i])
@@ -92,12 +101,12 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			zap.Int("numTS", len(delMsg.Timestamps)),
 			zap.Any("timestampBegin", delMsg.BeginTs()),
 			zap.Any("timestampEnd", delMsg.EndTs()),
-			zap.Any("segmentNum", dNode.replica.getSegmentNum()),
+			zap.Any("segmentNum", dNode.metaReplica.getSegmentNum(segmentTypeSealed)),
 			zap.Any("traceID", traceID),
 		)
 
-		if dNode.replica.getSegmentNum() != 0 {
-			err := processDeleteMessages(dNode.replica, delMsg, delData)
+		if dNode.metaReplica.getSegmentNum(segmentTypeSealed) != 0 {
+			err := processDeleteMessages(dNode.metaReplica, segmentTypeSealed, delMsg, delData)
 			if err != nil {
 				// error occurs when missing meta info or unexpected pk type, should not happen
 				err = fmt.Errorf("deleteNode processDeleteMessages failed, collectionID = %d, err = %s", delMsg.CollectionID, err)
@@ -109,7 +118,7 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 
 	// 2. do preDelete
 	for segmentID, pks := range delData.deleteIDs {
-		segment, err := dNode.replica.getSegmentByID(segmentID)
+		segment, err := dNode.metaReplica.getSegmentByID(segmentID, segmentTypeSealed)
 		if err != nil {
 			// should not happen, segment should be created before
 			err = fmt.Errorf("deleteNode getSegmentByID failed, err = %s", err)
@@ -150,7 +159,7 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 // delete will do delete operation at segment which id is segmentID
 func (dNode *deleteNode) delete(deleteData *deleteData, segmentID UniqueID, wg *sync.WaitGroup) error {
 	defer wg.Done()
-	targetSegment, err := dNode.replica.getSegmentByID(segmentID)
+	targetSegment, err := dNode.metaReplica.getSegmentByID(segmentID, segmentTypeSealed)
 	if err != nil {
 		return fmt.Errorf("getSegmentByID failed, err = %s", err)
 	}
@@ -173,7 +182,7 @@ func (dNode *deleteNode) delete(deleteData *deleteData, segmentID UniqueID, wg *
 }
 
 // newDeleteNode returns a new deleteNode
-func newDeleteNode(historicalReplica ReplicaInterface) *deleteNode {
+func newDeleteNode(metaReplica ReplicaInterface, collectionID UniqueID) *deleteNode {
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
@@ -182,7 +191,8 @@ func newDeleteNode(historicalReplica ReplicaInterface) *deleteNode {
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &deleteNode{
-		baseNode: baseNode,
-		replica:  historicalReplica,
+		baseNode:     baseNode,
+		collectionID: collectionID,
+		metaReplica:  metaReplica,
 	}
 }

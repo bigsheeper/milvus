@@ -74,7 +74,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     auto segment = dynamic_cast<const segcore::SegmentInternalInterface*>(&segment_);
     AssertInfo(segment, "support SegmentSmallIndex Only");
     SearchResult search_result;
-    auto& ph = placeholder_group_.at(0);
+    auto& ph = placeholder_group_->at(0);
     auto src_data = ph.get_blob<EmbeddedType<VectorType>>();
     auto num_queries = ph.num_of_queries_;
 
@@ -92,11 +92,11 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     BitsetType bitset_holder;
     if (node.predicate_.has_value()) {
         bitset_holder = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*node.predicate_.value());
+        bitset_holder.flip();
     } else {
-        bitset_holder.resize(active_count, true);
+        bitset_holder.resize(active_count, false);
     }
     segment->mask_with_timestamps(bitset_holder, timestamp_);
-    bitset_holder.flip();
 
     segment->mask_with_delete(bitset_holder, active_count, timestamp_);
     BitsetView final_view = bitset_holder;
@@ -123,10 +123,10 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     BitsetType bitset_holder;
     if (node.predicate_ != nullptr) {
         bitset_holder = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*(node.predicate_));
+        bitset_holder.flip();
     }
 
     segment->mask_with_timestamps(bitset_holder, timestamp_);
-    bitset_holder.flip();
 
     segment->mask_with_delete(bitset_holder, active_count, timestamp_);
     BitsetView final_view = bitset_holder;

@@ -84,7 +84,7 @@ Search(CSegmentInterface c_segment,
         auto segment = reinterpret_cast<milvus::segcore::SegmentInterface*>(c_segment);
         auto plan = reinterpret_cast<milvus::query::Plan*>(c_plan);
         auto phg_ptr = reinterpret_cast<const milvus::query::PlaceholderGroup*>(c_placeholder_group);
-        auto search_result = segment->Search(plan, *phg_ptr, timestamp);
+        auto search_result = segment->Search(plan, phg_ptr, timestamp);
         if (!milvus::segcore::PositivelyRelated(plan->plan_node_->search_info_.metric_type_)) {
             for (auto& dis : search_result->distances_) {
                 dis *= -1;

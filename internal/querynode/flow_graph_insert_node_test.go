@@ -48,7 +48,7 @@ func getInsertNode() (*insertNode, error) {
 		return nil, err
 	}
 
-	return newInsertNode(streaming), nil
+	return newInsertNode(streaming, defaultCollectionID), nil
 }
 
 func genFlowGraphInsertData(schema *schemapb.CollectionSchema, numRows int) (*insertData, error) {
@@ -96,8 +96,7 @@ func genFlowGraphDeleteData() (*deleteData, error) {
 }
 
 func TestFlowGraphInsertNode_insert(t *testing.T) {
-	pkType := schemapb.DataType_Int64
-	schema := genTestCollectionSchema(pkType)
+	schema := genTestCollectionSchema()
 
 	t.Run("test insert", func(t *testing.T) {
 		insertNode, err := getInsertNode()
@@ -129,7 +128,7 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 	t.Run("test no target segment", func(t *testing.T) {
 		streaming, err := genSimpleReplica()
 		assert.NoError(t, err)
-		insertNode := newInsertNode(streaming)
+		insertNode := newInsertNode(streaming, defaultCollectionID)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		err = insertNode.insert(nil, defaultSegmentID, wg)
@@ -143,7 +142,7 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 		insertData, err := genFlowGraphInsertData(schema, defaultMsgLength)
 		assert.NoError(t, err)
 
-		seg, err := insertNode.streamingReplica.getSegmentByID(defaultSegmentID)
+		seg, err := insertNode.metaReplica.getSegmentByID(defaultSegmentID, segmentTypeGrowing)
 		assert.NoError(t, err)
 		seg.setType(segmentTypeSealed)
 
@@ -155,8 +154,7 @@ func TestFlowGraphInsertNode_insert(t *testing.T) {
 }
 
 func TestFlowGraphInsertNode_delete(t *testing.T) {
-	pkType := schemapb.DataType_Int64
-	schema := genTestCollectionSchema(pkType)
+	schema := genTestCollectionSchema()
 
 	t.Run("test insert and delete", func(t *testing.T) {
 		insertNode, err := getInsertNode()
@@ -205,7 +203,7 @@ func TestFlowGraphInsertNode_delete(t *testing.T) {
 	t.Run("test no target segment", func(t *testing.T) {
 		streaming, err := genSimpleReplica()
 		assert.NoError(t, err)
-		insertNode := newInsertNode(streaming)
+		insertNode := newInsertNode(streaming, defaultCollectionID)
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		err = insertNode.delete(nil, defaultSegmentID, wg)
@@ -222,7 +220,7 @@ func TestFlowGraphInsertNode_processDeleteMessages(t *testing.T) {
 		dData, err := genFlowGraphDeleteData()
 		assert.NoError(t, err)
 
-		err = processDeleteMessages(streaming, dMsg, dData)
+		err = processDeleteMessages(streaming, segmentTypeGrowing, dMsg, dData)
 		assert.NoError(t, err)
 	})
 
@@ -234,14 +232,13 @@ func TestFlowGraphInsertNode_processDeleteMessages(t *testing.T) {
 		dData, err := genFlowGraphDeleteData()
 		assert.NoError(t, err)
 
-		err = processDeleteMessages(streaming, dMsg, dData)
+		err = processDeleteMessages(streaming, segmentTypeGrowing, dMsg, dData)
 		assert.NoError(t, err)
 	})
 }
 
 func TestFlowGraphInsertNode_operate(t *testing.T) {
-	pkType := schemapb.DataType_Int64
-	schema := genTestCollectionSchema(pkType)
+	schema := genTestCollectionSchema()
 
 	genMsgStreamInsertMsg := func() *msgstream.InsertMsg {
 		iMsg, err := genSimpleInsertMsg(schema, defaultMsgLength)
@@ -269,7 +266,7 @@ func TestFlowGraphInsertNode_operate(t *testing.T) {
 
 		msg := []flowgraph.Msg{genInsertMsg()}
 		insertNode.Operate(msg)
-		s, err := insertNode.streamingReplica.getSegmentByID(defaultSegmentID)
+		s, err := insertNode.metaReplica.getSegmentByID(defaultSegmentID, segmentTypeGrowing)
 		assert.Nil(t, err)
 		buf := make([]byte, 8)
 		for i := 0; i < defaultMsgLength; i++ {
@@ -341,11 +338,11 @@ func TestFlowGraphInsertNode_operate(t *testing.T) {
 	t.Run("test getCollectionByID failed", func(t *testing.T) {
 		streaming, err := genSimpleReplica()
 		assert.NoError(t, err)
-		insertNode := newInsertNode(streaming)
+		insertNode := newInsertNode(streaming, defaultCollectionID)
 
 		msg := []flowgraph.Msg{genInsertMsg()}
 
-		err = insertNode.streamingReplica.removeCollection(defaultCollectionID)
+		err = insertNode.metaReplica.removeCollection(defaultCollectionID)
 		assert.NoError(t, err)
 		assert.Panics(t, func() {
 			insertNode.Operate(msg)
@@ -356,7 +353,7 @@ func TestFlowGraphInsertNode_operate(t *testing.T) {
 		insertNode, err := getInsertNode()
 		assert.NoError(t, err)
 
-		col, err := insertNode.streamingReplica.getCollectionByID(defaultCollectionID)
+		col, err := insertNode.metaReplica.getCollectionByID(defaultCollectionID)
 		assert.NoError(t, err)
 
 		for i, field := range col.schema.GetFields() {

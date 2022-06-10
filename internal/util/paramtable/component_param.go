@@ -174,10 +174,10 @@ func (p *commonConfig) init(base *BaseTable) {
 
 func (p *commonConfig) initClusterPrefix() {
 	keys := []string{
-		"common.chanNamePrefix.cluster",
 		"msgChannel.chanNamePrefix.cluster",
+		"common.chanNamePrefix.cluster",
 	}
-	str, err := p.Base.Load2(keys)
+	str, err := p.Base.LoadWithPriority(keys)
 	if err != nil {
 		panic(err)
 	}
@@ -185,7 +185,7 @@ func (p *commonConfig) initClusterPrefix() {
 }
 
 func (p *commonConfig) initChanNamePrefix(keys []string) string {
-	value, err := p.Base.Load2(keys)
+	value, err := p.Base.LoadWithPriority(keys)
 	if err != nil {
 		panic(err)
 	}
@@ -196,8 +196,8 @@ func (p *commonConfig) initChanNamePrefix(keys []string) string {
 // --- proxy ---
 func (p *commonConfig) initProxySubName() {
 	keys := []string{
-		"common.subNamePrefix.proxySubNamePrefix",
 		"msgChannel.subNamePrefix.proxySubNamePrefix",
+		"common.subNamePrefix.proxySubNamePrefix",
 	}
 	p.ProxySubName = p.initChanNamePrefix(keys)
 }
@@ -206,40 +206,40 @@ func (p *commonConfig) initProxySubName() {
 // Deprecate
 func (p *commonConfig) initRootCoordTimeTick() {
 	keys := []string{
-		"common.chanNamePrefix.rootCoordTimeTick",
 		"msgChannel.chanNamePrefix.rootCoordTimeTick",
+		"common.chanNamePrefix.rootCoordTimeTick",
 	}
 	p.RootCoordTimeTick = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initRootCoordStatistics() {
 	keys := []string{
-		"common.chanNamePrefix.rootCoordStatistics",
 		"msgChannel.chanNamePrefix.rootCoordStatistics",
+		"common.chanNamePrefix.rootCoordStatistics",
 	}
 	p.RootCoordStatistics = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initRootCoordDml() {
 	keys := []string{
-		"common.chanNamePrefix.rootCoordDml",
 		"msgChannel.chanNamePrefix.rootCoordDml",
+		"common.chanNamePrefix.rootCoordDml",
 	}
 	p.RootCoordDml = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initRootCoordDelta() {
 	keys := []string{
-		"common.chanNamePrefix.rootCoordDelta",
 		"msgChannel.chanNamePrefix.rootCoordDelta",
+		"common.chanNamePrefix.rootCoordDelta",
 	}
 	p.RootCoordDelta = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initRootCoordSubName() {
 	keys := []string{
-		"common.subNamePrefix.rootCoordSubNamePrefix",
 		"msgChannel.subNamePrefix.rootCoordSubNamePrefix",
+		"common.subNamePrefix.rootCoordSubNamePrefix",
 	}
 	p.RootCoordSubName = p.initChanNamePrefix(keys)
 }
@@ -247,8 +247,8 @@ func (p *commonConfig) initRootCoordSubName() {
 // --- querycoord ---
 func (p *commonConfig) initQueryCoordSearch() {
 	keys := []string{
-		"common.chanNamePrefix.search",
 		"msgChannel.chanNamePrefix.search",
+		"common.chanNamePrefix.search",
 	}
 	p.QueryCoordSearch = p.initChanNamePrefix(keys)
 }
@@ -256,8 +256,8 @@ func (p *commonConfig) initQueryCoordSearch() {
 // Deprecated, search result use grpc instead of a result channel
 func (p *commonConfig) initQueryCoordSearchResult() {
 	keys := []string{
-		"common.chanNamePrefix.searchResult",
 		"msgChannel.chanNamePrefix.searchResult",
+		"common.chanNamePrefix.searchResult",
 	}
 	p.QueryCoordSearchResult = p.initChanNamePrefix(keys)
 }
@@ -265,8 +265,8 @@ func (p *commonConfig) initQueryCoordSearchResult() {
 // Deprecate
 func (p *commonConfig) initQueryCoordTimeTick() {
 	keys := []string{
-		"common.chanNamePrefix.queryTimeTick",
 		"msgChannel.chanNamePrefix.queryTimeTick",
+		"common.chanNamePrefix.queryTimeTick",
 	}
 	p.QueryCoordTimeTick = p.initChanNamePrefix(keys)
 }
@@ -274,16 +274,16 @@ func (p *commonConfig) initQueryCoordTimeTick() {
 // --- querynode ---
 func (p *commonConfig) initQueryNodeStats() {
 	keys := []string{
-		"common.chanNamePrefix.queryNodeStats",
 		"msgChannel.chanNamePrefix.queryNodeStats",
+		"common.chanNamePrefix.queryNodeStats",
 	}
 	p.QueryNodeStats = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initQueryNodeSubName() {
 	keys := []string{
-		"common.subNamePrefix.queryNodeSubNamePrefix",
 		"msgChannel.subNamePrefix.queryNodeSubNamePrefix",
+		"common.subNamePrefix.queryNodeSubNamePrefix",
 	}
 	p.QueryNodeSubName = p.initChanNamePrefix(keys)
 }
@@ -291,8 +291,8 @@ func (p *commonConfig) initQueryNodeSubName() {
 // --- datacoord ---
 func (p *commonConfig) initDataCoordStatistic() {
 	keys := []string{
-		"common.chanNamePrefix.dataCoordStatistic",
 		"msgChannel.chanNamePrefix.dataCoordStatistic",
+		"common.chanNamePrefix.dataCoordStatistic",
 	}
 	p.DataCoordStatistic = p.initChanNamePrefix(keys)
 }
@@ -300,32 +300,32 @@ func (p *commonConfig) initDataCoordStatistic() {
 // Deprecate
 func (p *commonConfig) initDataCoordTimeTick() {
 	keys := []string{
-		"common.chanNamePrefix.dataCoordTimeTick",
 		"msgChannel.chanNamePrefix.dataCoordTimeTick",
+		"common.chanNamePrefix.dataCoordTimeTick",
 	}
 	p.DataCoordTimeTick = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initDataCoordSegmentInfo() {
 	keys := []string{
-		"common.chanNamePrefix.dataCoordSegmentInfo",
 		"msgChannel.chanNamePrefix.dataCoordSegmentInfo",
+		"common.chanNamePrefix.dataCoordSegmentInfo",
 	}
 	p.DataCoordSegmentInfo = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initDataCoordSubName() {
 	keys := []string{
-		"common.subNamePrefix.dataCoordSubNamePrefix",
 		"msgChannel.subNamePrefix.dataCoordSubNamePrefix",
+		"common.subNamePrefix.dataCoordSubNamePrefix",
 	}
 	p.DataCoordSubName = p.initChanNamePrefix(keys)
 }
 
 func (p *commonConfig) initDataNodeSubName() {
 	keys := []string{
-		"common.subNamePrefix.dataNodeSubNamePrefix",
 		"msgChannel.subNamePrefix.dataNodeSubNamePrefix",
+		"common.subNamePrefix.dataNodeSubNamePrefix",
 	}
 	p.DataNodeSubName = p.initChanNamePrefix(keys)
 }
@@ -679,20 +679,6 @@ type queryNodeConfig struct {
 	FlowGraphMaxQueueLength int32
 	FlowGraphMaxParallelism int32
 
-	// search
-	SearchChannelNames         []string
-	SearchResultChannelNames   []string
-	SearchReceiveBufSize       int64
-	SearchPulsarBufSize        int64
-	SearchResultReceiveBufSize int64
-
-	// Retrieve
-	RetrieveChannelNames         []string
-	RetrieveResultChannelNames   []string
-	RetrieveReceiveBufSize       int64
-	RetrievePulsarBufSize        int64
-	RetrieveResultReceiveBufSize int64
-
 	// stats
 	StatsPublishInterval int
 
@@ -707,6 +693,7 @@ type queryNodeConfig struct {
 	UpdatedTime time.Time
 
 	// memory limit
+	LoadMemoryUsageFactor               float64
 	OverloadedMemoryThresholdPercentage float64
 
 	// cache limit
@@ -728,14 +715,11 @@ func (p *queryNodeConfig) init(base *BaseTable) {
 	p.initFlowGraphMaxQueueLength()
 	p.initFlowGraphMaxParallelism()
 
-	p.initSearchReceiveBufSize()
-	p.initSearchPulsarBufSize()
-	p.initSearchResultReceiveBufSize()
-
 	p.initStatsPublishInterval()
 
 	p.initSmallIndexParams()
 
+	p.initLoadMemoryUsageFactor()
 	p.initOverloadedMemoryThresholdPercentage()
 
 	p.initCacheMemoryLimit()
@@ -789,19 +773,6 @@ func (p *queryNodeConfig) initFlowGraphMaxParallelism() {
 	p.FlowGraphMaxParallelism = p.Base.ParseInt32WithDefault("queryNode.dataSync.flowGraph.maxParallelism", 1024)
 }
 
-// msgStream
-func (p *queryNodeConfig) initSearchReceiveBufSize() {
-	p.SearchReceiveBufSize = p.Base.ParseInt64WithDefault("queryNode.msgStream.search.recvBufSize", 512)
-}
-
-func (p *queryNodeConfig) initSearchPulsarBufSize() {
-	p.SearchPulsarBufSize = p.Base.ParseInt64WithDefault("queryNode.msgStream.search.pulsarBufSize", 512)
-}
-
-func (p *queryNodeConfig) initSearchResultReceiveBufSize() {
-	p.SearchResultReceiveBufSize = p.Base.ParseInt64WithDefault("queryNode.msgStream.searchResult.recvBufSize", 64)
-}
-
 func (p *queryNodeConfig) initSmallIndexParams() {
 	p.ChunkRows = p.Base.ParseInt64WithDefault("queryNode.segcore.chunkRows", 32768)
 	if p.ChunkRows < 1024 {
@@ -830,6 +801,15 @@ func (p *queryNodeConfig) initSmallIndexParams() {
 		log.Warn("small index nprobe must smaller than nlist, force set to", zap.Any("nprobe", p.SmallIndexNlist))
 		p.SmallIndexNProbe = p.SmallIndexNlist
 	}
+}
+
+func (p *queryNodeConfig) initLoadMemoryUsageFactor() {
+	loadMemoryUsageFactor := p.Base.LoadWithDefault("queryNode.loadMemoryUsageFactor", "3")
+	factor, err := strconv.ParseFloat(loadMemoryUsageFactor, 64)
+	if err != nil {
+		panic(err)
+	}
+	p.LoadMemoryUsageFactor = factor
 }
 
 func (p *queryNodeConfig) initOverloadedMemoryThresholdPercentage() {
@@ -915,7 +895,7 @@ type dataCoordConfig struct {
 	UpdatedTime time.Time
 
 	EnableCompaction        bool
-	EnableAutoCompaction    bool
+	EnableAutoCompaction    atomic.Value
 	EnableGarbageCollection bool
 
 	// Garbage Collection
@@ -947,7 +927,7 @@ func (p *dataCoordConfig) initSegmentMaxSize() {
 }
 
 func (p *dataCoordConfig) initSegmentSealProportion() {
-	p.SegmentSealProportion = p.Base.ParseFloatWithDefault("dataCoord.segment.sealProportion", 0.75)
+	p.SegmentSealProportion = p.Base.ParseFloatWithDefault("dataCoord.segment.sealProportion", 0.25)
 }
 
 func (p *dataCoordConfig) initSegAssignmentExpiration() {
@@ -986,7 +966,19 @@ func (p *dataCoordConfig) initGCDropTolerance() {
 }
 
 func (p *dataCoordConfig) initEnableAutoCompaction() {
-	p.EnableAutoCompaction = p.Base.ParseBool("dataCoord.compaction.enableAutoCompaction", false)
+	p.EnableAutoCompaction.Store(p.Base.ParseBool("dataCoord.compaction.enableAutoCompaction", false))
+}
+
+func (p *dataCoordConfig) SetEnableAutoCompaction(enable bool) {
+	p.EnableAutoCompaction.Store(enable)
+}
+
+func (p *dataCoordConfig) GetEnableAutoCompaction() bool {
+	enable := p.EnableAutoCompaction.Load()
+	if enable != nil {
+		return enable.(bool)
+	}
+	return false
 }
 
 func (p *dataCoordConfig) SetNodeID(id UniqueID) {

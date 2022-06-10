@@ -36,7 +36,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -334,6 +333,7 @@ type dataCoordMock struct {
 	returnError         bool
 	returnGrpcError     bool
 	segmentState        commonpb.SegmentState
+	errLevel            int
 }
 
 func newDataCoordMock(ctx context.Context) *dataCoordMock {
@@ -373,9 +373,8 @@ func (data *dataCoordMock) GetRecoveryInfo(ctx context.Context, req *datapb.GetR
 	if _, ok := data.col2DmChannels[collectionID]; !ok {
 		channelInfos := make([]*datapb.VchannelInfo, 0)
 		data.collections = append(data.collections, collectionID)
-		collectionName := funcutil.RandomString(8)
 		for i := int32(0); i < common.DefaultShardsNum; i++ {
-			vChannel := fmt.Sprintf("Dml_%s_%d_%d_v", collectionName, collectionID, i)
+			vChannel := fmt.Sprintf("%s_%d_%dv%d", Params.CommonCfg.RootCoordDml, i, collectionID, i)
 			channelInfo := &datapb.VchannelInfo{
 				CollectionID: collectionID,
 				ChannelName:  vChannel,
@@ -445,6 +444,42 @@ func (data *dataCoordMock) GetSegmentStates(ctx context.Context, req *datapb.Get
 			ErrorCode: commonpb.ErrorCode_Success,
 		},
 		States: segmentStates,
+	}, nil
+}
+
+func (data *dataCoordMock) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
+	if data.errLevel == 2 {
+		data.errLevel++
+		return nil, errors.New("AcquireSegmentLock failed")
+
+	}
+	if data.errLevel == 1 {
+		data.errLevel++
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    "AcquireSegmentLock failed",
+		}, nil
+	}
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+	}, nil
+}
+func (data *dataCoordMock) ReleaseSegmentLock(ctx context.Context, req *datapb.ReleaseSegmentLockRequest) (*commonpb.Status, error) {
+	if data.errLevel == 4 {
+		data.errLevel++
+		return nil, errors.New("ReleaseSegmentLock failed")
+	}
+
+	if data.errLevel == 3 {
+		data.errLevel++
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    "ReleaseSegmentLock failed",
+		}, nil
+	}
+
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
 	}, nil
 }
 

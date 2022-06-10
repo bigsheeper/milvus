@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metastore/kv"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -74,7 +75,7 @@ func (p *proxyManager) DelSessionFunc(fns ...func(*sessionutil.Session)) {
 
 // WatchProxy starts a goroutine to watch proxy session changes on etcd
 func (p *proxyManager) WatchProxy() error {
-	ctx, cancel := context.WithTimeout(p.ctx, RequestTimeout)
+	ctx, cancel := context.WithTimeout(p.ctx, kv.RequestTimeout)
 	defer cancel()
 
 	sessions, rev, err := p.getSessionsOnEtcd(ctx)
@@ -111,8 +112,9 @@ func (p *proxyManager) startWatchEtcd(ctx context.Context, eventCh clientv3.Watc
 				return
 			}
 			if err := event.Err(); err != nil {
-				log.Error("received error event from etcd watcher", zap.Error(err))
-				return
+				// TODO do we need to retry watch etcd when ErrCompacted, but the init session func may not be idempotent so skip
+				log.Error("Watch proxy service failed", zap.Error(err))
+				panic(err)
 			}
 			for _, e := range event.Events {
 				var err error
@@ -196,7 +198,7 @@ func (p *proxyManager) Stop() {
 
 // listProxyInEtcd helper function lists proxy in etcd
 func listProxyInEtcd(ctx context.Context, cli *clientv3.Client) (map[int64]*sessionutil.Session, error) {
-	ctx2, cancel := context.WithTimeout(ctx, RequestTimeout)
+	ctx2, cancel := context.WithTimeout(ctx, kv.RequestTimeout)
 	defer cancel()
 	resp, err := cli.Get(
 		ctx2,

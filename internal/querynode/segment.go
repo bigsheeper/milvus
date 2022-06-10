@@ -166,10 +166,6 @@ func (s *Segment) hasLoadIndexForIndexedField(fieldID int64) bool {
 }
 
 func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID, collectionID UniqueID, vChannelID Channel, segType segmentType) (*Segment, error) {
-	/*
-		CSegmentInterface
-		NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type);
-	*/
 	var segmentPtr C.CSegmentInterface
 	switch segType {
 	case segmentTypeSealed:
@@ -214,19 +210,16 @@ func newSegment(collection *Collection, segmentID UniqueID, partitionID UniqueID
 	return segment, nil
 }
 
-func deleteSegment(segment *Segment) error {
-	/*
-		void
-		deleteSegment(CSegmentInterface segment);
-	*/
+func deleteSegment(segment *Segment) {
 	if segment.segmentPtr == nil {
-		return fmt.Errorf("segment has been deleted")
+		return
 	}
 
 	cPtr := segment.segmentPtr
 	status := C.DeleteSegment(cPtr)
-	if err := HandleCStatus(&status, "DeleteCollection failed"); err != nil {
-		return err
+	if err := HandleCStatus(&status, "deleteSegment failed"); err != nil {
+		log.Error(err.Error())
+		return // TODO: return err?
 	}
 	segment.segmentPtr = nil
 
@@ -234,10 +227,6 @@ func deleteSegment(segment *Segment) error {
 }
 
 func (s *Segment) getRowCount() int64 {
-	/*
-		long int
-		getRowCount(CSegmentInterface c_segment);
-	*/
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -251,10 +240,6 @@ func (s *Segment) getRowCount() int64 {
 }
 
 func (s *Segment) getDeletedCount() int64 {
-	/*
-		long int
-		getDeletedCount(CSegmentInterface c_segment);
-	*/
 	if s.segmentPtr == nil {
 		return -1
 	}
@@ -268,28 +253,20 @@ func (s *Segment) getDeletedCount() int64 {
 }
 
 func (s *Segment) getMemSize() int64 {
-	/*
-		long int
-		GetMemoryUsageInBytes(CSegmentInterface c_segment);
-	*/
 	if s.segmentPtr == nil {
 		return -1
 	}
-	var memoryUsageInBytes = C.GetMemoryUsageInBytes(s.segmentPtr)
+	var memoryUsageInBytes C.int64_t
+	status := C.GetMemoryUsageInBytes(s.segmentPtr, &memoryUsageInBytes)
+	if err := HandleCStatus(&status, "get segment mem size failed"); err != nil {
+		log.Error(err.Error())
+		return 0
+	}
 
 	return int64(memoryUsageInBytes)
 }
 
 func (s *Segment) search(searchReq *searchRequest) (*SearchResult, error) {
-	/*
-		CStatus
-		Search(void* plan,
-			void* placeholder_groups,
-			uint64_t* timestamps,
-			int num_groups,
-			long int* result_ids,
-			float* result_distances);
-	*/
 	if s.segmentPtr == nil {
 		return nil, errors.New("null seg core pointer")
 	}
@@ -554,30 +531,26 @@ func (s *Segment) updateBloomFilter(pks []primaryKey) {
 
 //-------------------------------------------------------------------------------------- interfaces for growing segment
 func (s *Segment) segmentPreInsert(numOfRecords int) (int64, error) {
-	/*
-		long int
-		PreInsert(CSegmentInterface c_segment, long int size);
-	*/
 	if s.segmentType != segmentTypeGrowing {
 		return 0, nil
 	}
-	var offset int64
-	cOffset := (*C.int64_t)(&offset)
-	status := C.PreInsert(s.segmentPtr, C.int64_t(int64(numOfRecords)), cOffset)
+	var offset C.int64_t
+	status := C.PreInsert(s.segmentPtr, C.int64_t(int64(numOfRecords)), &offset)
 	if err := HandleCStatus(&status, "PreInsert failed"); err != nil {
 		return 0, err
 	}
-	return offset, nil
+	return int64(offset), nil
 }
 
-func (s *Segment) segmentPreDelete(numOfRecords int) int64 {
-	/*
-		long int
-		PreDelete(CSegmentInterface c_segment, long int size);
-	*/
-	var offset = C.PreDelete(s.segmentPtr, C.int64_t(int64(numOfRecords)))
+func (s *Segment) segmentPreDelete(numOfRecords int) (int64, error) {
+	var offset C.int64_t
+	status := C.PreDelete(s.segmentPtr, C.int64_t(int64(numOfRecords)), &offset)
+	if err := HandleCStatus(&status, "segmentPreDelete failed"); err != nil {
+		return 0, err
+	}
 
-	return int64(offset)
+	// TODO: panic here?
+	return int64(offset), nil
 }
 
 func (s *Segment) segmentInsert(offset int64, entityIDs []UniqueID, timestamps []Timestamp, record *segcorepb.InsertRecord) error {
@@ -616,14 +589,6 @@ func (s *Segment) segmentInsert(offset int64, entityIDs []UniqueID, timestamps [
 }
 
 func (s *Segment) segmentDelete(offset int64, entityIDs []primaryKey, timestamps []Timestamp) error {
-	/*
-		CStatus
-		Delete(CSegmentInterface c_segment,
-		           long int reserved_offset,
-		           long size,
-		           const long* primary_keys,
-		           const unsigned long* timestamps);
-	*/
 	if len(entityIDs) <= 0 {
 		return fmt.Errorf("empty pks to delete")
 	}
@@ -682,10 +647,6 @@ func (s *Segment) segmentDelete(offset int64, entityIDs []primaryKey, timestamps
 
 //-------------------------------------------------------------------------------------- interfaces for sealed segment
 func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *schemapb.FieldData) error {
-	/*
-		CStatus
-		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
-	*/
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}
@@ -765,10 +726,7 @@ func (s *Segment) segmentLoadDeletedRecord(primaryKeys []primaryKey, timestamps 
 		primary_keys_size: C.uint64_t(len(idsBlob)),
 		row_count:         C.int64_t(rowCount),
 	}
-	/*
-		CStatus
-		LoadDeletedRecord(CSegmentInterface c_segment, CLoadDeletedRecordInfo deleted_record_info)
-	*/
+
 	status := C.LoadDeletedRecord(s.segmentPtr, loadInfo)
 	if err := HandleCStatus(&status, "LoadDeletedRecord failed"); err != nil {
 		return err

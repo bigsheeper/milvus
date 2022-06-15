@@ -17,6 +17,6 @@ import (
 )
 
 func TestPurgeMemory(t *testing.T) {
-	err := PurgeMemory(20.0)
+	err := PurgeMemory(0.2)
 	assert.NoError(t, err)
 }

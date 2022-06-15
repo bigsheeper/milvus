@@ -384,7 +384,7 @@ func (p *commonConfig) initEnableAuthorization() {
 }
 
 func (p *commonConfig) initMemoryPurgeRatio() {
-	p.MemPurgeRatio = p.Base.ParseFloatWithDefault("common.mem_purge_ratio", 20.0)
+	p.MemPurgeRatio = p.Base.ParseFloatWithDefault("common.mem_purge_ratio", 0.2)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

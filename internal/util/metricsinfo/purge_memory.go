@@ -31,7 +31,7 @@ import (
 func PurgeMemory(purgeRatio float64) error {
 	usedMem := GetUsedMemoryCount()
 
-	maxBinsSize := C.uint64_t(usedMem * uint64(purgeRatio))
+	maxBinsSize := C.uint64_t(float64(usedMem) * purgeRatio)
 	status := C.PurgeMemory(maxBinsSize)
 	if status.error_code == 0 {
 		return nil

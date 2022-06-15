@@ -38,7 +38,18 @@ ParseMallocInfo() {
     size_t buffer_size;
     FILE* stream;
     stream = open_memstream(&mem_buffer, &buffer_size);
-    //    malloc_info(0, stdout);
+    malloc_info(0, stdout);
+
+    /*
+     * The malloc_info() function exports an XML string that describes
+     * the current state of the memory-allocation implementation in the caller.
+     * The exported XML string includes information about `fast` and `rest`.
+     * According to the implementation of glibc, `fast` calculates ths size of all the
+     * fastbins, and `rest` calculates the size of all the bins except fastbins.
+     * ref: <https://man7.org/linux/man-pages/man3/malloc_info.3.html>
+     *      <https://sourceware.org/glibc/wiki/MallocInternals>
+     *      <https://code.woboq.org/userspace/glibc/malloc/malloc.c.html#5378>
+     */
     malloc_info(0, stream);
     fflush(stream);
 

@@ -22,6 +22,12 @@ extern "C" {
 
 #include "common/type_c.h"
 
+/*
+ * In glibc, free chunks are stored in various lists based on size and history,
+ * so that the library can quickly find suitable chunks to satisfy allocation requests.
+ * The lists, called "bins".
+ * ref: <https://sourceware.org/glibc/wiki/MallocInternals>
+ */
 CStatus
 PurgeMemory(uint64_t max_bins_size);
 

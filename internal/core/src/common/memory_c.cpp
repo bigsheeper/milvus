@@ -15,22 +15,25 @@
 // limitations under the License.
 
 #ifdef __linux__
-
 #include <malloc.h>
-#include <iostream>
 #include <rapidxml/rapidxml.hpp>
+#endif
 
+#include <iostream>
 #include "common/CGoHelper.h"
 #include "common/memory_c.h"
 #include "log/Log.h"
 
 void
 DoMallocTrim() {
+#ifdef __linux__
     malloc_trim(0);
+#endif
 }
 
 uint64_t
 ParseMallocInfo() {
+#ifdef __linux__
     char* mem_buffer;
     size_t buffer_size;
     FILE* stream;
@@ -66,6 +69,9 @@ ParseMallocInfo() {
     free(mem_buffer);
 
     return fast_and_rest_total;
+#else
+    return 0;  // malloc_trim is unnecessary
+#endif
 }
 
 CStatus
@@ -82,5 +88,3 @@ PurgeMemory(uint64_t max_bins_size) {
         return milvus::FailureCStatus(UnexpectedError, e.what());
     }
 }
-
-#endif

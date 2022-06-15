@@ -16,11 +16,15 @@
 
 #pragma once
 
-#ifdef __linux__
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #include "common/type_c.h"
 
 CStatus
 PurgeMemory(uint64_t max_bins_size);
 
+#ifdef __cplusplus
+}
 #endif

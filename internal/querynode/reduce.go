@@ -28,6 +28,8 @@ package querynode
 import "C"
 import (
 	"fmt"
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 )
 
 type sliceInfo struct {
@@ -132,6 +134,10 @@ func getSearchResultDataBlob(cSearchResultDataBlobs searchResultDataBlobs, blobI
 
 func deleteSearchResultDataBlobs(cSearchResultDataBlobs searchResultDataBlobs) {
 	C.DeleteSearchResultDataBlobs(cSearchResultDataBlobs)
+	// try to do a purgeMemory operation after DeleteSearchResultDataBlobs
+	if err := metricsinfo.PurgeMemory(Params.CommonCfg.MemPurgeRatio); err != nil {
+		log.Error(err.Error())
+	}
 }
 
 func deleteSearchResults(results []*SearchResult) {

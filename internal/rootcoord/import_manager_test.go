@@ -19,6 +19,7 @@ package rootcoord
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -93,7 +94,7 @@ func TestImportManager_NewImportManager(t *testing.T) {
 		mgr.init(ctx)
 		var wgLoop sync.WaitGroup
 		wgLoop.Add(2)
-		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64s []int64) error {
+		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64 int64, int64s []int64) error {
 			return nil
 		})
 		mgr.sendOutTasksLoop(&wgLoop)
@@ -110,7 +111,7 @@ func TestImportManager_NewImportManager(t *testing.T) {
 		mgr.init(context.TODO())
 		var wgLoop sync.WaitGroup
 		wgLoop.Add(2)
-		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64s []int64) error {
+		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64 int64, int64s []int64) error {
 			return nil
 		})
 		mgr.sendOutTasksLoop(&wgLoop)
@@ -134,7 +135,7 @@ func TestImportManager_NewImportManager(t *testing.T) {
 		mgr.loadFromTaskStore()
 		var wgLoop sync.WaitGroup
 		wgLoop.Add(2)
-		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64s []int64) error {
+		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64 int64, int64s []int64) error {
 			return nil
 		})
 		mgr.sendOutTasksLoop(&wgLoop)
@@ -151,7 +152,7 @@ func TestImportManager_NewImportManager(t *testing.T) {
 		mgr.init(ctx)
 		var wgLoop sync.WaitGroup
 		wgLoop.Add(2)
-		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64s []int64) error {
+		mgr.expireOldTasksLoop(&wgLoop, func(ctx context.Context, int64 int64, int64s []int64) error {
 			return nil
 		})
 		mgr.sendOutTasksLoop(&wgLoop)
@@ -260,6 +261,12 @@ func TestImportManager_ImportJob(t *testing.T) {
 	resp = mgr.importJob(context.TODO(), rowReq, colID, 0)
 	assert.Equal(t, len(rowReq.Files)-2, len(mgr.pendingTasks))
 	assert.Equal(t, 2, len(mgr.workingTasks))
+
+	for i := 0; i <= 32; i++ {
+		rowReq.Files = append(rowReq.Files, strconv.Itoa(i))
+	}
+	resp = mgr.importJob(context.TODO(), rowReq, colID, 0)
+	assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 }
 
 func TestImportManager_AllDataNodesBusy(t *testing.T) {

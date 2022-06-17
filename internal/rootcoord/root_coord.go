@@ -155,10 +155,10 @@ type Core struct {
 	CallFlushOnCollection func(ctx context.Context, cID int64, segIDs []int64) error
 
 	// CallAddSegRefLock triggers AcquireSegmentLock method on DataCoord.
-	CallAddSegRefLock func(ctx context.Context, segIDs []int64) (retErr error)
+	CallAddSegRefLock func(ctx context.Context, taskID int64, segIDs []int64) (retErr error)
 
 	// CallReleaseSegRefLock triggers ReleaseSegmentLock method on DataCoord.
-	CallReleaseSegRefLock func(ctx context.Context, segIDs []int64) (retErr error)
+	CallReleaseSegRefLock func(ctx context.Context, taskID int64, segIDs []int64) (retErr error)
 
 	//Proxy manager
 	proxyManager *proxyManager
@@ -420,6 +420,7 @@ func (c *Core) checkFlushedSegments(ctx context.Context) {
 						FieldID:      idxInfo.FiledID,
 						IndexID:      idxInfo.IndexID,
 						EnableIndex:  false,
+						ByAutoFlush:  true,
 					}
 					log.Debug("building index by background checker",
 						zap.Int64("segment_id", segID),
@@ -697,7 +698,7 @@ func (c *Core) SetDataCoord(ctx context.Context, s types.DataCoord) error {
 		return nil
 	}
 
-	c.CallAddSegRefLock = func(ctx context.Context, segIDs []int64) (retErr error) {
+	c.CallAddSegRefLock = func(ctx context.Context, taskID int64, segIDs []int64) (retErr error) {
 		defer func() {
 			if err := recover(); err != nil {
 				retErr = fmt.Errorf("add seg ref lock panic, msg = %v", err)
@@ -710,6 +711,7 @@ func (c *Core) SetDataCoord(ctx context.Context, s types.DataCoord) error {
 		resp, _ := s.AcquireSegmentLock(ctx, &datapb.AcquireSegmentLockRequest{
 			SegmentIDs: segIDs,
 			NodeID:     c.session.ServerID,
+			TaskID:     taskID,
 		})
 		if resp.GetErrorCode() != commonpb.ErrorCode_Success {
 			return fmt.Errorf("failed to acquire segment lock %s", resp.GetReason())
@@ -720,7 +722,7 @@ func (c *Core) SetDataCoord(ctx context.Context, s types.DataCoord) error {
 		return nil
 	}
 
-	c.CallReleaseSegRefLock = func(ctx context.Context, segIDs []int64) (retErr error) {
+	c.CallReleaseSegRefLock = func(ctx context.Context, taskID int64, segIDs []int64) (retErr error) {
 		defer func() {
 			if err := recover(); err != nil {
 				retErr = fmt.Errorf("release seg ref lock panic, msg = %v", err)
@@ -733,6 +735,7 @@ func (c *Core) SetDataCoord(ctx context.Context, s types.DataCoord) error {
 		resp, _ := s.ReleaseSegmentLock(ctx, &datapb.ReleaseSegmentLockRequest{
 			SegmentIDs: segIDs,
 			NodeID:     c.session.ServerID,
+			TaskID:     taskID,
 		})
 		if resp.GetErrorCode() != commonpb.ErrorCode_Success {
 			return fmt.Errorf("failed to release segment lock %s", resp.GetReason())
@@ -1839,6 +1842,50 @@ func (c *Core) DescribeIndex(ctx context.Context, in *milvuspb.DescribeIndexRequ
 	return t.Rsp, nil
 }
 
+func (c *Core) GetIndexState(ctx context.Context, in *milvuspb.GetIndexStateRequest) (*indexpb.GetIndexStatesResponse, error) {
+	if code, ok := c.checkHealthy(); !ok {
+		log.Error("RootCoord GetIndexState failed, RootCoord is not healthy")
+		return &indexpb.GetIndexStatesResponse{
+			Status: failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+internalpb.StateCode_name[int32(code)]),
+		}, nil
+	}
+	log.Info("RootCoord GetIndexState", zap.String("collName", in.GetCollectionName()),
+		zap.String("fieldName", in.GetFieldName()), zap.String("indexName", in.GetIndexName()))
+
+	// initBuildIDs are the buildIDs generated when CreateIndex is called.
+	initBuildIDs, err := c.MetaTable.GetInitBuildIDs(in.GetCollectionName(), in.GetIndexName())
+	if err != nil {
+		log.Error("RootCoord GetIndexState failed", zap.String("collName", in.GetCollectionName()),
+			zap.String("fieldName", in.GetFieldName()), zap.String("indexName", in.GetIndexName()), zap.Error(err))
+		return &indexpb.GetIndexStatesResponse{
+			Status: failStatus(commonpb.ErrorCode_UnexpectedError, err.Error()),
+		}, nil
+	}
+
+	ret := &indexpb.GetIndexStatesResponse{
+		Status: succStatus(),
+	}
+	if len(initBuildIDs) == 0 {
+		log.Warn("RootCoord GetIndexState successful, all segments generated when CreateIndex is called have been compacted")
+		return ret, nil
+	}
+
+	states, err := c.CallGetIndexStatesService(ctx, initBuildIDs)
+	if err != nil {
+		log.Error("RootCoord GetIndexState CallGetIndexStatesService failed", zap.String("collName", in.GetCollectionName()),
+			zap.String("fieldName", in.GetFieldName()), zap.String("indexName", in.GetIndexName()), zap.Error(err))
+		ret.Status = failStatus(commonpb.ErrorCode_UnexpectedError, err.Error())
+		return ret, err
+	}
+
+	log.Info("RootCoord GetIndexState successful", zap.String("collName", in.GetCollectionName()),
+		zap.String("fieldName", in.GetFieldName()), zap.String("indexName", in.GetIndexName()))
+	return &indexpb.GetIndexStatesResponse{
+		Status: succStatus(),
+		States: states,
+	}, nil
+}
+
 // DropIndex drop index
 func (c *Core) DropIndex(ctx context.Context, in *milvuspb.DropIndexRequest) (*commonpb.Status, error) {
 	metrics.RootCoordDDLReqCounter.WithLabelValues("DropIndex", metrics.TotalLabel).Inc()
@@ -2156,6 +2203,7 @@ func (c *Core) SegmentFlushCompleted(ctx context.Context, in *datapb.SegmentFlus
 			FieldID:      fieldSch.FieldID,
 			IndexID:      idxInfo.IndexID,
 			EnableIndex:  false,
+			ByAutoFlush:  true,
 		}
 		info.BuildID, err = c.BuildIndex(ctx, segID, in.Segment.GetNumOfRows(), in.Segment.GetBinlogs(), fieldSch, idxInfo, true)
 		if err == nil && info.BuildID != 0 {
@@ -2409,7 +2457,7 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 	if ir.GetState() == commonpb.ImportState_ImportAllocSegment {
 		// Lock the segments, so we don't lose track of them when compaction happens.
 		// Note that these locks will be unlocked in c.postImportPersistLoop() -> checkSegmentLoadedLoop().
-		if err := c.CallAddSegRefLock(ctx, ir.GetSegments()); err != nil {
+		if err := c.CallAddSegRefLock(ctx, ir.GetTaskId(), ir.GetSegments()); err != nil {
 			log.Error("failed to acquire segment ref lock", zap.Error(err))
 			return &commonpb.Status{
 				ErrorCode: commonpb.ErrorCode_UnexpectedError,
@@ -2450,7 +2498,7 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 		// Release segments when task fails.
 		log.Info("task failed, release segment ref locks")
 		err := retry.Do(ctx, func() error {
-			return c.CallReleaseSegRefLock(ctx, ir.GetSegments())
+			return c.CallReleaseSegRefLock(ctx, ir.GetTaskId(), ir.GetSegments())
 		}, retry.Attempts(100))
 		if err != nil {
 			log.Error("failed to release lock, about to panic!")
@@ -2630,7 +2678,7 @@ func (c *Core) checkSegmentLoadedLoop(ctx context.Context, taskID int64, colID i
 	defer func() {
 		log.Info("we are done checking segment loading state, release segment ref locks")
 		err := retry.Do(ctx, func() error {
-			return c.CallReleaseSegRefLock(ctx, segIDs)
+			return c.CallReleaseSegRefLock(ctx, taskID, segIDs)
 		}, retry.Attempts(100))
 		if err != nil {
 			log.Error("failed to release lock, about to panic!")

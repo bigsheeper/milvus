@@ -187,21 +187,26 @@ message AcquireSegmentLockRequest {
   common.MsgBase base = 1;
   int64 nodeID = 2;
   repeated int64 segmentIDs = 3;
+  int64 taskID = 4;
 }
 
 message ReleaseSegmentLockRequest {
   common.MsgBase base = 1;
   int64 nodeID = 2;
   repeated int64 segmentIDs = 3;
+  int64 taskID = 4;
 }
 
 message VchannelInfo {
   int64 collectionID = 1;
   string channelName = 2;
   internal.MsgPosition seek_position = 3;
-  repeated SegmentInfo unflushedSegments = 4;
-  repeated SegmentInfo flushedSegments = 5;
-  repeated SegmentInfo dropped_segments = 6;
+  repeated SegmentInfo unflushedSegments = 4; // deprecated, keep it for compatibility
+  repeated SegmentInfo flushedSegments = 5; // deprecated, keep it for compatibility
+  repeated SegmentInfo dropped_segments = 6; // deprecated, keep it for compatibility
+  repeated int64 unflushedSegmentIds = 7;
+  repeated int64 flushedSegmentIds = 8;
+  repeated int64 dropped_segmentIds = 9;
 }
 
 message WatchDmChannelsRequest {
@@ -525,4 +530,10 @@ message AddSegmentRequest {
   int64 collection_id = 4;
   int64 partition_id = 5;
   int64 row_num = 6;
+}
+
+message SegmentReferenceLock {
+  int64 taskID = 1;
+  int64 nodeID = 2;
+  repeated int64 segmentIDs = 3;
 }

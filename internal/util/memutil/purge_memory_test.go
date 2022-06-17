@@ -18,6 +18,9 @@ import (
 )
 
 func TestPurgeMemory(t *testing.T) {
-	err := PurgeMemory(0.2)
+	usedMem := GetUsedMemoryCount()
+	assert.True(usedMem > 0, t)
+	maxBinsSize := uint64(float64(usedMem) * purgeRatio)
+	err := PurgeMemory(maxBinsSize)
 	assert.NoError(t, err)
 }

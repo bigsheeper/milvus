@@ -18,7 +18,7 @@ import (
 )
 
 func TestPurgeMemory(t *testing.T) {
-	usedMem := GetUsedMemoryCount()
+	usedMem := metricinfo.GetUsedMemoryCount()
 	assert.True(usedMem > 0, t)
 	maxBinsSize := uint64(float64(usedMem) * purgeRatio)
 	err := PurgeMemory(maxBinsSize)

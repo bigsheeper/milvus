@@ -9,7 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-package metricsinfo
+package memutil
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../core/output/include
@@ -28,11 +28,9 @@ import (
 	"unsafe"
 )
 
-func PurgeMemory(purgeRatio float64) error {
-	usedMem := GetUsedMemoryCount()
-
-	maxBinsSize := C.uint64_t(float64(usedMem) * purgeRatio)
-	status := C.PurgeMemory(maxBinsSize)
+func PurgeMemory(maxBinsSize uint64) error {
+	cMaxBinsSize := C.uint64_t(maxBinsSize)
+	status := C.PurgeMemory(cMaxBinsSize)
 	if status.error_code == 0 {
 		return nil
 	}
@@ -41,5 +39,5 @@ func PurgeMemory(purgeRatio float64) error {
 	errorMsg := string(C.GoString(status.error_msg))
 	errorCode := int32(status.error_code)
 
-	return fmt.Errorf("PurgeMemory failed, purgeRatio = %f, errorCode = %d, errorMsg = %s", purgeRatio, errorCode, errorMsg)
+	return fmt.Errorf("PurgeMemory failed, errorCode = %d, errorMsg = %s", errorCode, errorMsg)
 }

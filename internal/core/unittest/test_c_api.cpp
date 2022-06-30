@@ -148,7 +148,8 @@ generate_collection_schema(std::string metric_type, int dim, bool is_binary) {
 }
 
 VecIndexPtr
-generate_index(void* raw_data, knowhere::Config conf, int64_t dim, int64_t topK, int64_t N, knowhere::IndexType index_type) {
+generate_index(
+    void* raw_data, knowhere::Config conf, int64_t dim, int64_t topK, int64_t N, knowhere::IndexType index_type) {
     auto indexing = knowhere::VecIndexFactory::GetInstance().CreateVecIndex(index_type, knowhere::IndexMode::MODE_CPU);
 
     auto database = knowhere::GenDataset(N, dim, raw_data);
@@ -198,8 +199,10 @@ serialize(const Message* msg) {
 //    auto run_times = 1000000;
 //    auto start = std::chrono::high_resolution_clock::now();
 //
+//    int32_t res;
 //    for (int i = 0; i < run_times; i++) {
-//        PurgeMemory(UINT64_MAX /*never malloc_trim*/);
+//        PurgeMemory(UINT64_MAX /*never malloc_trim*/, &res);
+//        assert(res == 0);
 //    }
 //
 //    auto stop = std::chrono::high_resolution_clock::now();
@@ -210,10 +213,13 @@ serialize(const Message* msg) {
 //}
 
 TEST(Common, Memory) {
-    auto res = PurgeMemory(UINT64_MAX /*never malloc_trim*/);
-    assert(res.error_code == Success);
-    res = PurgeMemory(0);
-    assert(res.error_code == Success);
+    int32_t res;
+    auto status = PurgeMemory(UINT64_MAX /*never malloc_trim*/, &res);
+    assert(res == 0);
+    assert(status.error_code == Success);
+    status = PurgeMemory(0 /*do malloc_trim*/, &res);
+    assert(res == 1);
+    assert(status.error_code == Success);
 }
 
 #endif
@@ -1241,16 +1247,14 @@ TEST(CApiTest, LoadIndexInfo) {
     auto N = 1024 * 10;
     auto [raw_data, timestamps, uids] = generate_data(N);
     auto indexing = std::make_shared<knowhere::IVFPQ>();
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 4},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 4},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, DIM, raw_data.data());
     indexing->Train(database, conf);
@@ -1286,16 +1290,14 @@ TEST(CApiTest, LoadIndex_Search) {
     auto num_query = 100;
     auto [raw_data, timestamps, uids] = generate_data(N);
     auto indexing = std::make_shared<knowhere::IVFPQ>();
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 4},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 4},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, DIM, raw_data.data());
     indexing->Train(database, conf);
@@ -1390,16 +1392,14 @@ TEST(CApiTest, Indexing_Without_Predicate) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
     // gen query dataset
@@ -1517,16 +1517,14 @@ TEST(CApiTest, Indexing_Expr_Without_Predicate) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
     // gen query dataset
@@ -1661,15 +1659,14 @@ TEST(CApiTest, Indexing_With_float_Predicate_Range) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}};
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
@@ -1819,16 +1816,14 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Range) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
@@ -1962,16 +1957,14 @@ TEST(CApiTest, Indexing_With_float_Predicate_Term) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
@@ -2114,16 +2107,14 @@ TEST(CApiTest, Indexing_Expr_With_float_Predicate_Term) {
     assert(res_before_load_index.error_code == Success);
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
@@ -2905,16 +2896,14 @@ TEST(CApiTest, SealedSegment_search_float_Predicate_Range) {
     Timestamp time = 10000000;
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 
@@ -3202,16 +3191,14 @@ TEST(CApiTest, SealedSegment_search_float_With_Expr_Predicate_Range) {
     Timestamp time = 10000000;
 
     // load index to segment
-    auto conf = knowhere::Config{
-        {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-        {knowhere::meta::DIM, DIM},
-        {knowhere::meta::TOPK, TOPK},
-        {knowhere::indexparam::NLIST, 100},
-        {knowhere::indexparam::NPROBE, 10},
-        {knowhere::indexparam::M, 4},
-        {knowhere::indexparam::NBITS, 8},
-        {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::indexparam::M, 4},
+                                 {knowhere::indexparam::NBITS, 8},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto indexing = generate_index(vec_col.data(), conf, DIM, TOPK, N, IndexEnum::INDEX_FAISS_IVFPQ);
 

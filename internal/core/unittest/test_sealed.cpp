@@ -78,14 +78,12 @@ TEST(Sealed, without_predicate) {
     auto pre_result = SearchResultToJson(*sr);
     auto indexing = std::make_shared<knowhere::IVF>();
 
-    auto conf = knowhere::Config{
-            {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-            {knowhere::meta::DIM, dim},
-            {knowhere::meta::TOPK, topK},
-            {knowhere::indexparam::NLIST, 100},
-            {knowhere::indexparam::NPROBE, 10},
-            {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, dim},
+                                 {knowhere::meta::TOPK, topK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, dim, vec_col.data() + 1000 * dim);
     indexing->Train(database, conf);
@@ -98,7 +96,7 @@ TEST(Sealed, without_predicate) {
 
     auto result = indexing->Query(query_dataset, conf, nullptr);
 
-    auto ids = knowhere::GetDatasetIDs(result);     // for comparison
+    auto ids = knowhere::GetDatasetIDs(result);       // for comparison
     auto dis = knowhere::GetDatasetDistance(result);  // for comparison
     std::vector<int64_t> vec_ids(ids, ids + topK * num_queries);
     std::vector<float> vec_dis(dis, dis + topK * num_queries);
@@ -185,14 +183,12 @@ TEST(Sealed, with_predicate) {
     auto sr = segment->Search(plan.get(), ph_group.get(), time);
     auto indexing = std::make_shared<knowhere::IVF>();
 
-    auto conf = knowhere::Config{
-            {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-            {knowhere::meta::DIM, dim},
-            {knowhere::meta::TOPK, topK},
-            {knowhere::indexparam::NLIST, 100},
-            {knowhere::indexparam::NPROBE, 10},
-            {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, dim},
+                                 {knowhere::meta::TOPK, topK},
+                                 {knowhere::indexparam::NLIST, 100},
+                                 {knowhere::indexparam::NPROBE, 10},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, dim, vec_col.data());
     indexing->Train(database, conf);

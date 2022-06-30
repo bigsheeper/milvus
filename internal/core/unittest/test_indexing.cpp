@@ -221,14 +221,12 @@ TEST(Indexing, IVFFlat) {
     auto [raw_data, timestamps, uids] = generate_data<DIM>(N);
     std::cout << "generate data: " << timer.get_step_seconds() << " seconds" << std::endl;
     auto indexing = std::make_shared<knowhere::IVF>();
-    auto conf = knowhere::Config{
-            {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-            {knowhere::meta::DIM, DIM},
-            {knowhere::meta::TOPK, TOPK},
-            {knowhere::indexparam::NLIST, NLIST},
-            {knowhere::indexparam::NPROBE, NPROBE},
-            {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, NLIST},
+                                 {knowhere::indexparam::NPROBE, NPROBE},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, DIM, raw_data.data());
     std::cout << "init ivf " << timer.get_step_seconds() << " seconds" << std::endl;
@@ -263,14 +261,12 @@ TEST(Indexing, IVFFlatNM) {
     auto [raw_data, timestamps, uids] = generate_data<DIM>(N);
     std::cout << "generate data: " << timer.get_step_seconds() << " seconds" << std::endl;
     auto indexing = std::make_shared<knowhere::IVF_NM>();
-    auto conf = knowhere::Config{
-            {knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
-            {knowhere::meta::DIM, DIM},
-            {knowhere::meta::TOPK, TOPK},
-            {knowhere::indexparam::NLIST, NLIST},
-            {knowhere::indexparam::NPROBE, NPROBE},
-            {knowhere::meta::DEVICE_ID, 0}
-    };
+    auto conf = knowhere::Config{{knowhere::meta::METRIC_TYPE, knowhere::metric::L2},
+                                 {knowhere::meta::DIM, DIM},
+                                 {knowhere::meta::TOPK, TOPK},
+                                 {knowhere::indexparam::NLIST, NLIST},
+                                 {knowhere::indexparam::NPROBE, NPROBE},
+                                 {knowhere::meta::DEVICE_ID, 0}};
 
     auto database = knowhere::GenDataset(N, DIM, raw_data.data());
     std::cout << "init ivf_nm " << timer.get_step_seconds() << " seconds" << std::endl;
@@ -316,9 +312,9 @@ TEST(Indexing, BinaryBruteForce) {
     auto bin_vec = dataset.get_col<uint8_t>(vec_fid);
     auto query_data = 1024 * dim / 8 + bin_vec.data();
     query::dataset::SearchDataset search_dataset{
-        metric_type,    //
-        num_queries,    //
-        topk,           //
+        metric_type,  //
+        num_queries,  //
+        topk,         //
         round_decimal,
         dim,        //
         query_data  //

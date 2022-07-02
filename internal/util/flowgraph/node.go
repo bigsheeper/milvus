@@ -137,6 +137,8 @@ func (nodeCtx *nodeCtx) Close() {
 	}
 }
 
+var logCountFlowGraphBuffer = log.NewCountLogger(50)
+
 // deliverMsg tries to put the Msg to specified downstream channel
 func (nodeCtx *nodeCtx) deliverMsg(wg *sync.WaitGroup, msg Msg, inputChanIdx int) {
 	defer wg.Done()
@@ -149,6 +151,9 @@ func (nodeCtx *nodeCtx) deliverMsg(wg *sync.WaitGroup, msg Msg, inputChanIdx int
 	select {
 	case <-nodeCtx.closeCh:
 	case nodeCtx.inputChannels[inputChanIdx] <- msg:
+		logCountFlowGraphBuffer.Debug("flow graph buffer size",
+			zap.String("name", nodeCtx.node.Name()),
+			zap.Any("bufferSize", len(nodeCtx.inputChannels[inputChanIdx])))
 	}
 }
 

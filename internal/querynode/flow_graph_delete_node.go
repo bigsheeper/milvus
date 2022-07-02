@@ -47,7 +47,7 @@ type deleteNode struct {
 
 // Name returns the name of deleteNode
 func (dNode *deleteNode) Name() string {
-	return "dNode"
+	return fmt.Sprintf("dNode-%s", dNode.channel)
 }
 
 // Operate handles input messages, do delete operations

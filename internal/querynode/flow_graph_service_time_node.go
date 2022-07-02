@@ -40,6 +40,8 @@ func (stNode *serviceTimeNode) Name() string {
 	return fmt.Sprintf("stNode-%d-%s", stNode.collectionID, stNode.vChannel)
 }
 
+var loggerSTNode = log.NewCountLogger(25)
+
 // Operate handles input messages, to execute insert operations
 func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	if len(in) != 1 {
@@ -68,7 +70,7 @@ func (stNode *serviceTimeNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		panic(fmt.Errorf("serviceTimeNode setTSafe timeout, collectionID = %d, err = %s", stNode.collectionID, err))
 	}
 	p, _ := tsoutil.ParseTS(serviceTimeMsg.timeRange.timestampMax)
-	log.RatedDebug(10.0, "update tSafe:",
+	loggerSTNode.Debug("update tSafe:",
 		zap.Any("collectionID", stNode.collectionID),
 		zap.Any("tSafe", serviceTimeMsg.timeRange.timestampMax),
 		zap.Any("tSafe_p", p),

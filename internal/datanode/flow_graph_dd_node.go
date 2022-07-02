@@ -19,12 +19,12 @@ package datanode
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
+	"github.com/opentracing/opentracing-go"
+	"go.uber.org/zap"
 	"reflect"
 	"sync"
 	"sync/atomic"
-
-	"github.com/opentracing/opentracing-go"
-	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
@@ -78,6 +78,8 @@ func (ddn *ddNode) Name() string {
 	return fmt.Sprintf("ddNode-%d-%s", ddn.collectionID, ddn.vchannelName)
 }
 
+var loggerDDNodeReceive = log.NewCountLogger(25)
+
 // Operate handles input messages, implementing flowgrpah.Node
 func (ddn *ddNode) Operate(in []Msg) []Msg {
 	if len(in) != 1 {
@@ -94,6 +96,14 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 		}
 		return []Msg{}
 	}
+
+	p, _ := tsoutil.ParseTS(msMsg.TimestampMax())
+	loggerDDNodeReceive.Debug("DDNode received message",
+		zap.Any("collectionID", ddn.collectionID),
+		zap.Any("ts", msMsg.TimestampMax()),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ddn.vchannelName),
+	)
 
 	var spans []opentracing.Span
 	for _, msg := range msMsg.TsMessages() {
@@ -119,6 +129,8 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 		endPositions:   make([]*internalpb.MsgPosition, 0),
 		dropCollection: false,
 	}
+
+	tr := timerecord.NewTimeRecorder("handle dd msg")
 
 	var forwardMsgs []msgstream.TsMsg
 	for _, msg := range msMsg.TsMessages() {
@@ -173,6 +185,9 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 			fgMsg.deleteMessages = append(fgMsg.deleteMessages, dmsg)
 		}
 	}
+
+	tr.Record(fmt.Sprintf("handle dd msg done, channel = %s, ts_p = %s, ts = %d", ddn.vchannelName, p, msMsg.TimestampMax()))
+
 	err := retry.Do(ddn.ctx, func() error {
 		return ddn.forwardDeleteMsg(forwardMsgs, msMsg.TimestampMin(), msMsg.TimestampMax())
 	}, flowGraphRetryOpt)
@@ -228,6 +243,8 @@ func (ddn *ddNode) isDropped(segID UniqueID) bool {
 }
 
 func (ddn *ddNode) forwardDeleteMsg(msgs []msgstream.TsMsg, minTs Timestamp, maxTs Timestamp) error {
+	tr := timerecord.NewTimeRecorder("forwardDeleteMsg")
+	p, _ := tsoutil.ParseTS(maxTs)
 	if len(msgs) != 0 {
 		var msgPack = msgstream.MsgPack{
 			Msgs:    msgs,
@@ -237,10 +254,12 @@ func (ddn *ddNode) forwardDeleteMsg(msgs []msgstream.TsMsg, minTs Timestamp, max
 		if err := ddn.deltaMsgStream.Produce(&msgPack); err != nil {
 			return err
 		}
+		tr.Record(fmt.Sprintf("forward delete msg done, channel = %s, ts_p = %s, ts = %d", ddn.vchannelName, p, maxTs))
 	}
 	if err := ddn.sendDeltaTimeTick(maxTs); err != nil {
 		return err
 	}
+	tr.Record(fmt.Sprintf("send delta timeTick done, channel = %s, ts_p = %s, ts = %d", ddn.vchannelName, p, maxTs))
 	return nil
 }
 
@@ -268,13 +287,6 @@ func (ddn *ddNode) sendDeltaTimeTick(ts Timestamp) error {
 	if err := ddn.deltaMsgStream.Produce(&msgPack); err != nil {
 		return err
 	}
-	p, _ := tsoutil.ParseTS(ts)
-	log.RatedDebug(10.0, "DDNode sent delta timeTick",
-		zap.Any("collectionID", ddn.collectionID),
-		zap.Any("ts", ts),
-		zap.Any("ts_p", p),
-		zap.Any("channel", ddn.vchannelName),
-	)
 	return nil
 }
 

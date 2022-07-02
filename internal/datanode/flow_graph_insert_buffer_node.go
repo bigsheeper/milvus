@@ -156,6 +156,8 @@ func (ibNode *insertBufferNode) Close() {
 	}
 }
 
+var loggerIBNNodeReceive = log.NewCountLogger(25)
+
 func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 	// log.Debug("InsertBufferNode Operating")
 
@@ -173,6 +175,13 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 		}
 		return []Msg{}
 	}
+
+	p, _ := tsoutil.ParseTS(fgMsg.TimeTick())
+	loggerIBNNodeReceive.Debug("IBNNode receive msg done",
+		zap.Any("ts", fgMsg.TimeTick()),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ibNode.channelName),
+	)
 
 	if fgMsg.dropCollection {
 		ibNode.flushManager.startDropping()

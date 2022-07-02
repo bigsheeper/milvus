@@ -35,6 +35,7 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/trace"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 )
 
 type (
@@ -185,6 +186,8 @@ func (dn *deleteNode) showDelBuf() {
 	}
 }
 
+var loggerDNodeReceive = log.NewCountLogger(25)
+
 // Operate implementing flowgraph.Node, performs delete data process
 func (dn *deleteNode) Operate(in []Msg) []Msg {
 	//log.Debug("deleteNode Operating")
@@ -203,6 +206,13 @@ func (dn *deleteNode) Operate(in []Msg) []Msg {
 		}
 		return []Msg{}
 	}
+
+	p, _ := tsoutil.ParseTS(fgMsg.TimeTick())
+	loggerDNodeReceive.Debug("DeleteNode receive msg done",
+		zap.Any("ts", fgMsg.TimeTick()),
+		zap.Any("ts_p", p),
+		zap.Any("channel", dn.channelName),
+	)
 
 	var spans []opentracing.Span
 	for _, msg := range fgMsg.deleteMessages {

@@ -20,6 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/util/trace"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/opentracing/opentracing-go"
 	oplog "github.com/opentracing/opentracing-go/log"
 	"go.uber.org/zap"
@@ -60,6 +61,8 @@ func (inNode *InputNode) InStream() msgstream.MsgStream {
 	return inNode.inStream
 }
 
+var loggerInputNode = log.NewCountLogger(25)
+
 // Operate consume a message pack from msgstream and return
 func (inNode *InputNode) Operate(in []Msg) []Msg {
 	msgPack, ok := <-inNode.inStream.Chan()
@@ -72,6 +75,14 @@ func (inNode *InputNode) Operate(in []Msg) []Msg {
 	if msgPack == nil {
 		return nil
 	}
+
+	p, _ := tsoutil.ParseTS(msgPack.EndTs)
+	loggerInputNode.Debug("FlowGraph InputNode received message",
+		zap.Any("ts", msgPack.EndTs),
+		zap.Any("ts_p", p),
+		zap.Any("node_name", inNode.Name()),
+	)
+
 	var spans []opentracing.Span
 	for _, msg := range msgPack.Msgs {
 		sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())

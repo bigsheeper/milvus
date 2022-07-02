@@ -40,7 +40,7 @@ type filterDmNode struct {
 
 // Name returns the name of filterDmNode
 func (fdmNode *filterDmNode) Name() string {
-	return fmt.Sprintf("fdmNode-%d", fdmNode.collectionID)
+	return fmt.Sprintf("fdmNode-%s", fdmNode.channel)
 }
 
 // Operate handles input messages, to filter invalid insert messages

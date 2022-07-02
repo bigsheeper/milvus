@@ -40,7 +40,7 @@ type filterDeleteNode struct {
 
 // Name returns the name of filterDeleteNode
 func (fddNode *filterDeleteNode) Name() string {
-	return fmt.Sprintf("fdNode-%d", fddNode.collectionID)
+	return fmt.Sprintf("fdNode-%s", fddNode.channel)
 }
 
 // Operate handles input messages, to filter invalid delete messages

@@ -66,7 +66,7 @@ type deleteData struct {
 
 // Name returns the name of insertNode
 func (iNode *insertNode) Name() string {
-	return "iNode"
+	return fmt.Sprintf("iNode-%s", iNode.channel)
 }
 
 // Operate handles input messages, to execute insert operations

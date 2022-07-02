@@ -78,6 +78,10 @@ func (ddn *ddNode) Name() string {
 	return fmt.Sprintf("ddNode-%d-%s", ddn.collectionID, ddn.vchannelName)
 }
 
+var loggerDDNodeReceive = log.NewCountLogger(25)
+var loggerNodeStartProduce = log.NewCountLogger(25)
+var loggerDDNodeProduceDone = log.NewCountLogger(25)
+
 // Operate handles input messages, implementing flowgrpah.Node
 func (ddn *ddNode) Operate(in []Msg) []Msg {
 	if len(in) != 1 {
@@ -94,6 +98,14 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 		}
 		return []Msg{}
 	}
+
+	p, _ := tsoutil.ParseTS(msMsg.TimestampMax())
+	loggerDDNodeReceive.Debug("DDNode received message",
+		zap.Any("collectionID", ddn.collectionID),
+		zap.Any("ts", msMsg.TimestampMax()),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ddn.vchannelName),
+	)
 
 	var spans []opentracing.Span
 	for _, msg := range msMsg.TsMessages() {
@@ -265,11 +277,18 @@ func (ddn *ddNode) sendDeltaTimeTick(ts Timestamp) error {
 	}
 	msgPack.Msgs = append(msgPack.Msgs, timeTickMsg)
 
+	p, _ := tsoutil.ParseTS(ts)
+	loggerNodeStartProduce.Debug("DDNode start sending delta timeTick",
+		zap.Any("collectionID", ddn.collectionID),
+		zap.Any("ts", ts),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ddn.vchannelName),
+	)
 	if err := ddn.deltaMsgStream.Produce(&msgPack); err != nil {
 		return err
 	}
-	p, _ := tsoutil.ParseTS(ts)
-	log.RatedDebug(10.0, "DDNode sent delta timeTick",
+	p, _ = tsoutil.ParseTS(ts)
+	loggerDDNodeProduceDone.Debug("DDNode sent delta timeTick done",
 		zap.Any("collectionID", ddn.collectionID),
 		zap.Any("ts", ts),
 		zap.Any("ts_p", p),

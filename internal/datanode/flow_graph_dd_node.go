@@ -95,6 +95,14 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 		return []Msg{}
 	}
 
+	p, _ := tsoutil.ParseTS(msMsg.TimestampMax())
+	log.RatedDebug(10.0, "DDNode received message",
+		zap.Any("collectionID", ddn.collectionID),
+		zap.Any("ts", msMsg.TimestampMax()),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ddn.vchannelName),
+	)
+
 	var spans []opentracing.Span
 	for _, msg := range msMsg.TsMessages() {
 		sp, ctx := trace.StartSpanFromContext(msg.TraceCtx())
@@ -265,11 +273,18 @@ func (ddn *ddNode) sendDeltaTimeTick(ts Timestamp) error {
 	}
 	msgPack.Msgs = append(msgPack.Msgs, timeTickMsg)
 
+	p, _ := tsoutil.ParseTS(ts)
+	log.RatedDebug(10.0, "DDNode start sending delta timeTick",
+		zap.Any("collectionID", ddn.collectionID),
+		zap.Any("ts", ts),
+		zap.Any("ts_p", p),
+		zap.Any("channel", ddn.vchannelName),
+	)
 	if err := ddn.deltaMsgStream.Produce(&msgPack); err != nil {
 		return err
 	}
-	p, _ := tsoutil.ParseTS(ts)
-	log.RatedDebug(10.0, "DDNode sent delta timeTick",
+	p, _ = tsoutil.ParseTS(ts)
+	log.RatedDebug(10.0, "DDNode sent delta timeTick done",
 		zap.Any("collectionID", ddn.collectionID),
 		zap.Any("ts", ts),
 		zap.Any("ts_p", p),

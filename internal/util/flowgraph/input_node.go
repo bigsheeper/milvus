@@ -28,7 +28,7 @@ import (
 // InputNode is the entry point of flowgragh
 type InputNode struct {
 	BaseNode
-	inStream msgstream.MsgStream
+	inStream chan *msgstream.MsgPack
 	name     string
 }
 

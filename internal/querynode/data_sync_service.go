@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/multiplexer"
 	"sync"
 
 	"go.uber.org/zap"
@@ -35,6 +36,9 @@ type dataSyncService struct {
 	mu                     sync.Mutex // guards FlowGraphs
 	dmlChannel2FlowGraph   map[Channel]*queryNodeFlowGraph
 	deltaChannel2FlowGraph map[Channel]*queryNodeFlowGraph
+
+	dmlMux   *multiplexer.Multiplexer
+	deltaMux *multiplexer.Multiplexer
 
 	metaReplica  ReplicaInterface
 	tSafeReplica TSafeReplicaInterface
@@ -69,6 +73,8 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 	if err := dsService.checkReplica(collectionID); err != nil {
 		return nil, err
 	}
+
+	dsService.dmlMux.AddVChannel()
 
 	results := make(map[string]*queryNodeFlowGraph)
 	for _, channel := range dmlChannels {

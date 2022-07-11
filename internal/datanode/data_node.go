@@ -357,6 +357,7 @@ func parsePutEventData(data []byte) (*datapb.ChannelWatchInfo, error) {
 	if watchInfo.Vchan == nil {
 		return nil, fmt.Errorf("invalid event: ChannelWatchInfo with nil VChannelInfo")
 	}
+	reviseVChannelInfo(watchInfo.GetVchan())
 	return &watchInfo, nil
 }
 
@@ -439,9 +440,6 @@ func (node *DataNode) BackGroundGC(vChannelCh <-chan string) {
 	}
 }
 
-// FilterThreshold is the start time ouf DataNode
-var FilterThreshold Timestamp
-
 // Start will update DataNode state to HEALTHY
 func (node *DataNode) Start() error {
 	if err := node.idAllocator.Start(); err != nil {
@@ -485,8 +483,6 @@ func (node *DataNode) Start() error {
 	if rep.Status.ErrorCode != commonpb.ErrorCode_Success || err != nil {
 		return errors.New("DataNode fail to start")
 	}
-
-	FilterThreshold = rep.GetTimestamp()
 
 	go node.BackGroundGC(node.clearSignal)
 
@@ -621,7 +617,7 @@ func (node *DataNode) FlushSegments(ctx context.Context, req *datapb.FlushSegmen
 		log.Info("flow graph flushSegment tasks triggered",
 			zap.Bool("flushed", flushed),
 			zap.Int64("collection ID", req.GetCollectionID()),
-			zap.Int64s("segments", segmentIDs))
+			zap.Int64s("segments sending to flush channel", flushedSeg))
 		return flushedSeg, noErr
 	}
 

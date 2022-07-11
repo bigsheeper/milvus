@@ -1172,18 +1172,6 @@ func TestProxy(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 
-		// load the same collection, test loaded check
-		colInfo, err := globalMetaCache.GetCollectionInfo(ctx, collectionName)
-		assert.NoError(t, err)
-		colInfo.isLoaded = true
-		resp, err = proxy.LoadCollection(ctx, &milvuspb.LoadCollectionRequest{
-			Base:           nil,
-			DbName:         dbName,
-			CollectionName: collectionName,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
 		// load other collection -> fail
 		resp, err = proxy.LoadCollection(ctx, &milvuspb.LoadCollectionRequest{
 			Base:           nil,
@@ -2925,15 +2913,6 @@ func TestProxy(t *testing.T) {
 		resp, err := proxy.DeleteCredential(shortCtx, &milvuspb.DeleteCredentialRequest{Username: "xxx"})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-	})
-
-	wg.Add(1)
-	t.Run("ListCredUsers fail, timeout", func(t *testing.T) {
-		defer wg.Done()
-		globalMetaCache.ClearCredUsers() // precondition
-		resp, err := proxy.ListCredUsers(shortCtx, &milvuspb.ListCredUsersRequest{})
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
 
 	testServer.gracefulStop()

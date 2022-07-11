@@ -1,3 +1,19 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package indexcoord
 
 import (
@@ -91,7 +107,6 @@ func (gc *garbageCollector) recycleUnusedIndexFiles() {
 		case <-gc.ctx.Done():
 			return
 		case <-ticker.C:
-			indexID2Files := gc.metaTable.GetBuildID2IndexFiles()
 			prefix := Params.IndexNodeCfg.IndexStorageRootPath + "/"
 			// list dir first
 			keys, err := gc.chunkManager.ListWithPrefix(prefix, false)
@@ -105,8 +120,8 @@ func (gc *garbageCollector) recycleUnusedIndexFiles() {
 					log.Error("IndexCoord garbageCollector recycleUnusedIndexFiles parseIndexFileKey", zap.String("key", key), zap.Error(err))
 					continue
 				}
-				indexFiles, ok := indexID2Files[buildID]
-				if !ok {
+				log.Info("IndexCoord garbageCollector will recycle index files", zap.Int64("buildID", buildID))
+				if !gc.metaTable.HasBuildID(buildID) {
 					// buildID no longer exists in meta, remove all index files
 					log.Info("IndexCoord garbageCollector recycleUnusedIndexFiles find meta has not exist, remove index files",
 						zap.Int64("buildID", buildID))
@@ -118,13 +133,17 @@ func (gc *garbageCollector) recycleUnusedIndexFiles() {
 					}
 					continue
 				}
-				// Prevent IndexNode from being recycled as soon as the index file is written
-				if !gc.metaTable.CanBeRecycledIndexFiles(buildID) {
+				log.Info("index meta can be recycled, recycle index files", zap.Int64("buildID", buildID))
+				indexInfo, err := gc.metaTable.GetIndexFilePathInfo(buildID)
+				if err != nil {
+					// Even if the index is marked as deleted, the index file will not be recycled, wait for the next gc,
+					// and delete all index files about the buildID at one time.
+					log.Warn("IndexCoord garbageCollector get index files fail", zap.Int64("buildID", buildID),
+						zap.Error(err))
 					continue
 				}
-				// buildID still exists in meta, remove unnecessary index files
 				filesMap := make(map[string]bool)
-				for _, file := range indexFiles {
+				for _, file := range indexInfo.IndexFilePaths {
 					filesMap[file] = true
 				}
 				files, err := gc.chunkManager.ListWithPrefix(key, true)
@@ -133,6 +152,9 @@ func (gc *garbageCollector) recycleUnusedIndexFiles() {
 						zap.Int64("buildID", buildID), zap.String("prefix", key), zap.Error(err))
 					continue
 				}
+				log.Info("recycle index files", zap.Int64("buildID", buildID), zap.Int("meta files num", len(filesMap)),
+					zap.Int("chunkManager files num", len(files)))
+				deletedFilesNum := 0
 				for _, file := range files {
 					if _, ok := filesMap[file]; !ok {
 						if err = gc.chunkManager.Remove(file); err != nil {
@@ -140,8 +162,11 @@ func (gc *garbageCollector) recycleUnusedIndexFiles() {
 								zap.Int64("buildID", buildID), zap.String("file", file), zap.Error(err))
 							continue
 						}
+						deletedFilesNum++
 					}
 				}
+				log.Info("index files recycle success", zap.Int64("buildID", buildID),
+					zap.Int("delete index files num", deletedFilesNum))
 			}
 		}
 	}

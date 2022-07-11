@@ -19,11 +19,18 @@ package msgstream
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"sync"
 )
+
+type vchannelBuffer struct {
+	ready         bool
+	readyPosition *MsgPosition
+	buffer        chan *MsgPack
+}
 
 // DispatchFunc 由 DataNode QueryNode 传入的分发逻辑，判断消息类型，然后映射到不同的 vchannel
 type DispatchFunc func(msgPack *MsgPack) map[string]*MsgPack
@@ -41,7 +48,7 @@ type MsgDispatcher struct {
 
 	pchannel    string
 	vchannelsMu sync.Mutex // guards vchannels
-	vchannels   map[string]chan *MsgPack
+	vchannels   map[string]*vchannelBuffer
 
 	dispatchFunc DispatchFunc
 	factory      Factory
@@ -57,7 +64,7 @@ func NewMsgDispatcher(ctx context.Context, nodeID int64, pchannel string, df Dis
 		nodeID:            nodeID,
 
 		pchannel:  pchannel,
-		vchannels: make(map[string]chan *MsgPack),
+		vchannels: make(map[string]*vchannelBuffer),
 
 		dispatchFunc: df,
 		factory:      factory,
@@ -90,7 +97,7 @@ func (m *MsgDispatcher) Run() error {
 				// send msg
 				m.vchannelsMu.Lock()
 				if _, ok := m.vchannels[ch]; ok {
-					m.vchannels[ch] <- pack // TODO: what if block here
+					m.vchannels[ch].buffer <- pack // TODO: what if block here
 				}
 				m.vchannelsMu.Unlock()
 			}
@@ -107,7 +114,11 @@ func (m *MsgDispatcher) Close() error {
 func (m *MsgDispatcher) addVChannel(vchannel string, channel chan *MsgPack) {
 	m.vchannelsMu.Lock()
 	defer m.vchannelsMu.Unlock()
-	m.vchannels[vchannel] = channel
+	m.vchannels[vchannel] = &vchannelBuffer{
+		ready:         false,
+		readyPosition: nil,
+		buffer:        channel,
+	}
 }
 
 func (m *MsgDispatcher) hasVChannel(vchannel string) bool {
@@ -150,9 +161,7 @@ func (m *MsgDispatcher) Register(vchannel string, position *internalpb.MsgPositi
 	}
 	if noMoreMsg {
 		log.Info("no more message need to seek")
-		m.vchannelsMu.Lock()
-		m.vchannels[vchannel] = channel
-		m.vchannelsMu.Unlock()
+		m.addVChannel(vchannel, channel)
 		return channel, nil
 	}
 
@@ -201,9 +210,7 @@ func (m *MsgDispatcher) Register(vchannel string, position *internalpb.MsgPositi
 		}
 	}
 
-	m.vchannelsMu.Lock()
-	m.vchannels[vchannel] = channel
-	m.vchannelsMu.Unlock()
+	m.addVChannel(vchannel, channel)
 	return channel, nil
 }
 

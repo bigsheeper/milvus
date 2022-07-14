@@ -21,7 +21,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   if test -f "$LIBJEMALLOC"; then
     #echo "Found $LIBJEMALLOC"
     export LD_PRELOAD="$LIBJEMALLOC"
-    export MALLOC_CONF="prof:true,lg_prof_interval:25"
+    export MALLOC_CONF="prof_leak:true,lg_prof_sample:0,prof_final:true"
   else
     echo "WARN: Cannot find $LIBJEMALLOC"
   fi

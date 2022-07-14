@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"time"
+
 	//"runtime/debug"
 	//"runtime"
 	"net/http"
@@ -13,8 +15,6 @@ import (
 
 	//"sync"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
@@ -22,7 +22,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"math"
 )
 
 func genCollectionMeta(collectionID UniqueID, schema *schemapb.CollectionSchema) *etcdpb.CollectionMeta {
@@ -775,7 +774,7 @@ func ABC() {
 	go func() {
 		http.ListenAndServe("0.0.0.0:9999", nil)
 	}()
-	nq := int64(500)
+	//nq := int64(500)
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -784,35 +783,35 @@ func ABC() {
 	if err != nil {
 		panic(err)
 	}
-	collection, err := replica.getCollectionByID(defaultCollectionID)
-	vec := generateFloatVectors(1, defaultDim)
-	var searchRawData []byte
-	for i, ele := range vec {
-		buf := make([]byte, 4)
-		common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*2)))
-		searchRawData = append(searchRawData, buf...)
-	}
+	//collection, err := replica.getCollectionByID(defaultCollectionID)
+	//vec := generateFloatVectors(1, defaultDim)
+	//var searchRawData []byte
+	//for i, ele := range vec {
+	//	buf := make([]byte, 4)
+	//	common.Endian.PutUint32(buf, math.Float32bits(ele+float32(i*2)))
+	//	searchRawData = append(searchRawData, buf...)
+	//}
 
-	placeholderValue := commonpb.PlaceholderValue{
-		Tag:    "$0",
-		Type:   commonpb.PlaceholderType_FloatVector,
-		Values: [][]byte{},
-	}
+	//placeholderValue := commonpb.PlaceholderValue{
+	//	Tag:    "$0",
+	//	Type:   commonpb.PlaceholderType_FloatVector,
+	//	Values: [][]byte{},
+	//}
+	//
+	//for i := int64(0); i < nq; i++ {
+	//	placeholderValue.Values = append(placeholderValue.Values, searchRawData)
+	//}
 
-	for i := int64(0); i < nq; i++ {
-		placeholderValue.Values = append(placeholderValue.Values, searchRawData)
-	}
+	//placeholderGroup := commonpb.PlaceholderGroup{
+	//	Placeholders: []*commonpb.PlaceholderValue{&placeholderValue},
+	//}
 
-	placeholderGroup := commonpb.PlaceholderGroup{
-		Placeholders: []*commonpb.PlaceholderValue{&placeholderValue},
-	}
+	//placeGroupByte, _ := proto.Marshal(&placeholderGroup)
 
-	placeGroupByte, _ := proto.Marshal(&placeholderGroup)
+	//dslString := "{\"bool\": { \n\"vector\": {\n \"floatVectorField\": {\n \"metric_type\": \"L2\", \n \"params\": {\n \"nprobe\": 10 \n},\n \"query\": \"$0\",\n \"topk\": 1000 \n,\"round_decimal\": 6\n } \n } \n } \n }"
 
-	dslString := "{\"bool\": { \n\"vector\": {\n \"floatVectorField\": {\n \"metric_type\": \"L2\", \n \"params\": {\n \"nprobe\": 10 \n},\n \"query\": \"$0\",\n \"topk\": 1000 \n,\"round_decimal\": 6\n } \n } \n } \n }"
-
-	plan, err := createSearchPlan(collection, dslString)
-	req, err := parseSearchRequest(plan, placeGroupByte)
+	//plan, err := createSearchPlan(collection, dslString)
+	//req, err := parseSearchRequest(plan, placeGroupByte)
 
 	//_, err = genSegmentAndInsertData(col, 2, segmentTypeSealed, defaultMsgLength)
 	//if err != nil {
@@ -834,54 +833,66 @@ func ABC() {
 		}
 	}
 
-	/*
-		var segIDBs []UniqueID
-		for i:=segNum; i < segNum*2; i++ {
-			segIDBs = append(segIDBs, i)
-			seg, err := genSegmentAndInsertData(col, i, segmentTypeSealed, defaultMsgLength)
-			if err != nil {
-				panic(err)
-			}
-			err2 := replica.setSegment(seg)
-			if err2 != nil {
-				panic(err2)
-			}
-		}
-	*/
+	fmt.Println("gen segment done")
 
-	result, err := searchOnSegments(replica, segmentTypeSealed, req, segIDAs)
+	time.Sleep(10 * time.Second)
+
+	err = replica.removeCollection(defaultCollectionID)
 	if err != nil {
 		panic(err)
 	}
-	defer deleteSearchResults(result)
+	fmt.Println("remove collection done")
 
-	for i := 0; i < 5000; i++ {
-		//var results []*internalpb.SearchResults
-		/*
-			for _, segID := range segIDAs {
-				result1 := getSearchResults(replica, segmentTypeSealed, req, nq, []UniqueID{segID})
-				results = append(results, result1...)
-			}
-			for _, segID := range segIDBs {
-				result1 := getSearchResults(replica, segmentTypeSealed, req, nq, []UniqueID{segID})
-				results = append(results, result1...)
-			}
-		*/
-
-		//_ = getSearchResults2(req, nq, result, segIDAs)
-		_ = getSearchResults(replica, segmentTypeSealed, req, nq, segIDAs)
-		//result2 := getSearchResults(replica, segmentTypeSealed, req, nq, segIDBs)
-		//results = append(results, result1...)
-		//results = append(results, result2...)
-		/*
-			_, err := reduceSearchResults(results, nq, req.plan.getTopK(), req.plan.getMetricType())
-			if err != nil {
-				panic(err)
-			}
-		*/
-	}
-	req.delete()
-	replica.freeAll()
+	time.Sleep(5 * time.Second)
+	fmt.Println("process exit")
+	///*
+	//	var segIDBs []UniqueID
+	//	for i:=segNum; i < segNum*2; i++ {
+	//		segIDBs = append(segIDBs, i)
+	//		seg, err := genSegmentAndInsertData(col, i, segmentTypeSealed, defaultMsgLength)
+	//		if err != nil {
+	//			panic(err)
+	//		}
+	//		err2 := replica.setSegment(seg)
+	//		if err2 != nil {
+	//			panic(err2)
+	//		}
+	//	}
+	//*/
+	//
+	//result, err := searchOnSegments(replica, segmentTypeSealed, req, segIDAs)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//defer deleteSearchResults(result)
+	//
+	//for i := 0; i < 5000; i++ {
+	//	//var results []*internalpb.SearchResults
+	//	/*
+	//		for _, segID := range segIDAs {
+	//			result1 := getSearchResults(replica, segmentTypeSealed, req, nq, []UniqueID{segID})
+	//			results = append(results, result1...)
+	//		}
+	//		for _, segID := range segIDBs {
+	//			result1 := getSearchResults(replica, segmentTypeSealed, req, nq, []UniqueID{segID})
+	//			results = append(results, result1...)
+	//		}
+	//	*/
+	//
+	//	//_ = getSearchResults2(req, nq, result, segIDAs)
+	//	_ = getSearchResults(replica, segmentTypeSealed, req, nq, segIDAs)
+	//	//result2 := getSearchResults(replica, segmentTypeSealed, req, nq, segIDBs)
+	//	//results = append(results, result1...)
+	//	//results = append(results, result2...)
+	//	/*
+	//		_, err := reduceSearchResults(results, nq, req.plan.getTopK(), req.plan.getMetricType())
+	//		if err != nil {
+	//			panic(err)
+	//		}
+	//	*/
+	//}
+	//req.delete()
+	//replica.freeAll()
 }
 
 func getSearchResults2(

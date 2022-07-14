@@ -50,6 +50,7 @@ list(APPEND
         "--with-jemalloc-prefix=je_milvus_"
         "--with-private-namespace=je_milvus_private_"
         "--without-export"
+        "--enable-prof"
         # See https://github.com/jemalloc/jemalloc/issues/1237
         "--disable-initial-exec-tls"
         ${EP_LOG_OPTIONS})

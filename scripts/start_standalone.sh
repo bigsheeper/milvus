@@ -16,5 +16,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+	LIBJEMALLOC=$PWD/internal/core/output/lib/libjemalloc.so
+	if test -f "$LIBJEMALLOC"; then
+		#echo "Found $LIBJEMALLOC"
+		export MALLOC_CONF="prof_leak:true,lg_prof_sample:0,prof_final:true"
+		export LD_PRELOAD="$LIBJEMALLOC"
+	else
+		echo "WARN: Cannot find $LIBJEMALLOC"
+	fi
+fi
+
 echo "Starting standalone..."
 nohup ./bin/milvus run standalone > /tmp/standalone.log 2>&1 &

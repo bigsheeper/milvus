@@ -34,6 +34,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,6 +49,8 @@ import (
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
+
+	_ "net/http/pprof"
 
 	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
@@ -253,6 +256,13 @@ func (node *QueryNode) Init() error {
 			zap.Any("Port", Params.QueryNodeCfg.QueryNodePort),
 		)
 	})
+
+	go func() {
+		err := http.ListenAndServe("0.0.0.0:6060", nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	return initError
 }

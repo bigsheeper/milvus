@@ -16,6 +16,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  LIBJEMALLOC=$PWD/internal/core/output/lib/libjemalloc.so
+  if test -f "$LIBJEMALLOC"; then
+    #echo "Found $LIBJEMALLOC"
+    export MALLOC_CONF="prof_leak:true,lg_prof_sample:0,prof_final:true"
+#    export MALLOC_CONF="prof:true,lg_prof_sample:1,prof_prefix:jeprof.out"
+    export LD_PRELOAD="$LIBJEMALLOC"
+  else
+    echo "WARN: Cannot find $LIBJEMALLOC"
+  fi
+fi
+
 echo "Starting rootcoord..."
 nohup ./bin/milvus run rootcoord > /tmp/rootcoord.log 2>&1 &
 

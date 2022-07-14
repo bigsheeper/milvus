@@ -16,6 +16,19 @@
 
 package roles
 
+/*
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <signal.h>
+
+int exitcgo() {
+	exit(3);
+	return 0;
+}
+
+*/
+import "C"
 import (
 	"context"
 	"fmt"
@@ -519,9 +532,13 @@ func (mr *MilvusRoles) Run(local bool, alias string) {
 		syscall.SIGHUP,
 		syscall.SIGINT,
 		syscall.SIGTERM,
-		syscall.SIGQUIT)
+		syscall.SIGQUIT,
+	)
 	sig := <-sc
 	log.Error("Get signal to exit\n", zap.String("signal", sig.String()))
+
+	C.exitcgo()
+	log.Info("call exitcgo done")
 
 	// some deferred Stop has race with context cancel
 	cancel()

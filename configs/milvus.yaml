@@ -208,7 +208,7 @@ indexNode:
 dataCoord:
   address: localhost
   port: 13333
-  enableCompaction: true # Enable data segment compression
+  enableCompaction: false # Enable data segment compression
   enableGarbageCollection: false
 
   segment:

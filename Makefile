@@ -87,6 +87,12 @@ binlog:
 	@echo "Building binlog ..."
 	@mkdir -p $(INSTALL_PATH) && go env -w CGO_ENABLED="1" && GO111MODULE=on $(GO) build -o $(INSTALL_PATH)/binlog $(PWD)/cmd/tools/binlog/main.go 1>/dev/null
 
+# Build various components locally.
+payload:
+	@echo "Building payload ..."
+	@mkdir -p $(INSTALL_PATH) && go env -w CGO_ENABLED="1" && GO111MODULE=on $(GO) build -o $(INSTALL_PATH)/payload $(PWD)/cmd/tools/storage/main.go 1>/dev/null
+
+
 BUILD_TAGS = $(shell git describe --tags --always --dirty="-dev")
 BUILD_TIME = $(shell date -u)
 GIT_COMMIT = $(shell git rev-parse --short HEAD)

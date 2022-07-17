@@ -578,19 +578,20 @@ func (insertCodec *InsertCodec) DeserializeInto(fieldBinlogs []*Blob, rowNum int
 					binlogReader.Close()
 					return InvalidUniqueID, InvalidUniqueID, InvalidUniqueID, err
 				}
+				fmt.Println(len(singleData))
 
-				if insertData.Data[fieldID] == nil {
-					insertData.Data[fieldID] = &Int64FieldData{
-						NumRows: make([]int64, 0),
-						Data:    make([]int64, 0, rowNum),
-					}
-				}
-				int64FieldData := insertData.Data[fieldID].(*Int64FieldData)
-
-				int64FieldData.Data = append(int64FieldData.Data, singleData...)
-				totalLength += len(singleData)
-				int64FieldData.NumRows = append(int64FieldData.NumRows, int64(len(singleData)))
-				insertData.Data[fieldID] = int64FieldData
+				//if insertData.Data[fieldID] == nil {
+				//	insertData.Data[fieldID] = &Int64FieldData{
+				//		NumRows: make([]int64, 0),
+				//		Data:    make([]int64, 0, rowNum),
+				//	}
+				//}
+				//int64FieldData := insertData.Data[fieldID].(*Int64FieldData)
+				//
+				//int64FieldData.Data = append(int64FieldData.Data, singleData...)
+				//totalLength += len(singleData)
+				//int64FieldData.NumRows = append(int64FieldData.NumRows, int64(len(singleData)))
+				//insertData.Data[fieldID] = int64FieldData
 
 			case schemapb.DataType_Float:
 				singleData, err := eventReader.GetFloatFromPayload()
@@ -620,19 +621,20 @@ func (insertCodec *InsertCodec) DeserializeInto(fieldBinlogs []*Blob, rowNum int
 					binlogReader.Close()
 					return InvalidUniqueID, InvalidUniqueID, InvalidUniqueID, err
 				}
+				fmt.Println(len(singleData))
 
-				if insertData.Data[fieldID] == nil {
-					insertData.Data[fieldID] = &DoubleFieldData{
-						NumRows: make([]int64, 0),
-						Data:    make([]float64, 0, rowNum),
-					}
-				}
-				doubleFieldData := insertData.Data[fieldID].(*DoubleFieldData)
-
-				doubleFieldData.Data = append(doubleFieldData.Data, singleData...)
-				totalLength += len(singleData)
-				doubleFieldData.NumRows = append(doubleFieldData.NumRows, int64(len(singleData)))
-				insertData.Data[fieldID] = doubleFieldData
+				//if insertData.Data[fieldID] == nil {
+				//	insertData.Data[fieldID] = &DoubleFieldData{
+				//		NumRows: make([]int64, 0),
+				//		Data:    make([]float64, 0, rowNum),
+				//	}
+				//}
+				//doubleFieldData := insertData.Data[fieldID].(*DoubleFieldData)
+				//
+				//doubleFieldData.Data = append(doubleFieldData.Data, singleData...)
+				//totalLength += len(singleData)
+				//doubleFieldData.NumRows = append(doubleFieldData.NumRows, int64(len(singleData)))
+				//insertData.Data[fieldID] = doubleFieldData
 
 			case schemapb.DataType_String, schemapb.DataType_VarChar:
 				stringPayload, err := eventReader.GetStringFromPayload()
@@ -692,26 +694,27 @@ func (insertCodec *InsertCodec) DeserializeInto(fieldBinlogs []*Blob, rowNum int
 					binlogReader.Close()
 					return InvalidUniqueID, InvalidUniqueID, InvalidUniqueID, err
 				}
+				fmt.Println(len(singleData))
 
-				if insertData.Data[fieldID] == nil {
-					insertData.Data[fieldID] = &FloatVectorFieldData{
-						NumRows: make([]int64, 0),
-						Data:    make([]float32, 0, rowNum*dim),
-					}
-				}
-				floatVectorFieldData := insertData.Data[fieldID].(*FloatVectorFieldData)
-
-				floatVectorFieldData.Data = append(floatVectorFieldData.Data, singleData...)
-				length, err := eventReader.GetPayloadLengthFromReader()
-				if err != nil {
-					eventReader.Close()
-					binlogReader.Close()
-					return InvalidUniqueID, InvalidUniqueID, InvalidUniqueID, err
-				}
-				totalLength += length
-				floatVectorFieldData.NumRows = append(floatVectorFieldData.NumRows, int64(length))
-				floatVectorFieldData.Dim = dim
-				insertData.Data[fieldID] = floatVectorFieldData
+				//if insertData.Data[fieldID] == nil {
+				//	insertData.Data[fieldID] = &FloatVectorFieldData{
+				//		NumRows: make([]int64, 0),
+				//		Data:    make([]float32, 0, rowNum*dim),
+				//	}
+				//}
+				//floatVectorFieldData := insertData.Data[fieldID].(*FloatVectorFieldData)
+				//
+				//floatVectorFieldData.Data = append(floatVectorFieldData.Data, singleData...)
+				//length, err := eventReader.GetPayloadLengthFromReader()
+				//if err != nil {
+				//	eventReader.Close()
+				//	binlogReader.Close()
+				//	return InvalidUniqueID, InvalidUniqueID, InvalidUniqueID, err
+				//}
+				//totalLength += length
+				//floatVectorFieldData.NumRows = append(floatVectorFieldData.NumRows, int64(length))
+				//floatVectorFieldData.Dim = dim
+				//insertData.Data[fieldID] = floatVectorFieldData
 
 			default:
 				eventReader.Close()

@@ -683,6 +683,8 @@ func (s *Segment) segmentLoadFieldData(fieldID int64, rowCount int64, data *sche
 		CStatus
 		LoadFieldData(CSegmentInterface c_segment, CLoadFieldDataInfo load_field_data_info);
 	*/
+	return nil
+
 	if s.segmentPtr == nil {
 		return errors.New("null seg core pointer")
 	}

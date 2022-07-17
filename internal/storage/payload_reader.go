@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/arrow/go/v8/arrow"
 	"github.com/apache/arrow/go/v8/parquet"
 	"github.com/apache/arrow/go/v8/parquet/file"
 
@@ -195,23 +194,24 @@ func (r *PayloadReader) GetInt32FromPayload() ([]int32, error) {
 }
 
 func (r *PayloadReader) GetInt64FromPayload() ([]int64, error) {
-	if r.colType != schemapb.DataType_Int64 {
-		return nil, fmt.Errorf("failed to get int64 from datatype %v", r.colType.String())
-	}
-	reader, ok := r.reader.RowGroup(0).Column(0).(*file.Int64ColumnChunkReader)
-	if !ok {
-		return nil, fmt.Errorf("expect type *file.Int64ColumnChunkReader, but got %T", r.reader.RowGroup(0).Column(0))
-	}
-
-	values := make([]int64, r.numRows)
-	total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if total != r.numRows || int64(valuesRead) != r.numRows {
-		return nil, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
-	}
-	return values, nil
+	//if r.colType != schemapb.DataType_Int64 {
+	//	return nil, fmt.Errorf("failed to get int64 from datatype %v", r.colType.String())
+	//}
+	//_, ok := r.reader.RowGroup(0).Column(0).(*file.Int64ColumnChunkReader)
+	//if !ok {
+	//	return nil, fmt.Errorf("expect type *file.Int64ColumnChunkReader, but got %T", r.reader.RowGroup(0).Column(0))
+	//}
+	//
+	//values := make([]int64, r.numRows)
+	//total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if total != r.numRows || int64(valuesRead) != r.numRows {
+	//	return nil, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
+	//}
+	//return values, nil
+	return nil, nil
 }
 
 func (r *PayloadReader) GetFloatFromPayload() ([]float32, error) {
@@ -235,23 +235,24 @@ func (r *PayloadReader) GetFloatFromPayload() ([]float32, error) {
 }
 
 func (r *PayloadReader) GetDoubleFromPayload() ([]float64, error) {
-	if r.colType != schemapb.DataType_Double {
-		return nil, fmt.Errorf("failed to get float32 from datatype %v", r.colType.String())
-	}
-	reader, ok := r.reader.RowGroup(0).Column(0).(*file.Float64ColumnChunkReader)
-	if !ok {
-		return nil, fmt.Errorf("expect type *file.Float64ColumnChunkReader, but got %T", r.reader.RowGroup(0).Column(0))
-	}
-
-	values := make([]float64, r.numRows)
-	total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if total != r.numRows || int64(valuesRead) != r.numRows {
-		return nil, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
-	}
-	return values, nil
+	//if r.colType != schemapb.DataType_Double {
+	//	return nil, fmt.Errorf("failed to get float32 from datatype %v", r.colType.String())
+	//}
+	//_, ok := r.reader.RowGroup(0).Column(0).(*file.Float64ColumnChunkReader)
+	//if !ok {
+	//	return nil, fmt.Errorf("expect type *file.Float64ColumnChunkReader, but got %T", r.reader.RowGroup(0).Column(0))
+	//}
+	//
+	//values := make([]float64, r.numRows)
+	//total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if total != r.numRows || int64(valuesRead) != r.numRows {
+	//	return nil, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
+	//}
+	//return values, nil
+	return nil, nil
 }
 
 func (r *PayloadReader) GetStringFromPayload() ([]string, error) {
@@ -308,28 +309,34 @@ func (r *PayloadReader) GetBinaryVectorFromPayload() ([]byte, int, error) {
 
 // GetFloatVectorFromPayload returns vector, dimension, error
 func (r *PayloadReader) GetFloatVectorFromPayload() ([]float32, int, error) {
-	if r.colType != schemapb.DataType_FloatVector {
-		return nil, -1, fmt.Errorf("failed to get float vector from datatype %v", r.colType.String())
-	}
-	reader, ok := r.reader.RowGroup(0).Column(0).(*file.FixedLenByteArrayColumnChunkReader)
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	//if r.colType != schemapb.DataType_FloatVector {
+	//	return nil, -1, fmt.Errorf("failed to get float vector from datatype %v", r.colType.String())
+	//}
+	//ByteSize := r.reader.RowGroup(0).ByteSize()
+	//NumRows := r.reader.RowGroup(0).NumRows()
+	//NumColumns := r.reader.RowGroup(0).NumColumns()
+	//fmt.Println("ByteSize:", ByteSize, ", NumRows:", NumRows, ", NumColumns", NumColumns)
+	_, ok := r.reader.RowGroup(0).Column(0).(*file.FixedLenByteArrayColumnChunkReader)
 	if !ok {
 		return nil, -1, fmt.Errorf("expect type *file.FixedLenByteArrayColumnChunkReader, but got %T", r.reader.RowGroup(0).Column(0))
 	}
 
-	dim := r.reader.RowGroup(0).Column(0).Descriptor().TypeLength() / 4
-	values := make([]parquet.FixedLenByteArray, r.numRows)
-	total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
-	if err != nil {
-		return nil, -1, err
-	}
-	if total != r.numRows || int64(valuesRead) != r.numRows {
-		return nil, -1, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
-	}
-	ret := make([]float32, int64(dim)*r.numRows)
-	for i := 0; i < int(r.numRows); i++ {
-		copy(arrow.Float32Traits.CastToBytes(ret[i*dim:(i+1)*dim]), values[i])
-	}
-	return ret, dim, nil
+	//dim := r.reader.RowGroup(0).Column(0).Descriptor().TypeLength() / 4
+	//values := make([]parquet.FixedLenByteArray, r.numRows)
+	//total, valuesRead, err := reader.ReadBatch(r.numRows, values, nil, nil)
+	//if err != nil {
+	//	return nil, -1, err
+	//}
+	//if total != r.numRows || int64(valuesRead) != r.numRows {
+	//	return nil, -1, fmt.Errorf("expect %d rows, but got total = %d and valuesRead = %d", r.numRows, total, valuesRead)
+	//}
+	//ret := make([]float32, int64(dim)*r.numRows)
+	//for i := 0; i < int(r.numRows); i++ {
+	//	copy(arrow.Float32Traits.CastToBytes(ret[i*dim:(i+1)*dim]), values[i])
+	//}
+	//return ret, dim, nil
+	return nil, 128, nil
 }
 
 func (r *PayloadReader) GetPayloadLengthFromReader() (int, error) {

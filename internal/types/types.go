@@ -775,6 +775,12 @@ type Proxy interface {
 
 	SendSearchResult(ctx context.Context, req *internalpb.SearchResults) (*commonpb.Status, error)
 	SendRetrieveResult(ctx context.Context, req *internalpb.RetrieveResults) (*commonpb.Status, error)
+
+	// SetRates TODO: add comments
+	SetRates(ctx context.Context, req *proxypb.SetRatesRequest) (*commonpb.Status, error)
+
+	// GetMetrics gets the metrics of the proxy.
+	GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 }
 
 // ProxyComponent defines the interface of proxy component.
@@ -1108,8 +1114,8 @@ type ProxyComponent interface {
 	// error is always nil
 	RegisterLink(ctx context.Context, request *milvuspb.RegisterLinkRequest) (*milvuspb.RegisterLinkResponse, error)
 
-	// GetMetrics gets the metrics of the proxy.
-	GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
+	//// GetMetrics gets the metrics of the proxy.
+	//GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 
 	// LoadBalance would do a load balancing operation between query nodes.
 	//

@@ -4073,3 +4073,8 @@ func (node *Proxy) RefreshPolicyInfoCache(ctx context.Context, request *proxypb.
 	//TODO implement me
 	panic("implement me")
 }
+
+func (node *Proxy) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) (*commonpb.Status, error) {
+	//TODO implement me
+	panic("implement me")
+}

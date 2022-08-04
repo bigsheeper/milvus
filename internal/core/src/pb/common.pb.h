@@ -49,7 +49,7 @@ struct TableStruct_common_2eproto {
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::AuxillaryParseTableField aux[]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
-  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[11]
+  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[12]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::FieldMetadata field_metadata[];
   static const ::PROTOBUF_NAMESPACE_ID::internal::SerializationTable serialization_table[];
@@ -89,6 +89,9 @@ extern PlaceholderValueDefaultTypeInternal _PlaceholderValue_default_instance_;
 class PrivilegeExt;
 class PrivilegeExtDefaultTypeInternal;
 extern PrivilegeExtDefaultTypeInternal _PrivilegeExt_default_instance_;
+class Rate;
+class RateDefaultTypeInternal;
+extern RateDefaultTypeInternal _Rate_default_instance_;
 class Status;
 class StatusDefaultTypeInternal;
 extern StatusDefaultTypeInternal _Status_default_instance_;
@@ -106,6 +109,7 @@ template<> ::milvus::proto::common::MsgHeader* Arena::CreateMaybeMessage<::milvu
 template<> ::milvus::proto::common::PlaceholderGroup* Arena::CreateMaybeMessage<::milvus::proto::common::PlaceholderGroup>(Arena*);
 template<> ::milvus::proto::common::PlaceholderValue* Arena::CreateMaybeMessage<::milvus::proto::common::PlaceholderValue>(Arena*);
 template<> ::milvus::proto::common::PrivilegeExt* Arena::CreateMaybeMessage<::milvus::proto::common::PrivilegeExt>(Arena*);
+template<> ::milvus::proto::common::Rate* Arena::CreateMaybeMessage<::milvus::proto::common::Rate>(Arena*);
 template<> ::milvus::proto::common::Status* Arena::CreateMaybeMessage<::milvus::proto::common::Status>(Arena*);
 PROTOBUF_NAMESPACE_CLOSE
 namespace milvus {
@@ -534,6 +538,37 @@ inline bool ResourcePrivilege_Parse(
     const std::string& name, ResourcePrivilege* value) {
   return ::PROTOBUF_NAMESPACE_ID::internal::ParseNamedEnum<ResourcePrivilege>(
     ResourcePrivilege_descriptor(), name, value);
+}
+enum RateType : int {
+  DDLCollection = 0,
+  DDLPartition = 1,
+  DDLIndex = 2,
+  DDLSegments = 3,
+  DMLInsert = 4,
+  DMLDelete = 5,
+  DQLSearch = 6,
+  DQLQuery = 7,
+  RateType_INT_MIN_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::min(),
+  RateType_INT_MAX_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::max()
+};
+bool RateType_IsValid(int value);
+constexpr RateType RateType_MIN = DDLCollection;
+constexpr RateType RateType_MAX = DQLQuery;
+constexpr int RateType_ARRAYSIZE = RateType_MAX + 1;
+
+const ::PROTOBUF_NAMESPACE_ID::EnumDescriptor* RateType_descriptor();
+template<typename T>
+inline const std::string& RateType_Name(T enum_t_value) {
+  static_assert(::std::is_same<T, RateType>::value ||
+    ::std::is_integral<T>::value,
+    "Incorrect type passed to function RateType_Name.");
+  return ::PROTOBUF_NAMESPACE_ID::internal::NameOfEnum(
+    RateType_descriptor(), enum_t_value);
+}
+inline bool RateType_Parse(
+    const std::string& name, RateType* value) {
+  return ::PROTOBUF_NAMESPACE_ID::internal::ParseNamedEnum<RateType>(
+    RateType_descriptor(), name, value);
 }
 // ===================================================================
 
@@ -2138,6 +2173,144 @@ class PrivilegeExt :
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_common_2eproto;
 };
+// -------------------------------------------------------------------
+
+class Rate :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:milvus.proto.common.Rate) */ {
+ public:
+  Rate();
+  virtual ~Rate();
+
+  Rate(const Rate& from);
+  Rate(Rate&& from) noexcept
+    : Rate() {
+    *this = ::std::move(from);
+  }
+
+  inline Rate& operator=(const Rate& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline Rate& operator=(Rate&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const Rate& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const Rate* internal_default_instance() {
+    return reinterpret_cast<const Rate*>(
+               &_Rate_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    11;
+
+  friend void swap(Rate& a, Rate& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(Rate* other) {
+    if (other == this) return;
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline Rate* New() const final {
+    return CreateMaybeMessage<Rate>(nullptr);
+  }
+
+  Rate* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<Rate>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const Rate& from);
+  void MergeFrom(const Rate& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  #if GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  #else
+  bool MergePartialFromCodedStream(
+      ::PROTOBUF_NAMESPACE_ID::io::CodedInputStream* input) final;
+  #endif  // GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
+  void SerializeWithCachedSizes(
+      ::PROTOBUF_NAMESPACE_ID::io::CodedOutputStream* output) const final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* InternalSerializeWithCachedSizesToArray(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(Rate* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "milvus.proto.common.Rate";
+  }
+  private:
+  inline ::PROTOBUF_NAMESPACE_ID::Arena* GetArenaNoVirtual() const {
+    return nullptr;
+  }
+  inline void* MaybeArenaPtr() const {
+    return nullptr;
+  }
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_common_2eproto);
+    return ::descriptor_table_common_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kRtFieldNumber = 1,
+    kRFieldNumber = 2,
+  };
+  // .milvus.proto.common.RateType rt = 1;
+  void clear_rt();
+  ::milvus::proto::common::RateType rt() const;
+  void set_rt(::milvus::proto::common::RateType value);
+
+  // float r = 2;
+  void clear_r();
+  float r() const;
+  void set_r(float value);
+
+  // @@protoc_insertion_point(class_scope:milvus.proto.common.Rate)
+ private:
+  class _Internal;
+
+  ::PROTOBUF_NAMESPACE_ID::internal::InternalMetadataWithArena _internal_metadata_;
+  int rt_;
+  float r_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_common_2eproto;
+};
 // ===================================================================
 
 static const int kPrivilegeExtObjFieldNumber = 1001;
@@ -2989,9 +3162,43 @@ inline void PrivilegeExt::set_resource_name_index(::PROTOBUF_NAMESPACE_ID::int32
   // @@protoc_insertion_point(field_set:milvus.proto.common.PrivilegeExt.resource_name_index)
 }
 
+// -------------------------------------------------------------------
+
+// Rate
+
+// .milvus.proto.common.RateType rt = 1;
+inline void Rate::clear_rt() {
+  rt_ = 0;
+}
+inline ::milvus::proto::common::RateType Rate::rt() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.common.Rate.rt)
+  return static_cast< ::milvus::proto::common::RateType >(rt_);
+}
+inline void Rate::set_rt(::milvus::proto::common::RateType value) {
+  
+  rt_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.rt)
+}
+
+// float r = 2;
+inline void Rate::clear_r() {
+  r_ = 0;
+}
+inline float Rate::r() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.common.Rate.r)
+  return r_;
+}
+inline void Rate::set_r(float value) {
+  
+  r_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.r)
+}
+
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
@@ -3075,6 +3282,11 @@ template <> struct is_proto_enum< ::milvus::proto::common::ResourcePrivilege> : 
 template <>
 inline const EnumDescriptor* GetEnumDescriptor< ::milvus::proto::common::ResourcePrivilege>() {
   return ::milvus::proto::common::ResourcePrivilege_descriptor();
+}
+template <> struct is_proto_enum< ::milvus::proto::common::RateType> : ::std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor< ::milvus::proto::common::RateType>() {
+  return ::milvus::proto::common::RateType_descriptor();
 }
 
 PROTOBUF_NAMESPACE_CLOSE

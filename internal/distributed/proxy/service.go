@@ -877,3 +877,7 @@ func (s *Server) RefreshPolicyInfoCache(ctx context.Context, request *proxypb.Re
 	//TODO implement me
 	panic("implement me")
 }
+
+func (s *Server) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) (*commonpb.Status, error) {
+	return s.proxy.SetRates(ctx, request)
+}

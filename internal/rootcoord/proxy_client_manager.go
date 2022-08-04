@@ -19,6 +19,7 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"sync"
 
 	"go.uber.org/zap"
@@ -201,6 +202,59 @@ func (p *proxyClientManager) UpdateCredentialCache(ctx context.Context, request 
 			}
 			if sta.ErrorCode != commonpb.ErrorCode_Success {
 				return fmt.Errorf("UpdateCredentialCache failed, proxyID = %d, err = %s", k, sta.Reason)
+			}
+			return nil
+		})
+	}
+	return group.Wait()
+}
+
+// TODO: return proxy metrics
+func (p *proxyClientManager) GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if len(p.proxyClient) == 0 {
+		log.Warn("proxy client is empty, GetMetrics will not send to any client")
+		return nil
+	}
+
+	group := &errgroup.Group{}
+	for k, v := range p.proxyClient {
+		k, v := k, v
+		group.Go(func() error {
+			rsp, err := v.GetMetrics(ctx, request)
+			if err != nil {
+				return fmt.Errorf("GetMetrics failed, proxyID = %d, err = %s", k, err)
+			}
+			if rsp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+				return fmt.Errorf("GetMetrics failed, proxyID = %d, err = %s", k, rsp.GetStatus().GetReason())
+			}
+			return nil
+		})
+	}
+	return group.Wait()
+}
+
+func (p *proxyClientManager) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if len(p.proxyClient) == 0 {
+		log.Warn("proxy client is empty, SetRates will not send to any client")
+		return nil
+	}
+
+	group := &errgroup.Group{}
+	for k, v := range p.proxyClient {
+		k, v := k, v
+		group.Go(func() error {
+			sta, err := v.SetRates(ctx, request)
+			if err != nil {
+				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, err)
+			}
+			if sta.ErrorCode != commonpb.ErrorCode_Success {
+				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, sta.Reason)
 			}
 			return nil
 		})

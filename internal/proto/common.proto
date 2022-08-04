@@ -299,3 +299,19 @@ message PrivilegeExt {
 extend google.protobuf.MessageOptions {
     PrivilegeExt privilege_ext_obj = 1001;
 }
+
+enum RateType {
+    DDLCollection = 0;
+    DDLPartition = 1;
+    DDLIndex = 2;
+    DDLSegments = 3; // flush, compaction and etc...
+    DMLInsert = 4;
+    DMLDelete = 5;
+    DQLSearch = 6;
+    DQLQuery = 7;
+}
+
+message Rate {
+    RateType rt = 1;
+    float r = 2;
+}

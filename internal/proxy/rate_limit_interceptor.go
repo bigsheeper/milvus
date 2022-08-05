@@ -11,8 +11,8 @@ import (
 	"reflect"
 )
 
-// UnaryServerInterceptor returns a new unary server interceptors that performs request rate limiting.
-func UnaryServerInterceptor(limiter Limiter) grpc.UnaryServerInterceptor {
+// RateLimitInterceptor returns a new unary server interceptors that performs request rate limiting.
+func RateLimitInterceptor(limiter Limiter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		rt, n, err := estimateRequestSize(req)
 		if err == nil {

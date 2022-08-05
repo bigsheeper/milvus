@@ -4075,6 +4075,16 @@ func (node *Proxy) RefreshPolicyInfoCache(ctx context.Context, request *proxypb.
 }
 
 func (node *Proxy) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) (*commonpb.Status, error) {
-	//TODO implement me
-	panic("implement me")
+	log.Debug("SetRates", zap.String("role", typeutil.ProxyRole), zap.Any("rates", request.GetRates()))
+	resp := &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_UnexpectedError,
+	}
+	if !node.checkHealthy() {
+		resp = unhealthyStatus()
+		return resp, nil
+	}
+
+	node.rateLimiter.setRates(request.GetRates())
+	resp.ErrorCode = commonpb.ErrorCode_Success
+	return resp, nil
 }

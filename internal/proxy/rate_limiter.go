@@ -1,0 +1,55 @@
+package proxy
+
+import (
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"golang.org/x/time/rate"
+	"time"
+)
+
+// TODO: config?
+const (
+	DDLBucketSize = 10
+	DMLBucketSize = 10 * 1024 // kilobytes
+	DQLBucketSize = 10 * 1024 // kilobytes
+)
+
+// Limiter defines the interface to perform request rate limiting.
+// If Limit function return true, the request will be rejected.
+// Otherwise, the request will pass.
+type Limiter interface {
+	Limit(rt commonpb.RateType, n int) bool
+}
+
+type RateLimiter struct {
+	limiters map[commonpb.RateType]*rate.Limiter
+}
+
+func (rl *RateLimiter) Limit(rt commonpb.RateType, n int) bool {
+	return rl.limiters[rt].AllowN(time.Now(), n)
+}
+
+func (rl *RateLimiter) setRates(rates []*commonpb.Rate) {
+	for _, r := range rates {
+		if _, ok := rl.limiters[r.GetRt()]; ok {
+			rl.limiters[r.GetRt()].SetLimit(rate.Limit(r.GetR()))
+		}
+	}
+}
+
+func (rl *RateLimiter) registerLimiters() {
+	rl.limiters[commonpb.RateType_DDLCollection] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLCollectionRate*1024), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DDLPartition] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLPartitionRate*1024), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DDLSegments] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLSegmentsRate*1024), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DMLInsert] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLInsertRate*1024), DMLBucketSize)
+	rl.limiters[commonpb.RateType_DMLDelete] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLDeleteRate*1024), DMLBucketSize)
+	rl.limiters[commonpb.RateType_DQLSearch] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLSearchRate*1024), DQLBucketSize)
+	rl.limiters[commonpb.RateType_DQLQuery] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLQueryRate*1024), DQLBucketSize)
+}
+
+func NewRateLimiter() *RateLimiter {
+	rl := &RateLimiter{
+		limiters: make(map[commonpb.RateType]*rate.Limiter),
+	}
+	rl.registerLimiters()
+	return rl
+}

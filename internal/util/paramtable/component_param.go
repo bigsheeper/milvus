@@ -40,7 +40,8 @@ type ComponentParam struct {
 	ServiceParam
 	once sync.Once
 
-	CommonCfg commonConfig
+	CommonCfg   commonConfig
+	QuotaConfig quotaConfig
 
 	RootCoordCfg  rootCoordConfig
 	ProxyCfg      proxyConfig

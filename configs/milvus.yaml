@@ -322,3 +322,24 @@ common:
     # tls mode values [0, 1, 2]
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
+
+quotaAndLimits:
+  ddlRate: # per minute
+    collectionRate: 1
+    partitionRate: 1
+    indexRate: 1
+    segmentsRate: 1
+
+  dmlRate:
+    insert: 10 # MB/s
+    delete: 1 # MB/s
+
+  dqlRate:
+    search: 2 # MB/s
+    query: 1 # MB/s
+
+  limits:
+    maxCollectionNum: 20 # TODO: add more
+
+  quotaCenterCollectInterval: 1000 # milliseconds
+  limitRWBy: throughput # limit dml and dql requests by, currently only support `throughput`, maybe `QPS`/`TPS` in the future

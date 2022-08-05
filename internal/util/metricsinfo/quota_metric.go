@@ -10,7 +10,7 @@ type QuotaMetrics struct {
 type RateMetric struct {
 	Rt         commonpb.RateType
 	QPS        int32
-	ThroughPut float32 // megabytes per second
+	ThroughPut float64 // megabytes per second
 }
 
 // MemMetric is memory infos in megabytes

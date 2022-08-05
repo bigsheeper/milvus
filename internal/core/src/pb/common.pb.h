@@ -2288,26 +2288,26 @@ class Rate :
   // accessors -------------------------------------------------------
 
   enum : int {
-    kRtFieldNumber = 1,
     kRFieldNumber = 2,
+    kRtFieldNumber = 1,
   };
+  // double r = 2;
+  void clear_r();
+  double r() const;
+  void set_r(double value);
+
   // .milvus.proto.common.RateType rt = 1;
   void clear_rt();
   ::milvus::proto::common::RateType rt() const;
   void set_rt(::milvus::proto::common::RateType value);
-
-  // float r = 2;
-  void clear_r();
-  float r() const;
-  void set_r(float value);
 
   // @@protoc_insertion_point(class_scope:milvus.proto.common.Rate)
  private:
   class _Internal;
 
   ::PROTOBUF_NAMESPACE_ID::internal::InternalMetadataWithArena _internal_metadata_;
+  double r_;
   int rt_;
-  float r_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_common_2eproto;
 };
@@ -3180,15 +3180,15 @@ inline void Rate::set_rt(::milvus::proto::common::RateType value) {
   // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.rt)
 }
 
-// float r = 2;
+// double r = 2;
 inline void Rate::clear_r() {
   r_ = 0;
 }
-inline float Rate::r() const {
+inline double Rate::r() const {
   // @@protoc_insertion_point(field_get:milvus.proto.common.Rate.r)
   return r_;
 }
-inline void Rate::set_r(float value) {
+inline void Rate::set_r(double value) {
   
   r_ = value;
   // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.r)

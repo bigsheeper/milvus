@@ -18,7 +18,6 @@ import (
 
 // TODO: get from config
 const (
-	QuotaCollectInterval   = 1
 	QuotaMemoryWaterMarker = 0.9
 	GetMetricsTimeout      = 10 // in seconds
 	SetRatesTimeout        = 10 // in seconds
@@ -48,7 +47,7 @@ func (q *QuotaCenter) Run() {
 		case <-q.ctx.Done():
 			fmt.Println("QuotaCenter exit")
 			return
-		case <-time.After(QuotaCollectInterval * time.Second):
+		case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
 			err := q.Collect()
 			if err != nil {
 				fmt.Println(fmt.Errorf("quotaCenter collect metrics failed"))
@@ -137,14 +136,14 @@ func (q *QuotaCenter) Collect() error {
 }
 
 func (q *QuotaCenter) Execute() error {
-	rateMap := map[commonpb.RateType]float32{
-		commonpb.RateType_DDLCollection: math.MaxFloat32,
-		commonpb.RateType_DDLPartition:  math.MaxFloat32,
-		commonpb.RateType_DDLIndex:      math.MaxFloat32,
-		commonpb.RateType_DMLDelete:     math.MaxFloat32,
-		commonpb.RateType_DMLInsert:     math.MaxFloat32,
-		commonpb.RateType_DQLSearch:     math.MaxFloat32,
-		commonpb.RateType_DQLQuery:      math.MaxFloat32,
+	rateMap := map[commonpb.RateType]float64{
+		commonpb.RateType_DDLCollection: math.MaxFloat64,
+		commonpb.RateType_DDLPartition:  math.MaxFloat64,
+		commonpb.RateType_DDLIndex:      math.MaxFloat64,
+		commonpb.RateType_DMLDelete:     math.MaxFloat64,
+		commonpb.RateType_DMLInsert:     math.MaxFloat64,
+		commonpb.RateType_DQLSearch:     math.MaxFloat64,
+		commonpb.RateType_DQLQuery:      math.MaxFloat64,
 	}
 
 	// disable write

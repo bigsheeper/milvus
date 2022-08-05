@@ -388,7 +388,7 @@ const char descriptor_table_protodef_common_2eproto[] PROTOBUF_SECTION_VARIABLE(
   "\022resource_privilege\030\002 \001(\0162&.milvus.proto"
   ".common.ResourcePrivilege\022\033\n\023resource_na"
   "me_index\030\003 \001(\005\"<\n\004Rate\022)\n\002rt\030\001 \001(\0162\035.mil"
-  "vus.proto.common.RateType\022\t\n\001r\030\002 \001(\002*\323\010\n"
+  "vus.proto.common.RateType\022\t\n\001r\030\002 \001(\001*\323\010\n"
   "\tErrorCode\022\013\n\007Success\020\000\022\023\n\017UnexpectedErr"
   "or\020\001\022\021\n\rConnectFailed\020\002\022\024\n\020PermissionDen"
   "ied\020\003\022\027\n\023CollectionNotExists\020\004\022\023\n\017Illega"
@@ -4341,16 +4341,16 @@ Rate::Rate(const Rate& from)
   : ::PROTOBUF_NAMESPACE_ID::Message(),
       _internal_metadata_(nullptr) {
   _internal_metadata_.MergeFrom(from._internal_metadata_);
-  ::memcpy(&rt_, &from.rt_,
-    static_cast<size_t>(reinterpret_cast<char*>(&r_) -
-    reinterpret_cast<char*>(&rt_)) + sizeof(r_));
+  ::memcpy(&r_, &from.r_,
+    static_cast<size_t>(reinterpret_cast<char*>(&rt_) -
+    reinterpret_cast<char*>(&r_)) + sizeof(rt_));
   // @@protoc_insertion_point(copy_constructor:milvus.proto.common.Rate)
 }
 
 void Rate::SharedCtor() {
-  ::memset(&rt_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&r_) -
-      reinterpret_cast<char*>(&rt_)) + sizeof(r_));
+  ::memset(&r_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&rt_) -
+      reinterpret_cast<char*>(&r_)) + sizeof(rt_));
 }
 
 Rate::~Rate() {
@@ -4376,9 +4376,9 @@ void Rate::Clear() {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
-  ::memset(&rt_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&r_) -
-      reinterpret_cast<char*>(&rt_)) + sizeof(r_));
+  ::memset(&r_, 0, static_cast<size_t>(
+      reinterpret_cast<char*>(&rt_) -
+      reinterpret_cast<char*>(&r_)) + sizeof(rt_));
   _internal_metadata_.Clear();
 }
 
@@ -4398,11 +4398,11 @@ const char* Rate::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::inter
           set_rt(static_cast<::milvus::proto::common::RateType>(val));
         } else goto handle_unusual;
         continue;
-      // float r = 2;
+      // double r = 2;
       case 2:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 21)) {
-          r_ = ::PROTOBUF_NAMESPACE_ID::internal::UnalignedLoad<float>(ptr);
-          ptr += sizeof(float);
+        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 17)) {
+          r_ = ::PROTOBUF_NAMESPACE_ID::internal::UnalignedLoad<double>(ptr);
+          ptr += sizeof(double);
         } else goto handle_unusual;
         continue;
       default: {
@@ -4449,12 +4449,12 @@ bool Rate::MergePartialFromCodedStream(
         break;
       }
 
-      // float r = 2;
+      // double r = 2;
       case 2: {
-        if (static_cast< ::PROTOBUF_NAMESPACE_ID::uint8>(tag) == (21 & 0xFF)) {
+        if (static_cast< ::PROTOBUF_NAMESPACE_ID::uint8>(tag) == (17 & 0xFF)) {
 
           DO_((::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::ReadPrimitive<
-                   float, ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::TYPE_FLOAT>(
+                   double, ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::TYPE_DOUBLE>(
                  input, &r_)));
         } else {
           goto handle_unusual;
@@ -4495,9 +4495,9 @@ void Rate::SerializeWithCachedSizes(
       1, this->rt(), output);
   }
 
-  // float r = 2;
+  // double r = 2;
   if (!(this->r() <= 0 && this->r() >= 0)) {
-    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteFloat(2, this->r(), output);
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteDouble(2, this->r(), output);
   }
 
   if (_internal_metadata_.have_unknown_fields()) {
@@ -4519,9 +4519,9 @@ void Rate::SerializeWithCachedSizes(
       1, this->rt(), target);
   }
 
-  // float r = 2;
+  // double r = 2;
   if (!(this->r() <= 0 && this->r() >= 0)) {
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteFloatToArray(2, this->r(), target);
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteDoubleToArray(2, this->r(), target);
   }
 
   if (_internal_metadata_.have_unknown_fields()) {
@@ -4545,15 +4545,15 @@ size_t Rate::ByteSizeLong() const {
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
 
+  // double r = 2;
+  if (!(this->r() <= 0 && this->r() >= 0)) {
+    total_size += 1 + 8;
+  }
+
   // .milvus.proto.common.RateType rt = 1;
   if (this->rt() != 0) {
     total_size += 1 +
       ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::EnumSize(this->rt());
-  }
-
-  // float r = 2;
-  if (!(this->r() <= 0 && this->r() >= 0)) {
-    total_size += 1 + 4;
   }
 
   int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
@@ -4583,11 +4583,11 @@ void Rate::MergeFrom(const Rate& from) {
   ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
-  if (from.rt() != 0) {
-    set_rt(from.rt());
-  }
   if (!(from.r() <= 0 && from.r() >= 0)) {
     set_r(from.r());
+  }
+  if (from.rt() != 0) {
+    set_rt(from.rt());
   }
 }
 
@@ -4612,8 +4612,8 @@ bool Rate::IsInitialized() const {
 void Rate::InternalSwap(Rate* other) {
   using std::swap;
   _internal_metadata_.Swap(&other->_internal_metadata_);
-  swap(rt_, other->rt_);
   swap(r_, other->r_);
+  swap(rt_, other->rt_);
 }
 
 ::PROTOBUF_NAMESPACE_ID::Metadata Rate::GetMetadata() const {

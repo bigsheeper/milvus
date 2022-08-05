@@ -313,5 +313,5 @@ enum RateType {
 
 message Rate {
     RateType rt = 1;
-    float r = 2;
+    double r = 2;
 }

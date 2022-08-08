@@ -485,12 +485,13 @@ inline bool ImportState_Parse(
 enum ObjectType : int {
   Collection = 0,
   Global = 1,
+  User = 2,
   ObjectType_INT_MIN_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::min(),
   ObjectType_INT_MAX_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::max()
 };
 bool ObjectType_IsValid(int value);
 constexpr ObjectType ObjectType_MIN = Collection;
-constexpr ObjectType ObjectType_MAX = Global;
+constexpr ObjectType ObjectType_MAX = User;
 constexpr int ObjectType_ARRAYSIZE = ObjectType_MAX + 1;
 
 const ::PROTOBUF_NAMESPACE_ID::EnumDescriptor* ObjectType_descriptor();
@@ -518,12 +519,27 @@ enum ObjectPrivilege : int {
   PrivilegeCompaction = 7,
   PrivilegeInsert = 8,
   PrivilegeDelete = 9,
+  PrivilegeGetStatistics = 10,
+  PrivilegeCreateIndex = 11,
+  PrivilegeIndexDetail = 12,
+  PrivilegeDropIndex = 13,
+  PrivilegeSearch = 14,
+  PrivilegeFlush = 15,
+  PrivilegeQuery = 16,
+  PrivilegeLoadBalance = 17,
+  PrivilegeImport = 18,
+  PrivilegeCreateOwnership = 19,
+  PrivilegeUpdateUser = 20,
+  PrivilegeDropOwnership = 21,
+  PrivilegeSelectOwnership = 22,
+  PrivilegeManageOwnership = 23,
+  PrivilegeSelectUser = 24,
   ObjectPrivilege_INT_MIN_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::min(),
   ObjectPrivilege_INT_MAX_SENTINEL_DO_NOT_USE_ = std::numeric_limits<::PROTOBUF_NAMESPACE_ID::int32>::max()
 };
 bool ObjectPrivilege_IsValid(int value);
 constexpr ObjectPrivilege ObjectPrivilege_MIN = PrivilegeAll;
-constexpr ObjectPrivilege ObjectPrivilege_MAX = PrivilegeDelete;
+constexpr ObjectPrivilege ObjectPrivilege_MAX = PrivilegeSelectUser;
 constexpr int ObjectPrivilege_ARRAYSIZE = ObjectPrivilege_MAX + 1;
 
 const ::PROTOBUF_NAMESPACE_ID::EnumDescriptor* ObjectPrivilege_descriptor();
@@ -2147,6 +2163,7 @@ class PrivilegeExt :
     kObjectTypeFieldNumber = 1,
     kObjectPrivilegeFieldNumber = 2,
     kObjectNameIndexFieldNumber = 3,
+    kObjectNameIndexsFieldNumber = 4,
   };
   // .milvus.proto.common.ObjectType object_type = 1;
   void clear_object_type();
@@ -2163,6 +2180,11 @@ class PrivilegeExt :
   ::PROTOBUF_NAMESPACE_ID::int32 object_name_index() const;
   void set_object_name_index(::PROTOBUF_NAMESPACE_ID::int32 value);
 
+  // int32 object_name_indexs = 4;
+  void clear_object_name_indexs();
+  ::PROTOBUF_NAMESPACE_ID::int32 object_name_indexs() const;
+  void set_object_name_indexs(::PROTOBUF_NAMESPACE_ID::int32 value);
+
   // @@protoc_insertion_point(class_scope:milvus.proto.common.PrivilegeExt)
  private:
   class _Internal;
@@ -2171,6 +2193,7 @@ class PrivilegeExt :
   int object_type_;
   int object_privilege_;
   ::PROTOBUF_NAMESPACE_ID::int32 object_name_index_;
+  ::PROTOBUF_NAMESPACE_ID::int32 object_name_indexs_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_common_2eproto;
 };
@@ -3163,36 +3186,18 @@ inline void PrivilegeExt::set_object_name_index(::PROTOBUF_NAMESPACE_ID::int32 v
   // @@protoc_insertion_point(field_set:milvus.proto.common.PrivilegeExt.object_name_index)
 }
 
-// -------------------------------------------------------------------
-
-// Rate
-
-// .milvus.proto.common.RateType rt = 1;
-inline void Rate::clear_rt() {
-  rt_ = 0;
+// int32 object_name_indexs = 4;
+inline void PrivilegeExt::clear_object_name_indexs() {
+  object_name_indexs_ = 0;
 }
-inline ::milvus::proto::common::RateType Rate::rt() const {
-  // @@protoc_insertion_point(field_get:milvus.proto.common.Rate.rt)
-  return static_cast< ::milvus::proto::common::RateType >(rt_);
+inline ::PROTOBUF_NAMESPACE_ID::int32 PrivilegeExt::object_name_indexs() const {
+  // @@protoc_insertion_point(field_get:milvus.proto.common.PrivilegeExt.object_name_indexs)
+  return object_name_indexs_;
 }
-inline void Rate::set_rt(::milvus::proto::common::RateType value) {
+inline void PrivilegeExt::set_object_name_indexs(::PROTOBUF_NAMESPACE_ID::int32 value) {
   
-  rt_ = value;
-  // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.rt)
-}
-
-// double r = 2;
-inline void Rate::clear_r() {
-  r_ = 0;
-}
-inline double Rate::r() const {
-  // @@protoc_insertion_point(field_get:milvus.proto.common.Rate.r)
-  return r_;
-}
-inline void Rate::set_r(double value) {
-  
-  r_ = value;
-  // @@protoc_insertion_point(field_set:milvus.proto.common.Rate.r)
+  object_name_indexs_ = value;
+  // @@protoc_insertion_point(field_set:milvus.proto.common.PrivilegeExt.object_name_indexs)
 }
 
 #ifdef __GNUC__

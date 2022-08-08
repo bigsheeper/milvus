@@ -6,6 +6,22 @@ import (
 	"time"
 )
 
+type LimitStrategy int32
+
+const (
+	Direct         LimitStrategy = 0
+	Warmup         LimitStrategy = 1
+	MemoryAdaptive LimitStrategy = 2
+	CpuAdaptive    LimitStrategy = 3
+)
+
+type LimitType int32
+
+const (
+	DisableRW  LimitType = 0
+	Throttling LimitType = 1
+)
+
 // TODO: config?
 const (
 	DDLBucketSize = 10

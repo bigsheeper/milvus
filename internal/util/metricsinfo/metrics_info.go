@@ -124,6 +124,7 @@ type ProxyConfiguration struct {
 type ProxyInfos struct {
 	BaseComponentInfos
 	SystemConfigurations ProxyConfiguration `json:"system_configurations"`
+	QuotaMetrics         QuotaMetrics       `json:"quota_metrics"`
 }
 
 // IndexNodeConfiguration records the configuration of IndexNode.

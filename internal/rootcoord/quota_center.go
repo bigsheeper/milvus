@@ -1,18 +1,30 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package rootcoord
 
 import (
 	"context"
 	"fmt"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
-	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"golang.org/x/sync/errgroup"
 	"math"
-	"sync"
 	"time"
 )
 
@@ -23,7 +35,23 @@ const (
 	SetRatesTimeout        = 10 // in seconds
 )
 
-const ()
+type controlBehavior int32
+
+const (
+	disableWrite controlBehavior = 0
+	disableRead  controlBehavior = 1
+	throttling   controlBehavior = 2
+)
+
+type quotaEvent int32
+
+const (
+	memoryReachWaterMarker quotaEvent = 0
+	tSafeDelayed           quotaEvent = 1
+	growingPredominated    quotaEvent = 2
+	dmlPerfChanged         quotaEvent = 3
+	dqlPerfChanged         quotaEvent = 4
+)
 
 type QuotaCenter struct {
 	ctx    context.Context
@@ -34,13 +62,12 @@ type QuotaCenter struct {
 	queryCoord types.QueryCoord
 	dataCoord  types.DataCoord
 
-	//// metrics
-	metricsMu sync.Mutex
-	metrics   []*metricsinfo.QuotaMetrics // TODO: sort to datanode, querynode, proxy?
-}
+	// metrics
+	queryNodeMetrics []*metricsinfo.QuotaMetrics
+	dataNodeMetrics  []*metricsinfo.QuotaMetrics
+	proxyMetrics     []*metricsinfo.QuotaMetrics
 
-type GetMetricsInterface interface {
-	GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
+	currentRates map[commonpb.RateType]float64
 }
 
 func (q *QuotaCenter) Run() {
@@ -50,7 +77,7 @@ func (q *QuotaCenter) Run() {
 			fmt.Println("QuotaCenter exit")
 			return
 		case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
-			err := q.Collect()
+			err := q.syncMetrics()
 			if err != nil {
 				fmt.Println(fmt.Errorf("quotaCenter collect metrics failed"))
 				continue
@@ -63,78 +90,32 @@ func (q *QuotaCenter) Run() {
 	}
 }
 
-func (q *QuotaCenter) Collect() error {
-	var rspsMu sync.Mutex
-	rsps := make([]*milvuspb.GetMetricsResponse, 0)
-	getMetrics := func(client GetMetricsInterface) error {
-		ctx, cancel := context.WithTimeout(q.ctx, time.Second*GetMetricsTimeout)
-		defer cancel()
-		timestamp := tsoutil.ComposeTSByTime(time.Now(), 0)
-		req := &milvuspb.GetMetricsRequest{
-			Base: &commonpb.MsgBase{
-				MsgType:   commonpb.MsgType_Undefined,
-				MsgID:     int64(timestamp),
-				Timestamp: timestamp,
-			},
-			Request: "", // TODO: get quota metrics only
-		}
-		rsp, err := client.GetMetrics(ctx, req)
-		if err != nil {
-			return err
-		}
-		if rsp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
-			return fmt.Errorf("quotaCenter call GetMetrics failed")
-		}
-		rspsMu.Lock()
-		rsps = append(rsps, rsp)
-		rspsMu.Unlock()
-		return nil
+func (q *QuotaCenter) doTriggerStrategy(ts quotaEvent) {
+	switch ts {
+	case memoryReachWaterMarker:
+		q.doControl(disableWrite)
+	case tSafeDelayed:
+		q.doControl(throttling)
+	case growingPredominated:
+		q.doControl(throttling)
+	case dmlPerfChanged:
+		q.doControl(throttling)
+	case dqlPerfChanged:
+		q.doControl(throttling)
 	}
+}
 
-	group := &errgroup.Group{}
-	group.Go(func() error { return getMetrics(q.dataCoord) })
-	group.Go(func() error { return getMetrics(q.queryCoord) })
-	// TODO: get proxy metrics
-	err := group.Wait()
-	if err != nil {
-		return err
-	}
+func (q *QuotaCenter) doControl(cb controlBehavior) {
+	switch cb {
+	case disableWrite:
+		q.currentRates[commonpb.RateType_DMLInsert] = 0
+		q.currentRates[commonpb.RateType_DMLDelete] = 0
+	case disableRead:
+		q.currentRates[commonpb.RateType_DQLSearch] = 0
+		q.currentRates[commonpb.RateType_DQLQuery] = 0
+	case throttling:
 
-	for _, rsp := range rsps {
-		name := rsp.GetComponentName()
-		switch name {
-		case typeutil.QueryCoordRole:
-			queryCoordTopo := &metricsinfo.QueryCoordTopology{}
-			err = metricsinfo.UnmarshalTopology(rsp.GetResponse(), queryCoordTopo)
-			if err != nil {
-				return err
-			}
-			for _, queryNodeMetric := range queryCoordTopo.Cluster.ConnectedNodes {
-				q.metricsMu.Lock()
-				q.metrics = append(q.metrics, &queryNodeMetric.QuotaMetrics)
-				q.metricsMu.Unlock()
-			}
-		case typeutil.DataCoordRole:
-			dataCoordTopo := &metricsinfo.DataCoordTopology{}
-			err = metricsinfo.UnmarshalTopology(rsp.GetResponse(), dataCoordTopo)
-			if err != nil {
-				return err
-			}
-			for _, dataNodeMetric := range dataCoordTopo.Cluster.ConnectedNodes {
-				q.metricsMu.Lock()
-				q.metrics = append(q.metrics, &dataNodeMetric.QuotaMetrics)
-				q.metricsMu.Unlock()
-			}
-		case typeutil.ProxyRole:
-			proxyMetrics := &metricsinfo.ProxyInfos{}
-			err = metricsinfo.UnmarshalComponentInfos(rsp.GetResponse(), proxyMetrics)
-			if err != nil {
-				return err
-			}
-			// TODO: handle proxy metrics
-		}
 	}
-	return nil
 }
 
 func (q *QuotaCenter) Execute() error {
@@ -204,7 +185,5 @@ func NewQuotaCenter(ctx context.Context,
 		proxies:    proxies,
 		queryCoord: queryCoord,
 		dataCoord:  dataCoord,
-
-		metrics: make([]*metricsinfo.QuotaMetrics, 0),
 	}
 }

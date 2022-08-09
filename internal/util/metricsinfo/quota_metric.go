@@ -10,6 +10,7 @@ type QuotaMetrics struct {
 type RateMetric struct {
 	Rt         commonpb.RateType
 	QPS        int32
+	TPS        int32
 	ThroughPut float64 // megabytes per second
 }
 

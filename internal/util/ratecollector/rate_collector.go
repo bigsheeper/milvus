@@ -13,111 +13,65 @@ package ratecollector
 
 import (
 	"fmt"
-	"math"
 	"sync"
 	"time"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 )
 
-// RateCollector helps to collect and calculate rates (like throughput, QPS, TPS, etc...),
-// It implements a sliding window with custom size and granularity to store rates.
-type RateCollector struct {
-	sync.Mutex
+const (
+	defaultWindow      = 10
+	defaultGranularity = 1
+)
 
-	window      time.Duration
-	granularity time.Duration
-	position    int
-	rates       []float64
+type RateCollector struct {
+	collectorsMu sync.Mutex
+	collectors   map[commonpb.RateType]*Collector
 
 	stopOnce sync.Once
-	stopC    chan struct{}
 }
 
-func NewRateCollector(window time.Duration, granularity time.Duration) (*RateCollector, error) {
-	if window == 0 || granularity == 0 {
-		return nil, fmt.Errorf("create RateCollector failed, window or granularity cannot be 0, window = %d, granularity = %d", window, granularity)
+func (r *RateCollector) AddCollector(rt commonpb.RateType) error {
+	r.collectorsMu.Lock()
+	defer r.collectorsMu.Unlock()
+	if _, ok := r.collectors[rt]; !ok {
+		return fmt.Errorf("collector with rateType %s is existed", rt.String())
 	}
-	if window < granularity || window%granularity != 0 {
-		return nil, fmt.Errorf("create RateCollector failed, window has to be a multiplier of the granularity, window = %d, granularity = %d", window, granularity)
+	collector, err := NewCollector(defaultWindow*time.Second, defaultGranularity*time.Second)
+	if err != nil {
+		return err
 	}
-	rc := &RateCollector{
-		window:      window,
-		granularity: granularity,
-		position:    0,
-		rates:       make([]float64, window/granularity),
-	}
-	return rc, nil
+	r.collectors[rt] = collector
+	collector.Start()
+	return nil
 }
 
-func (r *RateCollector) Start() {
-	go r.shift()
+func (r *RateCollector) RemoveCollector(rt commonpb.RateType) {
+	r.collectorsMu.Lock()
+	defer r.collectorsMu.Unlock()
+	if _, ok := r.collectors[rt]; ok {
+		r.collectors[rt].Stop()
+		delete(r.collectors, rt)
+	}
 }
 
-func (r *RateCollector) Stop() {
+func (r *RateCollector) Add(rt commonpb.RateType, value float64) {
+	
+}
+
+func (r *RateCollector) Close() {
 	r.stopOnce.Do(func() {
-		r.stopC <- struct{}{}
+		r.collectorsMu.Lock()
+		defer r.collectorsMu.Unlock()
+		for _, c := range r.collectors {
+			c.Stop()
+		}
+		r.collectors = nil
 	})
 }
 
-func (r *RateCollector) Add(value float64) {
-	r.Lock()
-	defer r.Unlock()
-	r.rates[r.position] += value
-}
-
-func (r *RateCollector) Avg() float64 {
-	r.Lock()
-	defer r.Unlock()
-	totalRate := float64(0)
-	for _, rate := range r.rates {
-		totalRate += rate
-	}
-	return totalRate / float64(len(r.rates))
-}
-
-func (r *RateCollector) Max() float64 {
-	r.Lock()
-	defer r.Unlock()
-	maxRate := float64(0)
-	for _, rate := range r.rates {
-		if rate > maxRate {
-			maxRate = rate
-		}
-	}
-	return maxRate
-}
-
-func (r *RateCollector) Min() float64 {
-	r.Lock()
-	defer r.Unlock()
-	minRate := math.MaxFloat64
-	for _, rate := range r.rates {
-		if rate < minRate {
-			minRate = rate
-		}
-	}
-	return minRate
-}
-
-func (r *RateCollector) Newest() float64 {
-	r.Lock()
-	defer r.Unlock()
-	return r.rates[r.position]
-}
-
-func (r *RateCollector) shift() {
-	ticker := time.NewTicker(r.granularity)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-r.stopC:
-			return
-		case <-ticker.C:
-			r.Lock()
-			if r.position = r.position + 1; r.position >= int(r.window/r.granularity) {
-				r.position = 0
-			}
-			r.rates[r.position] = 0
-			r.Unlock()
-		}
+func NewRateCollector() *RateCollector {
+	return &RateCollector{
+		collectors: make(map[commonpb.RateType]*Collector),
 	}
 }

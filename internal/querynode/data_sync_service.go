@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"sync"
 
 	"go.uber.org/zap"
@@ -36,9 +37,10 @@ type dataSyncService struct {
 	dmlChannel2FlowGraph   map[Channel]*queryNodeFlowGraph
 	deltaChannel2FlowGraph map[Channel]*queryNodeFlowGraph
 
-	metaReplica  ReplicaInterface
-	tSafeReplica TSafeReplicaInterface
-	msFactory    msgstream.Factory
+	metaReplica   ReplicaInterface
+	tSafeReplica  TSafeReplicaInterface
+	rateCollector *ratecollector.RateCollector
+	msFactory     msgstream.Factory
 }
 
 // checkReplica used to check replica info before init flow graph, it's a private method of dataSyncService
@@ -83,6 +85,7 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 			collectionID,
 			dsService.metaReplica,
 			dsService.tSafeReplica,
+			dsService.rateCollector,
 			channel,
 			dsService.msFactory)
 		if err != nil {
@@ -127,6 +130,7 @@ func (dsService *dataSyncService) addFlowGraphsForDeltaChannels(collectionID Uni
 			collectionID,
 			dsService.metaReplica,
 			dsService.tSafeReplica,
+			dsService.rateCollector,
 			channel,
 			dsService.msFactory)
 		if err != nil {
@@ -241,6 +245,7 @@ func (dsService *dataSyncService) removeFlowGraphsByDeltaChannels(channels []Cha
 func newDataSyncService(ctx context.Context,
 	metaReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
+	rateCollector *ratecollector.RateCollector,
 	factory msgstream.Factory) *dataSyncService {
 
 	return &dataSyncService{
@@ -249,6 +254,7 @@ func newDataSyncService(ctx context.Context,
 		deltaChannel2FlowGraph: make(map[Channel]*queryNodeFlowGraph),
 		metaReplica:            metaReplica,
 		tSafeReplica:           tSafeReplica,
+		rateCollector:          rateCollector,
 		msFactory:              factory,
 	}
 }

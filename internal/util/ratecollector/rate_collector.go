@@ -20,6 +20,11 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 )
 
+const (
+	DefaultWindow      = 10
+	DefaultGranularity = 1
+)
+
 // RateCollector helps to collect and calculate values (like throughput, QPS, TPS, etc...),
 // It implements a sliding window with custom size and granularity to store values.
 type RateCollector struct {

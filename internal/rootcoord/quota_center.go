@@ -129,27 +129,27 @@ func (q *QuotaCenter) Execute() error {
 		commonpb.RateType_DQLQuery:      math.MaxFloat64,
 	}
 
-	// disable write
-	for _, metric := range q.metrics {
-		for _, mm := range metric.Mms {
-			if float64(mm.TotalMem-mm.FreeMem)/float64(mm.TotalMem) > QuotaMemoryWaterMarker {
-				rateMap[commonpb.RateType_DMLInsert] = 0
-				rateMap[commonpb.RateType_DMLDelete] = 0
-				break
-			}
-		}
-	}
-
-	// backpressure
-	for _, metric := range q.metrics {
-		for _, rm := range metric.Rms {
-			if _, ok := rateMap[rm.Rt]; ok {
-				if rm.ThroughPut > 0 && rm.ThroughPut < rateMap[rm.Rt] {
-					rateMap[rm.Rt] = rm.ThroughPut
-				}
-			}
-		}
-	}
+	//// disable write
+	//for _, metric := range q.metrics {
+	//	for _, mm := range metric.Mms {
+	//		if float64(mm.TotalMem-mm.FreeMem)/float64(mm.TotalMem) > QuotaMemoryWaterMarker {
+	//			rateMap[commonpb.RateType_DMLInsert] = 0
+	//			rateMap[commonpb.RateType_DMLDelete] = 0
+	//			break
+	//		}
+	//	}
+	//}
+	//
+	//// backpressure
+	//for _, metric := range q.metrics {
+	//	for _, rm := range metric.Rms {
+	//		if _, ok := rateMap[rm.Rt]; ok {
+	//			if rm.ThroughPut > 0 && rm.ThroughPut < rateMap[rm.Rt] {
+	//				rateMap[rm.Rt] = rm.ThroughPut
+	//			}
+	//		}
+	//	}
+	//}
 
 	// notify proxies to set rates
 	ctx, cancel := context.WithTimeout(q.ctx, time.Second*GetMetricsTimeout)

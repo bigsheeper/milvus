@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"sync"
 
 	"go.uber.org/zap"
@@ -771,6 +772,8 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *queryPb.Se
 	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel).Inc()
 	metrics.QueryNodeSearchNQ.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(req.Req.GetNq()))
 	metrics.QueryNodeSearchTopK.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(req.Req.GetTopk()))
+
+	node.rateCollector.Add(commonpb.RateType_DQLSearch, float64(proto.Size(req)))
 	return ret, nil
 }
 
@@ -969,6 +972,8 @@ func (node *QueryNode) Query(ctx context.Context, req *querypb.QueryRequest) (*i
 		failRet.Status.Reason = err.Error()
 		return failRet, nil
 	}
+
+	node.rateCollector.Add(commonpb.RateType_DQLQuery, float64(proto.Size(req)))
 	return ret, nil
 }
 

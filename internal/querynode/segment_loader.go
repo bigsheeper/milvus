@@ -25,6 +25,7 @@ import (
 	"runtime/debug"
 	"strconv"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 
@@ -43,6 +44,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/concurrency"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 )
 
@@ -58,6 +60,8 @@ type segmentLoader struct {
 
 	cm     storage.ChunkManager // minio cm
 	etcdKV *etcdkv.EtcdKV
+
+	rateCollector *ratecollector.RateCollector
 
 	ioPool  *concurrency.Pool
 	cpuPool *concurrency.Pool
@@ -498,7 +502,15 @@ func (loader *segmentLoader) loadFieldIndexData(segment *Segment, indexInfo *que
 	if err != nil {
 		return err
 	}
-	return segment.segmentLoadIndexData(indexBuffer, indexInfo, fieldType)
+	err = segment.segmentLoadIndexData(indexBuffer, indexInfo, fieldType)
+	if err != nil {
+		return err
+	}
+
+	for _, buf := range indexBuffer {
+		loader.rateCollector.Add(commonpb.RateType_DMLInsert, float64(len(buf)))
+	}
+	return nil
 }
 
 func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
@@ -552,6 +564,11 @@ func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
 	}
 	log.Info("Do insert done fro growing segment ", zap.Int("len", numOfRecords), zap.Int64("segmentID", segment.ID()), zap.Int64("collectionID", segment.collectionID))
 
+	// 4. update rateCollector
+	loader.rateCollector.Add(commonpb.RateType_DMLInsert, float64(len(ids)*8))
+	loader.rateCollector.Add(commonpb.RateType_DMLInsert, float64(len(timestamps)*8))
+	loader.rateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(insertRecord)))
+
 	return nil
 }
 
@@ -574,6 +591,7 @@ func (loader *segmentLoader) loadSealedSegments(segment *Segment, insertData *st
 			return err
 		}
 	}
+	loader.rateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(insertRecord)))
 	return nil
 }
 
@@ -637,6 +655,10 @@ func (loader *segmentLoader) loadDeltaLogs(segment *Segment, deltaLogs []*datapb
 	err = segment.segmentLoadDeletedRecord(deltaData.Pks, deltaData.Tss, deltaData.RowCount)
 	if err != nil {
 		return err
+	}
+
+	for _, blob := range blobs {
+		loader.rateCollector.Add(commonpb.RateType_DMLDelete, float64(len(blob.Value)))
 	}
 	return nil
 }
@@ -814,6 +836,7 @@ func (loader *segmentLoader) checkSegmentSize(collectionID UniqueID, segmentLoad
 func newSegmentLoader(
 	metaReplica ReplicaInterface,
 	etcdKV *etcdkv.EtcdKV,
+	rateCollector *ratecollector.RateCollector,
 	cm storage.ChunkManager,
 	factory msgstream.Factory) *segmentLoader {
 
@@ -846,6 +869,8 @@ func newSegmentLoader(
 
 		cm:     cm,
 		etcdKV: etcdKV,
+
+		rateCollector: rateCollector,
 
 		// init them later
 		ioPool:  ioPool,

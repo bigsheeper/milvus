@@ -21,12 +21,15 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/trace"
 )
 
@@ -40,9 +43,10 @@ var newVarCharPrimaryKey = storage.NewVarCharPrimaryKey
 // deleteNode is the one of nodes in delta flow graph
 type deleteNode struct {
 	baseNode
-	collectionID UniqueID
-	metaReplica  ReplicaInterface // historical
-	channel      Channel
+	collectionID  UniqueID
+	metaReplica   ReplicaInterface // historical
+	channel       Channel
+	rateCollector *ratecollector.RateCollector
 }
 
 // Name returns the name of deleteNode
@@ -148,6 +152,11 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 	wg.Wait()
 
+	// 4. update rateCollector
+	for _, delMsg := range dMsg.deleteMessages {
+		dNode.rateCollector.Add(commonpb.RateType_DMLDelete, float64(proto.Size(&delMsg.DeleteRequest)))
+	}
+
 	var res Msg = &serviceTimeMsg{
 		timeRange: dMsg.timeRange,
 	}
@@ -184,7 +193,7 @@ func (dNode *deleteNode) delete(deleteData *deleteData, segmentID UniqueID, wg *
 }
 
 // newDeleteNode returns a new deleteNode
-func newDeleteNode(metaReplica ReplicaInterface, collectionID UniqueID, channel Channel) *deleteNode {
+func newDeleteNode(metaReplica ReplicaInterface, rateCollector *ratecollector.RateCollector, collectionID UniqueID, channel Channel) *deleteNode {
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
@@ -193,9 +202,10 @@ func newDeleteNode(metaReplica ReplicaInterface, collectionID UniqueID, channel 
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &deleteNode{
-		baseNode:     baseNode,
-		collectionID: collectionID,
-		metaReplica:  metaReplica,
-		channel:      channel,
+		baseNode:      baseNode,
+		collectionID:  collectionID,
+		metaReplica:   metaReplica,
+		rateCollector: rateCollector,
+		channel:       channel,
 	}
 }

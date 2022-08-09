@@ -29,6 +29,8 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"os"
 	"path"
 	"path/filepath"
@@ -99,6 +101,9 @@ type QueryNode struct {
 
 	// etcd client
 	etcdCli *clientv3.Client
+
+	// rateCollector
+	rateCollector *ratecollector.RateCollector
 
 	factory   dependency.Factory
 	scheduler *taskScheduler
@@ -226,15 +231,32 @@ func (node *QueryNode) Init() error {
 		node.etcdKV = etcdkv.NewEtcdKV(node.etcdCli, Params.EtcdCfg.MetaRootPath)
 		log.Info("queryNode try to connect etcd success", zap.Any("MetaRootPath", Params.EtcdCfg.MetaRootPath))
 
+		node.rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+		if err != nil {
+			log.Error("QueryNode create rateCollector failed", zap.Error(err))
+			initError = err
+			return
+		}
+		node.rateCollector.RegisterForRateType(commonpb.RateType_DMLInsert)
+		node.rateCollector.RegisterForRateType(commonpb.RateType_DMLDelete)
+		node.rateCollector.RegisterForRateType(commonpb.RateType_DQLSearch)
+		node.rateCollector.RegisterForRateType(commonpb.RateType_DQLQuery)
+
 		node.metaReplica = newCollectionReplica()
 
 		node.loader = newSegmentLoader(
 			node.metaReplica,
 			node.etcdKV,
+			node.rateCollector,
 			node.vectorStorage,
 			node.factory)
 
-		node.dataSyncService = newDataSyncService(node.queryNodeLoopCtx, node.metaReplica, node.tSafeReplica, node.factory)
+		node.dataSyncService = newDataSyncService(
+			node.queryNodeLoopCtx,
+			node.metaReplica,
+			node.tSafeReplica,
+			node.rateCollector,
+			node.factory)
 
 		node.InitSegcore()
 

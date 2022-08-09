@@ -20,6 +20,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/golang/protobuf/proto"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"io"
 	"reflect"
 	"sort"
@@ -43,9 +46,10 @@ import (
 // insertNode is one of the nodes in query flow graph
 type insertNode struct {
 	baseNode
-	collectionID UniqueID
-	metaReplica  ReplicaInterface // streaming
-	channel      Channel
+	collectionID  UniqueID
+	metaReplica   ReplicaInterface // streaming
+	channel       Channel
+	rateCollector *ratecollector.RateCollector
 }
 
 // insertData stores the valid insert data
@@ -213,6 +217,20 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 	wg.Wait()
 
+	// 4. update rateCollector
+	rows := 0
+	for _, data := range iData.insertIDs {
+		rows += len(data)
+	}
+	sizePerRecord, err := typeutil.EstimateSizePerRecord(collection.Schema())
+	if err != nil {
+		log.Error("insert node estimated size failed",
+			zap.Int64("collectionID", iNode.collectionID),
+			zap.String("channel", iNode.channel))
+	} else {
+		iNode.rateCollector.Add(commonpb.RateType_DMLInsert, float64(rows*sizePerRecord))
+	}
+
 	delData := &deleteData{
 		deleteIDs:        make(map[UniqueID][]primaryKey),
 		deleteTimestamps: make(map[UniqueID][]Timestamp),
@@ -264,6 +282,8 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		}()
 	}
 	wg.Wait()
+
+	proto.Size()
 
 	var res Msg = &serviceTimeMsg{
 		timeRange: iMsg.timeRange,

@@ -773,7 +773,7 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *queryPb.Se
 	metrics.QueryNodeSearchNQ.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(req.Req.GetNq()))
 	metrics.QueryNodeSearchTopK.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Observe(float64(req.Req.GetTopk()))
 
-	node.rateCollector.Add(commonpb.RateType_DQLSearch, float64(proto.Size(req)))
+	rateCollector.Add(commonpb.RateType_DQLSearch, float64(proto.Size(req)))
 	return ret, nil
 }
 
@@ -973,7 +973,7 @@ func (node *QueryNode) Query(ctx context.Context, req *querypb.QueryRequest) (*i
 		return failRet, nil
 	}
 
-	node.rateCollector.Add(commonpb.RateType_DQLQuery, float64(proto.Size(req)))
+	rateCollector.Add(commonpb.RateType_DQLQuery, float64(proto.Size(req)))
 	return ret, nil
 }
 

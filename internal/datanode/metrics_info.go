@@ -25,8 +25,37 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
+	// TODO: get newest as default, support get by other strategy
+	insertRate, err := rateCollector.Newest(commonpb.RateType_DMLInsert)
+	if err != nil {
+		return nil, err
+	}
+	deleteRate, err := rateCollector.Newest(commonpb.RateType_DMLDelete)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: return throughput for now, support more types in the future
+	rms := []metricsinfo.RateMetric{
+		{Rt: commonpb.RateType_DMLInsert, ThroughPut: insertRate},
+		{Rt: commonpb.RateType_DMLDelete, ThroughPut: deleteRate},
+	}
+
+	return &metricsinfo.QuotaMetrics{
+		Rms: rms,
+		Mm:  metricsinfo.MemMetric{},
+	}, nil
+}
+
 func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	// TODO(dragondriver): add more metrics
+	usedMem := metricsinfo.GetUsedMemoryCount()
+	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	quotaMetrics.Mm.UsedMem = usedMem
+	quotaMetrics.Mm.TotalMem = totalMem
+
 	nodeInfos := metricsinfo.DataNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
@@ -34,8 +63,8 @@ func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.Ge
 				IP:           node.session.Address,
 				CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
 				CPUCoreUsage: metricsinfo.GetCPUUsage(),
-				Memory:       metricsinfo.GetMemoryCount(),
-				MemoryUsage:  metricsinfo.GetUsedMemoryCount(),
+				Memory:       totalMem,
+				MemoryUsage:  usedMem,
 				Disk:         metricsinfo.GetDiskCount(),
 				DiskUsage:    metricsinfo.GetDiskUsage(),
 			},
@@ -48,6 +77,7 @@ func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.Ge
 		SystemConfigurations: metricsinfo.DataNodeConfiguration{
 			FlushInsertBufferSize: Params.DataNodeCfg.FlushInsertBufferSize,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)

@@ -48,21 +48,21 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
-func getQuotaMetrics(node *QueryNode) (*metricsinfo.QuotaMetrics, error) {
+func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
 	// TODO: get newest as default, support get by other strategy
-	insertRate, err := node.rateCollector.Newest(commonpb.RateType_DMLInsert)
+	insertRate, err := rateCollector.Newest(commonpb.RateType_DMLInsert)
 	if err != nil {
 		return nil, err
 	}
-	deleteRate, err := node.rateCollector.Newest(commonpb.RateType_DMLDelete)
+	deleteRate, err := rateCollector.Newest(commonpb.RateType_DMLDelete)
 	if err != nil {
 		return nil, err
 	}
-	searchRate, err := node.rateCollector.Newest(commonpb.RateType_DQLSearch)
+	searchRate, err := rateCollector.Newest(commonpb.RateType_DQLSearch)
 	if err != nil {
 		return nil, err
 	}
-	queryRate, err := node.rateCollector.Newest(commonpb.RateType_DQLQuery)
+	queryRate, err := rateCollector.Newest(commonpb.RateType_DQLQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 	usedMem := metricsinfo.GetUsedMemoryCount()
 	totalMem := metricsinfo.GetMemoryCount()
 
-	quotaMetrics, err := getQuotaMetrics(node)
+	quotaMetrics, err := getQuotaMetrics()
 	quotaMetrics.Mm.UsedMem = usedMem
 	quotaMetrics.Mm.TotalMem = totalMem
 

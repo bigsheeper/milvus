@@ -13,65 +13,137 @@ package ratecollector
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 )
 
-const (
-	defaultWindow      = 10
-	defaultGranularity = 1
-)
-
+// RateCollector helps to collect and calculate values (like throughput, QPS, TPS, etc...),
+// It implements a sliding window with custom size and granularity to store values.
 type RateCollector struct {
-	collectorsMu sync.Mutex
-	collectors   map[commonpb.RateType]*Collector
+	sync.Mutex
+
+	window      time.Duration
+	granularity time.Duration
+	position    int
+	values      map[commonpb.RateType][]float64
 
 	stopOnce sync.Once
+	stopC    chan struct{}
 }
 
-func (r *RateCollector) AddCollector(rt commonpb.RateType) error {
-	r.collectorsMu.Lock()
-	defer r.collectorsMu.Unlock()
-	if _, ok := r.collectors[rt]; !ok {
-		return fmt.Errorf("collector with rateType %s is existed", rt.String())
+func NewRateCollector(window time.Duration, granularity time.Duration) (*RateCollector, error) {
+	if window == 0 || granularity == 0 {
+		return nil, fmt.Errorf("create RateCollector failed, window or granularity cannot be 0, window = %d, granularity = %d", window, granularity)
 	}
-	collector, err := NewCollector(defaultWindow*time.Second, defaultGranularity*time.Second)
-	if err != nil {
-		return err
+	if window < granularity || window%granularity != 0 {
+		return nil, fmt.Errorf("create RateCollector failed, window has to be a multiplier of the granularity, window = %d, granularity = %d", window, granularity)
 	}
-	r.collectors[rt] = collector
-	collector.Start()
-	return nil
+	rc := &RateCollector{
+		window:      window,
+		granularity: granularity,
+		position:    0,
+		values:      make(map[commonpb.RateType][]float64),
+	}
+	return rc, nil
 }
 
-func (r *RateCollector) RemoveCollector(rt commonpb.RateType) {
-	r.collectorsMu.Lock()
-	defer r.collectorsMu.Unlock()
-	if _, ok := r.collectors[rt]; ok {
-		r.collectors[rt].Stop()
-		delete(r.collectors, rt)
+func (r *RateCollector) RegisterForRateType(rt commonpb.RateType) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; !ok {
+		r.values[rt] = make([]float64, int(r.window/r.granularity))
 	}
 }
 
-func (r *RateCollector) Add(rt commonpb.RateType, value float64) {
-	
+func (r *RateCollector) Start() {
+	go r.shift()
 }
 
-func (r *RateCollector) Close() {
+func (r *RateCollector) Stop() {
 	r.stopOnce.Do(func() {
-		r.collectorsMu.Lock()
-		defer r.collectorsMu.Unlock()
-		for _, c := range r.collectors {
-			c.Stop()
-		}
-		r.collectors = nil
+		r.stopC <- struct{}{}
 	})
 }
 
-func NewRateCollector() *RateCollector {
-	return &RateCollector{
-		collectors: make(map[commonpb.RateType]*Collector),
+func (r *RateCollector) Add(rt commonpb.RateType, value float64) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		r.values[rt][r.position] += value
+	}
+}
+
+func (r *RateCollector) Avg(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		total := float64(0)
+		for _, v := range r.values[rt] {
+			total += v
+		}
+		return total / float64(len(r.values)), nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
+func (r *RateCollector) Max(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		max := float64(0)
+		for _, v := range r.values[rt] {
+			if v > max {
+				max = v
+			}
+		}
+		return max, nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
+func (r *RateCollector) Min(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		min := math.MaxFloat64
+		for _, v := range r.values[rt] {
+			if v < min {
+				min = v
+			}
+		}
+		return min, nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
+func (r *RateCollector) Newest(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		return r.values[rt][r.position], nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
+func (r *RateCollector) shift() {
+	ticker := time.NewTicker(r.granularity)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.stopC:
+			return
+		case <-ticker.C:
+			r.Lock()
+			if r.position = r.position + 1; r.position >= int(r.window/r.granularity) {
+				r.position = 0
+			}
+			for rt := range r.values {
+				r.values[rt][r.position] = 0
+			}
+			r.Unlock()
+		}
 	}
 }

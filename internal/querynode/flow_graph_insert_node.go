@@ -218,17 +218,8 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	wg.Wait()
 
 	// 4. update rateCollector
-	rows := 0
-	for _, data := range iData.insertIDs {
-		rows += len(data)
-	}
-	sizePerRecord, err := typeutil.EstimateSizePerRecord(collection.Schema())
-	if err != nil {
-		log.Error("insert node estimated size failed",
-			zap.Int64("collectionID", iNode.collectionID),
-			zap.String("channel", iNode.channel))
-	} else {
-		iNode.rateCollector.Add(commonpb.RateType_DMLInsert, float64(rows*sizePerRecord))
+	for _, msg := range iMsg.insertMessages {
+		iNode.rateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(&msg.InsertRequest)))
 	}
 
 	delData := &deleteData{
@@ -283,7 +274,10 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 	wg.Wait()
 
-	proto.Size()
+	// 4. update rateCollector
+	for _, delMsg := range iMsg.deleteMessages {
+		iNode.rateCollector.Add(commonpb.RateType_DMLDelete, float64(proto.Size(&delMsg.DeleteRequest)))
+	}
 
 	var res Msg = &serviceTimeMsg{
 		timeRange: iMsg.timeRange,

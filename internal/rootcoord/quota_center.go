@@ -131,7 +131,7 @@ func (q *QuotaCenter) Execute() error {
 
 	//// disable write
 	//for _, metric := range q.metrics {
-	//	for _, mm := range metric.Mms {
+	//	for _, mm := range metric.Mm {
 	//		if float64(mm.TotalMem-mm.FreeMem)/float64(mm.TotalMem) > QuotaMemoryWaterMarker {
 	//			rateMap[commonpb.RateType_DMLInsert] = 0
 	//			rateMap[commonpb.RateType_DMLDelete] = 0

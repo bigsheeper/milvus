@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"io"
 	"reflect"
 	"sort"
@@ -46,10 +45,9 @@ import (
 // insertNode is one of the nodes in query flow graph
 type insertNode struct {
 	baseNode
-	collectionID  UniqueID
-	metaReplica   ReplicaInterface // streaming
-	channel       Channel
-	rateCollector *ratecollector.RateCollector
+	collectionID UniqueID
+	metaReplica  ReplicaInterface // streaming
+	channel      Channel
 }
 
 // insertData stores the valid insert data
@@ -219,7 +217,7 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 
 	// 4. update rateCollector
 	for _, msg := range iMsg.insertMessages {
-		iNode.rateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(&msg.InsertRequest)))
+		rateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(&msg.InsertRequest)))
 	}
 
 	delData := &deleteData{
@@ -276,7 +274,7 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 
 	// 4. update rateCollector
 	for _, delMsg := range iMsg.deleteMessages {
-		iNode.rateCollector.Add(commonpb.RateType_DMLDelete, float64(proto.Size(&delMsg.DeleteRequest)))
+		rateCollector.Add(commonpb.RateType_DMLDelete, float64(proto.Size(&delMsg.DeleteRequest)))
 	}
 
 	var res Msg = &serviceTimeMsg{
@@ -519,7 +517,7 @@ func getPKsFromColumnBasedInsertMsg(msg *msgstream.InsertMsg, schema *schemapb.C
 }
 
 // newInsertNode returns a new insertNode
-func newInsertNode(metaReplica ReplicaInterface, rateCollector *ratecollector.RateCollector, collectionID UniqueID, channel Channel) *insertNode {
+func newInsertNode(metaReplica ReplicaInterface, collectionID UniqueID, channel Channel) *insertNode {
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism
 
@@ -528,10 +526,9 @@ func newInsertNode(metaReplica ReplicaInterface, rateCollector *ratecollector.Ra
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &insertNode{
-		baseNode:      baseNode,
-		collectionID:  collectionID,
-		metaReplica:   metaReplica,
-		rateCollector: rateCollector,
-		channel:       channel,
+		baseNode:     baseNode,
+		collectionID: collectionID,
+		metaReplica:  metaReplica,
+		channel:      channel,
 	}
 }

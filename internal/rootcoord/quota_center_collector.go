@@ -89,7 +89,7 @@ func (q *QuotaCenter) syncMetrics() error {
 				return err
 			}
 			for _, queryNodeMetric := range queryCoordTopo.Cluster.ConnectedNodes {
-				q.queryNodeMetrics = append(q.queryNodeMetrics, &queryNodeMetric.QuotaMetrics)
+				q.queryNodeMetrics = append(q.queryNodeMetrics, queryNodeMetric.QuotaMetrics)
 			}
 		case typeutil.DataCoordRole:
 			dataCoordTopo := &metricsinfo.DataCoordTopology{}
@@ -98,7 +98,7 @@ func (q *QuotaCenter) syncMetrics() error {
 				return err
 			}
 			for _, dataNodeMetric := range dataCoordTopo.Cluster.ConnectedNodes {
-				q.dataNodeMetrics = append(q.dataNodeMetrics, &dataNodeMetric.QuotaMetrics)
+				q.dataNodeMetrics = append(q.dataNodeMetrics, dataNodeMetric.QuotaMetrics)
 			}
 		case typeutil.ProxyRole:
 			proxyMetric := &metricsinfo.ProxyInfos{}
@@ -106,7 +106,7 @@ func (q *QuotaCenter) syncMetrics() error {
 			if err != nil {
 				return err
 			}
-			q.proxyMetrics = append(q.proxyMetrics, &proxyMetric.QuotaMetrics)
+			q.proxyMetrics = append(q.proxyMetrics, proxyMetric.QuotaMetrics)
 		}
 	}
 	return nil

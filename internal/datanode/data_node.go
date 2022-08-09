@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"io"
 	"math/rand"
 	"os"
@@ -84,6 +85,8 @@ var _ types.DataNode = (*DataNode)(nil)
 
 // Params from config.yaml
 var Params paramtable.ComponentParam
+
+var rateCollector *ratecollector.RateCollector
 
 // DataNode communicates with outside services and unioun all
 // services in datanode package.
@@ -205,6 +208,18 @@ func (node *DataNode) initSession() error {
 	return nil
 }
 
+func (node *DataNode) initRateCollector() error {
+	var err error
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCollector.RegisterForRateType(commonpb.RateType_DMLInsert)
+	rateCollector.RegisterForRateType(commonpb.RateType_DMLDelete)
+	rateCollector.Start()
+	return nil
+}
+
 // Init function does nothing now.
 func (node *DataNode) Init() error {
 	log.Info("DataNode Init",
@@ -223,6 +238,11 @@ func (node *DataNode) Init() error {
 		return err
 	}
 	node.idAllocator = idAllocator
+
+	if err := node.initRateCollector(); err != nil {
+		log.Error("DataNode init rateCollector failed", zap.Error(err))
+		return err
+	}
 
 	node.factory.Init(&Params)
 	log.Info("DataNode Init successfully",

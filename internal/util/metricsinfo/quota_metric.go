@@ -4,7 +4,7 @@ import "github.com/milvus-io/milvus/internal/proto/commonpb"
 
 type QuotaMetrics struct {
 	Rms []RateMetric
-	Mms []MemMetric
+	Mm  MemMetric
 }
 
 type RateMetric struct {
@@ -16,7 +16,7 @@ type RateMetric struct {
 
 // MemMetric is memory infos in megabytes
 type MemMetric struct {
-	FreeMem  uint64
+	UsedMem  uint64
 	TotalMem uint64
 	Buffers  map[string]uint64 // growing segments, bloom filter, etc...
 }

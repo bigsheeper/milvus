@@ -48,10 +48,47 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
+func getQuotaMetrics(node *QueryNode) (*metricsinfo.QuotaMetrics, error) {
+	// TODO: get newest as default, support get by other strategy
+	insertRate, err := node.rateCollector.Newest(commonpb.RateType_DMLInsert)
+	if err != nil {
+		return nil, err
+	}
+	deleteRate, err := node.rateCollector.Newest(commonpb.RateType_DMLDelete)
+	if err != nil {
+		return nil, err
+	}
+	searchRate, err := node.rateCollector.Newest(commonpb.RateType_DQLSearch)
+	if err != nil {
+		return nil, err
+	}
+	queryRate, err := node.rateCollector.Newest(commonpb.RateType_DQLQuery)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: return throughput for now, support more types in the future
+	rms := []metricsinfo.RateMetric{
+		{Rt: commonpb.RateType_DMLInsert, ThroughPut: insertRate},
+		{Rt: commonpb.RateType_DMLDelete, ThroughPut: deleteRate},
+		{Rt: commonpb.RateType_DQLSearch, ThroughPut: searchRate},
+		{Rt: commonpb.RateType_DQLQuery, ThroughPut: queryRate},
+	}
+
+	return &metricsinfo.QuotaMetrics{
+		Rms: rms,
+		Mm:  metricsinfo.MemMetric{},
+	}, nil
+}
+
 // getSystemInfoMetrics returns metrics info of QueryNode
 func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, node *QueryNode) (*milvuspb.GetMetricsResponse, error) {
 	usedMem := metricsinfo.GetUsedMemoryCount()
 	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics(node)
+	quotaMetrics.Mm.UsedMem = usedMem
+	quotaMetrics.Mm.TotalMem = totalMem
+
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeCfg.GetNodeID()),
@@ -73,6 +110,7 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 		SystemConfigurations: metricsinfo.QueryNodeConfiguration{
 			SimdType: Params.CommonCfg.SimdType,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

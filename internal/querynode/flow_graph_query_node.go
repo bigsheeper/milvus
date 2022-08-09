@@ -20,8 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/util/ratecollector"
-
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -48,7 +46,6 @@ func newQueryNodeFlowGraph(ctx context.Context,
 	collectionID UniqueID,
 	metaReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
-	rateCollector *ratecollector.RateCollector,
 	channel Channel,
 	factory msgstream.Factory) (*queryNodeFlowGraph, error) {
 
@@ -67,7 +64,7 @@ func newQueryNodeFlowGraph(ctx context.Context,
 		return nil, err
 	}
 	var filterDmNode node = newFilteredDmNode(metaReplica, collectionID, channel)
-	var insertNode node = newInsertNode(metaReplica, rateCollector, collectionID, channel)
+	var insertNode node = newInsertNode(metaReplica, collectionID, channel)
 	var serviceTimeNode node = newServiceTimeNode(tSafeReplica, collectionID, channel)
 
 	q.flowGraph.AddNode(dmStreamNode)
@@ -119,7 +116,6 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 	collectionID UniqueID,
 	metaReplica ReplicaInterface,
 	tSafeReplica TSafeReplicaInterface,
-	rateCollector *ratecollector.RateCollector,
 	channel Channel,
 	factory msgstream.Factory) (*queryNodeFlowGraph, error) {
 
@@ -138,7 +134,7 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 		return nil, err
 	}
 	var filterDeleteNode node = newFilteredDeleteNode(metaReplica, collectionID, channel)
-	var deleteNode node = newDeleteNode(metaReplica, rateCollector, collectionID, channel)
+	var deleteNode node = newDeleteNode(metaReplica, collectionID, channel)
 	var serviceTimeNode node = newServiceTimeNode(tSafeReplica, collectionID, channel)
 
 	q.flowGraph.AddNode(dmStreamNode)

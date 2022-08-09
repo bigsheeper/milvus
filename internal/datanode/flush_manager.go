@@ -568,12 +568,15 @@ type flushBufferInsertTask struct {
 // flushInsertData implements flushInsertTask
 func (t *flushBufferInsertTask) flushInsertData() error {
 	if t.ChunkManager != nil && len(t.data) > 0 {
-		for _, d := range t.data {
-			metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.InsertLabel).Add(float64(len(d)))
-		}
 		tr := timerecord.NewTimeRecorder("insertData")
 		err := t.MultiWrite(t.data)
 		metrics.DataNodeSave2StorageLatency.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.InsertLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		if err == nil {
+			for _, d := range t.data {
+				metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.InsertLabel).Add(float64(len(d)))
+				rateCollector.Add(commonpb.RateType_DMLInsert, float64(len(d)))
+			}
+		}
 		return err
 	}
 	return nil
@@ -587,12 +590,13 @@ type flushBufferDeleteTask struct {
 // flushDeleteData implements flushDeleteTask
 func (t *flushBufferDeleteTask) flushDeleteData() error {
 	if len(t.data) > 0 && t.ChunkManager != nil {
-		for _, d := range t.data {
-			metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Add(float64(len(d)))
-		}
 		tr := timerecord.NewTimeRecorder("deleteData")
 		err := t.MultiWrite(t.data)
 		metrics.DataNodeSave2StorageLatency.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+		for _, d := range t.data {
+			metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Add(float64(len(d)))
+			rateCollector.Add(commonpb.RateType_DMLDelete, float64(len(d)))
+		}
 		return err
 	}
 	return nil

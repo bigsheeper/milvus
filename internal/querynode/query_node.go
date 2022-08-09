@@ -69,6 +69,8 @@ var _ types.QueryNodeComponent = (*QueryNode)(nil)
 
 var Params paramtable.ComponentParam
 
+var rateCollector *ratecollector.RateCollector
+
 // QueryNode communicates with outside services and union all
 // services in querynode package.
 //
@@ -101,9 +103,6 @@ type QueryNode struct {
 
 	// etcd client
 	etcdCli *clientv3.Client
-
-	// rateCollector
-	rateCollector *ratecollector.RateCollector
 
 	factory   dependency.Factory
 	scheduler *taskScheduler
@@ -199,6 +198,20 @@ func (node *QueryNode) InitSegcore() {
 	C.SegcoreSetIndexSliceSize(cIndexSliceSize)
 }
 
+func (node *QueryNode) initRateCollector() error {
+	var err error
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCollector.RegisterForRateType(commonpb.RateType_DMLInsert)
+	rateCollector.RegisterForRateType(commonpb.RateType_DMLDelete)
+	rateCollector.RegisterForRateType(commonpb.RateType_DQLSearch)
+	rateCollector.RegisterForRateType(commonpb.RateType_DQLQuery)
+	rateCollector.Start()
+	return nil
+}
+
 // Init function init historical and streaming module to manage segments
 func (node *QueryNode) Init() error {
 	var initError error = nil
@@ -213,6 +226,12 @@ func (node *QueryNode) Init() error {
 		}
 
 		node.factory.Init(&Params)
+
+		if err = node.initRateCollector(); err != nil {
+			log.Error("DataNode init rateCollector failed", zap.Error(err))
+			initError = err
+			return
+		}
 
 		node.vectorStorage, err = node.factory.NewVectorStorageChunkManager(node.queryNodeLoopCtx)
 		if err != nil {
@@ -231,23 +250,11 @@ func (node *QueryNode) Init() error {
 		node.etcdKV = etcdkv.NewEtcdKV(node.etcdCli, Params.EtcdCfg.MetaRootPath)
 		log.Info("queryNode try to connect etcd success", zap.Any("MetaRootPath", Params.EtcdCfg.MetaRootPath))
 
-		node.rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
-		if err != nil {
-			log.Error("QueryNode create rateCollector failed", zap.Error(err))
-			initError = err
-			return
-		}
-		node.rateCollector.RegisterForRateType(commonpb.RateType_DMLInsert)
-		node.rateCollector.RegisterForRateType(commonpb.RateType_DMLDelete)
-		node.rateCollector.RegisterForRateType(commonpb.RateType_DQLSearch)
-		node.rateCollector.RegisterForRateType(commonpb.RateType_DQLQuery)
-
 		node.metaReplica = newCollectionReplica()
 
 		node.loader = newSegmentLoader(
 			node.metaReplica,
 			node.etcdKV,
-			node.rateCollector,
 			node.vectorStorage,
 			node.factory)
 
@@ -255,7 +262,6 @@ func (node *QueryNode) Init() error {
 			node.queryNodeLoopCtx,
 			node.metaReplica,
 			node.tSafeReplica,
-			node.rateCollector,
 			node.factory)
 
 		node.InitSegcore()

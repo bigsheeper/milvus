@@ -18,6 +18,7 @@ package rootcoord
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
@@ -88,7 +89,7 @@ func (q *QuotaCenter) run() {
 		case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
 			err := q.syncMetrics()
 			if err != nil {
-				fmt.Println(fmt.Errorf("quotaCenter sync metrics failed"))
+				log.Error("quotaCenter sync metrics failed", zap.Error(err))
 				continue
 			}
 			q.calculateRates()
@@ -124,13 +125,15 @@ func (q *QuotaCenter) syncMetrics() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*GetMetricsTimeout)
 		defer cancel()
 		timestamp := tsoutil.ComposeTSByTime(time.Now(), 0)
+		metricReq := map[string]string{metricsinfo.MetricTypeKey: metricsinfo.SystemInfoMetrics}
+		metricReqStr, err := json.Marshal(metricReq)
 		req := &milvuspb.GetMetricsRequest{
 			Base: &commonpb.MsgBase{
 				MsgType:   commonpb.MsgType_Undefined,
 				MsgID:     int64(timestamp),
 				Timestamp: timestamp,
 			},
-			Request: "", // TODO: get quota metrics only
+			Request: string(metricReqStr), // TODO: get quota metrics only
 		}
 		rsp, err := client.GetMetrics(ctx, req)
 		if err != nil {
@@ -184,6 +187,10 @@ func (q *QuotaCenter) syncMetrics() error {
 			q.proxyMetrics = append(q.proxyMetrics, proxyMetric.QuotaMetrics)
 		}
 	}
+	log.Debug("QuotaCenter sync metrics done",
+		zap.Any("dataNodeMetrics", q.dataNodeMetrics),
+		zap.Any("queryNodeMetrics", q.dataNodeMetrics),
+		zap.Any("proxyMetrics", q.dataNodeMetrics))
 	return nil
 }
 

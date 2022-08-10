@@ -276,7 +276,7 @@ func (p *proxyClientManager) SetRates(ctx context.Context, request *proxypb.SetR
 			if err != nil {
 				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, err)
 			}
-			if sta.ErrorCode != commonpb.ErrorCode_Success {
+			if sta.GetErrorCode() != commonpb.ErrorCode_Success {
 				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, sta.Reason)
 			}
 			return nil

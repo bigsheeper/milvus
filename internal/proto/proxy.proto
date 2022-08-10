@@ -23,6 +23,7 @@ service Proxy {
   rpc UpdateCredentialCache(UpdateCredCacheRequest) returns (common.Status) {}
 
   rpc RefreshPolicyInfoCache(RefreshPolicyInfoCacheRequest) returns (common.Status) {}
+  rpc GetMetrics(milvus.GetMetricsRequest) returns (milvus.GetMetricsResponse) {}
   rpc SetRates(SetRatesRequest) returns (common.Status) {}
 }
 

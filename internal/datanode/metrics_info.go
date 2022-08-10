@@ -18,6 +18,7 @@ package datanode
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -88,6 +89,8 @@ func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.Ge
 		},
 		QuotaMetrics: quotaMetrics,
 	}
+
+	fmt.Println("&&&&&&&&&&&&&&&&&&", quotaMetrics)
 
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

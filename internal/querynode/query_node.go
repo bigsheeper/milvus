@@ -206,7 +206,7 @@ func (node *QueryNode) InitSegcore() {
 
 func (node *QueryNode) initRateCollector() error {
 	var err error
-	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow*time.Second, ratecollector.DefaultGranularity*time.Second)
 	if err != nil {
 		return err
 	}

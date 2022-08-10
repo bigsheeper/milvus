@@ -79,6 +79,8 @@ func (r *RateCollector) Add(rt commonpb.RateType, value float64) {
 	if _, ok := r.values[rt]; ok {
 		r.values[rt][r.position] += value
 	}
+	//fmt.Printf("Add %f to %s", value, rt.String())
+	//fmt.Println("=======", r.values[rt])
 }
 
 func (r *RateCollector) Avg(rt commonpb.RateType) (float64, error) {
@@ -104,6 +106,8 @@ func (r *RateCollector) Max(rt commonpb.RateType) (float64, error) {
 				max = v
 			}
 		}
+		fmt.Printf("max %f of %s", max, rt.String())
+		fmt.Println("------", r.values[rt])
 		return max, nil
 	}
 	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
@@ -127,6 +131,8 @@ func (r *RateCollector) Min(rt commonpb.RateType) (float64, error) {
 func (r *RateCollector) Newest(rt commonpb.RateType) (float64, error) {
 	r.Lock()
 	defer r.Unlock()
+	fmt.Println("Newest ", r.values[rt][r.position], " of ", rt.String(), r.values[rt])
+	//fmt.Println("------", r.values[rt])
 	if _, ok := r.values[rt]; ok {
 		return r.values[rt][r.position], nil
 	}
@@ -148,6 +154,7 @@ func (r *RateCollector) shift() {
 			for rt := range r.values {
 				r.values[rt][r.position] = 0
 			}
+			fmt.Println(r.values[commonpb.RateType_DMLInsert])
 			r.Unlock()
 		}
 	}

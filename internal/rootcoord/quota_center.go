@@ -87,7 +87,7 @@ func (q *QuotaCenter) run() {
 			log.Info("QuotaCenter exit")
 			return
 		//case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
-		case <-time.After(2 * time.Second):
+		case <-time.After(1 * time.Second):
 			fmt.Println("run..........")
 			err := q.syncMetrics()
 			if err != nil {
@@ -235,9 +235,19 @@ func (q *QuotaCenter) getMinThroughput() map[commonpb.RateType]float64 {
 			if _, ok := minThroughput[rate.Rt]; !ok {
 				minThroughput[rate.Rt] = math.MaxFloat64
 			}
+			if rate.ThroughPut == 0 {
+				// ignore 0 value here, in case of QueryNode didn't be loaded and still return 0 rates
+				// over and over again. We should limit the rate in DataNodes in this case.
+				continue
+			}
 			if rate.ThroughPut < minThroughput[rate.Rt] {
 				minThroughput[rate.Rt] = rate.ThroughPut
 			}
+		}
+	}
+	for rt, t := range minThroughput {
+		if t == math.MaxFloat64 {
+			minThroughput[rt] = 0
 		}
 	}
 	return minThroughput

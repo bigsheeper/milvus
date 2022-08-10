@@ -325,10 +325,10 @@ common:
 
 quotaAndLimits:
   ddlRate: # per minute
-    collectionRate: 1
-    partitionRate: 1
-    indexRate: 1
-    segmentsRate: 1
+    collectionRate: 10
+    partitionRate: 10
+    indexRate: 10
+    segmentsRate: 10
 
   dmlRate:
     insert: 10 # MB/s

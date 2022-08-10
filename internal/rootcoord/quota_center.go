@@ -191,8 +191,8 @@ func (q *QuotaCenter) syncMetrics() error {
 	}
 	log.Debug("QuotaCenter sync metrics done",
 		zap.Any("dataNodeMetrics", q.dataNodeMetrics),
-		zap.Any("queryNodeMetrics", q.dataNodeMetrics),
-		zap.Any("proxyMetrics", q.dataNodeMetrics))
+		zap.Any("queryNodeMetrics", q.queryNodeMetrics),
+		zap.Any("proxyMetrics", q.proxyMetrics))
 	return nil
 }
 

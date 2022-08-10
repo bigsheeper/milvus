@@ -161,6 +161,10 @@ func (s *Server) startExternalGrpc(grpcPort int, errChan chan error) {
 	}
 	log.Debug("Proxy server already listen on tcp", zap.Int("port", grpcPort))
 
+	limiter := proxy.NewRateLimiter()
+	s.proxy.(*proxy.Proxy).RateLimiter = limiter
+	log.Debug("Proxy create rate limiter done", zap.Int("port", grpcPort))
+
 	opts := trace.GetInterceptorOpts()
 	grpcOpts := []grpc.ServerOption{
 		grpc.KeepaliveEnforcementPolicy(kaep),
@@ -171,6 +175,7 @@ func (s *Server) startExternalGrpc(grpcPort int, errChan chan error) {
 			ot.UnaryServerInterceptor(opts...),
 			grpc_auth.UnaryServerInterceptor(proxy.AuthenticationInterceptor),
 			proxy.UnaryServerInterceptor(proxy.PrivilegeInterceptor),
+			proxy.RateLimitInterceptor(limiter),
 		)),
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			ot.StreamServerInterceptor(opts...),

@@ -3,12 +3,15 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/milvus-io/milvus/internal/proto/milvuspb"
+	"reflect"
+
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"reflect"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 )
 
 // RateLimitInterceptor returns a new unary server interceptors that performs request rate limiting.
@@ -24,24 +27,16 @@ func RateLimitInterceptor(limiter Limiter) grpc.UnaryServerInterceptor {
 	}
 }
 
-func toKilobytes(size int) int {
-	return size / 1024
-}
-
-func toMegabytes(size int) int {
-	return size / 1024 / 1024
-}
-
 func estimateRequestSize(req interface{}) (commonpb.RateType, int, error) {
 	switch req.(type) {
 	case *milvuspb.InsertRequest:
-		return commonpb.RateType_DMLInsert, toKilobytes(req.(*milvuspb.InsertRequest).XXX_Size()), nil
+		return commonpb.RateType_DMLInsert, proto.Size(req.(*milvuspb.InsertRequest)), nil
 	case *milvuspb.DeleteRequest:
-		return commonpb.RateType_DMLDelete, toKilobytes(req.(*milvuspb.DeleteRequest).XXX_Size()), nil
+		return commonpb.RateType_DMLDelete, proto.Size(req.(*milvuspb.DeleteRequest)), nil
 	case *milvuspb.SearchRequest:
-		return commonpb.RateType_DQLSearch, toKilobytes(req.(*milvuspb.SearchRequest).XXX_Size()), nil
+		return commonpb.RateType_DQLSearch, proto.Size(req.(*milvuspb.SearchRequest)), nil
 	case *milvuspb.QueryRequest:
-		return commonpb.RateType_DQLQuery, toKilobytes(req.(*milvuspb.QueryRequest).XXX_Size()), nil
+		return commonpb.RateType_DQLQuery, proto.Size(req.(*milvuspb.QueryRequest)), nil
 	case *milvuspb.CreateCollectionRequest, *milvuspb.DropCollectionRequest:
 		return commonpb.RateType_DDLCollection, 1, nil
 	case *milvuspb.CreatePartitionRequest, *milvuspb.DropPartitionRequest:

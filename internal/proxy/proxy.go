@@ -77,7 +77,7 @@ type Proxy struct {
 	dataCoord  types.DataCoord
 	queryCoord types.QueryCoord
 
-	rateLimiter *RateLimiter
+	RateLimiter *RateLimiter
 
 	chMgr channelsMgr
 
@@ -205,9 +205,6 @@ func (node *Proxy) Init() error {
 	log.Debug("create channels manager done", zap.String("role", typeutil.ProxyRole))
 
 	log.Debug("create rate limiter", zap.String("role", typeutil.ProxyRole))
-	limiter := NewRateLimiter()
-	node.rateLimiter = limiter
-	log.Debug("create rate limiter done", zap.String("role", typeutil.ProxyRole))
 
 	log.Debug("create task scheduler", zap.String("role", typeutil.ProxyRole))
 	node.sched, err = newTaskScheduler(node.ctx, node.idAllocator, node.tsoAllocator, node.factory)

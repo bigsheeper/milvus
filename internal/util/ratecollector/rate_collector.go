@@ -36,7 +36,7 @@ type RateCollector struct {
 	values      map[commonpb.RateType][]float64
 
 	stopOnce sync.Once
-	stopC    chan struct{}
+	stopChan chan struct{}
 }
 
 func NewRateCollector(window time.Duration, granularity time.Duration) (*RateCollector, error) {
@@ -69,7 +69,7 @@ func (r *RateCollector) Start() {
 
 func (r *RateCollector) Stop() {
 	r.stopOnce.Do(func() {
-		r.stopC <- struct{}{}
+		r.stopChan <- struct{}{}
 	})
 }
 
@@ -138,7 +138,7 @@ func (r *RateCollector) shift() {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-r.stopC:
+		case <-r.stopChan:
 			return
 		case <-ticker.C:
 			r.Lock()

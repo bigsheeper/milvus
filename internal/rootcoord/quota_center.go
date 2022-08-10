@@ -19,44 +19,50 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
-	"math"
-	"time"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-// TODO: get from config
 const (
-	QuotaMemoryWaterMarker = 0.9
-	GetMetricsTimeout      = 10 // in seconds
-	SetRatesTimeout        = 10 // in seconds
+	QuotaMemoryWaterMarker = 0.9 // TODO: add to config
+	GetMetricsTimeout      = 10  // TODO: add to config
+	SetRatesTimeout        = 10  // TODO: add to config
 )
 
 type controlBehavior int32
 
 const (
-	disableWrite controlBehavior = 0
-	disableRead  controlBehavior = 1
-	throttling   controlBehavior = 2
+	disableWrite controlBehavior = iota
+	disableRead
+	throttling
 )
 
 type quotaEvent int32
 
 const (
-	memoryReachWaterMarker quotaEvent = 0
-	tSafeDelayed           quotaEvent = 1
-	growingPredominated    quotaEvent = 2
-	dmlPerfChanged         quotaEvent = 3
-	dqlPerfChanged         quotaEvent = 4
+	none quotaEvent = iota
+	memoryReachWaterMarker
+	tSafeDelayed
+	growingPredominated
+	dmlPerfChanged
+	dqlPerfChanged
+	// TODO: support more...
 )
 
 type QuotaCenter struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-
 	// clients
 	proxies    *proxyClientManager
 	queryCoord types.QueryCoord
@@ -68,95 +74,172 @@ type QuotaCenter struct {
 	proxyMetrics     []*metricsinfo.QuotaMetrics
 
 	currentRates map[commonpb.RateType]float64
+
+	stopOnce sync.Once
+	stopChan chan struct{}
 }
 
-func (q *QuotaCenter) Run() {
+func (q *QuotaCenter) run() {
 	for {
 		select {
-		case <-q.ctx.Done():
-			fmt.Println("QuotaCenter exit")
+		case <-q.stopChan:
+			log.Info("QuotaCenter exit")
 			return
 		case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
 			err := q.syncMetrics()
 			if err != nil {
-				fmt.Println(fmt.Errorf("quotaCenter collect metrics failed"))
+				fmt.Println(fmt.Errorf("quotaCenter sync metrics failed"))
 				continue
 			}
-			err = q.Execute()
+			q.calculateRates()
+			err = q.setRates()
 			if err != nil {
-				fmt.Println(fmt.Errorf("quotaCenter execute failed"))
+				log.Error("quotaCenter execute failed", zap.Error(err))
 			}
 		}
 	}
 }
 
-func (q *QuotaCenter) doTriggerStrategy(ts quotaEvent) {
-	switch ts {
-	case memoryReachWaterMarker:
-		q.doControl(disableWrite)
-	case tSafeDelayed:
-		q.doControl(throttling)
-	case growingPredominated:
-		q.doControl(throttling)
-	case dmlPerfChanged:
-		q.doControl(throttling)
-	case dqlPerfChanged:
-		q.doControl(throttling)
-	}
+func (q *QuotaCenter) stop() {
+	q.stopOnce.Do(func() {
+		q.stopChan <- struct{}{}
+	})
 }
 
-func (q *QuotaCenter) doControl(cb controlBehavior) {
+type getMetricsInterface interface {
+	GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
+}
+
+func (q *QuotaCenter) clearMetrics() {
+	q.dataNodeMetrics = make([]*metricsinfo.QuotaMetrics, 0)
+	q.queryNodeMetrics = make([]*metricsinfo.QuotaMetrics, 0)
+	q.proxyMetrics = make([]*metricsinfo.QuotaMetrics, 0)
+}
+
+func (q *QuotaCenter) syncMetrics() error {
+	q.clearMetrics()
+	var rspsMu sync.Mutex
+	rsps := make([]*milvuspb.GetMetricsResponse, 0)
+	getMetricFunc := func(client getMetricsInterface) error {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*GetMetricsTimeout)
+		defer cancel()
+		timestamp := tsoutil.ComposeTSByTime(time.Now(), 0)
+		req := &milvuspb.GetMetricsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:   commonpb.MsgType_Undefined,
+				MsgID:     int64(timestamp),
+				Timestamp: timestamp,
+			},
+			Request: "", // TODO: get quota metrics only
+		}
+		rsp, err := client.GetMetrics(ctx, req)
+		if err != nil {
+			return err
+		}
+		if rsp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+			return fmt.Errorf("quotaCenter call GetMetrics failed")
+		}
+		rspsMu.Lock()
+		rsps = append(rsps, rsp)
+		rspsMu.Unlock()
+		return nil
+	}
+
+	group := &errgroup.Group{}
+	group.Go(func() error { return getMetricFunc(q.dataCoord) })
+	group.Go(func() error { return getMetricFunc(q.queryCoord) })
+	// TODO: get proxy metrics
+	err := group.Wait()
+	if err != nil {
+		return err
+	}
+
+	for _, rsp := range rsps {
+		name := rsp.GetComponentName()
+		switch name {
+		case typeutil.QueryCoordRole:
+			queryCoordTopo := &metricsinfo.QueryCoordTopology{}
+			err = metricsinfo.UnmarshalTopology(rsp.GetResponse(), queryCoordTopo)
+			if err != nil {
+				return err
+			}
+			for _, queryNodeMetric := range queryCoordTopo.Cluster.ConnectedNodes {
+				q.queryNodeMetrics = append(q.queryNodeMetrics, queryNodeMetric.QuotaMetrics)
+			}
+		case typeutil.DataCoordRole:
+			dataCoordTopo := &metricsinfo.DataCoordTopology{}
+			err = metricsinfo.UnmarshalTopology(rsp.GetResponse(), dataCoordTopo)
+			if err != nil {
+				return err
+			}
+			for _, dataNodeMetric := range dataCoordTopo.Cluster.ConnectedNodes {
+				q.dataNodeMetrics = append(q.dataNodeMetrics, dataNodeMetric.QuotaMetrics)
+			}
+		case typeutil.ProxyRole:
+			proxyMetric := &metricsinfo.ProxyInfos{}
+			err = metricsinfo.UnmarshalComponentInfos(rsp.GetResponse(), proxyMetric)
+			if err != nil {
+				return err
+			}
+			q.proxyMetrics = append(q.proxyMetrics, proxyMetric.QuotaMetrics)
+		}
+	}
+	return nil
+}
+
+func (q *QuotaCenter) calculateRates() {
+	cb := q.checkMemory()
 	switch cb {
 	case disableWrite:
 		q.currentRates[commonpb.RateType_DMLInsert] = 0
-		q.currentRates[commonpb.RateType_DMLDelete] = 0
-	case disableRead:
-		q.currentRates[commonpb.RateType_DQLSearch] = 0
-		q.currentRates[commonpb.RateType_DQLQuery] = 0
 	case throttling:
-
+		rates := q.getMinThroughput()
+		for rt, r := range rates {
+			q.currentRates[rt] = r
+		}
 	}
 }
 
-func (q *QuotaCenter) Execute() error {
-	rateMap := map[commonpb.RateType]float64{
-		commonpb.RateType_DDLCollection: math.MaxFloat64,
-		commonpb.RateType_DDLPartition:  math.MaxFloat64,
-		commonpb.RateType_DDLIndex:      math.MaxFloat64,
-		commonpb.RateType_DMLDelete:     math.MaxFloat64,
-		commonpb.RateType_DMLInsert:     math.MaxFloat64,
-		commonpb.RateType_DQLSearch:     math.MaxFloat64,
-		commonpb.RateType_DQLQuery:      math.MaxFloat64,
+func (q *QuotaCenter) checkMemory() controlBehavior {
+	for _, metric := range q.queryNodeMetrics {
+		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= QuotaMemoryWaterMarker {
+			return disableWrite
+		}
+		// TODO: check growing segments, ...
 	}
+	for _, metric := range q.dataNodeMetrics {
+		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= QuotaMemoryWaterMarker {
+			return disableWrite
+		}
+		// TODO: check bloom filter, ...
+	}
+	return throttling
+}
 
-	//// disable write
-	//for _, metric := range q.metrics {
-	//	for _, mm := range metric.Mm {
-	//		if float64(mm.TotalMem-mm.FreeMem)/float64(mm.TotalMem) > QuotaMemoryWaterMarker {
-	//			rateMap[commonpb.RateType_DMLInsert] = 0
-	//			rateMap[commonpb.RateType_DMLDelete] = 0
-	//			break
-	//		}
-	//	}
-	//}
-	//
-	//// backpressure
-	//for _, metric := range q.metrics {
-	//	for _, rm := range metric.Rms {
-	//		if _, ok := rateMap[rm.Rt]; ok {
-	//			if rm.ThroughPut > 0 && rm.ThroughPut < rateMap[rm.Rt] {
-	//				rateMap[rm.Rt] = rm.ThroughPut
-	//			}
-	//		}
-	//	}
-	//}
+func (q *QuotaCenter) getMinThroughput() map[commonpb.RateType]float64 {
+	minThroughput := make(map[commonpb.RateType]float64)
+	metrics := make([]*metricsinfo.QuotaMetrics, 0, len(q.dataNodeMetrics)+len(q.queryNodeMetrics))
+	metrics = append(metrics, q.dataNodeMetrics...)
+	metrics = append(metrics, q.queryNodeMetrics...)
+	for _, metric := range metrics {
+		for _, rate := range metric.Rms {
+			if _, ok := minThroughput[rate.Rt]; !ok {
+				minThroughput[rate.Rt] = math.MaxFloat64
+			}
+			if rate.ThroughPut < minThroughput[rate.Rt] {
+				minThroughput[rate.Rt] = rate.ThroughPut
+			}
+		}
+	}
+	return minThroughput
+}
 
-	// notify proxies to set rates
-	ctx, cancel := context.WithTimeout(q.ctx, time.Second*GetMetricsTimeout)
+func (q *QuotaCenter) setRates() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*SetRatesTimeout)
 	defer cancel()
 	map2List := func() []*commonpb.Rate {
-		rates := make([]*commonpb.Rate, 0, len(rateMap))
-		for rt, r := range rateMap {
+		rates := make([]*commonpb.Rate, 0, len(q.currentRates))
+		for rt, r := range q.currentRates {
 			rates = append(rates, &commonpb.Rate{Rt: rt, R: r})
 		}
 		return rates
@@ -173,15 +256,8 @@ func (q *QuotaCenter) Execute() error {
 	return q.proxies.SetRates(ctx, req)
 }
 
-func NewQuotaCenter(ctx context.Context,
-	proxies *proxyClientManager,
-	queryCoord types.QueryCoord,
-	dataCoord types.DataCoord) *QuotaCenter {
-	ctx1, cancel := context.WithCancel(ctx)
+func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, dataCoord types.DataCoord) *QuotaCenter {
 	return &QuotaCenter{
-		ctx:    ctx1,
-		cancel: cancel,
-
 		proxies:    proxies,
 		queryCoord: queryCoord,
 		dataCoord:  dataCoord,

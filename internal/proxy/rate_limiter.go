@@ -1,9 +1,11 @@
 package proxy
 
 import (
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"golang.org/x/time/rate"
 	"time"
+
+	"golang.org/x/time/rate"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 )
 
 type LimitStrategy int32
@@ -15,18 +17,10 @@ const (
 	CpuAdaptive    LimitStrategy = 3
 )
 
-type LimitType int32
-
 const (
-	DisableRW  LimitType = 0
-	Throttling LimitType = 1
-)
-
-// TODO: config?
-const (
-	DDLBucketSize = 10
-	DMLBucketSize = 10 * 1024 // kilobytes
-	DQLBucketSize = 10 * 1024 // kilobytes
+	DDLBucketSize = 10               // TODO: add to config
+	DMLBucketSize = 10 * 1024 * 1024 // bytes
+	DQLBucketSize = 10 * 1024 * 1024 // bytes
 )
 
 // Limiter defines the interface to perform request rate limiting.
@@ -53,13 +47,13 @@ func (rl *RateLimiter) setRates(rates []*commonpb.Rate) {
 }
 
 func (rl *RateLimiter) registerLimiters() {
-	rl.limiters[commonpb.RateType_DDLCollection] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLCollectionRate*1024), DDLBucketSize)
-	rl.limiters[commonpb.RateType_DDLPartition] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLPartitionRate*1024), DDLBucketSize)
-	rl.limiters[commonpb.RateType_DDLSegments] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLSegmentsRate*1024), DDLBucketSize)
-	rl.limiters[commonpb.RateType_DMLInsert] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLInsertRate*1024), DMLBucketSize)
-	rl.limiters[commonpb.RateType_DMLDelete] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLDeleteRate*1024), DMLBucketSize)
-	rl.limiters[commonpb.RateType_DQLSearch] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLSearchRate*1024), DQLBucketSize)
-	rl.limiters[commonpb.RateType_DQLQuery] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLQueryRate*1024), DQLBucketSize)
+	rl.limiters[commonpb.RateType_DDLCollection] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLCollectionRate), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DDLPartition] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLPartitionRate), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DDLSegments] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DDLSegmentsRate), DDLBucketSize)
+	rl.limiters[commonpb.RateType_DMLInsert] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLInsertRate*1024*1024), DMLBucketSize)
+	rl.limiters[commonpb.RateType_DMLDelete] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DMLDeleteRate*1024*1024), DMLBucketSize)
+	rl.limiters[commonpb.RateType_DQLSearch] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLSearchRate*1024*1024), DQLBucketSize)
+	rl.limiters[commonpb.RateType_DQLQuery] = rate.NewLimiter(rate.Limit(Params.QuotaConfig.DQLQueryRate*1024*1024), DQLBucketSize)
 }
 
 func NewRateLimiter() *RateLimiter {

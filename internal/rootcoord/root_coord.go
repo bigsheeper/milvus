@@ -108,6 +108,10 @@ type Core struct {
 	kvBase    kv.TxnKV //*etcdkv.EtcdKV
 	impTaskKv kv.MetaKv
 
+	queryCoord  types.QueryCoord // TODO: tmp solution, remove it
+	dataCoord   types.DataCoord
+	quotaCenter *QuotaCenter
+
 	//DDL lock
 	ddlLock sync.Mutex
 
@@ -677,6 +681,8 @@ func (c *Core) SetDataCoord(ctx context.Context, s types.DataCoord) error {
 		}
 	}()
 
+	c.dataCoord = s
+
 	c.CallGetFlushedSegmentsService = func(ctx context.Context, collID, partID typeutil.UniqueID) (retSegIDs []typeutil.UniqueID, retErr error) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -956,6 +962,9 @@ func (c *Core) SetQueryCoord(s types.QueryCoord) error {
 			log.Debug("Retrying RootCoord connection to QueryCoord")
 		}
 	}()
+
+	c.queryCoord = s
+
 	c.CallReleaseCollectionService = func(ctx context.Context, ts typeutil.Timestamp, dbID typeutil.UniqueID, collectionID typeutil.UniqueID) (retErr error) {
 		defer func() {
 			if err := recover(); err != nil {
@@ -1253,6 +1262,8 @@ func (c *Core) Init() error {
 			return
 		}
 		log.Debug("RootCoord init user root done")
+
+		c.quotaCenter = NewQuotaCenter(c.proxyClientManager, c.queryCoord, c.dataCoord)
 	})
 	if initError != nil {
 		log.Debug("RootCoord init error", zap.Error(initError))
@@ -1498,6 +1509,7 @@ func (c *Core) Start() error {
 		go c.importManager.expireOldTasksLoop(&c.wg, c.CallReleaseSegRefLock)
 		go c.importManager.sendOutTasksLoop(&c.wg)
 		go c.recycleDroppedIndex()
+		go c.quotaCenter.run()
 		Params.RootCoordCfg.CreatedTime = time.Now()
 		Params.RootCoordCfg.UpdatedTime = time.Now()
 	})

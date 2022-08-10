@@ -14,6 +14,7 @@ package metricsinfo
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -23,7 +24,11 @@ import (
 
 // ConstructComponentName returns a name according to the role name and its' id
 func ConstructComponentName(role string, id typeutil.UniqueID) string {
-	return role + strconv.Itoa(int(id))
+	return role + "-" + strconv.Itoa(int(id))
+}
+
+func GetRoleNameByComponentName(componentName string) string {
+	return strings.Split(componentName, "-")[0]
 }
 
 // Topology defines the interface of topology graph between different components

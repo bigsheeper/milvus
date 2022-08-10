@@ -86,7 +86,9 @@ func (q *QuotaCenter) run() {
 		case <-q.stopChan:
 			log.Info("QuotaCenter exit")
 			return
-		case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
+		//case <-time.After(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond):
+		case <-time.After(2 * time.Second):
+			fmt.Println("run..........")
 			err := q.syncMetrics()
 			if err != nil {
 				log.Error("quotaCenter sync metrics failed", zap.Error(err))
@@ -158,7 +160,7 @@ func (q *QuotaCenter) syncMetrics() error {
 	}
 
 	for _, rsp := range rsps {
-		name := rsp.GetComponentName()
+		name := metricsinfo.GetRoleNameByComponentName(rsp.GetComponentName())
 		switch name {
 		case typeutil.QueryCoordRole:
 			queryCoordTopo := &metricsinfo.QueryCoordTopology{}
@@ -265,8 +267,9 @@ func (q *QuotaCenter) setRates() error {
 
 func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, dataCoord types.DataCoord) *QuotaCenter {
 	return &QuotaCenter{
-		proxies:    proxies,
-		queryCoord: queryCoord,
-		dataCoord:  dataCoord,
+		proxies:      proxies,
+		queryCoord:   queryCoord,
+		dataCoord:    dataCoord,
+		currentRates: make(map[commonpb.RateType]float64),
 	}
 }

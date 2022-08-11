@@ -157,6 +157,7 @@ func (mr *MilvusRoles) runProxy(ctx context.Context, localMsg bool, alias string
 	wg.Wait()
 
 	metrics.RegisterProxy(Registry)
+	metrics.RegisterQuota(Registry)
 	return pn
 }
 

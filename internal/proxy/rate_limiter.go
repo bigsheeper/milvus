@@ -19,6 +19,7 @@ package proxy
 import (
 	"fmt"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"go.uber.org/zap"
 	"time"
 
@@ -66,6 +67,7 @@ func (rl *RateLimiter) setRates(rates []*commonpb.Rate) {
 		if _, ok := rl.limiters[r.GetRt()]; ok {
 			//fmt.Println(">>>>>>>>>>>>>>", r.GetR())
 			rl.limiters[r.GetRt()].SetLimit(rate.Limit(r.GetR()))
+			metrics.SetRateGaugeByRateType(r.GetRt(), Params.ProxyCfg.GetNodeID(), r.GetR())
 		}
 	}
 	rl.printRates(rates)

@@ -65,19 +65,19 @@ func (p *quotaConfig) initDDLSegmentsRate() {
 }
 
 func (p *quotaConfig) initDMLInsertRate() {
-	p.DMLInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddlRate.insertRate", 10)
+	p.DMLInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dmlRate.insertRate", 10)
 }
 
 func (p *quotaConfig) initDMLDeleteRate() {
-	p.DMLDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddlRate.deleteRate", 1)
+	p.DMLDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dmlRate.deleteRate", 1)
 }
 
 func (p *quotaConfig) initDQLSearchRate() {
-	p.DQLSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddlRate.searchRate", 2)
+	p.DQLSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dqlRate.searchRate", 2)
 }
 
 func (p *quotaConfig) initDQLQueryRate() {
-	p.DQLQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddlRate.queryRate", 1)
+	p.DQLQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dqlRate.queryRate", 1)
 }
 
 func (p *quotaConfig) initQuotaCenterCollectInterval() {

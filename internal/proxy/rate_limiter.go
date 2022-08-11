@@ -39,10 +39,10 @@ const (
 
 const (
 	DDLBucketSize = 10                // TODO: add to config
-	DMLBucketSize = 256 * 1024 * 1024 // bytes
+	DMLBucketSize = 128 * 1024 * 1024 // bytes
 	DQLBucketSize = 32 * 1024 * 1024  // bytes
 
-	warmupSpeed = 0.1
+	warmupSpeed = 0.01
 )
 
 // Limiter defines the interface to perform request rate limiting.

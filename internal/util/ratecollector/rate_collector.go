@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DefaultWindow      = 10
+	DefaultWindow      = 20
 	DefaultGranularity = 1
 )
 

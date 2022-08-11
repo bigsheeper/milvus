@@ -210,6 +210,7 @@ func (q *QuotaCenter) calculateRates() {
 }
 
 func (q *QuotaCenter) checkMemory() controlBehavior {
+	return throttling
 	for _, metric := range q.queryNodeMetrics {
 		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= QuotaMemoryWaterMarker {
 			return disableWrite
@@ -217,6 +218,7 @@ func (q *QuotaCenter) checkMemory() controlBehavior {
 		// TODO: check growing segments, ...
 	}
 	for _, metric := range q.dataNodeMetrics {
+		// TODO: nil check
 		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= QuotaMemoryWaterMarker {
 			return disableWrite
 		}

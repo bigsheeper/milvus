@@ -35,6 +35,14 @@ var (
 			Help:      "",
 		}, []string{nodeIDLabelName})
 
+	InsertRequestRate = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.ProxyRole,
+			Name:      "dml_insert_request_rate",
+			Help:      "",
+		}, []string{nodeIDLabelName})
+
 	DeleteRate = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: milvusNamespace,
@@ -63,6 +71,7 @@ var (
 //RegisterQuota registers Quota metrics
 func RegisterQuota(registry *prometheus.Registry) {
 	registry.MustRegister(InsertRate)
+	registry.MustRegister(InsertRequestRate)
 	registry.MustRegister(DeleteRate)
 	registry.MustRegister(SearchRate)
 	registry.MustRegister(QueryRate)

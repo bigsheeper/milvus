@@ -331,12 +331,12 @@ quotaAndLimits:
     segmentsRate: 10
 
   dmlRate:
-    insert: 10 # MB/s
-    delete: 1 # MB/s
+    insertRate: 128 # MB/s
+    deleteRate: 1 # MB/s
 
   dqlRate:
-    search: 2 # MB/s
-    query: 1 # MB/s
+    searchRate: 2 # MB/s
+    queryRate: 1 # MB/s
 
   limits:
     maxCollectionNum: 20 # TODO: add more

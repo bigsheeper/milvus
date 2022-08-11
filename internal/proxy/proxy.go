@@ -19,6 +19,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"math/rand"
 	"os"
 	"strconv"
@@ -58,6 +59,8 @@ type Timestamp = typeutil.Timestamp
 var _ types.Proxy = (*Proxy)(nil)
 
 var Params paramtable.ComponentParam
+
+var requestRateCollector *ratecollector.RateCollector
 
 // Proxy of milvus
 type Proxy struct {
@@ -152,6 +155,24 @@ func (node *Proxy) initSession() error {
 	return nil
 }
 
+func (node *Proxy) initRateCollector() error {
+	var err error
+	requestRateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow*time.Second, ratecollector.DefaultGranularity*time.Second)
+	if err != nil {
+		return err
+	}
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DMLInsert)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DMLDelete)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DQLSearch)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DQLQuery)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DDLCollection)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DDLPartition)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DDLIndex)
+	requestRateCollector.RegisterForRateType(commonpb.RateType_DDLSegments)
+	requestRateCollector.Start()
+	return nil
+}
+
 // Init initialize proxy.
 func (node *Proxy) Init() error {
 	log.Info("init session for Proxy")
@@ -163,6 +184,11 @@ func (node *Proxy) Init() error {
 
 	node.factory.Init(&Params)
 	log.Debug("init parameters for factory", zap.String("role", typeutil.ProxyRole), zap.Any("parameters", Params.ServiceParam))
+
+	if err := node.initRateCollector(); err != nil {
+		log.Error("Proxy init requestRateCollector failed", zap.Error(err))
+		return err
+	}
 
 	log.Debug("create id allocator", zap.String("role", typeutil.ProxyRole), zap.Int64("ProxyID", Params.ProxyCfg.GetNodeID()))
 	idAllocator, err := allocator.NewIDAllocator(node.ctx, node.rootCoord, Params.ProxyCfg.GetNodeID())
@@ -338,6 +364,25 @@ func (node *Proxy) Start() error {
 	for _, cb := range node.startCallbacks {
 		cb()
 	}
+
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-node.ctx.Done():
+				return
+			case <-ticker.C:
+				r, err := requestRateCollector.Avg(commonpb.RateType_DMLInsert)
+				r = r / 1024.0 / 1024.0
+				if err != nil {
+					log.Error(err.Error())
+					continue
+				}
+				metrics.InsertRequestRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Set(r)
+			}
+		}
+	}()
 
 	now := time.Now()
 	Params.ProxyCfg.CreatedTime = now

@@ -2288,6 +2288,8 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 	log.Info("Start processing insert request in Proxy", zap.String("traceID", traceID))
 	defer log.Info("Finish processing insert request in Proxy", zap.String("traceID", traceID))
 
+	requestRateCollector.Add(commonpb.RateType_DMLInsert, float64(proto.Size(request)))
+
 	if !node.checkHealthy() {
 		return &milvuspb.MutationResult{
 			Status: unhealthyStatus(),

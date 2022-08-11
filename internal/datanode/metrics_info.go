@@ -28,11 +28,11 @@ import (
 
 func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
 	// TODO: get newest as default, support get by other strategy
-	insertRate, err := rateCollector.Newest(commonpb.RateType_DMLInsert)
+	insertRate, err := rateCollector.NewestNonZero(commonpb.RateType_DMLInsert)
 	if err != nil {
 		return nil, err
 	}
-	deleteRate, err := rateCollector.Newest(commonpb.RateType_DMLDelete)
+	deleteRate, err := rateCollector.NewestNonZero(commonpb.RateType_DMLDelete)
 	if err != nil {
 		return nil, err
 	}

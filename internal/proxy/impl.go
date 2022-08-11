@@ -4347,7 +4347,11 @@ func (node *Proxy) SetRates(ctx context.Context, request *proxypb.SetRatesReques
 		return resp, nil
 	}
 
-	node.RateLimiter.setRates(request.GetRates())
+	err := node.RateLimiter.setRates(request.GetRates())
+	if err != nil {
+		resp.Reason = err.Error()
+		return resp, nil
+	}
 	resp.ErrorCode = commonpb.ErrorCode_Success
 	return resp, nil
 }

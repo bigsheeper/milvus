@@ -17,10 +17,12 @@
 package metrics
 
 import (
-	"github.com/milvus-io/milvus/internal/proto/commonpb"
-	"github.com/prometheus/client_golang/prometheus"
+	"fmt"
 	"strconv"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -66,8 +68,14 @@ func RegisterQuota(registry *prometheus.Registry) {
 	registry.MustRegister(QueryRate)
 }
 
+func toMegabytes(rate float64) float64 {
+	return rate / 1024.0 / 1024.0
+}
+
 func SetRateGaugeByRateType(rateType commonpb.RateType, nodeID int64, rate float64) {
 	nodeIDStr := strconv.FormatInt(nodeID, 10)
+	rate = toMegabytes(rate)
+	fmt.Printf("set rates for %s, rate = %f\n", rateType.String(), rate)
 	switch rateType {
 	case commonpb.RateType_DMLInsert:
 		InsertRate.WithLabelValues(nodeIDStr).Set(rate)

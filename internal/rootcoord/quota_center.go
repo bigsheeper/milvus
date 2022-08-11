@@ -97,7 +97,7 @@ func (q *QuotaCenter) run() {
 			q.calculateRates()
 			err = q.setRates()
 			if err != nil {
-				log.Error("quotaCenter execute failed", zap.Error(err))
+				log.Error("quotaCenter setRates failed", zap.Error(err))
 			}
 		}
 	}

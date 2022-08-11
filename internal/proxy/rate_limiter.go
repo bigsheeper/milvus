@@ -61,16 +61,20 @@ func (rl *RateLimiter) Limit(rt commonpb.RateType, n int) bool {
 	return !rl.limiters[rt].AllowN(time.Now(), n)
 }
 
-func (rl *RateLimiter) setRates(rates []*commonpb.Rate) {
+func (rl *RateLimiter) setRates(rates []*commonpb.Rate) error {
 	rates = rl.warmup(rates)
+	rl.printRates(rates)
 	for _, r := range rates {
 		if _, ok := rl.limiters[r.GetRt()]; ok {
 			//fmt.Println(">>>>>>>>>>>>>>", r.GetR())
 			rl.limiters[r.GetRt()].SetLimit(rate.Limit(r.GetR()))
 			metrics.SetRateGaugeByRateType(r.GetRt(), Params.ProxyCfg.GetNodeID(), r.GetR())
+		} else {
+			panic("aaaaa")
+			return fmt.Errorf("unregister rateLimiter for rateType %s", r.GetRt().String())
 		}
 	}
-	rl.printRates(rates)
+	return nil
 }
 
 func (rl *RateLimiter) printRates(rates []*commonpb.Rate) {
@@ -86,6 +90,10 @@ func (rl *RateLimiter) warmup(originalRates []*commonpb.Rate) []*commonpb.Rate {
 	for _, r := range originalRates {
 		maxRate, _ := rl.getRateConfigByRateType(r.GetRt())
 		newRate := &commonpb.Rate{Rt: r.GetRt(), R: r.GetR() + maxRate*warmupSpeed}
+		maxR, _ := rl.getRateConfigByRateType(r.GetRt())
+		if newRate.R > maxR {
+			newRate.R = maxR
+		}
 		targetRates = append(targetRates, newRate)
 	}
 	return targetRates

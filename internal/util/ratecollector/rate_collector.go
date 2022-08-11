@@ -139,6 +139,29 @@ func (r *RateCollector) Newest(rt commonpb.RateType) (float64, error) {
 	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
 }
 
+func (r *RateCollector) NewestNonZero(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+
+	if _, ok := r.values[rt]; ok {
+		i := r.position
+		for {
+			if r.values[rt][i] != 0 {
+				fmt.Println("NewestNoneZero ", r.values[rt][i], " of ", rt.String(), r.values[rt])
+				return r.values[rt][i], nil
+			}
+			i--
+			if i < 0 {
+				i = len(r.values[rt]) - 1
+			}
+			if i == r.position {
+				return r.values[rt][i], nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
 func (r *RateCollector) shift() {
 	ticker := time.NewTicker(r.granularity)
 	defer ticker.Stop()

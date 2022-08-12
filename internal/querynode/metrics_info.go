@@ -50,19 +50,19 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 
 func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
 	// TODO: get newest as default, support get by other strategy
-	insertRate, err := rateCollector.Max(commonpb.RateType_DMLInsert)
+	insertRate, err := rateCollector.Newest(commonpb.RateType_DMLInsert)
 	if err != nil {
 		return nil, err
 	}
-	deleteRate, err := rateCollector.Max(commonpb.RateType_DMLDelete)
+	deleteRate, err := rateCollector.Newest(commonpb.RateType_DMLDelete)
 	if err != nil {
 		return nil, err
 	}
-	searchRate, err := rateCollector.Max(commonpb.RateType_DQLSearch)
+	searchRate, err := rateCollector.Newest(commonpb.RateType_DQLSearch)
 	if err != nil {
 		return nil, err
 	}
-	queryRate, err := rateCollector.Max(commonpb.RateType_DQLQuery)
+	queryRate, err := rateCollector.Newest(commonpb.RateType_DQLQuery)
 	if err != nil {
 		return nil, err
 	}

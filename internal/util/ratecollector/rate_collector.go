@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DefaultWindow      = 20
+	DefaultWindow      = 10
 	DefaultGranularity = 1
 )
 
@@ -91,7 +91,31 @@ func (r *RateCollector) Avg(rt commonpb.RateType) (float64, error) {
 		for _, v := range r.values[rt] {
 			total += v
 		}
-		return total / float64(len(r.values)), nil
+		fmt.Println("Avg ", total/float64(len(r.values)), " of ", rt.String(), r.values[rt])
+		return total / float64(len(r.values[rt])), nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
+}
+
+func (r *RateCollector) NonZeroAvg(rt commonpb.RateType) (float64, error) {
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[rt]; ok {
+		total := float64(0)
+		noZeroCount := 0
+		for _, v := range r.values[rt] {
+			if v > 0 {
+				noZeroCount++
+			}
+			total += v
+		}
+		if noZeroCount > 0 {
+			fmt.Println("Avg ", total/float64(noZeroCount), " of ", rt.String(), r.values[rt])
+			return total / float64(noZeroCount), nil
+		} else {
+			fmt.Println("Avg ", 0, " of ", rt.String(), r.values[rt])
+			return 0, nil
+		}
 	}
 	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
 }
@@ -131,10 +155,15 @@ func (r *RateCollector) Min(rt commonpb.RateType) (float64, error) {
 func (r *RateCollector) Newest(rt commonpb.RateType) (float64, error) {
 	r.Lock()
 	defer r.Unlock()
-	fmt.Println("Newest ", r.values[rt][r.position], " of ", rt.String(), r.values[rt])
+
 	//fmt.Println("------", r.values[rt])
 	if _, ok := r.values[rt]; ok {
-		return r.values[rt][r.position], nil
+		if r.position == 0 {
+			fmt.Println("Newest ", r.values[rt][len(r.values[rt])-1], " of ", rt.String(), r.values[rt], "position=", r.position)
+			return r.values[rt][len(r.values[rt])-1], nil
+		}
+		fmt.Println("Newest ", r.values[rt][r.position-1], " of ", rt.String(), r.values[rt], "position=", r.position)
+		return r.values[rt][r.position-1], nil
 	}
 	return 0, fmt.Errorf("RateColletor didn't register for rateType %s", rt.String())
 }
@@ -147,7 +176,7 @@ func (r *RateCollector) NewestNonZero(rt commonpb.RateType) (float64, error) {
 		i := r.position
 		for {
 			if r.values[rt][i] != 0 {
-				fmt.Println("NewestNoneZero ", r.values[rt][i], " of ", rt.String(), r.values[rt])
+				fmt.Println("NewestNoneZero ", r.values[rt][i], " of ", rt.String(), r.values[rt], "position=", r.position)
 				return r.values[rt][i], nil
 			}
 			i--
@@ -155,6 +184,7 @@ func (r *RateCollector) NewestNonZero(rt commonpb.RateType) (float64, error) {
 				i = len(r.values[rt]) - 1
 			}
 			if i == r.position {
+				fmt.Println("NewestNoneZero ", r.values[rt][i], " of ", rt.String(), r.values[rt], "position=", r.position)
 				return r.values[rt][i], nil
 			}
 		}

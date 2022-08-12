@@ -157,7 +157,7 @@ func (node *Proxy) initSession() error {
 
 func (node *Proxy) initRateCollector() error {
 	var err error
-	requestRateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow*time.Second, ratecollector.DefaultGranularity*time.Second)
+	requestRateCollector, err = ratecollector.NewRateCollector(30*time.Second, ratecollector.DefaultGranularity*time.Second)
 	if err != nil {
 		return err
 	}
@@ -373,13 +373,21 @@ func (node *Proxy) Start() error {
 			case <-node.ctx.Done():
 				return
 			case <-ticker.C:
-				r, err := requestRateCollector.Avg(commonpb.RateType_DMLInsert)
-				r = r / 1024.0 / 1024.0
+				insertR, err := requestRateCollector.Avg(commonpb.RateType_DMLInsert)
 				if err != nil {
 					log.Error(err.Error())
 					continue
 				}
-				metrics.InsertRequestRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Set(r)
+				insertR = insertR / 1024.0 / 1024.0
+				metrics.InsertRequestRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Set(insertR)
+
+				searchR, err := requestRateCollector.Newest(commonpb.RateType_DQLSearch)
+				if err != nil {
+					log.Error(err.Error())
+					continue
+				}
+				searchR = searchR / 1024.0 / 1024.0
+				metrics.SearchRequestRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Set(searchR)
 			}
 		}
 	}()

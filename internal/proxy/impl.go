@@ -2520,6 +2520,8 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.TotalLabel).Inc()
 
+	requestRateCollector.Add(commonpb.RateType_DQLSearch, float64(proto.Size(request)))
+
 	sp, ctx := trace.StartSpanFromContextWithOperationName(ctx, "Proxy-Search")
 	defer sp.Finish()
 	traceID, _, _ := trace.InfoFromSpan(sp)

@@ -42,7 +42,7 @@ const (
 	DMLBucketSize = 128 * 1024 * 1024 // bytes
 	DQLBucketSize = 32 * 1024 * 1024  // bytes
 
-	warmupSpeed = 0.01
+	warmupSpeed = 0.2
 )
 
 // Limiter defines the interface to perform request rate limiting.
@@ -62,6 +62,15 @@ func (rl *RateLimiter) Limit(rt commonpb.RateType, n int) bool {
 }
 
 func (rl *RateLimiter) setRates(rates []*commonpb.Rate) error {
+	//for _, r := range rates {
+	//	if _, ok := rl.limiters[r.GetRt()]; ok {
+	//		metrics.SetRateGaugeByRateType(r.GetRt(), Params.ProxyCfg.GetNodeID(), r.GetR())
+	//	} else {
+	//		panic("aaaaa")
+	//		return fmt.Errorf("unregister rateLimiter for rateType %s", r.GetRt().String())
+	//	}
+	//}
+
 	rates = rl.warmup(rates)
 	rl.printRates(rates)
 	for _, r := range rates {

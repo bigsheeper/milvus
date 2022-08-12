@@ -342,4 +342,4 @@ quotaAndLimits:
     maxCollectionNum: 20 # TODO: add more
 
   quotaCenterCollectInterval: 1000 # milliseconds
-  limitRWBy: throughput # limit dml and dql requests by, currently only support `throughput`, maybe `QPS`/`TPS` in the future
+#  limitRWBy: throughput # limit dml and dql requests by, currently only support `throughput`, maybe `QPS`/`TPS` in the future

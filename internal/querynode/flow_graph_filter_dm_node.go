@@ -19,11 +19,14 @@ package querynode
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
@@ -102,6 +105,7 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			}
 			if resMsg != nil {
 				iMsg.insertMessages = append(iMsg.insertMessages, resMsg)
+				metrics.QueryNodeConsumeRate.WithLabelValues(strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10), metrics.InsertLabel).Add(float64(proto.Size(&resMsg.InsertRequest)))
 			}
 		case commonpb.MsgType_Delete:
 			resMsg, err := fdmNode.filterInvalidDeleteMessage(msg.(*msgstream.DeleteMsg), collection.getLoadType())
@@ -113,6 +117,7 @@ func (fdmNode *filterDmNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 			}
 			if resMsg != nil {
 				iMsg.deleteMessages = append(iMsg.deleteMessages, resMsg)
+				metrics.QueryNodeConsumeRate.WithLabelValues(strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10), metrics.DeleteLabel).Add(float64(proto.Size(&resMsg.DeleteRequest)))
 			}
 		default:
 			log.Warn("invalid message type in filterDmNode",

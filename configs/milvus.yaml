@@ -338,3 +338,50 @@ common:
     # tls mode values [0, 1, 2]
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
+
+quotaAndLimits:
+  enable: true # `true` to enable quota and limits, `false` to disable.
+
+  # quotaCenterCollectInterval is the time interval that quotaCenter
+  # collects metrics from Query cluster and Data cluster.
+  quotaCenterCollectInterval: 1000 # milliseconds
+
+  ddl:
+    collectionRate: 10 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
+    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
+    segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
+
+  dml:
+    insertRate: 64 # MB/s
+    deleteRate: 1 # MB/s
+    maxInsertSize: 64 # the maximum size(MB) of a single insert request that allowed.
+    maxDeleteSize: 1 # the maximum size(MB) of a single delete request that allowed.
+
+  dql:
+    searchRate: 0.1 # MB/s
+    queryRate: 0.01 # MB/s
+    maxSearchSize: 0.1 # the maximum size(MB) of a single search request that allowed.
+    maxQuerySize: 0.01 # the maximum size(MB) of a single query request that allowed.
+
+  limits:
+    maxCollectionNum: 32768 # max number of collections in a Milvus instance.
+    # TODO: add more limits
+
+  # enableDML decides whether dml requests are allowed, `true` means dml requests are allowed (except for some
+  # specific conditions, such as memory of nodes to water marker), `false` means always reject all dml requests.
+  forceDenyWriting:
+    enable: false
+    # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
+    # If memory of any DataNode reaches to water level, all dml requests would be rejected.
+    dataNodeMemoryWaterLevel: 0.9 # (0, 1]
+    # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes.
+    # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
+    queryNodeMemoryWaterLevel: 0.9 # (0, 1]
+
+  # enableDQL decides whether dql requests are allowed, `true` means dql requests are allowed (except for some
+  # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
+  forceDenyReading:
+    enable: false
+
+  debug: # TODO: add debug

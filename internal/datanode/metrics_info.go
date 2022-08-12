@@ -26,6 +26,16 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
+	rms := []metricsinfo.RateMetric{}
+
+	return &metricsinfo.QuotaMetrics{
+		NodeID: Params.DataNodeCfg.GetNodeID(),
+		Rms:    rms,
+		Mm:     metricsinfo.MemMetric{},
+	}, nil
+}
+
 //getComponentConfigurations returns the configurations of dataNode matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "datanode."
@@ -50,6 +60,22 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 
 func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	// TODO(dragondriver): add more metrics
+	usedMem := metricsinfo.GetUsedMemoryCount()
+	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+		}, nil
+	}
+	quotaMetrics.Mm.UsedMem = usedMem
+	quotaMetrics.Mm.TotalMem = totalMem
+
 	nodeInfos := metricsinfo.DataNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
@@ -57,8 +83,8 @@ func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.Ge
 				IP:           node.session.Address,
 				CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
 				CPUCoreUsage: metricsinfo.GetCPUUsage(),
-				Memory:       metricsinfo.GetMemoryCount(),
-				MemoryUsage:  metricsinfo.GetUsedMemoryCount(),
+				Memory:       totalMem,
+				MemoryUsage:  usedMem,
 				Disk:         metricsinfo.GetDiskCount(),
 				DiskUsage:    metricsinfo.GetDiskUsage(),
 			},
@@ -71,6 +97,7 @@ func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.Ge
 		SystemConfigurations: metricsinfo.DataNodeConfiguration{
 			FlushInsertBufferSize: Params.DataNodeCfg.FlushInsertBufferSize,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)

@@ -26,8 +26,10 @@ import (
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 )
 
@@ -224,6 +226,74 @@ func (p *proxyClientManager) RefreshPolicyInfoCache(ctx context.Context, req *pr
 			_, err := v.RefreshPolicyInfoCache(ctx, req)
 			if err != nil {
 				return fmt.Errorf("RefreshPolicyInfoCache failed, proxyID = %d, err = %s", k, err)
+			}
+			return nil
+		})
+	}
+	return group.Wait()
+}
+
+// GetMetrics sends requests to proxies to get metrics.
+func (p *proxyClientManager) GetMetrics(ctx context.Context) ([]*milvuspb.GetMetricsResponse, error) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if len(p.proxyClient) == 0 {
+		log.Warn("proxy client is empty, GetMetrics will not send to any client")
+		return nil, nil
+	}
+
+	req, err := metricsinfo.ConstructRequestByMetricType(metricsinfo.SystemInfoMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	group := &errgroup.Group{}
+	var metricRspsMu sync.Mutex
+	metricRsps := make([]*milvuspb.GetMetricsResponse, 0)
+	for k, v := range p.proxyClient {
+		k, v := k, v
+		group.Go(func() error {
+			rsp, err := v.GetMetrics(ctx, req)
+			if err != nil {
+				return fmt.Errorf("GetMetrics failed, proxyID = %d, err = %s", k, err)
+			}
+			if rsp.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+				return fmt.Errorf("GetMetrics failed, proxyID = %d, err = %s", k, rsp.GetStatus().GetReason())
+			}
+			metricRspsMu.Lock()
+			metricRsps = append(metricRsps, rsp)
+			metricRspsMu.Unlock()
+			return nil
+		})
+	}
+	err = group.Wait()
+	if err != nil {
+		return nil, err
+	}
+	return metricRsps, nil
+}
+
+// TODO: add comments
+func (p *proxyClientManager) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) error {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if len(p.proxyClient) == 0 {
+		log.Warn("proxy client is empty, SetRates will not send to any client")
+		return nil
+	}
+
+	group := &errgroup.Group{}
+	for k, v := range p.proxyClient {
+		k, v := k, v
+		group.Go(func() error {
+			sta, err := v.SetRates(ctx, request)
+			if err != nil {
+				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, err)
+			}
+			if sta.GetErrorCode() != commonpb.ErrorCode_Success {
+				return fmt.Errorf("SetRates failed, proxyID = %d, err = %s", k, sta.Reason)
 			}
 			return nil
 		})

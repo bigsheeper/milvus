@@ -48,10 +48,34 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
+func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
+	rms := []metricsinfo.RateMetric{}
+
+	return &metricsinfo.QuotaMetrics{
+		NodeID: Params.QueryNodeCfg.GetNodeID(),
+		Rms:    rms,
+		Mm:     metricsinfo.MemMetric{},
+	}, nil
+}
+
 // getSystemInfoMetrics returns metrics info of QueryNode
 func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, node *QueryNode) (*milvuspb.GetMetricsResponse, error) {
 	usedMem := metricsinfo.GetUsedMemoryCount()
 	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+		}, nil
+	}
+	quotaMetrics.Mm.UsedMem = usedMem
+	quotaMetrics.Mm.TotalMem = totalMem
+
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeCfg.GetNodeID()),
@@ -73,6 +97,7 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 		SystemConfigurations: metricsinfo.QueryNodeConfiguration{
 			SimdType: Params.CommonCfg.SimdType,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

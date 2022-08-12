@@ -77,6 +77,8 @@ type Proxy struct {
 	dataCoord  types.DataCoord
 	queryCoord types.QueryCoord
 
+	MultiRateLimiter *MultiRateLimiter
+
 	chMgr channelsMgr
 
 	sched *taskScheduler

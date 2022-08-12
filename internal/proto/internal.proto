@@ -322,3 +322,19 @@ message ShowConfigurationsResponse {
   common.Status status = 1;
   repeated common.KeyValuePair configuations = 2; 
 }
+
+enum RateType {
+  DDLCollection = 0;
+  DDLPartition = 1;
+  DDLIndex = 2;
+  DDLSegments = 3; // flush, compaction and etc...
+  DMLInsert = 4;
+  DMLDelete = 5;
+  DQLSearch = 6;
+  DQLQuery = 7;
+}
+
+message Rate {
+  RateType rt = 1;
+  double r = 2;
+}

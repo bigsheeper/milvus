@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	ot "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -365,13 +366,19 @@ func (s *proxyTestServer) startGrpc(ctx context.Context, wg *sync.WaitGroup) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	multiLimiter := NewMultiRateLimiter()
+	s.MultiRateLimiter = multiLimiter
+
 	opts := trace.GetInterceptorOpts()
 	s.grpcServer = grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(kaep),
 		grpc.KeepaliveParams(kasp),
 		grpc.MaxRecvMsgSize(p.ServerMaxRecvSize),
 		grpc.MaxSendMsgSize(p.ServerMaxSendSize),
-		grpc.UnaryInterceptor(ot.UnaryServerInterceptor(opts...)),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			ot.UnaryServerInterceptor(opts...),
+			RateLimitInterceptor(multiLimiter),
+		)),
 		grpc.StreamInterceptor(ot.StreamServerInterceptor(opts...)))
 	proxypb.RegisterProxyServer(s.grpcServer, s)
 	milvuspb.RegisterMilvusServiceServer(s.grpcServer, s)

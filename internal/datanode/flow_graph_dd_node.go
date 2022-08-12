@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"sync/atomic"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
@@ -161,6 +163,8 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				continue
 			}
 
+			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLInsert.String(), float64(proto.Size(imsg)))
+
 			log.Debug("DDNode receive insert messages",
 				zap.Int("numRows", len(imsg.GetRowIDs())),
 				zap.String("vChannelName", ddn.vChannelName))
@@ -181,6 +185,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 					zap.Int64("Expected collID", ddn.collectionID))
 				continue
 			}
+			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLDelete.String(), float64(proto.Size(dmsg)))
 			fgMsg.deleteMessages = append(fgMsg.deleteMessages, dmsg)
 		}
 	}

@@ -25,6 +25,7 @@ import (
 	"runtime/debug"
 	"strconv"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 
@@ -500,7 +501,15 @@ func (loader *segmentLoader) loadFieldIndexData(segment *Segment, indexInfo *que
 	if err != nil {
 		return err
 	}
-	return segment.segmentLoadIndexData(indexBuffer, indexInfo, fieldType)
+	err = segment.segmentLoadIndexData(indexBuffer, indexInfo, fieldType)
+	if err != nil {
+		return err
+	}
+
+	for _, buf := range indexBuffer {
+		rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(len(buf)))
+	}
+	return nil
 }
 
 func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
@@ -554,6 +563,11 @@ func (loader *segmentLoader) loadGrowingSegments(segment *Segment,
 	}
 	log.Info("Do insert done fro growing segment ", zap.Int("len", numOfRecords), zap.Int64("segmentID", segment.ID()), zap.Int64("collectionID", segment.collectionID))
 
+	// 4. update rateCollector
+	rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(len(ids)*8))
+	rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(len(timestamps)*8))
+	rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(proto.Size(insertRecord)))
+
 	return nil
 }
 
@@ -576,6 +590,7 @@ func (loader *segmentLoader) loadSealedSegments(segment *Segment, insertData *st
 			return err
 		}
 	}
+	rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(proto.Size(insertRecord)))
 	return nil
 }
 
@@ -639,6 +654,10 @@ func (loader *segmentLoader) loadDeltaLogs(segment *Segment, deltaLogs []*datapb
 	err = segment.segmentLoadDeletedRecord(deltaData.Pks, deltaData.Tss, deltaData.RowCount)
 	if err != nil {
 		return err
+	}
+
+	for _, blob := range blobs {
+		rateCollector.Add(internalpb.RateType_DMLDelete.String(), float64(len(blob.Value)))
 	}
 	return nil
 }

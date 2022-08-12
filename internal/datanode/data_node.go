@@ -59,6 +59,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
@@ -84,6 +85,8 @@ var _ types.DataNode = (*DataNode)(nil)
 
 // Params from config.yaml
 var Params paramtable.ComponentParam
+
+var rateCollector *ratecollector.RateCollector
 
 // DataNode communicates with outside services and unioun all
 // services in datanode package.
@@ -205,6 +208,20 @@ func (node *DataNode) initSession() error {
 	return nil
 }
 
+func (node *DataNode) initRateCollector() error {
+	var err error
+	rateCollector, err = ratecollector.NewRateCollector(30*time.Second, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCollector.Register(ratecollector.ConsumeEvent + internalpb.RateType_DMLInsert.String())
+	rateCollector.Register(ratecollector.ConsumeEvent + internalpb.RateType_DMLDelete.String())
+	rateCollector.Register(ratecollector.SyncEvent + internalpb.RateType_DMLInsert.String())
+	rateCollector.Register(ratecollector.SyncEvent + internalpb.RateType_DMLDelete.String())
+	rateCollector.Start()
+	return nil
+}
+
 // Init function does nothing now.
 func (node *DataNode) Init() error {
 	log.Info("DataNode Init",
@@ -223,6 +240,11 @@ func (node *DataNode) Init() error {
 		return err
 	}
 	node.idAllocator = idAllocator
+
+	if err := node.initRateCollector(); err != nil {
+		log.Error("DataNode init rateCollector failed", zap.Error(err))
+		return err
+	}
 
 	node.factory.Init(&Params)
 	log.Info("DataNode Init successfully",

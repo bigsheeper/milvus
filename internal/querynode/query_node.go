@@ -43,10 +43,9 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/panjf2000/ants/v2"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
-
-	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
@@ -58,6 +57,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/concurrency"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -69,6 +69,8 @@ var _ types.QueryNode = (*QueryNode)(nil)
 var _ types.QueryNodeComponent = (*QueryNode)(nil)
 
 var Params paramtable.ComponentParam
+
+var rateCollector *ratecollector.RateCollector
 
 // QueryNode communicates with outside services and union all
 // services in querynode package.
@@ -200,6 +202,20 @@ func (node *QueryNode) InitSegcore() {
 	C.SegcoreSetIndexSliceSize(cIndexSliceSize)
 }
 
+func (node *QueryNode) initRateCollector() error {
+	var err error
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCollector.Register(internalpb.RateType_DMLInsert.String())
+	rateCollector.Register(internalpb.RateType_DMLDelete.String())
+	rateCollector.Register(internalpb.RateType_DQLSearch.String())
+	rateCollector.Register(internalpb.RateType_DQLQuery.String())
+	rateCollector.Start()
+	return nil
+}
+
 // Init function init historical and streaming module to manage segments
 func (node *QueryNode) Init() error {
 	var initError error = nil
@@ -214,6 +230,12 @@ func (node *QueryNode) Init() error {
 		}
 
 		node.factory.Init(&Params)
+
+		if err = node.initRateCollector(); err != nil {
+			log.Error("QueryNode init rateCollector failed", zap.Error(err))
+			initError = err
+			return
+		}
 
 		node.vectorStorage, err = node.factory.NewVectorStorageChunkManager(node.queryNodeLoopCtx)
 		if err != nil {

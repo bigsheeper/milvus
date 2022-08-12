@@ -18,7 +18,9 @@ package querynode
 
 import (
 	"context"
+	"strconv"
 
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -48,10 +50,65 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
+func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
+	nodeIDStr := strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10)
+	toMegabytes := func(f float64) float64 {
+		return f / 1024.0 / 1024.0
+	}
+	// TODO: get newest as default, support get by other strategy
+	insertRate, err := rateCollector.Newest(internalpb.RateType_DMLInsert.String())
+	if err != nil {
+		return nil, err
+	}
+	metrics.QueryNodeConsumeInsertRate.WithLabelValues(nodeIDStr).Set(toMegabytes(insertRate))
+	deleteRate, err := rateCollector.Newest(internalpb.RateType_DMLDelete.String())
+	if err != nil {
+		return nil, err
+	}
+	metrics.QueryNodeConsumeDeleteRate.WithLabelValues(nodeIDStr).Set(toMegabytes(deleteRate))
+	searchRate, err := rateCollector.Newest(internalpb.RateType_DQLSearch.String())
+	if err != nil {
+		return nil, err
+	}
+	metrics.QueryNodeSearchRate.WithLabelValues(nodeIDStr).Set(toMegabytes(searchRate))
+	queryRate, err := rateCollector.Newest(internalpb.RateType_DQLQuery.String())
+	if err != nil {
+		return nil, err
+	}
+	metrics.QueryNodeQueryRate.WithLabelValues(nodeIDStr).Set(toMegabytes(queryRate))
+	// TODO: return throughput for now, support more types in the future
+	rms := []metricsinfo.RateMetric{
+		{Rt: internalpb.RateType_DMLInsert, ThroughPut: insertRate},
+		{Rt: internalpb.RateType_DMLDelete, ThroughPut: deleteRate},
+		{Rt: internalpb.RateType_DQLSearch, ThroughPut: searchRate},
+		{Rt: internalpb.RateType_DQLQuery, ThroughPut: queryRate},
+	}
+
+	return &metricsinfo.QuotaMetrics{
+		NodeID: Params.QueryNodeCfg.GetNodeID(),
+		Rms:    rms,
+		Mm:     metricsinfo.MemMetric{},
+	}, nil
+}
+
 // getSystemInfoMetrics returns metrics info of QueryNode
 func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, node *QueryNode) (*milvuspb.GetMetricsResponse, error) {
 	usedMem := metricsinfo.GetUsedMemoryCount()
 	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+		}, nil
+	}
+	quotaMetrics.Mm.UsedMem = usedMem
+	quotaMetrics.Mm.TotalMem = totalMem
+
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
 			Name: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeCfg.GetNodeID()),
@@ -73,6 +130,7 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 		SystemConfigurations: metricsinfo.QueryNodeConfiguration{
 			SimdType: Params.CommonCfg.SimdType,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

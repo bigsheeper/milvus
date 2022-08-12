@@ -765,6 +765,10 @@ func (m *MockProxy) AlterAlias(ctx context.Context, request *milvuspb.AlterAlias
 	return nil, nil
 }
 
+func (m *MockProxy) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
 func (m *MockProxy) SetRootCoordClient(rootCoord types.RootCoord) {
 
 }

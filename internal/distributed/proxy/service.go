@@ -161,6 +161,14 @@ func (s *Server) startExternalGrpc(grpcPort int, errChan chan error) {
 	}
 	log.Debug("Proxy server already listen on tcp", zap.Int("port", grpcPort))
 
+	multiLimiter := proxy.NewMultiRateLimiter()
+	if _, ok := s.proxy.(*proxy.Proxy); ok {
+		s.proxy.(*proxy.Proxy).MultiRateLimiter = multiLimiter
+		log.Debug("Proxy create multi rate limiter done", zap.Int("port", grpcPort))
+	} else {
+		log.Error("Proxy create multi rate limiter failed", zap.Error(fmt.Errorf("type assertion failed for s.proxy")))
+	}
+
 	opts := trace.GetInterceptorOpts()
 	grpcOpts := []grpc.ServerOption{
 		grpc.KeepaliveEnforcementPolicy(kaep),
@@ -171,6 +179,7 @@ func (s *Server) startExternalGrpc(grpcPort int, errChan chan error) {
 			ot.UnaryServerInterceptor(opts...),
 			grpc_auth.UnaryServerInterceptor(proxy.AuthenticationInterceptor),
 			proxy.UnaryServerInterceptor(proxy.PrivilegeInterceptor),
+			proxy.RateLimitInterceptor(multiLimiter),
 		)),
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			ot.StreamServerInterceptor(opts...),
@@ -864,4 +873,8 @@ func (s *Server) SelectGrant(ctx context.Context, req *milvuspb.SelectGrantReque
 
 func (s *Server) RefreshPolicyInfoCache(ctx context.Context, req *proxypb.RefreshPolicyInfoCacheRequest) (*commonpb.Status, error) {
 	return s.proxy.RefreshPolicyInfoCache(ctx, req)
+}
+
+func (s *Server) SetRates(ctx context.Context, request *proxypb.SetRatesRequest) (*commonpb.Status, error) {
+	return s.proxy.SetRates(ctx, request)
 }

@@ -40,6 +40,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -59,6 +60,8 @@ var _ types.Proxy = (*Proxy)(nil)
 
 var Params paramtable.ComponentParam
 
+var rateCollector *ratecollector.RateCollector
+
 // Proxy of milvus
 type Proxy struct {
 	ctx    context.Context
@@ -76,6 +79,8 @@ type Proxy struct {
 	indexCoord types.IndexCoord
 	dataCoord  types.DataCoord
 	queryCoord types.QueryCoord
+
+	MultiRateLimiter *MultiRateLimiter
 
 	chMgr channelsMgr
 
@@ -150,6 +155,24 @@ func (node *Proxy) initSession() error {
 	return nil
 }
 
+func (node *Proxy) initRateCollector() error {
+	var err error
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCollector.Register(internalpb.RateType_DDLCollection.String())
+	rateCollector.Register(internalpb.RateType_DDLPartition.String())
+	rateCollector.Register(internalpb.RateType_DDLIndex.String())
+	rateCollector.Register(internalpb.RateType_DDLSegments.String())
+	rateCollector.Register(internalpb.RateType_DMLInsert.String())
+	rateCollector.Register(internalpb.RateType_DMLDelete.String())
+	rateCollector.Register(internalpb.RateType_DQLSearch.String())
+	rateCollector.Register(internalpb.RateType_DQLQuery.String())
+	rateCollector.Start()
+	return nil
+}
+
 // Init initialize proxy.
 func (node *Proxy) Init() error {
 	log.Info("init session for Proxy")
@@ -161,6 +184,11 @@ func (node *Proxy) Init() error {
 
 	node.factory.Init(&Params)
 	log.Debug("init parameters for factory", zap.String("role", typeutil.ProxyRole), zap.Any("parameters", Params.ServiceParam))
+
+	if err := node.initRateCollector(); err != nil {
+		log.Error("Proxy init rateCollector failed", zap.Error(err))
+		return err
+	}
 
 	log.Debug("create id allocator", zap.String("role", typeutil.ProxyRole), zap.Int64("ProxyID", Params.ProxyCfg.GetNodeID()))
 	idAllocator, err := allocator.NewIDAllocator(node.ctx, node.rootCoord, Params.ProxyCfg.GetNodeID())

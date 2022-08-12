@@ -26,12 +26,14 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/internal/storage"
@@ -213,6 +215,11 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 	}
 	wg.Wait()
 
+	// 4. update rateCollector
+	for _, msg := range iMsg.insertMessages {
+		rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(proto.Size(&msg.InsertRequest)))
+	}
+
 	delData := &deleteData{
 		deleteIDs:        make(map[UniqueID][]primaryKey),
 		deleteTimestamps: make(map[UniqueID][]Timestamp),
@@ -264,6 +271,11 @@ func (iNode *insertNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		}()
 	}
 	wg.Wait()
+
+	// 4. update rateCollector
+	for _, delMsg := range iMsg.deleteMessages {
+		rateCollector.Add(internalpb.RateType_DMLDelete.String(), float64(proto.Size(&delMsg.DeleteRequest)))
+	}
 
 	var res Msg = &serviceTimeMsg{
 		timeRange: iMsg.timeRange,

@@ -1,0 +1,66 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package paramtable
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestQuotaParam(t *testing.T) {
+	qc := quotaConfig{}
+	qc.init(&baseParams)
+
+	t.Run("test enabled", func(t *testing.T) {
+		assert.True(t, qc.EnableQuotaAndLimits)
+	})
+
+	t.Run("test ddl", func(t *testing.T) {
+		assert.Equal(t, float64(10), qc.DDLCollectionRate)
+		assert.Equal(t, float64(10), qc.DDLPartitionRate)
+		assert.Equal(t, float64(10), qc.DDLIndexRate)
+		assert.Equal(t, float64(10), qc.DDLSegmentsRate)
+	})
+
+	t.Run("test dml", func(t *testing.T) {
+		assert.Equal(t, megaBytesRate2Bytes(128), qc.DMLInsertRate)
+		assert.Equal(t, megaBytesRate2Bytes(1), qc.DMLDeleteRate)
+		assert.Equal(t, megaBytesSize2Bytes(256), qc.MaxInsertSize)
+		assert.Equal(t, megaBytesSize2Bytes(5), qc.MaxDeleteSize)
+	})
+
+	t.Run("test dql", func(t *testing.T) {
+		assert.Equal(t, megaBytesRate2Bytes(16), qc.DQLSearchRate)
+		assert.Equal(t, megaBytesRate2Bytes(1), qc.DQLQueryRate)
+		assert.Equal(t, megaBytesSize2Bytes(32), qc.MaxSearchSize)
+		assert.Equal(t, megaBytesSize2Bytes(5), qc.MaxQuerySize)
+	})
+
+	t.Run("test limits", func(t *testing.T) {
+		assert.Equal(t, 32768, qc.MaxCollectionNum)
+	})
+
+	t.Run("test others", func(t *testing.T) {
+		assert.Equal(t, int64(1000), qc.QuotaCenterCollectInterval)
+		assert.Equal(t, 0.1, qc.WarmUpSpeed)
+		assert.True(t, qc.EnableDML)
+		assert.True(t, qc.EnableDQL)
+		assert.Equal(t, 0.9, qc.DataNodeMemoryWaterLevel)
+		assert.Equal(t, 0.9, qc.QueryNodeMemoryWaterLevel)
+	})
+}

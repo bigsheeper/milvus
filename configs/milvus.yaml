@@ -338,3 +338,53 @@ common:
     # tls mode values [0, 1, 2]
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
+
+quotaAndLimits:
+  enabled: true # `true` to enable quota and limits, `false` to disable.
+
+  ddl:
+    collectionRate: 10 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
+    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
+    segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
+
+  dml:
+    insertRate: 128 # MB/s
+    deleteRate: 1 # MB/s
+    maxInsertSize: 256 # the maximum size(MB) of a single insert request that allowed.
+    maxDeleteSize: 5 # the maximum size(MB) of a single delete request that allowed.
+
+  dql:
+    searchRate: 16 # MB/s
+    queryRate: 1 # MB/s
+    maxSearchSize: 32 # the maximum size(MB) of a single search request that allowed.
+    maxQuerySize: 5 # the maximum size(MB) of a single query request that allowed.
+
+  limits:
+    maxCollectionNum: 32768 # max number of collections in a Milvus instance.
+    # TODO: add more limits
+
+  # quotaCenterCollectInterval is the time interval that quotaCenter
+  # collects metrics from Query cluster and Data cluster.
+  quotaCenterCollectInterval: 1000 # milliseconds
+
+  # warmUpSpeed is the warm-up speed from a low rate to the specified rate.
+  # If the system's usage has been low for a while, warmUpSpeed decides the warm-up
+  # period when all of a sudden a large amount of requests comes in.
+  warmUpSpeed: 0.1 # (0, 1]
+
+  # enableDML decides whether dml requests are allowed, `true` means dml requests are allowed (except for some
+  # specific conditions, such as memory of nodes to water marker), `false` means always reject all dml requests.
+  enableDML: true
+
+  # enableDQL decides whether dql requests are allowed, `true` means dql requests are allowed (except for some
+  # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
+  enableDQL: true
+
+  # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes. When `enableDML` is `true`,
+  # if memory of any DataNode reaches to water level, all dml requests would be rejected.
+  dataNodeMemoryWaterLevel: 0.9 # (0, 1]
+
+  # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes. When `enableDML` is `true`,
+  # if memory of any QueryNode reaches to water level, all dml requests would be rejected.
+  queryNodeMemoryWaterLevel: 0.9 # (0, 1]

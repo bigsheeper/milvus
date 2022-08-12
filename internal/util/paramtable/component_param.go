@@ -20,9 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 )
 
 const (
@@ -132,6 +131,8 @@ type commonConfig struct {
 	SimdType    string
 
 	AuthorizationEnabled bool
+
+	ClusterName string
 }
 
 func (p *commonConfig) init(base *BaseTable) {
@@ -169,6 +170,8 @@ func (p *commonConfig) init(base *BaseTable) {
 	p.initStorageType()
 
 	p.initEnableAuthorization()
+
+	p.initClusterName()
 }
 
 func (p *commonConfig) initClusterPrefix() {
@@ -370,6 +373,10 @@ func (p *commonConfig) initStorageType() {
 
 func (p *commonConfig) initEnableAuthorization() {
 	p.AuthorizationEnabled = p.Base.ParseBool("common.security.authorizationEnabled", false)
+}
+
+func (p *commonConfig) initClusterName() {
+	p.ClusterName = p.Base.LoadWithDefault("common.cluster.name", "")
 }
 
 ///////////////////////////////////////////////////////////////////////////////

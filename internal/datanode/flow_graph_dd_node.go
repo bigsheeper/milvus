@@ -163,7 +163,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				continue
 			}
 
-			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLInsert.String(), float64(proto.Size(imsg)))
+			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLInsert.String(), float64(proto.Size(&imsg.InsertRequest)))
 
 			log.Debug("DDNode receive insert messages",
 				zap.Int("numRows", len(imsg.GetRowIDs())),
@@ -185,7 +185,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 					zap.Int64("Expected collID", ddn.collectionID))
 				continue
 			}
-			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLDelete.String(), float64(proto.Size(dmsg)))
+			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLDelete.String(), float64(proto.Size(&dmsg.DeleteRequest)))
 			fgMsg.deleteMessages = append(fgMsg.deleteMessages, dmsg)
 		}
 	}

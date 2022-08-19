@@ -381,10 +381,10 @@ quotaAndLimits:
   # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
   enableDQL: true
 
-  # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes. When `enableDML` is `true`,
-  # if memory of any DataNode reaches to water level, all dml requests would be rejected.
+  # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
+  # If memory of any DataNode reaches to water level, all dml requests would be rejected.
   dataNodeMemoryWaterLevel: 0.9 # (0, 1]
 
-  # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes. When `enableDML` is `true`,
-  # if memory of any QueryNode reaches to water level, all dml requests would be rejected.
+  # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes.
+  # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
   queryNodeMemoryWaterLevel: 0.9 # (0, 1]

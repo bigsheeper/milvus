@@ -21,6 +21,10 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 )
 
 const (
@@ -142,6 +146,9 @@ func (r *RateCollector) Newest(label string) (float64, error) {
 	defer r.Unlock()
 
 	if _, ok := r.values[label]; ok {
+		log.Debug("RateCollection return newest", zap.String("label", label),
+			zap.Float64("newest", r.values[label][r.position]),
+			zap.Float64s("values", r.values[label]))
 		return r.values[label][r.position], nil
 	}
 	return 0, fmt.Errorf("RateColletor didn't register for label %s", label)

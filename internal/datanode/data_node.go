@@ -210,7 +210,7 @@ func (node *DataNode) initSession() error {
 
 func (node *DataNode) initRateCollector() error {
 	var err error
-	rateCollector, err = ratecollector.NewRateCollector(30*time.Second, ratecollector.DefaultGranularity)
+	rateCollector, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
 	if err != nil {
 		return err
 	}

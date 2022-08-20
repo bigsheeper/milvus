@@ -18,10 +18,7 @@ package querynode
 
 import (
 	"context"
-	"strconv"
-	"time"
 
-	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -52,31 +49,23 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 }
 
 func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
-	nodeIDStr := strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10)
-	toMegabytes := func(f float64) float64 {
-		return f / 1024.0 / 1024.0
-	}
 	// TODO: get newest as default, support get by other strategy
 	insertRate, err := rateCollector.Newest(internalpb.RateType_DMLInsert.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.QueryNodeConsumeInsertRate.WithLabelValues(nodeIDStr).Set(toMegabytes(insertRate))
 	deleteRate, err := rateCollector.Newest(internalpb.RateType_DMLDelete.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.QueryNodeConsumeDeleteRate.WithLabelValues(nodeIDStr).Set(toMegabytes(deleteRate))
-	searchRate, err := rateCollector.NewestAvg(internalpb.RateType_DQLSearch.String(), 3*time.Second)
+	searchRate, err := rateCollector.Newest(internalpb.RateType_DQLSearch.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.QueryNodeSearchRate.WithLabelValues(nodeIDStr).Set(toMegabytes(searchRate))
 	queryRate, err := rateCollector.Newest(internalpb.RateType_DQLQuery.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.QueryNodeQueryRate.WithLabelValues(nodeIDStr).Set(toMegabytes(queryRate))
 	// TODO: return throughput for now, support more types in the future
 	rms := []metricsinfo.RateMetric{
 		{Rt: internalpb.RateType_DMLInsert, ThroughPut: insertRate},

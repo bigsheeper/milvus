@@ -34,7 +34,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 )
@@ -576,7 +575,6 @@ func (t *flushBufferInsertTask) flushInsertData() error {
 		if err == nil {
 			for _, d := range t.data {
 				metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.InsertLabel).Add(float64(len(d)))
-				rateCollector.Add(ratecollector.SyncEvent+internalpb.RateType_DMLInsert.String(), float64(len(d)))
 			}
 		}
 		return err
@@ -597,7 +595,6 @@ func (t *flushBufferDeleteTask) flushDeleteData() error {
 		metrics.DataNodeSave2StorageLatency.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		for _, d := range t.data {
 			metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Add(float64(len(d)))
-			rateCollector.Add(ratecollector.SyncEvent+internalpb.RateType_DMLDelete.String(), float64(len(d)))
 		}
 		return err
 	}

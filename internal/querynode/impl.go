@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
@@ -621,9 +622,9 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		return failRet, nil
 	}
 
-	//if !req.FromShardLeader {
-	rateCollector.Add(internalpb.RateType_DQLSearch.String(), float64(proto.Size(req)))
-	//}
+	if !req.FromShardLeader {
+		metrics.QueryNodeExecuteRate.WithLabelValues(strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10), metrics.SearchLabel).Add(float64(proto.Size(req)))
+	}
 	return ret, nil
 }
 
@@ -976,7 +977,7 @@ func (node *QueryNode) Query(ctx context.Context, req *querypb.QueryRequest) (*i
 		return failRet, nil
 	}
 
-	rateCollector.Add(internalpb.RateType_DQLQuery.String(), float64(proto.Size(req)))
+	metrics.QueryNodeExecuteRate.WithLabelValues(strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10), metrics.QueryLabel).Add(float64(proto.Size(req)))
 	return ret, nil
 }
 

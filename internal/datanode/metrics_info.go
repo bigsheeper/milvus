@@ -18,9 +18,7 @@ package datanode
 
 import (
 	"context"
-	"strconv"
 
-	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
@@ -30,31 +28,23 @@ import (
 )
 
 func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
-	nodeIDStr := strconv.FormatInt(Params.QueryNodeCfg.GetNodeID(), 10)
-	toMegabytes := func(f float64) float64 {
-		return f / 1024.0 / 1024.0
-	}
 	// TODO: get newest as default, support get by other strategy
 	consumeInsertRate, err := rateCollector.Newest(ratecollector.ConsumeEvent + internalpb.RateType_DMLInsert.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.DataNodeConsumeInsertRate.WithLabelValues(nodeIDStr).Set(toMegabytes(consumeInsertRate))
 	consumeDeleteRate, err := rateCollector.Newest(ratecollector.ConsumeEvent + internalpb.RateType_DMLDelete.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.DataNodeConsumeDeleteRate.WithLabelValues(nodeIDStr).Set(toMegabytes(consumeDeleteRate))
 	syncInsertRate, err := rateCollector.Newest(ratecollector.SyncEvent + internalpb.RateType_DMLInsert.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.DataNodeSyncInsertRate.WithLabelValues(nodeIDStr).Set(toMegabytes(syncInsertRate))
 	syncDeleteRate, err := rateCollector.Newest(ratecollector.SyncEvent + internalpb.RateType_DMLDelete.String())
 	if err != nil {
 		return nil, err
 	}
-	metrics.DataNodeSyncDeleteRate.WithLabelValues(nodeIDStr).Set(toMegabytes(syncDeleteRate))
 	// TODO: return throughput for now, support more types in the future
 	rms := []metricsinfo.RateMetric{
 		{Rt: internalpb.RateType_DMLInsert, ThroughPut: syncInsertRate},

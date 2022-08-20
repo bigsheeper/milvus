@@ -21,12 +21,10 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 	"github.com/milvus-io/milvus/internal/util/trace"
@@ -149,11 +147,6 @@ func (dNode *deleteNode) Operate(in []flowgraph.Msg) []flowgraph.Msg {
 		}()
 	}
 	wg.Wait()
-
-	// 4. update rateCollector
-	for _, delMsg := range dMsg.deleteMessages {
-		rateCollector.Add(internalpb.RateType_DMLDelete.String(), float64(proto.Size(&delMsg.DeleteRequest)))
-	}
 
 	var res Msg = &serviceTimeMsg{
 		timeRange: dMsg.timeRange,

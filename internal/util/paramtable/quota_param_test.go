@@ -29,7 +29,6 @@ func TestQuotaParam(t *testing.T) {
 	t.Run("test quota", func(t *testing.T) {
 		assert.True(t, qc.EnableQuotaAndLimits)
 		assert.Equal(t, int64(1000), qc.QuotaCenterCollectInterval)
-		assert.Equal(t, 0.1, qc.WarmUpSpeed)
 	})
 
 	t.Run("test ddl", func(t *testing.T) {
@@ -42,15 +41,15 @@ func TestQuotaParam(t *testing.T) {
 	t.Run("test dml", func(t *testing.T) {
 		assert.Equal(t, megaBytesRate2Bytes(128), qc.DMLInsertRate)
 		assert.Equal(t, megaBytesRate2Bytes(1), qc.DMLDeleteRate)
-		assert.Equal(t, megaBytesSize2Bytes(256), qc.MaxInsertSize)
-		assert.Equal(t, megaBytesSize2Bytes(5), qc.MaxDeleteSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(256)), qc.MaxInsertSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(5)), qc.MaxDeleteSize)
 	})
 
 	t.Run("test dql", func(t *testing.T) {
 		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLSearchRate)
 		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLQueryRate)
-		assert.Equal(t, megaBytesSize2Bytes(32), qc.MaxSearchSize)
-		assert.Equal(t, megaBytesSize2Bytes(5), qc.MaxQuerySize)
+		assert.Equal(t, int(megaBytesRate2Bytes(32)), qc.MaxSearchSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(5)), qc.MaxQuerySize)
 	})
 
 	t.Run("test limits", func(t *testing.T) {

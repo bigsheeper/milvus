@@ -19,7 +19,6 @@ package rootcoord
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -229,57 +228,55 @@ func (q *QuotaCenter) disableDQL() {
 	q.currentRates[internalpb.RateType_DQLQuery] = 0
 }
 
-// warmUp increase the rates by the WarmUpSpeed configuration.
-func warmUp(rates map[internalpb.RateType]float64) {
-	var maxRate float64
-	for rt := range rates {
-		switch rt {
-		case internalpb.RateType_DMLInsert:
-			maxRate = Params.QuotaConfig.DMLInsertRate
-		case internalpb.RateType_DMLDelete:
-			maxRate = Params.QuotaConfig.DMLDeleteRate
-		case internalpb.RateType_DQLSearch:
-			maxRate = Params.QuotaConfig.DQLSearchRate
-		case internalpb.RateType_DQLQuery:
-			maxRate = Params.QuotaConfig.DQLQueryRate
-		default:
-			// DDL request doesn't need to warm-up
-			maxRate = 0
-		}
-		if maxRate != 0 {
-			rates[rt] += maxRate * Params.QuotaConfig.WarmUpSpeed
-			// cannot exceed specified max rate
-			if rates[rt] > maxRate {
-				rates[rt] = maxRate
-			}
-		}
-	}
-}
-
 // calculateRates calculates target rates by different strategies.
 func (q *QuotaCenter) calculateRates() {
-	rates := q.getMinThroughput()
-	warmUp(rates)
-	for rt, r := range rates {
-		q.currentRates[rt] = r
-	}
+	q.resetCurrentRates()
 
 	if Params.QuotaConfig.ForceDenyWriting {
+		q.disableDML()
+	} else {
 		if q.memoryToWaterLevel() {
 			q.disableDML()
 		}
 		// TODO: add more strategies
-	} else {
-		q.disableDML()
 	}
 
 	if Params.QuotaConfig.ForceDenyReading {
-		// TODO: add strategies
-	} else {
 		q.disableDQL()
+	} else {
+		// TODO: add strategies
 	}
 
 	log.Debug("QuotaCenter calculates rate done", zap.Any("rates", q.currentRates))
+}
+
+func (q *QuotaCenter) resetCurrentRates() {
+	for _, rt := range internalpb.RateType_value {
+		q.currentRates[internalpb.RateType(rt)] = q.getRateConfigByRateType(internalpb.RateType(rt))
+	}
+}
+
+// getRateConfigByRateType returns rate by the specified rateType.
+func (q *QuotaCenter) getRateConfigByRateType(rt internalpb.RateType) float64 {
+	switch rt {
+	case internalpb.RateType_DDLCollection:
+		return Params.QuotaConfig.DDLCollectionRate
+	case internalpb.RateType_DDLPartition:
+		return Params.QuotaConfig.DDLPartitionRate
+	case internalpb.RateType_DDLIndex:
+		return Params.QuotaConfig.DDLIndexRate
+	case internalpb.RateType_DDLSegments:
+		return Params.QuotaConfig.DDLSegmentsRate
+	case internalpb.RateType_DMLInsert:
+		return Params.QuotaConfig.DMLInsertRate
+	case internalpb.RateType_DMLDelete:
+		return Params.QuotaConfig.DMLDeleteRate
+	case internalpb.RateType_DQLSearch:
+		return Params.QuotaConfig.DQLSearchRate
+	case internalpb.RateType_DQLQuery:
+		return Params.QuotaConfig.DQLQueryRate
+	}
+	panic(fmt.Errorf("QuotaCenter: invalid rateType, rt = %d", rt))
 }
 
 // memoryToWaterLevel checks whether any node has memory resource issue.
@@ -306,35 +303,6 @@ func (q *QuotaCenter) memoryToWaterLevel() bool {
 		// TODO: check bloom filter, ...
 	}
 	return false
-}
-
-// getMinThroughput returns the minimal throughput in all nodes as rates.
-func (q *QuotaCenter) getMinThroughput() map[internalpb.RateType]float64 {
-	minThroughput := make(map[internalpb.RateType]float64)
-	metrics := make([]*metricsinfo.QuotaMetrics, 0, len(q.dataNodeMetrics)+len(q.queryNodeMetrics))
-	metrics = append(metrics, q.dataNodeMetrics...)
-	metrics = append(metrics, q.queryNodeMetrics...)
-	for _, metric := range metrics {
-		for _, rate := range metric.Rms {
-			if _, ok := minThroughput[rate.Rt]; !ok {
-				minThroughput[rate.Rt] = math.MaxFloat64
-			}
-			if rate.ThroughPut == 0 {
-				// ignore 0 value here, in case of QueryNode didn't be loaded and still return 0 rates
-				// over and over again. We should limit the rate in DataNodes in this case.
-				continue
-			}
-			if rate.ThroughPut < minThroughput[rate.Rt] {
-				minThroughput[rate.Rt] = rate.ThroughPut
-			}
-		}
-	}
-	for rt, t := range minThroughput {
-		if math.Abs(t-math.MaxFloat64) <= 1e-9 {
-			minThroughput[rt] = 0
-		}
-	}
-	return minThroughput
 }
 
 // setRates notifies Proxies to set rates for different rate types.

@@ -119,35 +119,6 @@ func TestQuotaCenter(t *testing.T) {
 		assert.Equal(t, disableWrite, cb)
 	})
 
-	t.Run("test warmUp", func(t *testing.T) {
-		rates := map[internalpb.RateType]float64{
-			internalpb.RateType_DDLCollection: 100,
-			internalpb.RateType_DMLInsert:     100,
-			internalpb.RateType_DQLSearch:     100,
-		}
-		warmUp(rates)
-		speed := Params.QuotaConfig.WarmUpSpeed
-		assert.Equal(t, float64(100), rates[internalpb.RateType_DDLCollection])
-		assert.Equal(t, 100+Params.QuotaConfig.DMLInsertRate*speed, rates[internalpb.RateType_DMLInsert])
-		assert.Equal(t, 100+Params.QuotaConfig.DQLSearchRate*speed, rates[internalpb.RateType_DQLSearch])
-	})
-
-	t.Run("test getMinThroughput", func(t *testing.T) {
-		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
-		quotaCenter.dataNodeMetrics = []*metricsinfo.QuotaMetrics{
-			{Rms: []metricsinfo.RateMetric{
-				{Rt: internalpb.RateType_DMLInsert, ThroughPut: 100},
-				{Rt: internalpb.RateType_DMLInsert, ThroughPut: 200},
-				{Rt: internalpb.RateType_DMLInsert, ThroughPut: 0},
-			}},
-		}
-		res := quotaCenter.getMinThroughput()
-		assert.Len(t, res, 1)
-		throughput, ok := res[internalpb.RateType_DMLInsert]
-		assert.True(t, ok)
-		assert.Equal(t, float64(100), throughput)
-	})
-
 	t.Run("test setRates", func(t *testing.T) {
 		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
 		quotaCenter.currentRates[internalpb.RateType_DMLInsert] = 100

@@ -257,7 +257,6 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 
 	metrics.ProxyDDLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method, metrics.SuccessLabel).Inc()
 	metrics.ProxyDDLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return cct.result, nil
 }
 
@@ -342,7 +341,6 @@ func (node *Proxy) DropCollection(ctx context.Context, request *milvuspb.DropCol
 
 	metrics.ProxyDDLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method, metrics.SuccessLabel).Inc()
 	metrics.ProxyDDLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return dct.result, nil
 }
 
@@ -435,7 +433,6 @@ func (node *Proxy) HasCollection(ctx context.Context, request *milvuspb.HasColle
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDQLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return hct.result, nil
 }
 
@@ -524,7 +521,6 @@ func (node *Proxy) LoadCollection(ctx context.Context, request *milvuspb.LoadCol
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return lct.result, nil
 }
 
@@ -619,7 +615,6 @@ func (node *Proxy) ReleaseCollection(ctx context.Context, request *milvuspb.Rele
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return rct.result, nil
 }
 
@@ -715,7 +710,6 @@ func (node *Proxy) DescribeCollection(ctx context.Context, request *milvuspb.Des
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDQLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLCollection.String(), 1)
 	return dct.result, nil
 }
 
@@ -1113,7 +1107,6 @@ func (node *Proxy) CreatePartition(ctx context.Context, request *milvuspb.Create
 
 	metrics.ProxyDDLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method, metrics.SuccessLabel).Inc()
 	metrics.ProxyDDLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLPartition.String(), 1)
 	return cpt.result, nil
 }
 
@@ -1209,7 +1202,6 @@ func (node *Proxy) DropPartition(ctx context.Context, request *milvuspb.DropPart
 
 	metrics.ProxyDDLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method, metrics.SuccessLabel).Inc()
 	metrics.ProxyDDLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLPartition.String(), 1)
 	return dpt.result, nil
 }
 
@@ -1318,7 +1310,6 @@ func (node *Proxy) HasPartition(ctx context.Context, request *milvuspb.HasPartit
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDQLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLPartition.String(), 1)
 	return hpt.result, nil
 }
 
@@ -1419,7 +1410,6 @@ func (node *Proxy) LoadPartitions(ctx context.Context, request *milvuspb.LoadPar
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLPartition.String(), 1)
 	return lpt.result, nil
 }
 
@@ -1521,7 +1511,6 @@ func (node *Proxy) ReleasePartitions(ctx context.Context, request *milvuspb.Rele
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLPartition.String(), 1)
 	return rpt.result, nil
 }
 
@@ -1838,7 +1827,6 @@ func (node *Proxy) CreateIndex(ctx context.Context, request *milvuspb.CreateInde
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLIndex.String(), 1)
 	return cit.result, nil
 }
 
@@ -1957,7 +1945,6 @@ func (node *Proxy) DescribeIndex(ctx context.Context, request *milvuspb.Describe
 	metrics.ProxyDQLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDQLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLIndex.String(), 1)
 	return dit.result, nil
 }
 
@@ -2063,7 +2050,6 @@ func (node *Proxy) DropIndex(ctx context.Context, request *milvuspb.DropIndexReq
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyDMLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLIndex.String(), 1)
 	return dit.result, nil
 }
 
@@ -2421,7 +2407,7 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 	successCnt := it.result.InsertCnt - int64(len(it.result.ErrIndex))
 	metrics.ProxyInsertVectors.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(successCnt))
 	metrics.ProxyMutationLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.InsertLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DMLInsert.String(), float64(proto.Size(request)))
+	metrics.ProxyExecuteRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.InsertLabel).Add(float64(proto.Size(request)))
 	return it.result, nil
 }
 
@@ -2518,7 +2504,7 @@ func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) 
 	metrics.ProxyDMLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.SuccessLabel).Inc()
 	metrics.ProxyMutationLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.DeleteLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DMLDelete.String(), float64(proto.Size(request)))
+	metrics.ProxyExecuteRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.DeleteLabel).Add(float64(proto.Size(request)))
 	return dt.result, nil
 }
 
@@ -2672,7 +2658,7 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 		sentSize := proto.Size(qt.result)
 		metrics.ProxyReadReqSendBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(sentSize))
 	}
-	rateCollector.Add(internalpb.RateType_DQLSearch.String(), float64(proto.Size(request)))
+	metrics.ProxyExecuteRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.SearchLabel).Add(float64(proto.Size(request)))
 	return qt.result, nil
 }
 
@@ -2767,7 +2753,6 @@ func (node *Proxy) Flush(ctx context.Context, request *milvuspb.FlushRequest) (*
 
 	metrics.ProxyDDLFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method, metrics.SuccessLabel).Inc()
 	metrics.ProxyDDLReqLatency.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	rateCollector.Add(internalpb.RateType_DDLSegments.String(), 1)
 	return ft.result, nil
 }
 
@@ -2893,7 +2878,7 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 	}
 	sentSize := proto.Size(qt.result)
 	metrics.ProxyReadReqSendBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Add(float64(sentSize))
-	rateCollector.Add(internalpb.RateType_DQLQuery.String(), float64(proto.Size(request)))
+	metrics.ProxyExecuteRate.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.QueryLabel).Add(float64(proto.Size(request)))
 	return ret, nil
 }
 
@@ -3655,7 +3640,6 @@ func (node *Proxy) LoadBalance(ctx context.Context, req *milvuspb.LoadBalanceReq
 	}
 	log.Debug("LoadBalance Done", zap.Any("req", req), zap.Any("status", infoResp))
 	status.ErrorCode = commonpb.ErrorCode_Success
-	rateCollector.Add(internalpb.RateType_DDLSegments.String(), 1)
 	return status, nil
 }
 
@@ -3684,7 +3668,6 @@ func (node *Proxy) ManualCompaction(ctx context.Context, req *milvuspb.ManualCom
 
 	resp, err := node.dataCoord.ManualCompaction(ctx, req)
 	log.Info("received ManualCompaction response", zap.Int64("collectionID", req.GetCollectionID()), zap.Any("resp", resp), zap.Error(err))
-	rateCollector.Add(internalpb.RateType_DDLSegments.String(), 1)
 	return resp, err
 }
 

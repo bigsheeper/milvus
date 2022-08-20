@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/golang/protobuf/proto"
@@ -35,7 +36,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/flowgraph"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
@@ -163,7 +163,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				continue
 			}
 
-			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLInsert.String(), float64(proto.Size(&imsg.InsertRequest)))
+			metrics.DataNodeConsumeRate.WithLabelValues(strconv.FormatInt(Params.DataNodeCfg.GetNodeID(), 10), metrics.InsertLabel).Add(float64(proto.Size(&imsg.InsertRequest)))
 
 			log.Debug("DDNode receive insert messages",
 				zap.Int("numRows", len(imsg.GetRowIDs())),
@@ -185,7 +185,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 					zap.Int64("Expected collID", ddn.collectionID))
 				continue
 			}
-			rateCollector.Add(ratecollector.ConsumeEvent+internalpb.RateType_DMLDelete.String(), float64(proto.Size(&dmsg.DeleteRequest)))
+			metrics.DataNodeConsumeRate.WithLabelValues(strconv.FormatInt(Params.DataNodeCfg.GetNodeID(), 10), metrics.DeleteLabel).Add(float64(proto.Size(&dmsg.DeleteRequest)))
 			fgMsg.deleteMessages = append(fgMsg.deleteMessages, dmsg)
 		}
 	}

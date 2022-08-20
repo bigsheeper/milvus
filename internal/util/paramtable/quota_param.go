@@ -28,7 +28,6 @@ type quotaConfig struct {
 	EnableQuotaAndLimits bool
 
 	QuotaCenterCollectInterval int64
-	WarmUpSpeed                float64
 
 	// ddl
 	DDLCollectionRate float64
@@ -64,7 +63,6 @@ func (p *quotaConfig) init(base *BaseTable) {
 	p.initEnableQuotaAndLimits()
 
 	p.initQuotaCenterCollectInterval()
-	p.initWarmUpSpeed()
 
 	p.initDDLCollectionRate()
 	p.initDDLPartitionRate()
@@ -97,13 +95,6 @@ func (p *quotaConfig) initQuotaCenterCollectInterval() {
 	p.QuotaCenterCollectInterval = p.Base.ParseInt64("quotaAndLimits.quotaCenterCollectInterval")
 }
 
-func (p *quotaConfig) initWarmUpSpeed() {
-	p.WarmUpSpeed = p.Base.ParseFloat("quotaAndLimits.warmUpSpeed")
-	if p.WarmUpSpeed <= 0 || p.WarmUpSpeed > 1 {
-		panic("warm-up speed must in the interval of `(0, 1]`")
-	}
-}
-
 func (p *quotaConfig) initDDLCollectionRate() {
 	p.DDLCollectionRate = p.Base.ParseFloat("quotaAndLimits.ddl.collectionRate")
 }
@@ -124,10 +115,6 @@ func megaBytesRate2Bytes(f float64) float64 {
 	return f * 1024 * 1024
 }
 
-func megaBytesSize2Bytes(i int) int {
-	return i * 1024 * 1024
-}
-
 func (p *quotaConfig) initDMLInsertRate() {
 	rate := p.Base.ParseFloat("quotaAndLimits.dml.insertRate")
 	p.DMLInsertRate = megaBytesRate2Bytes(rate)
@@ -139,13 +126,13 @@ func (p *quotaConfig) initDMLDeleteRate() {
 }
 
 func (p *quotaConfig) initMaxInsertSize() {
-	size := p.Base.ParseInt("quotaAndLimits.dml.maxInsertSize")
-	p.MaxInsertSize = megaBytesSize2Bytes(size)
+	size := p.Base.ParseFloat("quotaAndLimits.dml.maxInsertSize")
+	p.MaxInsertSize = int(megaBytesRate2Bytes(size))
 }
 
 func (p *quotaConfig) initMaxDeleteSize() {
-	size := p.Base.ParseInt("quotaAndLimits.dml.maxDeleteSize")
-	p.MaxDeleteSize = megaBytesSize2Bytes(size)
+	size := p.Base.ParseFloat("quotaAndLimits.dml.maxDeleteSize")
+	p.MaxDeleteSize = int(megaBytesRate2Bytes(size))
 }
 
 func (p *quotaConfig) initDQLSearchRate() {
@@ -159,13 +146,13 @@ func (p *quotaConfig) initDQLQueryRate() {
 }
 
 func (p *quotaConfig) initMaxSearchSize() {
-	size := p.Base.ParseInt("quotaAndLimits.dql.maxSearchSize")
-	p.MaxSearchSize = megaBytesSize2Bytes(size)
+	size := p.Base.ParseFloat("quotaAndLimits.dql.maxSearchSize")
+	p.MaxSearchSize = int(megaBytesRate2Bytes(size))
 }
 
 func (p *quotaConfig) initMaxQuerySize() {
-	size := p.Base.ParseInt("quotaAndLimits.dql.maxQuerySize")
-	p.MaxQuerySize = megaBytesSize2Bytes(size)
+	size := p.Base.ParseFloat("quotaAndLimits.dql.maxQuerySize")
+	p.MaxQuerySize = int(megaBytesRate2Bytes(size))
 }
 
 func (p *quotaConfig) initMaxCollectionNum() {
@@ -173,7 +160,7 @@ func (p *quotaConfig) initMaxCollectionNum() {
 }
 
 func (p *quotaConfig) initForceDenyWriting() {
-	p.ForceDenyWriting = p.Base.ParseBool("quotaAndLimits.forceDenyWriting.enable", true)
+	p.ForceDenyWriting = p.Base.ParseBool("quotaAndLimits.forceDenyWriting.enable", false)
 }
 
 func (p *quotaConfig) initDataNodeMemoryWaterLevel() {
@@ -191,5 +178,5 @@ func (p *quotaConfig) initQueryNodeMemoryWaterLevel() {
 }
 
 func (p *quotaConfig) initForceDenyReading() {
-	p.ForceDenyReading = p.Base.ParseBool("quotaAndLimits.forceDenyReading.enable", true)
+	p.ForceDenyReading = p.Base.ParseBool("quotaAndLimits.forceDenyReading.enable", false)
 }

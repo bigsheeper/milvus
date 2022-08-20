@@ -346,11 +346,6 @@ quotaAndLimits:
   # collects metrics from Query cluster and Data cluster.
   quotaCenterCollectInterval: 1000 # milliseconds
 
-  # warmUpSpeed is the warm-up speed from a low rate to the specified rate.
-  # If the system's usage has been low for a while, warmUpSpeed decides the warm-up
-  # period when all of a sudden a large amount of requests comes in.
-  warmUpSpeed: 0.1 # (0, 1]
-
   ddl:
     collectionRate: 10 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
     partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
@@ -358,16 +353,16 @@ quotaAndLimits:
     segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
 
   dml:
-    insertRate: 128 # MB/s
+    insertRate: 64 # MB/s
     deleteRate: 1 # MB/s
-    maxInsertSize: 256 # the maximum size(MB) of a single insert request that allowed.
-    maxDeleteSize: 5 # the maximum size(MB) of a single delete request that allowed.
+    maxInsertSize: 64 # the maximum size(MB) of a single insert request that allowed.
+    maxDeleteSize: 1 # the maximum size(MB) of a single delete request that allowed.
 
   dql:
     searchRate: 0.1 # MB/s
-    queryRate: 0.1 # MB/s
-    maxSearchSize: 32 # the maximum size(MB) of a single search request that allowed.
-    maxQuerySize: 5 # the maximum size(MB) of a single query request that allowed.
+    queryRate: 0.01 # MB/s
+    maxSearchSize: 0.1 # the maximum size(MB) of a single search request that allowed.
+    maxQuerySize: 0.01 # the maximum size(MB) of a single query request that allowed.
 
   limits:
     maxCollectionNum: 32768 # max number of collections in a Milvus instance.

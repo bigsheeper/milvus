@@ -26,8 +26,10 @@ func TestQuotaParam(t *testing.T) {
 	qc := quotaConfig{}
 	qc.init(&baseParams)
 
-	t.Run("test enabled", func(t *testing.T) {
+	t.Run("test quota", func(t *testing.T) {
 		assert.True(t, qc.EnableQuotaAndLimits)
+		assert.Equal(t, int64(1000), qc.QuotaCenterCollectInterval)
+		assert.Equal(t, 0.1, qc.WarmUpSpeed)
 	})
 
 	t.Run("test ddl", func(t *testing.T) {
@@ -45,8 +47,8 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test dql", func(t *testing.T) {
-		assert.Equal(t, megaBytesRate2Bytes(16), qc.DQLSearchRate)
-		assert.Equal(t, megaBytesRate2Bytes(1), qc.DQLQueryRate)
+		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLSearchRate)
+		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLQueryRate)
 		assert.Equal(t, megaBytesSize2Bytes(32), qc.MaxSearchSize)
 		assert.Equal(t, megaBytesSize2Bytes(5), qc.MaxQuerySize)
 	})
@@ -56,10 +58,8 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test others", func(t *testing.T) {
-		assert.Equal(t, int64(1000), qc.QuotaCenterCollectInterval)
-		assert.Equal(t, 0.1, qc.WarmUpSpeed)
-		assert.True(t, qc.EnableDML)
-		assert.True(t, qc.EnableDQL)
+		assert.False(t, qc.ForceDenyWriting)
+		assert.False(t, qc.ForceDenyReading)
 		assert.Equal(t, 0.9, qc.DataNodeMemoryWaterLevel)
 		assert.Equal(t, 0.9, qc.QueryNodeMemoryWaterLevel)
 	})

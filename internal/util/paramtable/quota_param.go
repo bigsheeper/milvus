@@ -27,6 +27,9 @@ type quotaConfig struct {
 
 	EnableQuotaAndLimits bool
 
+	QuotaCenterCollectInterval int64
+	WarmUpSpeed                float64
+
 	// ddl
 	DDLCollectionRate float64
 	DDLPartitionRate  float64
@@ -48,18 +51,20 @@ type quotaConfig struct {
 	// limits
 	MaxCollectionNum int
 
-	QuotaCenterCollectInterval int64
-	WarmUpSpeed                float64
-	EnableDML                  bool
-	EnableDQL                  bool
-	DataNodeMemoryWaterLevel   float64
-	QueryNodeMemoryWaterLevel  float64
+	ForceDenyWriting          bool
+	DataNodeMemoryWaterLevel  float64
+	QueryNodeMemoryWaterLevel float64
+
+	ForceDenyReading bool
 }
 
 func (p *quotaConfig) init(base *BaseTable) {
 	p.Base = base
 
 	p.initEnableQuotaAndLimits()
+
+	p.initQuotaCenterCollectInterval()
+	p.initWarmUpSpeed()
 
 	p.initDDLCollectionRate()
 	p.initDDLPartitionRate()
@@ -78,16 +83,25 @@ func (p *quotaConfig) init(base *BaseTable) {
 
 	p.initMaxCollectionNum()
 
-	p.initQuotaCenterCollectInterval()
-	p.initWarmUpSpeed()
-	p.initEnableDML()
-	p.initEnableDQL()
+	p.initForceDenyWriting()
 	p.initDataNodeMemoryWaterLevel()
 	p.initQueryNodeMemoryWaterLevel()
+	p.initForceDenyReading()
 }
 
 func (p *quotaConfig) initEnableQuotaAndLimits() {
-	p.EnableQuotaAndLimits = p.Base.ParseBool("quotaAndLimits.enabled", false)
+	p.EnableQuotaAndLimits = p.Base.ParseBool("quotaAndLimits.enable", false)
+}
+
+func (p *quotaConfig) initQuotaCenterCollectInterval() {
+	p.QuotaCenterCollectInterval = p.Base.ParseInt64("quotaAndLimits.quotaCenterCollectInterval")
+}
+
+func (p *quotaConfig) initWarmUpSpeed() {
+	p.WarmUpSpeed = p.Base.ParseFloat("quotaAndLimits.warmUpSpeed")
+	if p.WarmUpSpeed <= 0 || p.WarmUpSpeed > 1 {
+		panic("warm-up speed must in the interval of `(0, 1]`")
+	}
 }
 
 func (p *quotaConfig) initDDLCollectionRate() {
@@ -158,35 +172,24 @@ func (p *quotaConfig) initMaxCollectionNum() {
 	p.MaxCollectionNum = p.Base.ParseInt("quotaAndLimits.limits.maxCollectionNum")
 }
 
-func (p *quotaConfig) initQuotaCenterCollectInterval() {
-	p.QuotaCenterCollectInterval = p.Base.ParseInt64("quotaAndLimits.quotaCenterCollectInterval")
-}
-
-func (p *quotaConfig) initWarmUpSpeed() {
-	p.WarmUpSpeed = p.Base.ParseFloat("quotaAndLimits.warmUpSpeed")
-	if p.WarmUpSpeed <= 0 || p.WarmUpSpeed > 1 {
-		panic("warm-up speed must in the interval of `(0, 1]`")
-	}
-}
-
-func (p *quotaConfig) initEnableDML() {
-	p.EnableDML = p.Base.ParseBool("quotaAndLimits.enableDML", true)
-}
-
-func (p *quotaConfig) initEnableDQL() {
-	p.EnableDQL = p.Base.ParseBool("quotaAndLimits.enableDQL", true)
+func (p *quotaConfig) initForceDenyWriting() {
+	p.ForceDenyWriting = p.Base.ParseBool("quotaAndLimits.forceDenyWriting.enable", true)
 }
 
 func (p *quotaConfig) initDataNodeMemoryWaterLevel() {
-	p.DataNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.dataNodeMemoryWaterLevel")
+	p.DataNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.dataNodeMemoryWaterLevel")
 	if p.DataNodeMemoryWaterLevel <= 0 || p.DataNodeMemoryWaterLevel > 1 {
 		panic("DataNodeMemoryWaterLevel must in the range of `(0, 1]`")
 	}
 }
 
 func (p *quotaConfig) initQueryNodeMemoryWaterLevel() {
-	p.QueryNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.queryNodeMemoryWaterLevel")
+	p.QueryNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.queryNodeMemoryWaterLevel")
 	if p.QueryNodeMemoryWaterLevel <= 0 || p.QueryNodeMemoryWaterLevel > 1 {
 		panic("QueryNodeMemoryWaterLevel must in the range of `(0, 1]`")
 	}
+}
+
+func (p *quotaConfig) initForceDenyReading() {
+	p.ForceDenyReading = p.Base.ParseBool("quotaAndLimits.forceDenyReading.enable", true)
 }

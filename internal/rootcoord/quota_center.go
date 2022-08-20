@@ -264,7 +264,7 @@ func (q *QuotaCenter) calculateRates() {
 		q.currentRates[rt] = r
 	}
 
-	if Params.QuotaConfig.EnableDML {
+	if Params.QuotaConfig.ForceDenyWriting {
 		if q.memoryToWaterLevel() {
 			q.disableDML()
 		}
@@ -273,7 +273,7 @@ func (q *QuotaCenter) calculateRates() {
 		q.disableDML()
 	}
 
-	if Params.QuotaConfig.EnableDQL {
+	if Params.QuotaConfig.ForceDenyReading {
 		// TODO: add strategies
 	} else {
 		q.disableDQL()

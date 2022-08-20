@@ -340,7 +340,7 @@ common:
     tlsMode: 0
 
 quotaAndLimits:
-  enable: false # `true` to enable quota and limits, `false` to disable.
+  enable: true # `true` to enable quota and limits, `false` to disable.
 
   # quotaCenterCollectInterval is the time interval that quotaCenter
   # collects metrics from Query cluster and Data cluster.
@@ -352,20 +352,20 @@ quotaAndLimits:
   warmUpSpeed: 0.1 # (0, 1]
 
   ddl:
-    collectionRate: 10000 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    collectionRate: 10 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
     partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
     indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
     segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
 
   dml:
-    insertRate: 10 # MB/s
-    deleteRate: 0.01 # MB/s
-    maxInsertSize: 1000 # the maximum size(MB) of a single insert request that allowed.
+    insertRate: 128 # MB/s
+    deleteRate: 1 # MB/s
+    maxInsertSize: 256 # the maximum size(MB) of a single insert request that allowed.
     maxDeleteSize: 5 # the maximum size(MB) of a single delete request that allowed.
 
   dql:
     searchRate: 0.1 # MB/s
-    queryRate: 1 # MB/s
+    queryRate: 0.1 # MB/s
     maxSearchSize: 32 # the maximum size(MB) of a single search request that allowed.
     maxQuerySize: 5 # the maximum size(MB) of a single query request that allowed.
 
@@ -387,6 +387,6 @@ quotaAndLimits:
   # enableDQL decides whether dql requests are allowed, `true` means dql requests are allowed (except for some
   # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
   forceDenyReading:
-    enable: true
+    enable: false
 
-  debug:
+  debug: # TODO: add debug

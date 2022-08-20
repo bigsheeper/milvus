@@ -20,6 +20,7 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
@@ -65,7 +66,7 @@ func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
 		return nil, err
 	}
 	metrics.ProxyDeleteRate.WithLabelValues(nodeIDStr).Set(toMegabytes(deleteRate))
-	searchRate, err := rateCollector.Newest(internalpb.RateType_DQLSearch.String())
+	searchRate, err := rateCollector.NewestAvg(internalpb.RateType_DQLSearch.String(), 3*time.Second)
 	if err != nil {
 		return nil, err
 	}

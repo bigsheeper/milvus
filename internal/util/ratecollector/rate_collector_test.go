@@ -75,20 +75,36 @@ func TestRateCollector(t *testing.T) {
 		assert.Error(t, err)
 		v, err = rc.Max(rt)
 		assert.NoError(t, err)
-		assert.EqualValues(t, float64(20), v)
+		assert.Equal(t, float64(20), v)
 
 		// test min
 		_, err = rc.Min(unregisterRt)
 		assert.Error(t, err)
 		v, err = rc.Min(rt)
 		assert.NoError(t, err)
-		assert.EqualValues(t, float64(0), v)
+		assert.Equal(t, float64(0), v)
 
 		// test newest
 		_, err = rc.Newest(unregisterRt)
 		assert.Error(t, err)
 		v, err = rc.Newest(rt)
 		assert.NoError(t, err)
-		assert.EqualValues(t, float64(20), v)
+		assert.Equal(t, float64(20), v)
+
+		// test newestAvg
+		_, err = rc.NewestAvg(unregisterRt, time.Second)
+		assert.Error(t, err)
+		v, err = rc.NewestAvg(rt, 2*time.Second)
+		assert.NoError(t, err)
+		assert.Equal(t, float64(15), v)
+		v, err = rc.NewestAvg(rt, 3*time.Second)
+		assert.NoError(t, err)
+		assert.Equal(t, float64(10), v)
+		v, err = rc.NewestAvg(rt, 2*DefaultWindow)
+		assert.NoError(t, err)
+		assert.Equal(t, float64(3), v)
+		v, err = rc.NewestAvg(rt, 0)
+		assert.NoError(t, err)
+		assert.Equal(t, float64(0), v)
 	})
 }

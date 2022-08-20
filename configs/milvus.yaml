@@ -340,29 +340,7 @@ common:
     tlsMode: 0
 
 quotaAndLimits:
-  enabled: true # `true` to enable quota and limits, `false` to disable.
-
-  ddl:
-    collectionRate: 10 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
-    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
-    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
-    segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
-
-  dml:
-    insertRate: 128 # MB/s
-    deleteRate: 1 # MB/s
-    maxInsertSize: 256 # the maximum size(MB) of a single insert request that allowed.
-    maxDeleteSize: 5 # the maximum size(MB) of a single delete request that allowed.
-
-  dql:
-    searchRate: 16 # MB/s
-    queryRate: 1 # MB/s
-    maxSearchSize: 32 # the maximum size(MB) of a single search request that allowed.
-    maxQuerySize: 5 # the maximum size(MB) of a single query request that allowed.
-
-  limits:
-    maxCollectionNum: 32768 # max number of collections in a Milvus instance.
-    # TODO: add more limits
+  enable: false # `true` to enable quota and limits, `false` to disable.
 
   # quotaCenterCollectInterval is the time interval that quotaCenter
   # collects metrics from Query cluster and Data cluster.
@@ -373,18 +351,42 @@ quotaAndLimits:
   # period when all of a sudden a large amount of requests comes in.
   warmUpSpeed: 0.1 # (0, 1]
 
+  ddl:
+    collectionRate: 10000 #  requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
+    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
+    segmentsRate: 10 # requests per minute, rate for Flush, ManualCompaction, LoadBalance
+
+  dml:
+    insertRate: 10 # MB/s
+    deleteRate: 0.01 # MB/s
+    maxInsertSize: 1000 # the maximum size(MB) of a single insert request that allowed.
+    maxDeleteSize: 5 # the maximum size(MB) of a single delete request that allowed.
+
+  dql:
+    searchRate: 0.1 # MB/s
+    queryRate: 1 # MB/s
+    maxSearchSize: 32 # the maximum size(MB) of a single search request that allowed.
+    maxQuerySize: 5 # the maximum size(MB) of a single query request that allowed.
+
+  limits:
+    maxCollectionNum: 32768 # max number of collections in a Milvus instance.
+    # TODO: add more limits
+
   # enableDML decides whether dml requests are allowed, `true` means dml requests are allowed (except for some
   # specific conditions, such as memory of nodes to water marker), `false` means always reject all dml requests.
-  enableDML: true
+  forceDenyWriting:
+    enable: false
+    # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
+    # If memory of any DataNode reaches to water level, all dml requests would be rejected.
+    dataNodeMemoryWaterLevel: 0.9 # (0, 1]
+    # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes.
+    # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
+    queryNodeMemoryWaterLevel: 0.9 # (0, 1]
 
   # enableDQL decides whether dql requests are allowed, `true` means dql requests are allowed (except for some
   # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
-  enableDQL: true
+  forceDenyReading:
+    enable: true
 
-  # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
-  # If memory of any DataNode reaches to water level, all dml requests would be rejected.
-  dataNodeMemoryWaterLevel: 0.9 # (0, 1]
-
-  # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes.
-  # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
-  queryNodeMemoryWaterLevel: 0.9 # (0, 1]
+  debug:

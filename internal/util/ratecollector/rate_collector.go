@@ -154,6 +154,37 @@ func (r *RateCollector) Newest(label string) (float64, error) {
 	return 0, fmt.Errorf("RateColletor didn't register for label %s", label)
 }
 
+// NewestAvg returns the mean value of the specified duration.
+func (r *RateCollector) NewestAvg(label string, duration time.Duration) (float64, error) {
+	if duration > r.window {
+		duration = r.window
+	}
+	size := int(duration / r.granularity)
+	if size <= 0 {
+		return 0, nil
+	}
+
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.values[label]; ok {
+		total := float64(0)
+		tmp := r.position
+		for i := 0; i < size; i++ {
+			total += r.values[label][tmp]
+			tmp--
+			if tmp < 0 {
+				tmp = int(r.window/r.granularity) - 1
+			}
+		}
+		log.Debug("RateCollection return NewestAvg", zap.String("label", label),
+			zap.Float64("NewestAvg", total/float64(size)),
+			zap.Float64("duration[s]", duration.Seconds()),
+			zap.Float64s("values", r.values[label]))
+		return total / float64(size), nil
+	}
+	return 0, fmt.Errorf("RateColletor didn't register for label %s", label)
+}
+
 // shift slides the window per granularity.
 func (r *RateCollector) shift() {
 	ticker := time.NewTicker(r.granularity)

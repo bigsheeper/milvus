@@ -621,7 +621,9 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		return failRet, nil
 	}
 
+	//if !req.FromShardLeader {
 	rateCollector.Add(internalpb.RateType_DQLSearch.String(), float64(proto.Size(req)))
+	//}
 	return ret, nil
 }
 

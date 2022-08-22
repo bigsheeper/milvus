@@ -368,9 +368,10 @@ quotaAndLimits:
     maxCollectionNum: 32768 # max number of collections in a Milvus instance.
     # TODO: add more limits
 
-  # enableDML decides whether dml requests are allowed, `true` means dml requests are allowed (except for some
-  # specific conditions, such as memory of nodes to water marker), `false` means always reject all dml requests.
+  # forceDenyWriting decides whether dml requests are allowed.
   forceDenyWriting:
+    # enable `false` means dml requests are allowed (except for some
+    # specific conditions, such as memory of nodes to water marker), `true` means always reject all dml requests
     enable: false
     # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
     # If memory of any DataNode reaches to water level, all dml requests would be rejected.
@@ -379,9 +380,10 @@ quotaAndLimits:
     # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
     queryNodeMemoryWaterLevel: 0.9 # (0, 1]
 
-  # enableDQL decides whether dql requests are allowed, `true` means dql requests are allowed (except for some
-  # specific conditions, such as collection has been dropped), `false` means always reject all dql requests.
+  # forceDenyReading decides whether dql requests are allowed.
   forceDenyReading:
+    # enable `false` means dql requests are allowed (except for some
+    # specific conditions, such as collection has been dropped), `true` means always reject all dql requests
     enable: false
 
   debug: # TODO: add debug

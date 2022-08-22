@@ -14,39 +14,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package metricsinfo
+package datanode
 
-import (
-	"github.com/milvus-io/milvus/internal/util/typeutil"
-)
-
-type MemMetric struct {
-	UsedMem  uint64
-	TotalMem uint64
+type RateCollector struct {
 }
 
-type QueryNodeQuotaMetrics struct {
-	NodeID          typeutil.UniqueID
-	Mm              MemMetric
-	MinTSafe        typeutil.Timestamp
-	SearchNQInQueue int64
-	QueriesInQueue  int64
+func NewRateCollector() *RateCollector {
+	return &RateCollector{}
 }
-
-type DataNodeQuotaMetrics struct {
-	NodeID   typeutil.UniqueID
-	Mm       MemMetric
-	DiskSize uint64 // TODO: get disk size
-}
-
-type ProxyQuotaMetrics struct {
-	NodeID typeutil.UniqueID
-	Mm     MemMetric
-}
-
-//
-//type RateMetric struct {
-//	Rt         internalpb.RateType
-//	ThroughPut float64
-//	// TODO: add more rate metrics
-//}

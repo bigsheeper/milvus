@@ -69,6 +69,8 @@ var _ types.QueryNodeComponent = (*QueryNode)(nil)
 
 var Params paramtable.ComponentParam
 
+var rateCol *rateCollector
+
 // QueryNode communicates with outside services and union all
 // services in querynode package.
 //
@@ -213,6 +215,9 @@ func (node *QueryNode) Init() error {
 		}
 
 		node.factory.Init(&Params)
+
+		rateCol = newRateCollector()
+		log.Info("QueryNode init rateCollector done", zap.Int64("nodeID", Params.QueryNodeCfg.GetNodeID()))
 
 		node.vectorStorage, err = node.factory.NewVectorStorageChunkManager(node.queryNodeLoopCtx)
 		if err != nil {

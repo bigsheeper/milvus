@@ -48,13 +48,13 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
-func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
-	rms := []metricsinfo.RateMetric{}
-
-	return &metricsinfo.QuotaMetrics{
-		NodeID: Params.QueryNodeCfg.GetNodeID(),
-		Rms:    rms,
-		Mm:     metricsinfo.MemMetric{},
+func getQuotaMetrics() (*metricsinfo.QueryNodeQuotaMetrics, error) {
+	return &metricsinfo.QueryNodeQuotaMetrics{
+		NodeID:          Params.QueryNodeCfg.GetNodeID(),
+		Mm:              metricsinfo.MemMetric{},
+		MinTSafe:        rateCol.getMinTSafe(),
+		SearchNQInQueue: rateCol.getSearchNQInQueue(),
+		QueriesInQueue:  rateCol.getQueriesInQueue(),
 	}, nil
 }
 

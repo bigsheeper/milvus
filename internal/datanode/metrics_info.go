@@ -26,12 +26,9 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
-	rms := []metricsinfo.RateMetric{}
-
-	return &metricsinfo.QuotaMetrics{
+func getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, error) {
+	return &metricsinfo.DataNodeQuotaMetrics{
 		NodeID: Params.DataNodeCfg.GetNodeID(),
-		Rms:    rms,
 		Mm:     metricsinfo.MemMetric{},
 	}, nil
 }

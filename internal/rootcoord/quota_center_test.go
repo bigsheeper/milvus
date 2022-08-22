@@ -80,47 +80,47 @@ func TestQuotaCenter(t *testing.T) {
 	pcm := newProxyClientManager(core)
 
 	t.Run("test QuotaCenter", func(t *testing.T) {
-		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		go quotaCenter.run()
 		quotaCenter.stop()
 	})
 
 	t.Run("test syncMetrics", func(t *testing.T) {
-		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		err = quotaCenter.syncMetrics()
 		assert.NoError(t, err)
 
-		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retErr: true}, &dataCoordMockForQuota{})
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retErr: true}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		err = quotaCenter.syncMetrics()
 		assert.Error(t, err)
 
-		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retErr: true})
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retErr: true}, core.TSOAllocator)
 		err = quotaCenter.syncMetrics()
 		assert.Error(t, err)
 
-		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retFailStatus: true}, &dataCoordMockForQuota{})
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retFailStatus: true}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		err = quotaCenter.syncMetrics()
 		assert.Error(t, err)
 
-		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retFailStatus: true})
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retFailStatus: true}, core.TSOAllocator)
 		err = quotaCenter.syncMetrics()
 		assert.Error(t, err)
 	})
 
 	t.Run("test memoryToWaterLevel", func(t *testing.T) {
-		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		cb := quotaCenter.memoryToWaterLevel()
 		assert.Equal(t, throttling, cb)
-		quotaCenter.dataNodeMetrics = []*metricsinfo.QuotaMetrics{{Mm: metricsinfo.MemMetric{UsedMem: 100, TotalMem: 100}}}
+		quotaCenter.dataNodeMetrics = []*metricsinfo.DataNodeQuotaMetrics{{Mm: metricsinfo.MemMetric{UsedMem: 100, TotalMem: 100}}}
 		cb = quotaCenter.memoryToWaterLevel()
 		assert.Equal(t, disableWrite, cb)
-		quotaCenter.queryNodeMetrics = []*metricsinfo.QuotaMetrics{{Mm: metricsinfo.MemMetric{UsedMem: 100, TotalMem: 100}}}
+		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{Mm: metricsinfo.MemMetric{UsedMem: 100, TotalMem: 100}}}
 		cb = quotaCenter.memoryToWaterLevel()
 		assert.Equal(t, disableWrite, cb)
 	})
 
 	t.Run("test setRates", func(t *testing.T) {
-		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{})
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
 		quotaCenter.currentRates[internalpb.RateType_DMLInsert] = 100
 		err = quotaCenter.setRates()
 		assert.NoError(t, err)

@@ -1280,7 +1280,7 @@ func (c *Core) Init() error {
 		}
 		log.Debug("RootCoord init user root done")
 
-		c.quotaCenter = NewQuotaCenter(c.proxyClientManager, c.queryCoord, c.dataCoord)
+		c.quotaCenter = NewQuotaCenter(c.proxyClientManager, c.queryCoord, c.dataCoord, c.TSOAllocator)
 	})
 	if initError != nil {
 		log.Debug("RootCoord init error", zap.Error(initError))

@@ -577,6 +577,11 @@ func (node *QueryNode) Search(ctx context.Context, req *queryPb.SearchRequest) (
 		zap.Uint64("guaranteeTimestamp", req.GetReq().GetGuaranteeTimestamp()),
 		zap.Uint64("timeTravel", req.GetReq().GetTravelTimestamp()))
 
+	if !req.FromShardLeader {
+		rateCol.addNQ(req.GetReq().GetNq())
+		defer rateCol.subNQ(req.GetReq().GetNq())
+	}
+
 	failRet := &internalpb.SearchResults{
 		Status: &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_Success,
@@ -929,6 +934,11 @@ func (node *QueryNode) Query(ctx context.Context, req *querypb.QueryRequest) (*i
 		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 		zap.Uint64("guaranteeTimestamp", req.Req.GetGuaranteeTimestamp()),
 		zap.Uint64("timeTravel", req.GetReq().GetTravelTimestamp()))
+
+	if !req.FromShardLeader {
+		rateCol.incQuery()
+		defer rateCol.decQuery()
+	}
 
 	failRet := &internalpb.RetrieveResults{
 		Status: &commonpb.Status{

@@ -30,12 +30,9 @@ import (
 type getMetricsFuncType func(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 type showConfigurationsFuncType func(ctx context.Context, request *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error)
 
-func getQuotaMetrics() (*metricsinfo.QuotaMetrics, error) {
-	rms := []metricsinfo.RateMetric{}
-
-	return &metricsinfo.QuotaMetrics{
+func getQuotaMetrics() (*metricsinfo.ProxyQuotaMetrics, error) {
+	return &metricsinfo.ProxyQuotaMetrics{
 		NodeID: Params.ProxyCfg.GetNodeID(),
-		Rms:    rms,
 		Mm:     metricsinfo.MemMetric{},
 	}, nil
 }

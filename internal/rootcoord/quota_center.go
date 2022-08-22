@@ -49,6 +49,14 @@ const (
 	throttling
 )
 
+const (
+	// TODO: add to conf
+	MemoryLowWaterLevel = 0.8
+	MaxNQInQueue        = 1024 * 100
+	MaxQueriesInQueue   = 1024
+	MaxTSafeDelay       = 10 * time.Second
+)
+
 //type quotaEvent int32
 //
 //const (
@@ -72,23 +80,25 @@ type QuotaCenter struct {
 	dataCoord  types.DataCoord
 
 	// metrics
-	queryNodeMetrics []*metricsinfo.QuotaMetrics
-	dataNodeMetrics  []*metricsinfo.QuotaMetrics
-	proxyMetrics     []*metricsinfo.QuotaMetrics
+	queryNodeMetrics []*metricsinfo.QueryNodeQuotaMetrics
+	dataNodeMetrics  []*metricsinfo.DataNodeQuotaMetrics
+	proxyMetrics     []*metricsinfo.ProxyQuotaMetrics
 
 	currentRates map[internalpb.RateType]float64
+	TSOAllocator func(count uint32) (typeutil.Timestamp, error)
 
 	stopOnce sync.Once
 	stopChan chan struct{}
 }
 
 // NewQuotaCenter returns a new QuotaCenter.
-func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, dataCoord types.DataCoord) *QuotaCenter {
+func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, dataCoord types.DataCoord, TSOAllocator func(count uint32) (typeutil.Timestamp, error)) *QuotaCenter {
 	return &QuotaCenter{
 		proxies:      proxies,
 		queryCoord:   queryCoord,
 		dataCoord:    dataCoord,
 		currentRates: make(map[internalpb.RateType]float64),
+		TSOAllocator: TSOAllocator,
 	}
 }
 
@@ -108,7 +118,11 @@ func (q *QuotaCenter) run() {
 				log.Error("quotaCenter sync metrics failed", zap.Error(err))
 				continue
 			}
-			q.calculateRates()
+			err = q.calculateRates()
+			if err != nil {
+				log.Error("quotaCenter calculate rates failed", zap.Error(err))
+				continue
+			}
 			err = q.setRates()
 			if err != nil {
 				log.Error("quotaCenter setRates failed", zap.Error(err))
@@ -131,9 +145,9 @@ type getMetricsInterface interface {
 
 //  clearMetrics removes all metrics stored in QuotaCenter.
 func (q *QuotaCenter) clearMetrics() {
-	q.dataNodeMetrics = make([]*metricsinfo.QuotaMetrics, 0)
-	q.queryNodeMetrics = make([]*metricsinfo.QuotaMetrics, 0)
-	q.proxyMetrics = make([]*metricsinfo.QuotaMetrics, 0)
+	q.dataNodeMetrics = make([]*metricsinfo.DataNodeQuotaMetrics, 0)
+	q.queryNodeMetrics = make([]*metricsinfo.QueryNodeQuotaMetrics, 0)
+	q.proxyMetrics = make([]*metricsinfo.ProxyQuotaMetrics, 0)
 }
 
 // syncMetrics sends GetMetrics requests to DataCoord and QueryCoord to sync the metrics in DataNodes and QueryNodes.
@@ -232,83 +246,138 @@ func (q *QuotaCenter) disableDML() {
 func (q *QuotaCenter) disableDQL() {
 	q.currentRates[internalpb.RateType_DQLSearch] = 0
 	q.currentRates[internalpb.RateType_DQLQuery] = 0
+	log.Info("", zap.String("triggerReason", ""))
 }
 
 // calculateRates calculates target rates by different strategies.
-func (q *QuotaCenter) calculateRates() {
+func (q *QuotaCenter) calculateRates() error {
 	q.resetCurrentRates()
 
 	if Params.QuotaConfig.ForceDenyWriting {
 		q.disableDML()
 	} else {
-		if q.memoryToWaterLevel() {
-			q.disableDML()
+		percentage, err := q.tSafeDelayed()
+		if err != nil {
+			return err
 		}
+		memPercent := q.memoryToWaterLevel()
+		if percentage < memPercent {
+			percentage = memPercent
+		}
+		q.currentRates[internalpb.RateType_DMLInsert] *= percentage
+		q.currentRates[internalpb.RateType_DMLDelete] *= percentage
 		// TODO: add more strategies
 	}
 
 	if Params.QuotaConfig.ForceDenyReading {
 		q.disableDQL()
 	} else {
+		percentage := q.checkQueryQueueSize()
+		q.currentRates[internalpb.RateType_DQLSearch] *= percentage
+		q.currentRates[internalpb.RateType_DQLQuery] *= percentage
 		// TODO: add strategies
 	}
 
 	log.Debug("QuotaCenter calculates rate done", zap.Any("rates", q.currentRates))
+	return nil
 }
 
+// resetCurrentRates resets all current rates to configured rates
 func (q *QuotaCenter) resetCurrentRates() {
-	for _, rt := range internalpb.RateType_value {
-		q.currentRates[internalpb.RateType(rt)] = q.getRateConfigByRateType(internalpb.RateType(rt))
+	for _, rateType := range internalpb.RateType_value {
+		rt := internalpb.RateType(rateType)
+		switch rt {
+		case internalpb.RateType_DMLInsert:
+			q.currentRates[rt] = Params.QuotaConfig.DMLInsertRate
+		case internalpb.RateType_DMLDelete:
+			q.currentRates[rt] = Params.QuotaConfig.DMLDeleteRate
+		case internalpb.RateType_DQLSearch:
+			q.currentRates[rt] = Params.QuotaConfig.DQLSearchRate
+		case internalpb.RateType_DQLQuery:
+			q.currentRates[rt] = Params.QuotaConfig.DQLQueryRate
+		}
 	}
 }
 
-// getRateConfigByRateType returns rate by the specified rateType.
-func (q *QuotaCenter) getRateConfigByRateType(rt internalpb.RateType) float64 {
-	switch rt {
-	case internalpb.RateType_DDLCollection:
-		return Params.QuotaConfig.DDLCollectionRate
-	case internalpb.RateType_DDLPartition:
-		return Params.QuotaConfig.DDLPartitionRate
-	case internalpb.RateType_DDLIndex:
-		return Params.QuotaConfig.DDLIndexRate
-	case internalpb.RateType_DDLSegments:
-		return Params.QuotaConfig.DDLSegmentsRate
-	case internalpb.RateType_DMLInsert:
-		return Params.QuotaConfig.DMLInsertRate
-	case internalpb.RateType_DMLDelete:
-		return Params.QuotaConfig.DMLDeleteRate
-	case internalpb.RateType_DQLSearch:
-		return Params.QuotaConfig.DQLSearchRate
-	case internalpb.RateType_DQLQuery:
-		return Params.QuotaConfig.DQLQueryRate
-	}
-	panic(fmt.Errorf("QuotaCenter: invalid rateType, rt = %d", rt))
-}
-
-// memoryToWaterLevel checks whether any node has memory resource issue.
-func (q *QuotaCenter) memoryToWaterLevel() bool {
+// tSafeDelayed gets QueryNode's tSafe delayed and return the percentage according to max tolerable tSafe delay.
+func (q *QuotaCenter) tSafeDelayed() (float64, error) {
+	minTSafe := typeutil.MaxTimestamp
 	for _, metric := range q.queryNodeMetrics {
-		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= Params.QuotaConfig.QueryNodeMemoryWaterLevel {
-			log.Debug("QuotaCenter: QueryNode memory to water level",
+		if metric.MinTSafe < minTSafe {
+			minTSafe = metric.MinTSafe
+		}
+	}
+	ts, err := q.TSOAllocator(1)
+	if err != nil {
+		return 0, err
+	}
+	if minTSafe >= ts {
+		return 1, nil
+	}
+	delay, _ := tsoutil.ParseTS(minTSafe - ts)
+	return float64(delay.Nanosecond()) / float64(MaxTSafeDelay.Nanoseconds()), nil
+}
+
+// checkQueryQueueSize checks search and query tasks number in QueryNode,
+// and return the percentage according to max query task number and max search nq number.
+func (q *QuotaCenter) checkQueryQueueSize() float64 {
+	percentage := float64(1)
+	for _, metric := range q.queryNodeMetrics {
+		if metric.SearchNQInQueue >= MaxNQInQueue {
+			return 0
+		} else if metric.QueriesInQueue >= MaxQueriesInQueue {
+			return 0
+		} else {
+			if (float64(metric.SearchNQInQueue) / MaxNQInQueue) < percentage {
+				percentage = float64(metric.SearchNQInQueue) / MaxNQInQueue
+			}
+			if (float64(metric.QueriesInQueue) / MaxQueriesInQueue) < percentage {
+				percentage = float64(metric.QueriesInQueue) / MaxQueriesInQueue
+			}
+		}
+	}
+	return percentage
+}
+
+// memoryToWaterLevel checks whether any node has memory resource issue,
+// and return the percentage according to max memory water level.
+func (q *QuotaCenter) memoryToWaterLevel() float64 {
+	percentage := float64(1)
+	for _, metric := range q.queryNodeMetrics {
+		memoryWaterLevel := float64(metric.Mm.UsedMem) / float64(metric.Mm.TotalMem)
+		if memoryWaterLevel <= MemoryLowWaterLevel {
+			continue
+		}
+		if memoryWaterLevel >= Params.QuotaConfig.QueryNodeMemoryWaterLevel {
+			log.Debug("QuotaCenter: QueryNode memory to high water level",
 				zap.Uint64("UsedMem", metric.Mm.UsedMem),
 				zap.Uint64("TotalMem", metric.Mm.TotalMem),
 				zap.Float64("QueryNodeMemoryWaterLevel", Params.QuotaConfig.QueryNodeMemoryWaterLevel))
-			return true
+			return 0
 		}
-		// TODO: check growing segments, ...
+		p := (memoryWaterLevel - MemoryLowWaterLevel) / (Params.QuotaConfig.QueryNodeMemoryWaterLevel - MemoryLowWaterLevel)
+		if p < percentage {
+			percentage = p
+		}
 	}
 	for _, metric := range q.dataNodeMetrics {
-		// TODO: check if Mm is nil
-		if float64(metric.Mm.UsedMem)/float64(metric.Mm.TotalMem) >= Params.QuotaConfig.DataNodeMemoryWaterLevel {
-			log.Debug("QuotaCenter: DataNode memory to water level",
+		memoryWaterLevel := float64(metric.Mm.UsedMem) / float64(metric.Mm.TotalMem)
+		if memoryWaterLevel <= MemoryLowWaterLevel {
+			continue
+		}
+		if memoryWaterLevel >= Params.QuotaConfig.DataNodeMemoryWaterLevel {
+			log.Debug("QuotaCenter: DataNode memory to high water level",
 				zap.Uint64("UsedMem", metric.Mm.UsedMem),
 				zap.Uint64("TotalMem", metric.Mm.TotalMem),
 				zap.Float64("DataNodeMemoryWaterLevel", Params.QuotaConfig.DataNodeMemoryWaterLevel))
-			return true
+			return 0
 		}
-		// TODO: check bloom filter, ...
+		p := (memoryWaterLevel - MemoryLowWaterLevel) / (Params.QuotaConfig.QueryNodeMemoryWaterLevel - MemoryLowWaterLevel)
+		if p < percentage {
+			percentage = p
+		}
 	}
-	return false
+	return percentage
 }
 
 // setRates notifies Proxies to set rates for different rate types.

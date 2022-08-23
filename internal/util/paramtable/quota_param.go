@@ -18,6 +18,7 @@ package paramtable
 
 import (
 	"sync"
+	"time"
 )
 
 // quotaConfig is configuration for quota and limitations.
@@ -50,18 +51,22 @@ type quotaConfig struct {
 	// limits
 	MaxCollectionNum int
 
-	ForceDenyWriting          bool
-	DataNodeMemoryWaterLevel  float64
-	QueryNodeMemoryWaterLevel float64
+	ForceDenyWriting              bool
+	MaxTSafeDelay                 time.Duration
+	DataNodeMemoryLowWaterLevel   float64
+	DataNodeMemoryHighWaterLevel  float64
+	QueryNodeMemoryLowWaterLevel  float64
+	QueryNodeMemoryHighWaterLevel float64
 
-	ForceDenyReading bool
+	ForceDenyReading     bool
+	MaxNQInQueue         int64
+	MaxQueryTasksInQueue int64
 }
 
 func (p *quotaConfig) init(base *BaseTable) {
 	p.Base = base
 
 	p.initEnableQuotaAndLimits()
-
 	p.initQuotaCenterCollectInterval()
 
 	p.initDDLCollectionRate()
@@ -82,9 +87,15 @@ func (p *quotaConfig) init(base *BaseTable) {
 	p.initMaxCollectionNum()
 
 	p.initForceDenyWriting()
-	p.initDataNodeMemoryWaterLevel()
-	p.initQueryNodeMemoryWaterLevel()
+	p.initMaxTSafeDelay()
+	p.initDataNodeMemoryLowWaterLevel()
+	p.initDataNodeMemoryHighWaterLevel()
+	p.initQueryNodeMemoryLowWaterLevel()
+	p.initQueryNodeMemoryHighWaterLevel()
+
 	p.initForceDenyReading()
+	p.initMaxNQInQueue()
+	p.initMaxQueryTasksInQueue()
 }
 
 func (p *quotaConfig) initEnableQuotaAndLimits() {
@@ -163,20 +174,47 @@ func (p *quotaConfig) initForceDenyWriting() {
 	p.ForceDenyWriting = p.Base.ParseBool("quotaAndLimits.forceDenyWriting.enable", false)
 }
 
-func (p *quotaConfig) initDataNodeMemoryWaterLevel() {
-	p.DataNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.dataNodeMemoryWaterLevel")
-	if p.DataNodeMemoryWaterLevel <= 0 || p.DataNodeMemoryWaterLevel > 1 {
-		panic("DataNodeMemoryWaterLevel must in the range of `(0, 1]`")
+func (p *quotaConfig) initMaxTSafeDelay() {
+	delay := p.Base.ParseInt64("quotaAndLimits.forceDenyWriting.maxTSafeDelay")
+	p.MaxTSafeDelay = time.Duration(delay) * time.Second
+}
+
+func (p *quotaConfig) initDataNodeMemoryLowWaterLevel() {
+	p.DataNodeMemoryLowWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.dataNodeMemoryLowWaterLevel")
+	if p.DataNodeMemoryLowWaterLevel <= 0 || p.DataNodeMemoryLowWaterLevel > 1 {
+		panic("DataNodeMemoryLowWaterLevel must in the range of `(0, 1]`")
 	}
 }
 
-func (p *quotaConfig) initQueryNodeMemoryWaterLevel() {
-	p.QueryNodeMemoryWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.queryNodeMemoryWaterLevel")
-	if p.QueryNodeMemoryWaterLevel <= 0 || p.QueryNodeMemoryWaterLevel > 1 {
-		panic("QueryNodeMemoryWaterLevel must in the range of `(0, 1]`")
+func (p *quotaConfig) initDataNodeMemoryHighWaterLevel() {
+	p.DataNodeMemoryHighWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.dataNodeMemoryHighWaterLevel")
+	if p.DataNodeMemoryHighWaterLevel <= 0 || p.DataNodeMemoryHighWaterLevel > 1 {
+		panic("DataNodeMemoryHighWaterLevel must in the range of `(0, 1]`")
+	}
+}
+
+func (p *quotaConfig) initQueryNodeMemoryLowWaterLevel() {
+	p.QueryNodeMemoryLowWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.queryNodeMemoryLowWaterLevel")
+	if p.QueryNodeMemoryLowWaterLevel <= 0 || p.QueryNodeMemoryLowWaterLevel > 1 {
+		panic("QueryNodeMemoryLowWaterLevel must in the range of `(0, 1]`")
+	}
+}
+
+func (p *quotaConfig) initQueryNodeMemoryHighWaterLevel() {
+	p.QueryNodeMemoryHighWaterLevel = p.Base.ParseFloat("quotaAndLimits.forceDenyWriting.queryNodeMemoryHighWaterLevel")
+	if p.QueryNodeMemoryHighWaterLevel <= 0 || p.QueryNodeMemoryHighWaterLevel > 1 {
+		panic("QueryNodeMemoryHighWaterLevel must in the range of `(0, 1]`")
 	}
 }
 
 func (p *quotaConfig) initForceDenyReading() {
 	p.ForceDenyReading = p.Base.ParseBool("quotaAndLimits.forceDenyReading.enable", false)
+}
+
+func (p *quotaConfig) initMaxNQInQueue() {
+	p.MaxNQInQueue = p.Base.ParseInt64("quotaAndLimits.forceDenyReading.maxNQInQueue")
+}
+
+func (p *quotaConfig) initMaxQueryTasksInQueue() {
+	p.MaxQueryTasksInQueue = p.Base.ParseInt64("quotaAndLimits.forceDenyReading.maxQueryTasksInQueue")
 }

@@ -41,7 +41,7 @@ etcd:
     enabled: false # Whether to support ETCD secure connection mode
     tlsCert: /path/to/etcd-client.pem # path to your cert file
     tlsKey: /path/to/etcd-client-key.pem # path to your key file
-    tlsCACert:  /path/to/ca.pem # path to your CACert file
+    tlsCACert: /path/to/ca.pem # path to your CACert file
     # TLS min version
     # Optional values: 1.0, 1.1, 1.2, 1.3。
     # We recommend using version 1.2 and above
@@ -109,7 +109,7 @@ rocksmq:
   rocksmqPageSize: 2147483648 # 2 GB, 2 * 1024 * 1024 * 1024 bytes, The size of each page of messages in rocksmq
   retentionTimeInMinutes: 10080 # 7 days, 7 * 24 * 60 minutes, The retention time of the message in rocksmq.
   retentionSizeInMB: 8192 # 8 GB, 8 * 1024 MB, The retention size of the message in rocksmq.
-  lrucacheratio:  0.06 # rocksdb cache memory ratio
+  lrucacheratio: 0.06 # rocksdb cache memory ratio
 
 # Related configuration of rootCoord, used to handle data definition language (DDL) and data control language (DCL) requests
 rootCoord:
@@ -276,8 +276,8 @@ grpc:
   clientMaxSendSize: 104857600 # 100 MB, 100 * 1024 * 1024
 
   client:
-    dialTimeout:      5000
-    keepAliveTime:    10000
+    dialTimeout: 5000
+    keepAliveTime: 10000
     keepAliveTimeout: 20000
     maxMaxAttempts: 5
     initialBackOff: 1.0
@@ -320,7 +320,7 @@ common:
   defaultPartitionName: "_default"  # default partition name for a collection
   defaultIndexName: "_default_idx"  # default index name
   retentionDuration: 432000 # 5 days in seconds
-  entityExpiration:  -1     # Entity expiration in seconds, CAUTION make sure entityExpiration >= retentionDuration and -1 means never expire
+  entityExpiration: -1     # Entity expiration in seconds, CAUTION make sure entityExpiration >= retentionDuration and -1 means never expire
 
   gracefulTime: 5000 # milliseconds. it represents the interval (in ms) by which the request arrival time needs to be subtracted in the case of Bounded Consistency.
 
@@ -373,17 +373,31 @@ quotaAndLimits:
     # enable `false` means dml requests are allowed (except for some
     # specific conditions, such as memory of nodes to water marker), `true` means always reject all dml requests
     enable: false
-    # dataNodeMemoryWaterLevel limits the maximum memory ratio in DataNodes.
-    # If memory of any DataNode reaches to water level, all dml requests would be rejected.
-    dataNodeMemoryWaterLevel: 0.9 # (0, 1]
-    # queryNodeMemoryWaterLevel limits the maximum memory ratio in QueryNodes.
-    # If memory of any QueryNode reaches to water level, all dml requests would be rejected.
-    queryNodeMemoryWaterLevel: 0.9 # (0, 1]
+    # maxTSafeDelay indicates the backpressure for DML Operations.
+    # DML rates would be reduced by the ratio of tSafe delay to maxTSafeDelay,
+    # if tSafe delay is greater than maxTSafeDelay, all DML requests would be rejected.
+    maxTSafeDelay: 10 # in seconds
+    # When memory usage > memoryHighWaterLevel, all dml requests would be rejected;
+    # When memoryLowWaterLevel < memory usage < memoryHighWaterLevel, reduce the dml rate;
+    # When memory usage < memoryLowWaterLevel, no action.
+    # memoryLowWaterLevel should be less than memoryHighWaterLevel.
+    dataNodeMemoryLowWaterLevel: 0.8 # (0, 1], memoryLowWaterLevel in DataNodes
+    dataNodeMemoryHighWaterLevel: 0.9 # (0, 1], memoryHighWaterLevel in DataNodes
+    queryNodeMemoryLowWaterLevel: 0.8 # (0, 1], memoryLowWaterLevel in QueryNodes
+    queryNodeMemoryHighWaterLevel: 0.9 # (0, 1], memoryHighWaterLevel in QueryNodes
 
   # forceDenyReading decides whether dql requests are allowed.
   forceDenyReading:
     # enable `false` means dql requests are allowed (except for some
     # specific conditions, such as collection has been dropped), `true` means always reject all dql requests
     enable: false
+    # maxNQInQueue indicates the backpressure for Search Operation.
+    # Search rates would be reduced by the ratio of NQ in QueryNode's task queue to maxNQInQueue,
+    # if NQ in QueryNode's task queue is greater than maxNQInQueue, all Search requests would be rejected.
+    maxNQInQueue: 100000
+    # maxQueryTasksInQueue indicates the backpressure for Query Operation.
+    # Query rates would be reduced by the ratio of query tasks number to maxQueryTasksInQueue,
+    # if number of query tasks is greater than maxQueryTasksInQueue, all Query requests would be rejected.
+    maxQueryTasksInQueue: 1024
 
   debug: # TODO: add debug

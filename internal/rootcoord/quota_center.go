@@ -49,14 +49,6 @@ const (
 	throttling
 )
 
-const (
-	// TODO: add to conf
-	MemoryLowWaterLevel = 0.8
-	MaxNQInQueue        = 1024 * 100
-	MaxQueriesInQueue   = 1024
-	MaxTSafeDelay       = 10 * time.Second
-)
-
 //type quotaEvent int32
 //
 //const (
@@ -272,7 +264,7 @@ func (q *QuotaCenter) calculateRates() error {
 	if Params.QuotaConfig.ForceDenyReading {
 		q.disableDQL()
 	} else {
-		percentage := q.checkQueryQueueSize()
+		percentage := q.checkQueryQueue()
 		q.currentRates[internalpb.RateType_DQLSearch] *= percentage
 		q.currentRates[internalpb.RateType_DQLQuery] *= percentage
 		// TODO: add strategies
@@ -315,24 +307,28 @@ func (q *QuotaCenter) tSafeDelayed() (float64, error) {
 		return 1, nil
 	}
 	delay, _ := tsoutil.ParseTS(minTSafe - ts)
-	return float64(delay.Nanosecond()) / float64(MaxTSafeDelay.Nanoseconds()), nil
+	return float64(delay.Nanosecond()) / float64(Params.QuotaConfig.MaxTSafeDelay.Nanoseconds()), nil
 }
 
-// checkQueryQueueSize checks search and query tasks number in QueryNode,
+// checkQueryQueue checks search nq and query tasks number in QueryNode,
 // and return the percentage according to max query task number and max search nq number.
-func (q *QuotaCenter) checkQueryQueueSize() float64 {
+func (q *QuotaCenter) checkQueryQueue() float64 {
 	percentage := float64(1)
+	maxNQInQueue := Params.QuotaConfig.MaxNQInQueue
+	maxQueriesInQueue := Params.QuotaConfig.MaxQueryTasksInQueue
 	for _, metric := range q.queryNodeMetrics {
-		if metric.SearchNQInQueue >= MaxNQInQueue {
+		if metric.SearchNQInQueue >= maxNQInQueue {
 			return 0
-		} else if metric.QueriesInQueue >= MaxQueriesInQueue {
+		} else if metric.QueriesInQueue >= maxQueriesInQueue {
 			return 0
 		} else {
-			if (float64(metric.SearchNQInQueue) / MaxNQInQueue) < percentage {
-				percentage = float64(metric.SearchNQInQueue) / MaxNQInQueue
+			p := float64(metric.SearchNQInQueue) / float64(maxNQInQueue)
+			if p < percentage {
+				percentage = p
 			}
-			if (float64(metric.QueriesInQueue) / MaxQueriesInQueue) < percentage {
-				percentage = float64(metric.QueriesInQueue) / MaxQueriesInQueue
+			p = float64(metric.QueriesInQueue) / float64(maxQueriesInQueue)
+			if p < percentage {
+				percentage = p
 			}
 		}
 	}
@@ -343,36 +339,40 @@ func (q *QuotaCenter) checkQueryQueueSize() float64 {
 // and return the percentage according to max memory water level.
 func (q *QuotaCenter) memoryToWaterLevel() float64 {
 	percentage := float64(1)
+	dataNodeMemoryLowWaterLevel := Params.QuotaConfig.DataNodeMemoryLowWaterLevel
+	dataNodeMemoryHighWaterLevel := Params.QuotaConfig.DataNodeMemoryHighWaterLevel
+	queryNodeMemoryLowWaterLevel := Params.QuotaConfig.QueryNodeMemoryLowWaterLevel
+	queryNodeMemoryHighWaterLevel := Params.QuotaConfig.QueryNodeMemoryHighWaterLevel
 	for _, metric := range q.queryNodeMetrics {
 		memoryWaterLevel := float64(metric.Mm.UsedMem) / float64(metric.Mm.TotalMem)
-		if memoryWaterLevel <= MemoryLowWaterLevel {
+		if memoryWaterLevel <= queryNodeMemoryLowWaterLevel {
 			continue
 		}
-		if memoryWaterLevel >= Params.QuotaConfig.QueryNodeMemoryWaterLevel {
+		if memoryWaterLevel >= queryNodeMemoryHighWaterLevel {
 			log.Debug("QuotaCenter: QueryNode memory to high water level",
 				zap.Uint64("UsedMem", metric.Mm.UsedMem),
 				zap.Uint64("TotalMem", metric.Mm.TotalMem),
-				zap.Float64("QueryNodeMemoryWaterLevel", Params.QuotaConfig.QueryNodeMemoryWaterLevel))
+				zap.Float64("QueryNodeMemoryHighWaterLevel", queryNodeMemoryHighWaterLevel))
 			return 0
 		}
-		p := (memoryWaterLevel - MemoryLowWaterLevel) / (Params.QuotaConfig.QueryNodeMemoryWaterLevel - MemoryLowWaterLevel)
+		p := (memoryWaterLevel - queryNodeMemoryLowWaterLevel) / (queryNodeMemoryHighWaterLevel - queryNodeMemoryLowWaterLevel)
 		if p < percentage {
 			percentage = p
 		}
 	}
 	for _, metric := range q.dataNodeMetrics {
 		memoryWaterLevel := float64(metric.Mm.UsedMem) / float64(metric.Mm.TotalMem)
-		if memoryWaterLevel <= MemoryLowWaterLevel {
+		if memoryWaterLevel <= dataNodeMemoryLowWaterLevel {
 			continue
 		}
-		if memoryWaterLevel >= Params.QuotaConfig.DataNodeMemoryWaterLevel {
+		if memoryWaterLevel >= dataNodeMemoryHighWaterLevel {
 			log.Debug("QuotaCenter: DataNode memory to high water level",
 				zap.Uint64("UsedMem", metric.Mm.UsedMem),
 				zap.Uint64("TotalMem", metric.Mm.TotalMem),
-				zap.Float64("DataNodeMemoryWaterLevel", Params.QuotaConfig.DataNodeMemoryWaterLevel))
+				zap.Float64("DataNodeMemoryHighWaterLevel", dataNodeMemoryHighWaterLevel))
 			return 0
 		}
-		p := (memoryWaterLevel - MemoryLowWaterLevel) / (Params.QuotaConfig.QueryNodeMemoryWaterLevel - MemoryLowWaterLevel)
+		p := (memoryWaterLevel - dataNodeMemoryLowWaterLevel) / (dataNodeMemoryHighWaterLevel - dataNodeMemoryLowWaterLevel)
 		if p < percentage {
 			percentage = p
 		}

@@ -18,6 +18,7 @@ package paramtable
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -39,27 +40,35 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test dml", func(t *testing.T) {
-		assert.Equal(t, megaBytesRate2Bytes(128), qc.DMLInsertRate)
+		assert.Equal(t, megaBytesRate2Bytes(64), qc.DMLInsertRate)
 		assert.Equal(t, megaBytesRate2Bytes(1), qc.DMLDeleteRate)
-		assert.Equal(t, int(megaBytesRate2Bytes(256)), qc.MaxInsertSize)
-		assert.Equal(t, int(megaBytesRate2Bytes(5)), qc.MaxDeleteSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(64)), qc.MaxInsertSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(1)), qc.MaxDeleteSize)
 	})
 
 	t.Run("test dql", func(t *testing.T) {
 		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLSearchRate)
-		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLQueryRate)
-		assert.Equal(t, int(megaBytesRate2Bytes(32)), qc.MaxSearchSize)
-		assert.Equal(t, int(megaBytesRate2Bytes(5)), qc.MaxQuerySize)
+		assert.Equal(t, megaBytesRate2Bytes(0.01), qc.DQLQueryRate)
+		assert.Equal(t, int(megaBytesRate2Bytes(0.1)), qc.MaxSearchSize)
+		assert.Equal(t, int(megaBytesRate2Bytes(0.01)), qc.MaxQuerySize)
 	})
 
 	t.Run("test limits", func(t *testing.T) {
 		assert.Equal(t, 32768, qc.MaxCollectionNum)
 	})
 
-	t.Run("test others", func(t *testing.T) {
+	t.Run("test force deny writing", func(t *testing.T) {
 		assert.False(t, qc.ForceDenyWriting)
+		assert.Equal(t, 10*time.Second, qc.MaxTSafeDelay)
+		assert.Equal(t, 0.8, qc.DataNodeMemoryLowWaterLevel)
+		assert.Equal(t, 0.9, qc.DataNodeMemoryHighWaterLevel)
+		assert.Equal(t, 0.8, qc.QueryNodeMemoryLowWaterLevel)
+		assert.Equal(t, 0.9, qc.QueryNodeMemoryHighWaterLevel)
+	})
+
+	t.Run("test force deny reading", func(t *testing.T) {
 		assert.False(t, qc.ForceDenyReading)
-		assert.Equal(t, 0.9, qc.DataNodeMemoryWaterLevel)
-		assert.Equal(t, 0.9, qc.QueryNodeMemoryWaterLevel)
+		assert.Equal(t, int64(100000), qc.MaxNQInQueue)
+		assert.Equal(t, int64(1024), qc.MaxQueryTasksInQueue)
 	})
 }

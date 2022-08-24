@@ -43,10 +43,9 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/panjf2000/ants/v2"
 	"go.etcd.io/etcd/api/v3/mvccpb"
+	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
-
-	v3rpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
@@ -69,6 +68,8 @@ var _ types.QueryNode = (*QueryNode)(nil)
 var _ types.QueryNodeComponent = (*QueryNode)(nil)
 
 var Params paramtable.ComponentParam
+
+var rateCol *rateCollector
 
 // QueryNode communicates with outside services and union all
 // services in querynode package.
@@ -214,6 +215,9 @@ func (node *QueryNode) Init() error {
 		}
 
 		node.factory.Init(&Params)
+
+		rateCol = newRateCollector()
+		log.Info("QueryNode init rateCollector done", zap.Int64("nodeID", Params.QueryNodeCfg.GetNodeID()))
 
 		node.vectorStorage, err = node.factory.NewVectorStorageChunkManager(node.queryNodeLoopCtx)
 		if err != nil {

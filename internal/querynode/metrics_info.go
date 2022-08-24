@@ -48,31 +48,58 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
+func getQuotaMetrics() (*metricsinfo.QueryNodeQuotaMetrics, error) {
+	return &metricsinfo.QueryNodeQuotaMetrics{
+		Hms: metricsinfo.HardwareMetrics{},
+		Rms: nil,
+		Fgm: metricsinfo.FlowGraphMetric{
+			MinFlowGraphTt: rateCol.getMinTSafe(),
+		},
+		SearchNQInQueue:   rateCol.rtCounter.getSearchNQInQueue(),
+		QueryTasksInQueue: rateCol.rtCounter.getQueryTasksInQueue(),
+	}, nil
+}
+
 // getSystemInfoMetrics returns metrics info of QueryNode
 func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, node *QueryNode) (*milvuspb.GetMetricsResponse, error) {
 	usedMem := metricsinfo.GetUsedMemoryCount()
 	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+		}, nil
+	}
+	hardwareInfos := metricsinfo.HardwareMetrics{
+		IP:           node.session.Address,
+		CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
+		CPUCoreUsage: metricsinfo.GetCPUUsage(),
+		Memory:       totalMem,
+		MemoryUsage:  usedMem,
+		Disk:         metricsinfo.GetDiskCount(),
+		DiskUsage:    metricsinfo.GetDiskUsage(),
+	}
+	quotaMetrics.Hms = hardwareInfos
+
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
-			Name: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeCfg.GetNodeID()),
-			HardwareInfos: metricsinfo.HardwareMetrics{
-				IP:           node.session.Address,
-				CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
-				CPUCoreUsage: metricsinfo.GetCPUUsage(),
-				Memory:       totalMem,
-				MemoryUsage:  usedMem,
-				Disk:         metricsinfo.GetDiskCount(),
-				DiskUsage:    metricsinfo.GetDiskUsage(),
-			},
-			SystemInfo:  metricsinfo.DeployMetrics{},
-			CreatedTime: Params.QueryNodeCfg.CreatedTime.String(),
-			UpdatedTime: Params.QueryNodeCfg.UpdatedTime.String(),
-			Type:        typeutil.QueryNodeRole,
-			ID:          node.session.ServerID,
+			Name:          metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, Params.QueryNodeCfg.GetNodeID()),
+			HardwareInfos: hardwareInfos,
+			SystemInfo:    metricsinfo.DeployMetrics{},
+			CreatedTime:   Params.QueryNodeCfg.CreatedTime.String(),
+			UpdatedTime:   Params.QueryNodeCfg.UpdatedTime.String(),
+			Type:          typeutil.QueryNodeRole,
+			ID:            node.session.ServerID,
 		},
 		SystemConfigurations: metricsinfo.QueryNodeConfiguration{
 			SimdType: Params.CommonCfg.SimdType,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

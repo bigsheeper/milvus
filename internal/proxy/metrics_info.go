@@ -30,6 +30,76 @@ import (
 type getMetricsFuncType func(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 type showConfigurationsFuncType func(ctx context.Context, request *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error)
 
+func getQuotaMetrics() (*metricsinfo.ProxyQuotaMetrics, error) {
+	return &metricsinfo.ProxyQuotaMetrics{
+		Hms: metricsinfo.HardwareMetrics{},
+		Rms: nil,
+	}, nil
+}
+
+func getProxyMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest, node *Proxy) (*milvuspb.GetMetricsResponse, error) {
+	totalMem := metricsinfo.GetMemoryCount()
+	usedMem := metricsinfo.GetUsedMemoryCount()
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID()),
+		}, nil
+	}
+	hardwareMetrics := metricsinfo.HardwareMetrics{
+		IP:           node.session.Address,
+		CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
+		CPUCoreUsage: metricsinfo.GetCPUUsage(),
+		Memory:       totalMem,
+		MemoryUsage:  usedMem,
+		Disk:         metricsinfo.GetDiskCount(),
+		DiskUsage:    metricsinfo.GetDiskUsage(),
+	}
+	quotaMetrics.Hms = hardwareMetrics
+
+	proxyRoleName := metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID())
+	proxyMetricInfo := metricsinfo.ProxyInfos{
+		BaseComponentInfos: metricsinfo.BaseComponentInfos{
+			HasError:      false,
+			Name:          proxyRoleName,
+			HardwareInfos: hardwareMetrics,
+			SystemInfo:    metricsinfo.DeployMetrics{},
+			CreatedTime:   Params.ProxyCfg.CreatedTime.String(),
+			UpdatedTime:   Params.ProxyCfg.UpdatedTime.String(),
+			Type:          typeutil.ProxyRole,
+			ID:            node.session.ServerID,
+		},
+		SystemConfigurations: metricsinfo.ProxyConfiguration{
+			DefaultPartitionName: Params.CommonCfg.DefaultPartitionName,
+			DefaultIndexName:     Params.CommonCfg.DefaultIndexName,
+		},
+		QuotaMetrics: quotaMetrics,
+	}
+
+	resp, err := metricsinfo.MarshalComponentInfos(proxyMetricInfo)
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID()),
+		}, nil
+	}
+
+	return &milvuspb.GetMetricsResponse{
+		Status: &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_Success,
+		},
+		Response:      resp,
+		ComponentName: metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID()),
+	}, nil
+}
+
 // getSystemInfoMetrics returns the system information metrics.
 func getSystemInfoMetrics(
 	ctx context.Context,
@@ -39,6 +109,16 @@ func getSystemInfoMetrics(
 
 	var err error
 
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID()),
+		}, nil
+	}
 	systemTopology := metricsinfo.SystemTopology{
 		NodesInfo: make([]metricsinfo.SystemTopologyNode, 0),
 	}
@@ -75,6 +155,7 @@ func getSystemInfoMetrics(
 				DefaultPartitionName: Params.CommonCfg.DefaultPartitionName,
 				DefaultIndexName:     Params.CommonCfg.DefaultIndexName,
 			},
+			QuotaMetrics: quotaMetrics,
 		},
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&(proxyTopologyNode.Infos.(*metricsinfo.ProxyInfos).SystemInfo))

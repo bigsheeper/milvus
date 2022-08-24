@@ -26,6 +26,16 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+func getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, error) {
+	return &metricsinfo.DataNodeQuotaMetrics{
+		Hms: metricsinfo.HardwareMetrics{},
+		Rms: nil,
+		Fgm: metricsinfo.FlowGraphMetric{
+			MinFlowGraphTt: rateCol.getMinFlowGraphTt(),
+		},
+	}, nil
+}
+
 //getComponentConfigurations returns the configurations of dataNode matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "datanode."
@@ -50,27 +60,44 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 
 func (node *DataNode) getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	// TODO(dragondriver): add more metrics
+	usedMem := metricsinfo.GetUsedMemoryCount()
+	totalMem := metricsinfo.GetMemoryCount()
+
+	quotaMetrics, err := getQuotaMetrics()
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+		}, nil
+	}
+	hardwareMetrics := metricsinfo.HardwareMetrics{
+		IP:           node.session.Address,
+		CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
+		CPUCoreUsage: metricsinfo.GetCPUUsage(),
+		Memory:       totalMem,
+		MemoryUsage:  usedMem,
+		Disk:         metricsinfo.GetDiskCount(),
+		DiskUsage:    metricsinfo.GetDiskUsage(),
+	}
+	quotaMetrics.Hms = hardwareMetrics
+
 	nodeInfos := metricsinfo.DataNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
-			Name: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
-			HardwareInfos: metricsinfo.HardwareMetrics{
-				IP:           node.session.Address,
-				CPUCoreCount: metricsinfo.GetCPUCoreCount(false),
-				CPUCoreUsage: metricsinfo.GetCPUUsage(),
-				Memory:       metricsinfo.GetMemoryCount(),
-				MemoryUsage:  metricsinfo.GetUsedMemoryCount(),
-				Disk:         metricsinfo.GetDiskCount(),
-				DiskUsage:    metricsinfo.GetDiskUsage(),
-			},
-			SystemInfo:  metricsinfo.DeployMetrics{},
-			CreatedTime: Params.DataNodeCfg.CreatedTime.String(),
-			UpdatedTime: Params.DataNodeCfg.UpdatedTime.String(),
-			Type:        typeutil.DataNodeRole,
-			ID:          node.session.ServerID,
+			Name:          metricsinfo.ConstructComponentName(typeutil.DataNodeRole, Params.DataNodeCfg.GetNodeID()),
+			HardwareInfos: hardwareMetrics,
+			SystemInfo:    metricsinfo.DeployMetrics{},
+			CreatedTime:   Params.DataNodeCfg.CreatedTime.String(),
+			UpdatedTime:   Params.DataNodeCfg.UpdatedTime.String(),
+			Type:          typeutil.DataNodeRole,
+			ID:            node.session.ServerID,
 		},
 		SystemConfigurations: metricsinfo.DataNodeConfiguration{
 			FlushInsertBufferSize: Params.DataNodeCfg.FlushInsertBufferSize,
 		},
+		QuotaMetrics: quotaMetrics,
 	}
 
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)

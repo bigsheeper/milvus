@@ -553,6 +553,7 @@ func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, endPos
 func (ibNode *insertBufferNode) writeHardTimeTick(ts Timestamp, segmentIDs []int64) {
 	ibNode.ttLogger.LogTs(ts)
 	ibNode.ttMerger.bufferTs(ts, segmentIDs)
+	rateCol.updateFlowGraphTt(ibNode.channelName, ts)
 }
 
 func (ibNode *insertBufferNode) getCollectionandPartitionIDbySegID(segmentID UniqueID) (collID, partitionID UniqueID, err error) {

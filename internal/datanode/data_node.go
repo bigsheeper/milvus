@@ -85,6 +85,8 @@ var _ types.DataNode = (*DataNode)(nil)
 // Params from config.yaml
 var Params paramtable.ComponentParam
 
+var rateCol *rateCollector
+
 // DataNode communicates with outside services and unioun all
 // services in datanode package.
 //
@@ -214,6 +216,9 @@ func (node *DataNode) Init() error {
 		log.Error("DataNode init session failed", zap.Error(err))
 		return err
 	}
+
+	rateCol = newRateCollector()
+	log.Info("DataNode init rateCollector done", zap.Int64("nodeID", Params.QueryNodeCfg.GetNodeID()))
 
 	idAllocator, err := allocator2.NewIDAllocator(node.ctx, node.rootCoord, Params.DataNodeCfg.GetNodeID())
 	if err != nil {

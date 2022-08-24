@@ -1,0 +1,134 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package rootcoord
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/proto/milvuspb"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
+)
+
+type queryCoordMockForQuota struct {
+	queryMock
+	retErr        bool
+	retFailStatus bool
+}
+
+type dataCoordMockForQuota struct {
+	dataMock
+	retErr        bool
+	retFailStatus bool
+}
+
+func (q *queryCoordMockForQuota) GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
+	if q.retErr {
+		return nil, fmt.Errorf("mock err")
+	}
+	if q.retFailStatus {
+		return &milvuspb.GetMetricsResponse{
+			Status: failStatus(commonpb.ErrorCode_UnexpectedError, "mock failure status"),
+		}, nil
+	}
+	return &milvuspb.GetMetricsResponse{
+		Status: succStatus(),
+	}, nil
+}
+
+func (d *dataCoordMockForQuota) GetMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
+	if d.retErr {
+		return nil, fmt.Errorf("mock err")
+	}
+	if d.retFailStatus {
+		return &milvuspb.GetMetricsResponse{
+			Status: failStatus(commonpb.ErrorCode_UnexpectedError, "mock failure status"),
+		}, nil
+	}
+	return &milvuspb.GetMetricsResponse{
+		// TODO: add metrics
+		Status: succStatus(),
+	}, nil
+}
+
+func TestQuotaCenter(t *testing.T) {
+	Params.Init()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	core, err := NewCore(ctx, nil)
+	assert.Nil(t, err)
+	core.TSOAllocator = func(count uint32) (typeutil.Timestamp, error) {
+		return 0, nil
+	}
+
+	pcm := newProxyClientManager(core)
+
+	t.Run("test QuotaCenter", func(t *testing.T) {
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		go quotaCenter.run()
+		time.Sleep(10 * time.Millisecond)
+		quotaCenter.stop()
+	})
+
+	t.Run("test syncMetrics", func(t *testing.T) {
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		err = quotaCenter.syncMetrics()
+		assert.NoError(t, err)
+
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retErr: true}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		err = quotaCenter.syncMetrics()
+		assert.Error(t, err)
+
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retErr: true}, core.TSOAllocator)
+		err = quotaCenter.syncMetrics()
+		assert.Error(t, err)
+
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{retFailStatus: true}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		err = quotaCenter.syncMetrics()
+		assert.Error(t, err)
+
+		quotaCenter = NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{retFailStatus: true}, core.TSOAllocator)
+		err = quotaCenter.syncMetrics()
+		assert.Error(t, err)
+	})
+
+	t.Run("test memoryToWaterLevel", func(t *testing.T) {
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		percent := quotaCenter.memoryToWaterLevel()
+		assert.Equal(t, float64(1), percent)
+		quotaCenter.dataNodeMetrics = []*metricsinfo.DataNodeQuotaMetrics{{Hms: metricsinfo.HardwareMetrics{MemoryUsage: 100, Memory: 100}}}
+		percent = quotaCenter.memoryToWaterLevel()
+		assert.Equal(t, float64(0), percent)
+		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{Hms: metricsinfo.HardwareMetrics{MemoryUsage: 100, Memory: 100}}}
+		percent = quotaCenter.memoryToWaterLevel()
+		assert.Equal(t, float64(0), percent)
+	})
+
+	t.Run("test setRates", func(t *testing.T) {
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.TSOAllocator)
+		quotaCenter.currentRates[internalpb.RateType_DMLInsert] = 100
+		err = quotaCenter.setRates()
+		assert.NoError(t, err)
+	})
+}

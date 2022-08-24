@@ -349,3 +349,83 @@ common:
     # tls mode values [0, 1, 2]
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
+
+quotaAndLimits:
+  enable: true # `true` to enable quota and limits, `false` to disable.
+
+  # quotaCenterCollectInterval is the time interval that quotaCenter
+  # collects metrics from Query cluster and Data cluster.
+  quotaCenterCollectInterval: 1000 # milliseconds
+
+  ddl:
+    collectionRate: 10 # requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
+    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
+    flushRate: 10 # requests per minute
+    compactionRate: 10 # requests per minute
+
+  dml:
+    insertRate: 64 # MB/s
+    deleteRate: 1 # MB/s
+    bulkLoadRate: 1 # requests per second TODO: limit bulkLoad rate
+
+  dql:
+    searchRate: 0.1 # MB/s
+    queryRate: 0.01 # MB/s
+
+  limits: # TODO: add comments
+    collection:
+      maxNum: 64 # max number of collections in a Milvus instance.
+      maxNameLength: 256 # Maximum length of name for a collection or alias.
+      maxDimension: 32768
+      maxShardNum: 256
+      maxRetention: 60 # days,
+    partition:
+      maxNum: 4096
+      maxNameLength: 256
+    field:
+      maxNum: 256 # Maximum number of fields in a collection.
+      maxNameLength: 256
+    index:
+      maxNum: 16
+      maxNameLength: 256
+      maxDescriptionLength: 4096
+    dql:
+      maxQueryParamLength: 256
+      maxReturnSize: 512 # MB
+      maxNQ: 32768
+    cluster:
+      maxMinio: 10 # TODO: ???
+      maxTotalMetaSize: 1024 # MB TODO: ???
+
+  # limitWriting decides whether dml requests are allowed.
+  limitWriting:
+    # forceDeny `false` means dml requests are allowed (except for some
+    # specific conditions, such as memory of nodes to water marker), `true` means always reject all dml requests.
+    forceDeny: false
+    # maxTimeTickDelay indicates the backpressure for DML Operations.
+    # DML rates would be reduced according to the ratio of time tick delay to maxTimeTickDelay,
+    # if time tick delay is greater than maxTimeTickDelay, all DML requests would be rejected.
+    maxTimeTickDelay: 10 # in seconds
+    # When memory usage > memoryHighWaterLevel, all dml requests would be rejected;
+    # When memoryLowWaterLevel < memory usage < memoryHighWaterLevel, reduce the dml rate;
+    # When memory usage < memoryLowWaterLevel, no action.
+    # memoryLowWaterLevel should be less than memoryHighWaterLevel.
+    dataNodeMemoryLowWaterLevel: 0.8 # (0, 1], memoryLowWaterLevel in DataNodes
+    dataNodeMemoryHighWaterLevel: 0.9 # (0, 1], memoryHighWaterLevel in DataNodes
+    queryNodeMemoryLowWaterLevel: 0.8 # (0, 1], memoryLowWaterLevel in QueryNodes
+    queryNodeMemoryHighWaterLevel: 0.9 # (0, 1], memoryHighWaterLevel in QueryNodes
+
+  # limitReading decides whether dql requests are allowed.
+  limitReading:
+    # forceDeny `false` means dql requests are allowed (except for some
+    # specific conditions, such as collection has been dropped), `true` means always reject all dql requests.
+    forceDeny: false
+    # maxNQInQueue indicates the backpressure for Search Operation.
+    # Search rates would be reduced by the ratio of NQ in QueryNode's task queue to maxNQInQueue,
+    # if NQ in QueryNode's task queue is greater than maxNQInQueue, all Search requests would be rejected.
+    maxNQInQueue: 100000
+    # maxQueryTasksInQueue indicates the backpressure for Query Operation.
+    # Query rates would be reduced according to the ratio of query tasks number to maxQueryTasksInQueue,
+    # if number of query tasks is greater than maxQueryTasksInQueue, all Query requests would be rejected.
+    maxQueryTasksInQueue: 1024

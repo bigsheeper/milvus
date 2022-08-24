@@ -19,6 +19,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -77,6 +78,8 @@ type Proxy struct {
 	dataCoord  types.DataCoord
 	queryCoord types.QueryCoord
 
+	MultiRateLimiter *MultiRateLimiter
+
 	chMgr channelsMgr
 
 	sched *taskScheduler
@@ -107,16 +110,16 @@ func NewProxy(ctx context.Context, factory dependency.Factory) (*Proxy, error) {
 	ctx1, cancel := context.WithCancel(ctx)
 	n := 1024 // better to be configurable
 	node := &Proxy{
-		ctx:            ctx1,
-		cancel:         cancel,
-		factory:        factory,
-		searchResultCh: make(chan *internalpb.SearchResults, n),
-		shardMgr:       newShardClientMgr(),
+		ctx:              ctx1,
+		cancel:           cancel,
+		factory:          factory,
+		searchResultCh:   make(chan *internalpb.SearchResults, n),
+		shardMgr:         newShardClientMgr(),
+		MultiRateLimiter: NewMultiRateLimiter(),
 	}
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
 	logutil.Logger(ctx).Debug("create a new Proxy instance", zap.Any("state", node.stateCode.Load()))
 	return node, nil
-
 }
 
 // Register registers proxy at etcd
@@ -428,4 +431,12 @@ func (node *Proxy) SetDataCoordClient(cli types.DataCoord) {
 // SetQueryCoordClient sets QueryCoord client for proxy.
 func (node *Proxy) SetQueryCoordClient(cli types.QueryCoord) {
 	node.queryCoord = cli
+}
+
+// GetRateLimiter returns the rateLimiter in Proxy.
+func (node *Proxy) GetRateLimiter() (types.Limiter, error) {
+	if node.MultiRateLimiter == nil {
+		return nil, fmt.Errorf("nil rate limiter in Proxy")
+	}
+	return node.MultiRateLimiter, nil
 }

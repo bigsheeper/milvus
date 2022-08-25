@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
@@ -54,13 +53,13 @@ func (m *MultiRateLimiter) Limit(rt internalpb.RateType, n int) bool {
 
 // rateLimiter implements Limiter.
 type rateLimiter struct {
-	limiters map[internalpb.RateType]*rate.Limiter
+	limiters map[internalpb.RateType]*Limiter
 }
 
 // newRateLimiter returns a new RateLimiter.
 func newRateLimiter() *rateLimiter {
 	rl := &rateLimiter{
-		limiters: make(map[internalpb.RateType]*rate.Limiter),
+		limiters: make(map[internalpb.RateType]*Limiter),
 	}
 	rl.registerLimiters()
 	return rl
@@ -76,7 +75,7 @@ func (rl *rateLimiter) limit(rt internalpb.RateType, n int) bool {
 func (rl *rateLimiter) setRates(rates []*internalpb.Rate) error {
 	for _, r := range rates {
 		if _, ok := rl.limiters[r.GetRt()]; ok {
-			rl.limiters[r.GetRt()].SetLimit(rate.Limit(r.GetR()))
+			rl.limiters[r.GetRt()].SetLimit(Limit(r.GetR()))
 			metrics.SetRateGaugeByRateType(r.GetRt(), Params.ProxyCfg.GetNodeID(), r.GetR())
 		} else {
 			return fmt.Errorf("unregister rateLimiter for rateType %s", r.GetRt().String())
@@ -166,6 +165,6 @@ func (rl *rateLimiter) registerLimiters() {
 			zap.String("rateType", internalpb.RateType_name[rt]),
 			zap.Float64("r", r),
 			zap.Int("b", b))
-		rl.limiters[internalpb.RateType(rt)] = rate.NewLimiter(rate.Limit(r), b)
+		rl.limiters[internalpb.RateType(rt)] = NewLimiter(Limit(r), b)
 	}
 }

@@ -39,78 +39,111 @@ var (
 )
 
 type allow struct {
-	t  time.Time
-	n  int
-	ok bool
+	t            time.Time
+	n            int
+	ok           bool
+	remainTokens float64
+}
+
+func (lim *Limiter) getTokens() float64 {
+	lim.mu.Lock()
+	defer lim.mu.Unlock()
+	return lim.tokens
 }
 
 func run(t *testing.T, lim *Limiter, allows []allow) {
-	t.Helper()
-	for i, allow := range allows {
-		ok := lim.AllowN(allow.t, allow.n)
-		if ok != allow.ok {
-			t.Errorf("step %d: lim.AllowN(%v, %v) = %v want %v",
-				i, allow.t, allow.n, ok, allow.ok)
+	for i, a := range allows {
+		ok := lim.AllowN(a.t, a.n)
+		if ok != a.ok || lim.getTokens() != a.remainTokens {
+			t.Errorf("step %d: lim.AllowN(%v, %v) = %v want %v, remainTokens = %v, wantTokens = %v",
+				i, a.t, a.n, ok, a.ok, lim.getTokens(), a.remainTokens)
 		}
 	}
 }
 
 func TestLimit(t *testing.T) {
-	if Limit(10) == Inf {
-		t.Errorf("Limit(10) == Inf should be false")
-	}
-}
+	t.Run("test limit", func(t *testing.T) {
+		// test base
+		now := time.Now()
+		run(t, NewLimiter(100, 100), []allow{
+			{now, 200, true, -100},
+			{now, 100, false, -100},
+			{now.Add(1 * time.Second), 300, true, -300},
+			{now.Add(2 * time.Second), 1, false, -300},
+			{now.Add(7 * time.Second), 50, true, 50},
+			{now.Add(7 * time.Second), 60, true, -10},
+			{now.Add(7 * time.Second), 10, false, -10},
+		})
 
-func TestLimiterBurst1(t *testing.T) {
-	run(t, NewLimiter(10, 1), []allow{
-		{t0, 1, true},
-		{t0, 1, true},
-		{t0, 1, false},
-		{t1, 1, true},
-		{t1, 1, false},
-		{t1, 1, false},
-		{t2, 2, true},
-		{t2, 1, false},
-		{t2, 1, false},
+		// limit 10, burst 1
+		run(t, NewLimiter(10, 1), []allow{
+			{t0, 1, true, 0},
+			{t0, 1, true, -1},
+			{t0, 1, false, -1},
+			{t1, 1, true, -1},
+			{t1, 1, false, -1},
+			{t1, 1, false, -1},
+			{t2, 2, true, -2},
+			{t2, 1, false, -2},
+			{t2, 1, false, -2},
+		})
+
+		// limit 10, burst 3
+		run(t, NewLimiter(10, 3), []allow{
+			{t0, 2, true, 1},
+			{t0, 2, true, -1},
+			{t0, 1, false, -1},
+			{t0, 1, false, -1},
+			{t1, 4, true, -4},
+			{t2, 1, false, -4},
+			{t3, 1, false, -4},
+			{t4, 1, false, -4},
+			{t5, 1, true, -1},
+			{t9, 3, true, 0},
+			{t9, 3, true, -3},
+		})
+
+		// // start at t1
+		run(t, NewLimiter(10, 3), []allow{
+			{t1, 1, true, 2},
+			{t0, 1, true, 1},
+			{t0, 1, true, 0},
+			{t0, 1, true, -1},
+			{t0, 1, false, -1},
+			{t1, 1, true, -1},
+			{t1, 1, false, -1},
+			{t1, 1, false, -1},
+			{t2, 1, true, -1},
+			{t2, 1, false, -1},
+			{t2, 1, false, -1},
+		})
 	})
-}
 
-func TestLimiterBurst3(t *testing.T) {
-	run(t, NewLimiter(10, 3), []allow{
-		{t0, 2, true},
-		{t0, 2, true},
-		{t0, 1, false},
-		{t0, 1, false},
-		{t1, 4, true},
-		{t2, 1, false},
-		{t3, 1, false},
-		{t4, 1, false},
-		{t5, 1, true},
-		{t9, 3, true},
-		{t9, 3, true},
+	t.Run("test SetLimit", func(t *testing.T) {
+		lim := NewLimiter(10, 2)
+
+		run(t, lim, []allow{{t0, 5, true, -3}})
+		run(t, lim, []allow{{t0, 1, false, -3}})
+		run(t, lim, []allow{{t1, 1, false, -3}})
+		lim.SetLimit(100)
+		run(t, lim, []allow{{t2, 10, true, (-3 + 10) - 10}})
 	})
-}
 
-func TestLimiterJumpBackwards(t *testing.T) {
-	run(t, NewLimiter(10, 3), []allow{
-		{t1, 1, true}, // start at t1
-		{t0, 1, true}, // jump back to t0, two tokens remain
-		{t0, 1, true},
-		{t0, 1, true},
-		{t0, 1, false},
-		{t1, 1, true},
-		{t1, 1, false},
-		{t1, 1, false},
-		{t2, 1, true},
-		{t2, 1, false},
-		{t2, 1, false},
+	t.Run("test no truncation error", func(t *testing.T) {
+		if !NewLimiter(0.7692307692307693, 1).AllowN(time.Now(), 1) {
+			t.Fatal("expected true")
+		}
 	})
-}
 
-func TestLimiter_noTruncationErrors(t *testing.T) {
-	if !NewLimiter(0.7692307692307693, 1).AllowN(time.Now(), 1) {
-		t.Fatal("expected true")
-	}
+	t.Run("test zero limit", func(t *testing.T) {
+		r := NewLimiter(0, 1)
+		if !r.AllowN(time.Now(), 1) {
+			t.Errorf("Limit(0, 1) want true when first used")
+		}
+		if r.AllowN(time.Now(), 1) {
+			t.Errorf("Limit(0, 1) want false when already used")
+		}
+	})
 }
 
 // testTime is a fake time used for testing.
@@ -274,83 +307,7 @@ func TestLongRunningQPS(t *testing.T) {
 	}
 }
 
-type request struct {
-	t  time.Time
-	n  int
-	ok bool
-}
-
-// dFromDuration converts a duration to the nearest multiple of the global constant d.
-func dFromDuration(dur time.Duration) int {
-	// Add d/2 to dur so that integer division will round to
-	// the nearest multiple instead of truncating.
-	// (We don't care about small inaccuracies.)
-	return int((dur + (d / 2)) / d)
-}
-
-// dSince returns multiples of d since t0
-func dSince(t time.Time) int {
-	return dFromDuration(t.Sub(t0))
-}
-
-func runReserve(t *testing.T, lim *Limiter, req request) bool {
-	t.Helper()
-	return runReserveMax(t, lim, req)
-}
-
-func runReserveMax(t *testing.T, lim *Limiter, req request) bool {
-	t.Helper()
-	ok := lim.AllowN(req.t, req.n)
-	if ok != req.ok {
-		t.Errorf("lim.reserveN(t%d, %v) = (%v) want (%v)",
-			dSince(req.t), req.n, ok, req.ok)
-	}
-	return ok
-}
-
-func TestSimpleReserve(t *testing.T) {
-	lim := NewLimiter(10, 2)
-
-	runReserve(t, lim, request{t0, 2, true})
-	runReserve(t, lim, request{t3, 2, true})
-}
-
-func TestMix(t *testing.T) {
-	lim := NewLimiter(10, 2)
-
-	runReserve(t, lim, request{t0, 3, true}) // true due to overdraft mechanism
-	runReserve(t, lim, request{t0, 2, false})
-	run(t, lim, []allow{{t1, 2, true}}) // true due to overdraft mechanism
-	run(t, lim, []allow{{t3, 1, true}})
-}
-
-func TestReserveJumpBack(t *testing.T) {
-	lim := NewLimiter(10, 2)
-
-	runReserve(t, lim, request{t1, 2, true}) // start at t1
-	runReserve(t, lim, request{t0, 1, true}) // should violate Limit,Burst
-	runReserve(t, lim, request{t2, 2, true})
-}
-
-func TestReserveSetLimit(t *testing.T) {
-	lim := NewLimiter(10, 2)
-
-	runReserve(t, lim, request{t0, 5, true})
-	runReserve(t, lim, request{t0, 1, false})
-	runReserve(t, lim, request{t1, 1, false})
-	lim.SetLimit(100)
-	runReserve(t, lim, request{t2, 10, true})
-}
-
-func TestReserveMax(t *testing.T) {
-	lim := NewLimiter(10, 2)
-
-	runReserveMax(t, lim, request{t0, 2, true})
-	runReserveMax(t, lim, request{t0, 1, true})  // reserve for close future
-	runReserveMax(t, lim, request{t0, 1, false}) // time to act too far in the future
-}
-
-func BenchmarkAllowN(b *testing.B) {
+func BenchmarkLimiter_AllowN(b *testing.B) {
 	lim := NewLimiter(1, 1)
 	now := time.Now()
 	b.ReportAllocs()
@@ -360,14 +317,4 @@ func BenchmarkAllowN(b *testing.B) {
 			lim.AllowN(now, 1)
 		}
 	})
-}
-
-func TestZeroLimit(t *testing.T) {
-	r := NewLimiter(0, 1)
-	if !r.AllowN(time.Now(), 1) {
-		t.Errorf("Limit(0, 1) want true when first used")
-	}
-	if r.AllowN(time.Now(), 1) {
-		t.Errorf("Limit(0, 1) want false when already used")
-	}
 }

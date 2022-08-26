@@ -17,16 +17,12 @@
 package proxy
 
 import (
-	"math"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
-
-func closeEnough(a, b Limit) bool {
-	return (math.Abs(float64(a)/float64(b)) - 1.0) < 1e-9
-}
 
 const (
 	d = 100 * time.Millisecond
@@ -68,13 +64,13 @@ func TestLimit(t *testing.T) {
 func TestLimiterBurst1(t *testing.T) {
 	run(t, NewLimiter(10, 1), []allow{
 		{t0, 1, true},
-		{t0, 1, false},
+		{t0, 1, true},
 		{t0, 1, false},
 		{t1, 1, true},
 		{t1, 1, false},
 		{t1, 1, false},
-		{t2, 2, false}, // burst size is 1, so n=2 always fails
-		{t2, 1, true},
+		{t2, 2, true},
+		{t2, 1, false},
 		{t2, 1, false},
 	})
 }
@@ -82,18 +78,16 @@ func TestLimiterBurst1(t *testing.T) {
 func TestLimiterBurst3(t *testing.T) {
 	run(t, NewLimiter(10, 3), []allow{
 		{t0, 2, true},
-		{t0, 2, false},
-		{t0, 1, true},
+		{t0, 2, true},
 		{t0, 1, false},
-		{t1, 4, false},
-		{t2, 1, true},
-		{t3, 1, true},
-		{t4, 1, true},
-		{t4, 1, true},
+		{t0, 1, false},
+		{t1, 4, true},
+		{t2, 1, false},
+		{t3, 1, false},
 		{t4, 1, false},
-		{t4, 1, false},
+		{t5, 1, true},
 		{t9, 3, true},
-		{t9, 0, true},
+		{t9, 3, true},
 	})
 }
 
@@ -102,20 +96,17 @@ func TestLimiterJumpBackwards(t *testing.T) {
 		{t1, 1, true}, // start at t1
 		{t0, 1, true}, // jump back to t0, two tokens remain
 		{t0, 1, true},
+		{t0, 1, true},
 		{t0, 1, false},
-		{t0, 1, false},
-		{t1, 1, true}, // got a token
+		{t1, 1, true},
 		{t1, 1, false},
 		{t1, 1, false},
-		{t2, 1, true}, // got another token
+		{t2, 1, true},
 		{t2, 1, false},
 		{t2, 1, false},
 	})
 }
 
-// Ensure that tokensFromDuration doesn't produce
-// rounding errors by truncating nanoseconds.
-// See golang.org/issues/34861.
 func TestLimiter_noTruncationErrors(t *testing.T) {
 	if !NewLimiter(0.7692307692307693, 1).AllowN(time.Now(), 1) {
 		t.Fatal("expected true")
@@ -237,8 +228,9 @@ func TestSimultaneousRequests(t *testing.T) {
 		go f()
 	}
 	wg.Wait()
-	if numOK != burst {
-		t.Errorf("numOK = %d, want %d", numOK, burst)
+	want := burst + 1 // due to overdraft mechanism
+	if numOK != uint32(want) {
+		t.Errorf("numOK = %d, want %d", numOK, want)
 	}
 }
 
@@ -271,10 +263,12 @@ func TestLongRunningQPS(t *testing.T) {
 	ideal := burst + (limit * float64(elapsed) / float64(time.Second))
 
 	// We should never get more requests than allowed.
-	if want := int32(ideal + 1); numOK > want {
+	fmt.Printf("numOK = %d, want %d (ideal %f)\n", numOK, int32(ideal), ideal)
+	if want := int32(ideal); numOK > want {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
 	// We should get very close to the number of requests allowed.
+	fmt.Printf("numOK = %d, want %d (ideal %f)\n", numOK, int32(0.999*ideal), ideal)
 	if want := int32(0.999 * ideal); numOK < want {
 		t.Errorf("numOK = %d, want %d (ideal %f)", numOK, want, ideal)
 	}
@@ -324,9 +318,9 @@ func TestSimpleReserve(t *testing.T) {
 func TestMix(t *testing.T) {
 	lim := NewLimiter(10, 2)
 
-	runReserve(t, lim, request{t0, 3, false}) // should return false because n > Burst
-	runReserve(t, lim, request{t0, 2, true})
-	run(t, lim, []allow{{t1, 2, false}}) // not enough tokens - don't allow
+	runReserve(t, lim, request{t0, 3, true}) // true due to overdraft mechanism
+	runReserve(t, lim, request{t0, 2, false})
+	run(t, lim, []allow{{t1, 2, true}}) // true due to overdraft mechanism
 	run(t, lim, []allow{{t3, 1, true}})
 }
 
@@ -334,20 +328,38 @@ func TestReserveJumpBack(t *testing.T) {
 	lim := NewLimiter(10, 2)
 
 	runReserve(t, lim, request{t1, 2, true}) // start at t1
+	runReserve(t, lim, request{t0, 1, true}) // should violate Limit,Burst
+	runReserve(t, lim, request{t2, 2, true})
 }
 
 func TestReserveSetLimit(t *testing.T) {
-	lim := NewLimiter(5, 2)
+	lim := NewLimiter(10, 2)
 
-	runReserve(t, lim, request{t0, 2, true})
-	lim.SetLimit(10)
-	runReserve(t, lim, request{t2, 1, true}) // violates Limit and Burst
+	runReserve(t, lim, request{t0, 5, true})
+	runReserve(t, lim, request{t0, 1, false})
+	runReserve(t, lim, request{t1, 1, false})
+	lim.SetLimit(100)
+	runReserve(t, lim, request{t2, 10, true})
 }
 
 func TestReserveMax(t *testing.T) {
 	lim := NewLimiter(10, 2)
+
 	runReserveMax(t, lim, request{t0, 2, true})
+	runReserveMax(t, lim, request{t0, 1, true})  // reserve for close future
 	runReserveMax(t, lim, request{t0, 1, false}) // time to act too far in the future
+}
+
+func BenchmarkAllowN(b *testing.B) {
+	lim := NewLimiter(1, 1)
+	now := time.Now()
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			lim.AllowN(now, 1)
+		}
+	})
 }
 
 func TestZeroLimit(t *testing.T) {

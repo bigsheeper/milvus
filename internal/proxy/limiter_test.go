@@ -17,7 +17,6 @@
 package proxy
 
 import (
-	"context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -282,10 +281,9 @@ func TestLongRunningQPS(t *testing.T) {
 }
 
 type request struct {
-	t   time.Time
-	n   int
-	act time.Time
-	ok  bool
+	t  time.Time
+	n  int
+	ok bool
 }
 
 // dFromDuration converts a duration to the nearest multiple of the global constant d.
@@ -301,72 +299,55 @@ func dSince(t time.Time) int {
 	return dFromDuration(t.Sub(t0))
 }
 
-func runReserve(t *testing.T, lim *Limiter, req request) *Reservation {
+func runReserve(t *testing.T, lim *Limiter, req request) bool {
 	t.Helper()
-	return runReserveMax(t, lim, req, InfDuration)
+	return runReserveMax(t, lim, req)
 }
 
-func runReserveMax(t *testing.T, lim *Limiter, req request, maxReserve time.Duration) *Reservation {
+func runReserveMax(t *testing.T, lim *Limiter, req request) bool {
 	t.Helper()
-	r := lim.reserveN(req.t, req.n, maxReserve)
-	if r.ok != req.ok {
-		t.Errorf("lim.reserveN(t%d, %v, %v) = (%v) want (t%d, %v)",
-			dSince(req.t), req.n, maxReserve, r.ok, dSince(req.act), req.ok)
+	ok := lim.AllowN(req.t, req.n)
+	if ok != req.ok {
+		t.Errorf("lim.reserveN(t%d, %v) = (%v) want (%v)",
+			dSince(req.t), req.n, ok, req.ok)
 	}
-	return &r
+	return ok
 }
 
 func TestSimpleReserve(t *testing.T) {
 	lim := NewLimiter(10, 2)
 
-	runReserve(t, lim, request{t0, 2, t0, true})
-	runReserve(t, lim, request{t0, 2, t2, true})
-	runReserve(t, lim, request{t3, 2, t4, true})
+	runReserve(t, lim, request{t0, 2, true})
+	runReserve(t, lim, request{t3, 2, true})
 }
 
 func TestMix(t *testing.T) {
 	lim := NewLimiter(10, 2)
 
-	runReserve(t, lim, request{t0, 3, t1, false}) // should return false because n > Burst
-	runReserve(t, lim, request{t0, 2, t0, true})
+	runReserve(t, lim, request{t0, 3, false}) // should return false because n > Burst
+	runReserve(t, lim, request{t0, 2, true})
 	run(t, lim, []allow{{t1, 2, false}}) // not enough tokens - don't allow
-	runReserve(t, lim, request{t1, 2, t2, true})
-	run(t, lim, []allow{{t1, 1, false}}) // negative tokens - don't allow
 	run(t, lim, []allow{{t3, 1, true}})
 }
 
 func TestReserveJumpBack(t *testing.T) {
 	lim := NewLimiter(10, 2)
 
-	runReserve(t, lim, request{t1, 2, t1, true}) // start at t1
-	runReserve(t, lim, request{t0, 1, t1, true}) // should violate Limit,Burst
-	runReserve(t, lim, request{t2, 2, t3, true})
+	runReserve(t, lim, request{t1, 2, true}) // start at t1
 }
 
 func TestReserveSetLimit(t *testing.T) {
 	lim := NewLimiter(5, 2)
 
-	runReserve(t, lim, request{t0, 2, t0, true})
-	runReserve(t, lim, request{t0, 2, t4, true})
-	lim.SetLimitAt(t2, 10)
-	runReserve(t, lim, request{t2, 1, t4, true}) // violates Limit and Burst
+	runReserve(t, lim, request{t0, 2, true})
+	lim.SetLimit(10)
+	runReserve(t, lim, request{t2, 1, true}) // violates Limit and Burst
 }
 
 func TestReserveMax(t *testing.T) {
 	lim := NewLimiter(10, 2)
-	maxT := d
-
-	runReserveMax(t, lim, request{t0, 2, t0, true}, maxT)
-	runReserveMax(t, lim, request{t0, 1, t1, true}, maxT)  // reserve for close future
-	runReserveMax(t, lim, request{t0, 1, t2, false}, maxT) // time to act too far in the future
-}
-
-type wait struct {
-	name   string
-	ctx    context.Context
-	n      int
-	delay  int // in multiples of d
-	nilErr bool
+	runReserveMax(t, lim, request{t0, 2, true})
+	runReserveMax(t, lim, request{t0, 1, false}) // time to act too far in the future
 }
 
 func TestZeroLimit(t *testing.T) {

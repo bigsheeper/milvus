@@ -61,57 +61,18 @@ func NewLimiter(r Limit, b int) *Limiter {
 // AllowN reports whether n events may happen at time now.
 // Use this method if you intend to drop / skip events that exceed the rate limit.
 func (lim *Limiter) AllowN(now time.Time, n int) bool {
-	return lim.reserveN(now, n, 0).ok
-}
-
-// A Reservation holds information about events that are permitted by a Limiter to happen after a delay.
-// A Reservation may be canceled, which may enable the Limiter to permit additional events.
-type Reservation struct {
-	ok bool
-}
-
-// InfDuration is the duration returned by Delay when a Reservation is not OK.
-const InfDuration = time.Duration(1<<63 - 1)
-
-// SetLimit is shorthand for SetLimitAt(time.Now(), newLimit).
-func (lim *Limiter) SetLimit(newLimit Limit) {
-	lim.SetLimitAt(time.Now(), newLimit)
-}
-
-// SetLimitAt sets a new Limit for the limiter. The new Limit, and Burst, may be violated
-// or underutilized by those which reserved (using Reserve or Wait) but did not yet act
-// before SetLimitAt was called.
-func (lim *Limiter) SetLimitAt(now time.Time, newLimit Limit) {
-	lim.mu.Lock()
-	defer lim.mu.Unlock()
-
-	now, _, tokens := lim.advance(now)
-
-	lim.last = now
-	lim.tokens = tokens
-	lim.limit = newLimit
-}
-
-// reserveN is a helper method for AllowN, ReserveN, and WaitN.
-// maxFutureReserve specifies the maximum reservation wait duration allowed.
-// reserveN returns Reservation, not *Reservation, to avoid allocation in AllowN and WaitN.
-func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duration) Reservation {
 	lim.mu.Lock()
 	defer lim.mu.Unlock()
 
 	if lim.limit == Inf {
-		return Reservation{
-			ok: true,
-		}
+		return true
 	} else if lim.limit == 0 {
 		var ok bool
 		if lim.burst >= n {
 			ok = true
 			lim.burst -= n
 		}
-		return Reservation{
-			ok: ok,
-		}
+		return ok
 	}
 
 	now, last, tokens := lim.advance(now)
@@ -119,19 +80,8 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 	// Calculate the remaining number of tokens resulting from the request.
 	tokens -= float64(n)
 
-	// Calculate the wait duration
-	var waitDuration time.Duration
-	if tokens < 0 {
-		waitDuration = lim.limit.durationFromTokens(-tokens)
-	}
-
 	// Decide result
-	ok := n <= lim.burst && waitDuration <= maxFutureReserve
-
-	// Prepare reservation
-	r := Reservation{
-		ok: ok,
-	}
+	ok := n <= lim.burst && tokens >= 0
 
 	// Update state
 	if ok {
@@ -141,7 +91,19 @@ func (lim *Limiter) reserveN(now time.Time, n int, maxFutureReserve time.Duratio
 		lim.last = last
 	}
 
-	return r
+	return ok
+}
+
+// SetLimit is shorthand for SetLimitAt(time.Now(), newLimit).
+func (lim *Limiter) SetLimit(newLimit Limit) {
+	lim.mu.Lock()
+	defer lim.mu.Unlock()
+
+	now, _, tokens := lim.advance(time.Now())
+
+	lim.last = now
+	lim.tokens = tokens
+	lim.limit = newLimit
 }
 
 // advance calculates and returns an updated state for lim resulting from the passage of time.
@@ -161,16 +123,6 @@ func (lim *Limiter) advance(now time.Time) (newNow time.Time, newLast time.Time,
 		tokens = burst
 	}
 	return now, last, tokens
-}
-
-// durationFromTokens is a unit conversion function from the number of tokens to the duration
-// of time it takes to accumulate them at a rate of limit tokens per second.
-func (limit Limit) durationFromTokens(tokens float64) time.Duration {
-	if limit <= 0 {
-		return InfDuration
-	}
-	seconds := tokens / float64(limit)
-	return time.Duration(float64(time.Second) * seconds)
 }
 
 // tokensFromDuration is a unit conversion function from a time duration to the number of tokens

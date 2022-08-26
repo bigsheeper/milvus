@@ -20,10 +20,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/time/rate"
-
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMultiRateLimiter(t *testing.T) {
@@ -64,7 +62,7 @@ func TestRateLimiter(t *testing.T) {
 	t.Run("test setRates", func(t *testing.T) {
 		limiter := newRateLimiter()
 		for _, rt := range internalpb.RateType_value {
-			limiter.limiters[internalpb.RateType(rt)] = rate.NewLimiter(rate.Limit(1000), 1)
+			limiter.limiters[internalpb.RateType(rt)] = NewLimiter(Limit(1000), 1)
 		}
 
 		zeroRates := make([]*internalpb.Rate, 0, len(internalpb.RateType_value))

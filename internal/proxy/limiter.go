@@ -77,15 +77,16 @@ func (lim *Limiter) AllowN(now time.Time, n int) bool {
 
 	now, last, tokens := lim.advance(now)
 
+	// Decide result
+	ok := tokens >= 0
+
 	// Calculate the remaining number of tokens resulting from the request.
 	tokens -= float64(n)
-
-	// Decide result
-	ok := n <= lim.burst && tokens >= 0
 
 	// Update state
 	if ok {
 		lim.last = now
+		// tokens may be negative
 		lim.tokens = tokens
 	} else {
 		lim.last = last

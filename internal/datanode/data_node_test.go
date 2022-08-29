@@ -68,6 +68,12 @@ func TestMain(t *testing.M) {
 	// change to specific channel for test
 	Params.CommonCfg.DataCoordTimeTick = Params.CommonCfg.DataCoordTimeTick + strconv.Itoa(rand.Int())
 
+	var err error
+	rateCol, err = newRateCollector()
+	if err != nil {
+		panic("init test failed, err = " + err.Error())
+	}
+
 	code := t.Run()
 	os.Exit(code)
 }

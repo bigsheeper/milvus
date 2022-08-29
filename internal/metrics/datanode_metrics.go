@@ -163,7 +163,7 @@ var (
 			statusLabelName,
 		})
 
-	// DataNodeConsumeCounter counts the bytes DataNode consumed from message storage
+	// DataNodeConsumeCounter counts the bytes DataNode consumed from message storage.
 	DataNodeConsumeCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: milvusNamespace,

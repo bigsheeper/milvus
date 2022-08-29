@@ -363,7 +363,7 @@ quotaAndLimits:
   dml:
     insertRate: 64 # MB/s
     deleteRate: 1 # MB/s
-    bulkLoadRate: 1 # requests per second
+    bulkLoadRate: 1 # requests per second TODO: limit bulkLoad rate
 
   dql:
     searchRate: 0.1 # MB/s
@@ -400,7 +400,7 @@ quotaAndLimits:
     # specific conditions, such as memory of nodes to water marker), `true` means always reject all dml requests.
     forceDeny: false
     # maxTSafeDelay indicates the backpressure for DML Operations.
-    # DML rates would be reduced by the ratio of tSafe delay to maxTSafeDelay,
+    # DML rates would be reduced according to the ratio of tSafe delay to maxTSafeDelay,
     # if tSafe delay is greater than maxTSafeDelay, all DML requests would be rejected.
     maxTSafeDelay: 10 # in seconds
     # When memory usage > memoryHighWaterLevel, all dml requests would be rejected;
@@ -422,8 +422,6 @@ quotaAndLimits:
     # if NQ in QueryNode's task queue is greater than maxNQInQueue, all Search requests would be rejected.
     maxNQInQueue: 100000
     # maxQueryTasksInQueue indicates the backpressure for Query Operation.
-    # Query rates would be reduced by the ratio of query tasks number to maxQueryTasksInQueue,
+    # Query rates would be reduced according to the ratio of query tasks number to maxQueryTasksInQueue,
     # if number of query tasks is greater than maxQueryTasksInQueue, all Query requests would be rejected.
     maxQueryTasksInQueue: 1024
-
-  debug: # TODO: add debug

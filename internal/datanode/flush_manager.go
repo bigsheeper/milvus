@@ -595,8 +595,10 @@ func (t *flushBufferDeleteTask) flushDeleteData() error {
 		tr := timerecord.NewTimeRecorder("deleteData")
 		err := t.MultiWrite(t.data)
 		metrics.DataNodeSave2StorageLatency.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-		for _, d := range t.data {
-			metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Add(float64(len(d)))
+		if err == nil {
+			for _, d := range t.data {
+				metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.DeleteLabel).Add(float64(len(d)))
+			}
 		}
 		return err
 	}

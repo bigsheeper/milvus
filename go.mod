@@ -55,8 +55,8 @@ require (
 	google.golang.org/grpc/examples v0.0.0-20220617181431-3e7b97febc7f
 	google.golang.org/protobuf v1.28.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
-	gorm.io/driver/mysql v1.3.5
-	gorm.io/gorm v1.23.8
+	gorm.io/driver/mysql v1.3.5 // indirect
+	gorm.io/gorm v1.23.8 // indirect
 	stathat.com/c/consistent v1.0.0
 )
 

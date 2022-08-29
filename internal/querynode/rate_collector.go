@@ -23,7 +23,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-// rateCollector helps to collect and calculate values (like rate, timeTick and etc...),
+// rateCollector helps to collect and calculate values (like rate, timeTick and etc...).
 type rateCollector struct {
 	*ratecollector.RateCollector
 
@@ -46,12 +46,14 @@ func newRateCollector() (*rateCollector, error) {
 	}, nil
 }
 
+// updateTSafe updates rateCollector's flow graph tSafe.
 func (r *rateCollector) updateTSafe(c Channel, t Timestamp) {
 	r.tSafesMu.Lock()
 	defer r.tSafesMu.Unlock()
 	r.tSafes[c] = t
 }
 
+// getMinTSafe returns the minimal tSafe of flow graphs.
 func (r *rateCollector) getMinTSafe() Timestamp {
 	r.tSafesMu.Lock()
 	defer r.tSafesMu.Unlock()

@@ -85,6 +85,7 @@ var _ types.DataNode = (*DataNode)(nil)
 // Params from config.yaml
 var Params paramtable.ComponentParam
 
+// rateCol is global rateCollector in DataNode.
 var rateCol *rateCollector
 
 // DataNode communicates with outside services and unioun all

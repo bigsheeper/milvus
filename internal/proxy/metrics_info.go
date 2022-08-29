@@ -30,6 +30,7 @@ import (
 type getMetricsFuncType func(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 type showConfigurationsFuncType func(ctx context.Context, request *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error)
 
+// getQuotaMetrics returns ProxyQuotaMetrics.
 func getQuotaMetrics() (*metricsinfo.ProxyQuotaMetrics, error) {
 	return &metricsinfo.ProxyQuotaMetrics{
 		Hms: metricsinfo.HardwareMetrics{},
@@ -37,6 +38,7 @@ func getQuotaMetrics() (*metricsinfo.ProxyQuotaMetrics, error) {
 	}, nil
 }
 
+// getProxyMetrics get metrics of Proxy, not including the topological metrics of Query cluster and Data cluster.
 func getProxyMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest, node *Proxy) (*milvuspb.GetMetricsResponse, error) {
 	totalMem := metricsinfo.GetMemoryCount()
 	usedMem := metricsinfo.GetUsedMemoryCount()

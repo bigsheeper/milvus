@@ -3603,7 +3603,6 @@ func (node *Proxy) GetProxyMetrics(ctx context.Context, req *milvuspb.GetMetrics
 				ErrorCode: commonpb.ErrorCode_UnexpectedError,
 				Reason:    msgProxyIsUnhealthy(Params.ProxyCfg.GetNodeID()),
 			},
-			Response: "",
 		}, nil
 	}
 
@@ -3619,7 +3618,6 @@ func (node *Proxy) GetProxyMetrics(ctx context.Context, req *milvuspb.GetMetrics
 				ErrorCode: commonpb.ErrorCode_UnexpectedError,
 				Reason:    err.Error(),
 			},
-			Response: "",
 		}, nil
 	}
 
@@ -3639,25 +3637,28 @@ func (node *Proxy) GetProxyMetrics(ctx context.Context, req *milvuspb.GetMetrics
 	}
 
 	if metricType == metricsinfo.SystemInfoMetrics {
-		ret, err := node.metricsCacheManager.GetSystemInfoMetrics()
-		if err == nil && ret != nil {
-			return ret, nil
-		}
-		log.Debug("failed to get system info metrics from cache, recompute instead",
-			zap.Error(err))
+		proxyMetrics, err := getProxyMetrics(ctx, req, node)
+		if err != nil {
+			log.Warn("Proxy.GetProxyMetrics failed to getProxyMetrics",
+				zap.Int64("node_id", Params.ProxyCfg.GetNodeID()),
+				zap.String("req", req.Request),
+				zap.Error(err))
 
-		metrics, err := getSystemInfoMetrics(ctx, req, node)
+			return &milvuspb.GetMetricsResponse{
+				Status: &commonpb.Status{
+					ErrorCode: commonpb.ErrorCode_UnexpectedError,
+					Reason:    err.Error(),
+				},
+			}, nil
+		}
 
 		log.Debug("Proxy.GetProxyMetrics",
 			zap.Int64("node_id", Params.ProxyCfg.GetNodeID()),
 			zap.String("req", req.Request),
 			zap.String("metric_type", metricType),
-			zap.Any("metrics", metrics), // TODO(dragondriver): necessary? may be very large
 			zap.Error(err))
 
-		node.metricsCacheManager.UpdateSystemInfoMetrics(metrics)
-
-		return metrics, nil
+		return proxyMetrics, nil
 	}
 
 	log.Debug("Proxy.GetProxyMetrics failed, request metric type is not implemented yet",
@@ -3670,7 +3671,6 @@ func (node *Proxy) GetProxyMetrics(ctx context.Context, req *milvuspb.GetMetrics
 			ErrorCode: commonpb.ErrorCode_UnexpectedError,
 			Reason:    metricsinfo.MsgUnimplementedMetric,
 		},
-		Response: "",
 	}, nil
 }
 

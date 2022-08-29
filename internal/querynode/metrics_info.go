@@ -49,6 +49,7 @@ func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigu
 	}
 }
 
+// getQuotaMetrics returns QueryNodeQuotaMetrics.
 func getQuotaMetrics() (*metricsinfo.QueryNodeQuotaMetrics, error) {
 	var err error
 	rms := make([]metricsinfo.RateMetric, 0)

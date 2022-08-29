@@ -220,7 +220,7 @@ var (
 			Buckets:   buckets, // unit: ms
 		}, []string{nodeIDLabelName, functionLabelName})
 
-	// ProxyReceiveBytes record the received bytes of Insert/Delete in Proxy
+	// ProxyReceiveBytes record the received bytes of messages in Proxy
 	ProxyReceiveBytes = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: milvusNamespace,
@@ -238,7 +238,7 @@ var (
 			Help:      "count of bytes sent back to sdk",
 		}, []string{nodeIDLabelName})
 
-	// ProxyLimiterRate records rates of rateLimiter in Proxy
+	// ProxyLimiterRate records rates of rateLimiter in Proxy.
 	ProxyLimiterRate = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: milvusNamespace,
@@ -282,6 +282,7 @@ func RegisterProxy(registry *prometheus.Registry) {
 	registry.MustRegister(ProxyLimiterRate)
 }
 
+// SetRateGaugeByRateType sets ProxyLimiterRate metrics.
 func SetRateGaugeByRateType(rateType internalpb.RateType, nodeID int64, rate float64) {
 	nodeIDStr := strconv.FormatInt(nodeID, 10)
 	log.Debug("set rates", zap.Int64("nodeID", nodeID), zap.String("rateType", rateType.String()), zap.Float64("rate", rate))

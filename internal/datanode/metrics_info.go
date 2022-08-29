@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
+// getQuotaMetrics returns DataNodeQuotaMetrics.
 func getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, error) {
 	var err error
 	rms := make([]metricsinfo.RateMetric, 0)

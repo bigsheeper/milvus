@@ -291,7 +291,7 @@ var (
 			nodeIDLabelName,
 		})
 
-	// QueryNodeConsumeCounter counts the bytes QueryNode consumed from message storage
+	// QueryNodeConsumeCounter counts the bytes QueryNode consumed from message storage.
 	QueryNodeConsumeCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: milvusNamespace,
@@ -300,7 +300,7 @@ var (
 			Help:      "",
 		}, []string{nodeIDLabelName, msgTypeLabelName})
 
-	// QueryNodeExecuteCounter counts the bytes of requests in QueryNode
+	// QueryNodeExecuteCounter counts the bytes of requests in QueryNode.
 	QueryNodeExecuteCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: milvusNamespace,

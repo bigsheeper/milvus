@@ -22,24 +22,27 @@ import (
 	"time"
 )
 
+// Partial implementations refer to https://github.com/golang/time
+
 // Limit defines the maximum frequency of some events.
 // Limit is represented as number of events per second.
 // A zero Limit allows no events.
 type Limit float64
 
-// Inf is the infinite rate limit; it allows all events (even if burst is zero).
+// Inf is the infinite rate limit; it allows all events.
 const Inf = Limit(math.MaxFloat64)
 
 // A Limiter controls how frequently events are allowed to happen.
 // It implements a "token bucket" of size b, initially full and refilled
 // at rate r tokens per second.
-// Informally, in any large enough time interval, the Limiter limits the
-// rate to r tokens per second, with a maximum burst size of b events.
-// As a special case, if r == Inf (the infinite rate), b is ignored.
 // See https://en.wikipedia.org/wiki/Token_bucket for more about token buckets.
 //
-// The zero value is a valid Limiter, but it will reject all events.
-// Use NewLimiter to create non-zero Limiters.
+// However, Limiter is a little different from token-bucket. It is based on a
+// special punishment mechanism, a very large number of events are allowed
+// as long as the number of tokens in bucket is greater or equal to 0.
+// After these large number of events toke tokens from bucket, the number of tokens
+// in bucket may be negative, and the latter events would be "punished",
+// any event should wait for the tokens to be filled to greater or equal to 0.
 type Limiter struct {
 	mu     sync.Mutex
 	limit  Limit
@@ -49,8 +52,7 @@ type Limiter struct {
 	last time.Time
 }
 
-// NewLimiter returns a new Limiter that allows events up to rate r and permits
-// bursts of at most b tokens.
+// NewLimiter returns a new Limiter that allows events up to rate r.
 func NewLimiter(r Limit, b int) *Limiter {
 	return &Limiter{
 		limit: r,
@@ -59,7 +61,6 @@ func NewLimiter(r Limit, b int) *Limiter {
 }
 
 // AllowN reports whether n events may happen at time now.
-// Use this method if you intend to drop / skip events that exceed the rate limit.
 func (lim *Limiter) AllowN(now time.Time, n int) bool {
 	lim.mu.Lock()
 	defer lim.mu.Unlock()
@@ -77,7 +78,6 @@ func (lim *Limiter) AllowN(now time.Time, n int) bool {
 
 	now, last, tokens := lim.advance(now)
 
-	// Decide result
 	ok := tokens >= 0
 
 	// Calculate the remaining number of tokens resulting from the request.
@@ -95,7 +95,7 @@ func (lim *Limiter) AllowN(now time.Time, n int) bool {
 	return ok
 }
 
-// SetLimit is shorthand for SetLimitAt(time.Now(), newLimit).
+// SetLimit sets a new Limit for the limiter.
 func (lim *Limiter) SetLimit(newLimit Limit) {
 	lim.mu.Lock()
 	defer lim.mu.Unlock()
@@ -108,8 +108,7 @@ func (lim *Limiter) SetLimit(newLimit Limit) {
 }
 
 // advance calculates and returns an updated state for lim resulting from the passage of time.
-// lim is not changed.
-// advance requires that lim.mu is held.
+// lim is not changed. advance requires that lim.mu is held.
 func (lim *Limiter) advance(now time.Time) (newNow time.Time, newLast time.Time, newTokens float64) {
 	last := lim.last
 	if now.Before(last) {

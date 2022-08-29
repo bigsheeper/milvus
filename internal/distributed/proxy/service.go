@@ -885,7 +885,7 @@ func (s *Server) SetRates(ctx context.Context, request *proxypb.SetRatesRequest)
 	return s.proxy.SetRates(ctx, request)
 }
 
-// GetProxyMetrics gets the metrics of proxy
+// GetProxyMetrics gets the metrics of proxy.
 func (s *Server) GetProxyMetrics(ctx context.Context, request *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	return s.proxy.GetProxyMetrics(ctx, request)
 }

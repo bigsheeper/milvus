@@ -234,6 +234,7 @@ func (s *taskScheduler) AddReadTask(ctx context.Context, t readTask) error {
 
 func (s *taskScheduler) popAndAddToExecute() {
 	readConcurrency := atomic.LoadInt32(&s.readConcurrency)
+	log.Warn("readConcurrency", zap.Int32("readConcurrency", readConcurrency))
 	metrics.QueryNodeReadTaskConcurrency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Set(float64(readConcurrency))
 	if s.readyReadTasks.Len() == 0 {
 		return

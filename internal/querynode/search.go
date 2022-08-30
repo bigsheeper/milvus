@@ -55,6 +55,7 @@ func searchOnSegments(ctx context.Context, replica ReplicaInterface, segType seg
 			errs[i] = err
 			searchResults[i] = searchResult
 			// update metrics
+			tr.ElapseWarn("searchOnSegment done")
 			metrics.QueryNodeSQSegmentLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
 				metrics.SearchLabel, searchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		}(segID, i)

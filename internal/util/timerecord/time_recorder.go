@@ -73,6 +73,12 @@ func (tr *TimeRecorder) Elapse(msg string) time.Duration {
 	return span
 }
 
+func (tr *TimeRecorder) ElapseWarn(msg string) time.Duration {
+	span := tr.ElapseSpan()
+	tr.printTimeRecordWarn(context.TODO(), msg, span)
+	return span
+}
+
 func (tr *TimeRecorder) CtxElapse(ctx context.Context, msg string) time.Duration {
 	span := tr.ElapseSpan()
 	tr.printTimeRecord(ctx, msg, span)
@@ -89,6 +95,18 @@ func (tr *TimeRecorder) printTimeRecord(ctx context.Context, msg string, span ti
 	str += strconv.Itoa(int(span.Milliseconds()))
 	str += "ms)"
 	log.Ctx(ctx).Debug(str)
+}
+
+func (tr *TimeRecorder) printTimeRecordWarn(ctx context.Context, msg string, span time.Duration) {
+	str := ""
+	if tr.header != "" {
+		str += tr.header + ": "
+	}
+	str += msg
+	str += " ("
+	str += strconv.Itoa(int(span.Milliseconds()))
+	str += "ms)"
+	log.Ctx(ctx).Warn(str)
 }
 
 // LongTermChecker checks we receive at least one msg in d duration. If not, checker

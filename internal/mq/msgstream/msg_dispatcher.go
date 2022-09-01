@@ -19,11 +19,10 @@ package msgstream
 import (
 	"context"
 	"fmt"
-	"go.uber.org/atomic"
-	"strconv"
 	"sync"
 	"time"
 
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -54,9 +53,8 @@ type TtMsgDispatcher struct {
 	roleName     string
 	pchannelName pchannel
 
-	consumersMu             sync.Mutex
-	consumers               map[vchannel]chan *MsgPack
-	consumersStartPositions map[vchannel]*MsgPosition
+	consumersMu sync.Mutex
+	consumers   map[vchannel]chan *MsgPack
 
 	currentTick  atomic.Uint64
 	dispatchFunc DispatchFunc
@@ -67,18 +65,27 @@ type TtMsgDispatcher struct {
 	closeChan chan struct{}
 }
 
-func NewTtMsgDispatcher(dispatchFunc DispatchFunc, stream MsgStream) *TtMsgDispatcher {
+func NewTtMsgDispatcher(nodeID UniqueID, roleName string, pchannelName pchannel, dispatchFunc DispatchFunc, factory Factory) *TtMsgDispatcher {
 	return &TtMsgDispatcher{
+		nodeID:       nodeID,
+		roleName:     roleName,
+		pchannelName: pchannelName,
 		consumers:    make(map[vchannel]chan *MsgPack),
 		dispatchFunc: dispatchFunc,
-		stream:       stream,
+		factory:      factory,
 		closeChan:    make(chan struct{}),
 	}
 }
 
 func (m *TtMsgDispatcher) Run() error {
-	subName := m.pchannelName + "-" + strconv.FormatInt(m.nodeID, 10)
+	var err error
+	m.stream, err = m.factory.NewTtMsgStream(context.Background())
+	if err != nil {
+		return err
+	}
+	subName := fmt.Sprintf("%s-%s-%d", m.roleName, m.pchannelName, m.nodeID)
 	m.stream.AsConsumer([]pchannel{m.pchannelName}, subName)
+	defer m.stream.Close()
 	for {
 		select {
 		case <-m.closeChan:
@@ -109,7 +116,7 @@ func (m *TtMsgDispatcher) Close() {
 }
 
 // chaseToCurrent would consume messages from given position to current consumed position.
-func (m *TtMsgDispatcher) chaseToCurrent(ctx context.Context, collectionID UniqueID, vchannel vchannel, position *MsgPosition) error {
+func (m *TtMsgDispatcher) chaseToCurrent(ctx context.Context, vchannel vchannel, position *MsgPosition) error {
 	readStream, err := m.factory.NewTtMsgStream(ctx)
 	if err != nil {
 		return err
@@ -163,7 +170,7 @@ func (m *TtMsgDispatcher) addConsumer(vchannel vchannel) error {
 	return nil
 }
 
-func (m *TtMsgDispatcher) Register(vchannel vchannel, collectionID UniqueID, position *MsgPosition) (<-chan *MsgPack, error) {
+func (m *TtMsgDispatcher) Register(vchannel vchannel, position *MsgPosition) (<-chan *MsgPack, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), chaseTimeout)
 	defer cancel()
 
@@ -180,7 +187,7 @@ func (m *TtMsgDispatcher) Register(vchannel vchannel, collectionID UniqueID, pos
 		return m.consumers[vchannel], nil
 	}
 
-	err = m.chaseToCurrent(ctx, collectionID, vchannel, position)
+	err = m.chaseToCurrent(ctx, vchannel, position)
 	if err != nil {
 		return nil, err
 	}

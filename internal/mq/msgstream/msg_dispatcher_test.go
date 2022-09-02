@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 )
@@ -192,12 +192,32 @@ func produceMsg(t *testing.T, pchannel pchannel) map[UniqueID]int {
 	return counter
 }
 
+func getPosition(t *testing.T, ctx context.Context, msgIndex int, pchannel pchannel, factory Factory) *MsgPosition {
+	readStream, err := factory.NewMsgStream(ctx)
+	assert.NoError(t, err)
+	defer readStream.Close()
+	subName := "getPosition-randSubName-" + funcutil.RandomString(8)
+	readStream.AsConsumer([]string{pchannel}, subName)
+	for i := 0; i <= msgIndex; i++ {
+		select {
+		case <-ctx.Done():
+			assert.False(t, false) // get position timeout
+		case pack := <-readStream.Chan():
+			if i == msgIndex {
+				return pack.EndPositions[0]
+			}
+		}
+	}
+	assert.False(t, false) // get position failed
+	return nil
+}
+
 func TestTtMsgDispatcher(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	t.Run("test TtMsgDispatcher", func(t *testing.T) {
-		pchannel := "testTtMsgDispatcher-pchannel-0"
+		pchannel := "testTtMsgDispatcher-pchannel-" + funcutil.RandomString(8)
 		dispatcher := NewTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
 		outputs := make(map[vchannel]<-chan *MsgPack)
 		for _, collectionID := range collectionIDList {
@@ -214,16 +234,11 @@ func TestTtMsgDispatcher(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 		expected := produceMsg(t, pchannel)
-		fmt.Println(">>>>>>>>>>>>>>>>>", expected)
 
 		result := make(map[UniqueID]int)
 		time.Sleep(2 * time.Second)
-		wg := &sync.WaitGroup{}
 		for vchannel, output := range outputs {
-			wg.Add(1)
-			vchannel, output := vchannel, output
 			func() {
-				defer wg.Done()
 				for {
 					select {
 					case <-ctx.Done():
@@ -241,6 +256,61 @@ func TestTtMsgDispatcher(t *testing.T) {
 				}
 			}()
 		}
-		wg.Wait()
+	})
+
+	t.Run("test chaseToCurrent", func(t *testing.T) {
+		pchannel := "testChaseToCurrent-pchannel-" + funcutil.RandomString(8)
+		chaseCollectionID := UniqueID(0)
+
+		time.Sleep(100 * time.Millisecond)
+		expected := produceMsg(t, pchannel)
+
+		time.Sleep(2 * time.Second)
+		for i := 0; i < producePackNum; i++ {
+			fmt.Println("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", i)
+			dispatcher := NewTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
+			for _, collectionID := range collectionIDList {
+				if collectionID != chaseCollectionID {
+					vchannel := collectionID2VChannelName(collectionID)
+					_, err := dispatcher.Register(vchannel, nil)
+					assert.NoError(t, err)
+				}
+			}
+			go func() {
+				err := dispatcher.Run()
+				assert.NoError(t, err)
+			}()
+
+			result := make(map[UniqueID]int)
+
+			vchannel := collectionID2VChannelName(chaseCollectionID)
+			err := dispatcher.addConsumer(vchannel)
+			assert.NoError(t, err)
+
+			position := getPosition(t, ctx, i, pchannel, genFactory(t))
+			err = dispatcher.chaseToCurrent(ctx, collectionID2VChannelName(chaseCollectionID), position)
+			assert.NoError(t, err)
+
+			dispatcher.consumersMu.Lock()
+			output := dispatcher.consumers[vchannel]
+			dispatcher.consumersMu.Unlock()
+			func() {
+				for {
+					select {
+					case <-ctx.Done():
+						panic("test timeout")
+					case res := <-output:
+						for range res.Msgs {
+							collectionID := vchannelName2collectionID(vchannel)
+							result[collectionID]++
+							fmt.Println("collectionID ", collectionID, ", ResultNum:", result[collectionID], ", expectedNum:", expected[collectionID])
+							if result[collectionID] == expected[collectionID]-i*msgNumEachPack {
+								return
+							}
+						}
+					}
+				}
+			}()
+		}
 	})
 }

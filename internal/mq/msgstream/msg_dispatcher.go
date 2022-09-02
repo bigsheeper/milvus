@@ -105,6 +105,7 @@ func (m *TtMsgDispatcher) Run() error {
 			}
 			m.consumersMu.Unlock()
 			m.currentTick.Store(pack.EndTs)
+			fmt.Println("currentTick:", m.currentTick.Load())
 		}
 	}
 }

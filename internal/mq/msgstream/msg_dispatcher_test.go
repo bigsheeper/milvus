@@ -56,10 +56,9 @@ func mockDispatcherFunc(msgPack *MsgPack) map[vchannel]*MsgPack {
 			BeginTs: beginTs,
 			EndTs:   endTs,
 			Msgs:    make([]TsMsg, 0),
-			//StartPositions: make([]*MsgPosition, 0),
-			//EndPositions:   make([]*MsgPosition, 0),
 		}
 	}
+	fmt.Println("============== consume msg pack, beginTs = ", msgPack.BeginTs, ", endTs = ", msgPack.EndTs)
 	for i := range msgPack.Msgs {
 		switch msgPack.Msgs[i].Type() {
 		case commonpb.MsgType_Insert:
@@ -68,9 +67,8 @@ func mockDispatcherFunc(msgPack *MsgPack) map[vchannel]*MsgPack {
 			if _, ok := packs[vchannel]; !ok {
 				initPack(msgPack.BeginTs, msgPack.EndTs, vchannel)
 			}
+			fmt.Println("*********** collectionID", iMsg.CollectionID, "ts = ", msgPack.Msgs[i].BeginTs())
 			packs[vchannel].Msgs = append(packs[vchannel].Msgs, msgPack.Msgs[i])
-			//packs[vchannel].StartPositions = append(packs[vchannel].StartPositions, msgPack.StartPositions[i])
-			//packs[vchannel].EndPositions = append(packs[vchannel].EndPositions, msgPack.EndPositions[i])
 		}
 	}
 	return packs
@@ -149,7 +147,7 @@ func genTsMsg(collectionID UniqueID, msgType commonpb.MsgType, timestamp Timesta
 			},
 		}
 	}
-	return nil
+	panic("should not get here")
 }
 
 func genTimestampByIndex(i int) Timestamp {
@@ -163,7 +161,7 @@ func produceMsg(t *testing.T, pchannel pchannel) map[UniqueID]int {
 	stream.AsProducer([]string{pchannel})
 	msgID := UniqueID(0)
 	counter := make(map[UniqueID]int)
-	for i := 0; i < producePackNum; i++ {
+	for i := 0; i < producePackNum+1; i++ {
 		beginTs := genTimestampByIndex(i)
 		endTs := genTimestampByIndex(i + 1)
 		pack := &MsgPack{
@@ -177,17 +175,19 @@ func produceMsg(t *testing.T, pchannel pchannel) map[UniqueID]int {
 		assert.NoError(t, err)
 		fmt.Printf("===== produce timeTick msg, timestamp = %d\n", beginTs)
 
-		pack.Msgs = make([]TsMsg, 0)
-		for j := 0; j < msgNumEachPack; j++ {
-			collectionID := collectionIDList[rand.Int()%len(collectionIDList)]
-			timestamp := beginTs + rand.Uint64()%(endTs-beginTs) // beginTs ~ endTs
-			pack.Msgs = append(pack.Msgs, genTsMsg(collectionID, commonpb.MsgType_Insert, timestamp, msgID))
-			msgID++
-			counter[collectionID]++
-			fmt.Printf("-- collectionID = %d, timestamp = %d\n", collectionID, timestamp)
+		if i < producePackNum {
+			pack.Msgs = make([]TsMsg, 0)
+			for j := 0; j < msgNumEachPack; j++ {
+				collectionID := collectionIDList[rand.Int()%len(collectionIDList)]
+				timestamp := beginTs + rand.Uint64()%(endTs-beginTs) // beginTs ~ endTs
+				pack.Msgs = append(pack.Msgs, genTsMsg(collectionID, commonpb.MsgType_Insert, timestamp, msgID))
+				msgID++
+				counter[collectionID]++
+				fmt.Printf("-- collectionID = %d, timestamp = %d\n", collectionID, timestamp)
+			}
+			err = stream.Produce(pack)
+			assert.NoError(t, err)
 		}
-		err = stream.Produce(pack)
-		assert.NoError(t, err)
 	}
 	return counter
 }

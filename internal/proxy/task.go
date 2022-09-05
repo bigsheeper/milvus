@@ -314,7 +314,9 @@ func (dct *dropCollectionTask) PreExecute(ctx context.Context) error {
 func (dct *dropCollectionTask) Execute(ctx context.Context) error {
 	collID, err := globalMetaCache.GetCollectionID(ctx, dct.CollectionName)
 	if err != nil {
-		return err
+		// make dropping collection idempotent.
+		dct.result = &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}
+		return nil
 	}
 
 	dct.result, err = dct.rootCoord.DropCollection(ctx, dct.DropCollectionRequest)
@@ -529,6 +531,7 @@ func (dct *describeCollectionTask) Execute(ctx context.Context) error {
 		CollectionID:         0,
 		VirtualChannelNames:  nil,
 		PhysicalChannelNames: nil,
+		CollectionName:       dct.GetCollectionName(),
 	}
 
 	result, err := dct.rootCoord.DescribeCollection(ctx, dct.DescribeCollectionRequest)

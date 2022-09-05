@@ -799,7 +799,7 @@ func TestDropCollectionTask(t *testing.T) {
 		return 0, errors.New("mock")
 	})
 	err = task.Execute(ctx)
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	cache.setGetIDFunc(func(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
 		return 0, nil
 	})
@@ -1031,7 +1031,7 @@ func TestDescribeCollectionTask_ShardsNum1(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, commonpb.ErrorCode_Success, task.result.Status.ErrorCode)
 	assert.Equal(t, shardsNum, task.result.ShardsNum)
-
+	assert.Equal(t, collectionName, task.result.GetCollectionName())
 }
 
 func TestDescribeCollectionTask_ShardsNum2(t *testing.T) {
@@ -1097,6 +1097,7 @@ func TestDescribeCollectionTask_ShardsNum2(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, commonpb.ErrorCode_Success, task.result.Status.ErrorCode)
 	assert.Equal(t, common.DefaultShardsNum, task.result.ShardsNum)
+	assert.Equal(t, collectionName, task.result.GetCollectionName())
 	rc.Stop()
 }
 

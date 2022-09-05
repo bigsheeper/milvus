@@ -718,12 +718,6 @@ func TestProxy(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 
-		// recreate -> fail
-		req2 := constructCreateCollectionRequest()
-		resp, err = proxy.CreateCollection(ctx, req2)
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
 		reqInvalidField := constructCreateCollectionRequest()
 		schema := constructCollectionSchema()
 		schema.Fields = append(schema.Fields, &schemapb.FieldSchema{
@@ -764,16 +758,6 @@ func TestProxy(t *testing.T) {
 			DbName:         dbName,
 			CollectionName: collectionName,
 		})
-
-		sameAliasReq := &milvuspb.CreateAliasRequest{
-			Base:           nil,
-			CollectionName: collectionName,
-			Alias:          "alias",
-		}
-
-		resp, err = proxy.CreateAlias(ctx, sameAliasReq)
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
 	wg.Add(1)
@@ -833,15 +817,6 @@ func TestProxy(t *testing.T) {
 			CollectionName: collectionName,
 		})
 
-		sameDropReq := &milvuspb.DropAliasRequest{
-			Base:  nil,
-			Alias: "alias",
-		}
-
-		// Can't drop non-existing alias
-		resp, err = proxy.DropAlias(ctx, sameDropReq)
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
 	wg.Add(1)
@@ -949,16 +924,6 @@ func TestProxy(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
-		// recreate -> fail
-		resp, err = proxy.CreatePartition(ctx, &milvuspb.CreatePartitionRequest{
-			Base:           nil,
-			DbName:         dbName,
-			CollectionName: collectionName,
-			PartitionName:  partitionName,
-		})
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 
 		// create partition with non-exist collection -> fail
 		resp, err = proxy.CreatePartition(ctx, &milvuspb.CreatePartitionRequest{
@@ -1683,23 +1648,13 @@ func TestProxy(t *testing.T) {
 	wg.Add(1)
 	t.Run("release collection", func(t *testing.T) {
 		defer wg.Done()
-		collectionID, err := globalMetaCache.GetCollectionID(ctx, collectionName)
+		_, err := globalMetaCache.GetCollectionID(ctx, collectionName)
 		assert.NoError(t, err)
 
 		resp, err := proxy.ReleaseCollection(ctx, &milvuspb.ReleaseCollectionRequest{
 			Base:           nil,
 			DbName:         dbName,
 			CollectionName: collectionName,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-		assert.Equal(t, "", resp.Reason)
-
-		// release dql message stream
-		resp, err = proxy.ReleaseDQLMessageStream(ctx, &proxypb.ReleaseDQLMessageStreamRequest{
-			Base:         nil,
-			DbID:         0,
-			CollectionID: collectionID,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
@@ -1998,24 +1953,6 @@ func TestProxy(t *testing.T) {
 		resp, err = proxy.DropPartition(ctx, &milvuspb.DropPartitionRequest{
 			Base:           nil,
 			DbName:         dbName,
-			CollectionName: collectionName,
-			PartitionName:  partitionName,
-		})
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
-		resp, err = proxy.DropPartition(ctx, &milvuspb.DropPartitionRequest{
-			Base:           nil,
-			DbName:         dbName,
-			CollectionName: collectionName,
-			PartitionName:  otherCollectionName,
-		})
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
-		resp, err = proxy.DropPartition(ctx, &milvuspb.DropPartitionRequest{
-			Base:           nil,
-			DbName:         dbName,
 			CollectionName: otherCollectionName,
 			PartitionName:  partitionName,
 		})
@@ -2087,7 +2024,7 @@ func TestProxy(t *testing.T) {
 	wg.Add(1)
 	t.Run("drop collection", func(t *testing.T) {
 		defer wg.Done()
-		collectionID, err := globalMetaCache.GetCollectionID(ctx, collectionName)
+		_, err := globalMetaCache.GetCollectionID(ctx, collectionName)
 		assert.NoError(t, err)
 
 		resp, err := proxy.DropCollection(ctx, &milvuspb.DropCollectionRequest{
@@ -2103,15 +2040,6 @@ func TestProxy(t *testing.T) {
 			Base:           nil,
 			DbName:         dbName,
 			CollectionName: collectionName,
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-
-		// release dql stream
-		resp, err = proxy.ReleaseDQLMessageStream(ctx, &proxypb.ReleaseDQLMessageStreamRequest{
-			Base:         nil,
-			DbID:         0,
-			CollectionID: collectionID,
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
@@ -2327,14 +2255,6 @@ func TestProxy(t *testing.T) {
 	//})
 
 	proxy.UpdateStateCode(internalpb.StateCode_Abnormal)
-
-	wg.Add(1)
-	t.Run("ReleaseDQLMessageStream fail, unhealthy", func(t *testing.T) {
-		defer wg.Done()
-		resp, err := proxy.ReleaseDQLMessageStream(ctx, &proxypb.ReleaseDQLMessageStreamRequest{})
-		assert.NoError(t, err)
-		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
-	})
 
 	wg.Add(1)
 	t.Run("CreateCollection fail, unhealthy", func(t *testing.T) {
@@ -2604,7 +2524,7 @@ func TestProxy(t *testing.T) {
 	t.Run("InvalidateCredCache fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.InvalidateCredentialCache(ctx, &proxypb.InvalidateCredCacheRequest{Username: "xxx"})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
@@ -2612,7 +2532,7 @@ func TestProxy(t *testing.T) {
 	t.Run("UpdateCredentialCache fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.UpdateCredentialCache(ctx, &proxypb.UpdateCredCacheRequest{Username: "xxx", Password: "xxx"})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
@@ -2620,7 +2540,7 @@ func TestProxy(t *testing.T) {
 	t.Run("CreateCredential fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.CreateCredential(ctx, &milvuspb.CreateCredentialRequest{Username: "xxx"})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
@@ -2628,7 +2548,7 @@ func TestProxy(t *testing.T) {
 	t.Run("UpdateCredential fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.UpdateCredential(ctx, &milvuspb.UpdateCredentialRequest{Username: "xxx"})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
@@ -2636,7 +2556,7 @@ func TestProxy(t *testing.T) {
 	t.Run("DeleteCredential fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.DeleteCredential(ctx, &milvuspb.DeleteCredentialRequest{Username: "xxx"})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 	})
 
@@ -2644,7 +2564,7 @@ func TestProxy(t *testing.T) {
 	t.Run("ListCredUsers fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.ListCredUsers(ctx, &milvuspb.ListCredUsersRequest{})
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
 
@@ -3274,10 +3194,10 @@ func testProxyRole(ctx context.Context, t *testing.T, proxy *Proxy) {
 	t.Run("Select Role", func(t *testing.T) {
 		defer wg.Done()
 
-		_, err := proxy.SelectRole(ctx, &milvuspb.SelectRoleRequest{Role: &milvuspb.RoleEntity{Name: "  "}})
-		assert.Error(t, err)
+		resp, _ := proxy.SelectRole(ctx, &milvuspb.SelectRoleRequest{Role: &milvuspb.RoleEntity{Name: "  "}})
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 
-		resp, _ := proxy.SelectRole(ctx, &milvuspb.SelectRoleRequest{})
+		resp, _ = proxy.SelectRole(ctx, &milvuspb.SelectRoleRequest{})
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 		roleNum := len(resp.Results)
 
@@ -3436,8 +3356,8 @@ func testProxyPrivilege(ctx context.Context, t *testing.T, proxy *Proxy) {
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 
 		req.Entity.Role = &milvuspb.RoleEntity{Name: "admin"}
-		_, err := proxy.OperatePrivilege(context.Background(), req)
-		assert.Error(t, err)
+		resp, _ = proxy.OperatePrivilege(context.Background(), req)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
 
 		resp, _ = proxy.OperatePrivilege(ctx, req)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)

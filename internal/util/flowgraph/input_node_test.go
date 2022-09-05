@@ -42,8 +42,8 @@ func TestInputNode(t *testing.T) {
 
 	nodeName := "input_node"
 	inputNode := &InputNode{
-		inStream: msgStream,
-		name:     nodeName,
+		input: msgStream.Chan(),
+		name:  nodeName,
 	}
 	defer inputNode.Close()
 
@@ -52,9 +52,6 @@ func TestInputNode(t *testing.T) {
 
 	name := inputNode.Name()
 	assert.Equal(t, name, nodeName)
-
-	stream := inputNode.InStream()
-	assert.NotNil(t, stream)
 
 	output := inputNode.Operate([]Msg{})
 	assert.Greater(t, len(output), 0)

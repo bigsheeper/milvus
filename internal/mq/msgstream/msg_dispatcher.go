@@ -41,13 +41,6 @@ const (
 	exception
 )
 
-type (
-	pchannel = string
-	vchannel = string
-)
-
-type DispatchFunc func(msgPack *MsgPack) map[vchannel]*MsgPack
-
 type TtMsgDispatcher struct {
 	nodeID       UniqueID
 	roleName     string
@@ -65,7 +58,7 @@ type TtMsgDispatcher struct {
 	closeChan chan struct{}
 }
 
-func NewTtMsgDispatcher(nodeID UniqueID, roleName string, pchannelName pchannel, dispatchFunc DispatchFunc, factory Factory) *TtMsgDispatcher {
+func newTtMsgDispatcher(nodeID UniqueID, roleName string, pchannelName pchannel, dispatchFunc DispatchFunc, factory Factory) *TtMsgDispatcher {
 	return &TtMsgDispatcher{
 		nodeID:       nodeID,
 		roleName:     roleName,
@@ -77,53 +70,53 @@ func NewTtMsgDispatcher(nodeID UniqueID, roleName string, pchannelName pchannel,
 	}
 }
 
-func (m *TtMsgDispatcher) Run() error {
+func (t *TtMsgDispatcher) run() error {
 	var err error
-	m.stream, err = m.factory.NewTtMsgStream(context.Background())
+	t.stream, err = t.factory.NewTtMsgStream(context.Background())
 	if err != nil {
 		return err
 	}
-	subName := fmt.Sprintf("%s-%s-%d", m.roleName, m.pchannelName, m.nodeID)
-	m.stream.AsConsumer([]pchannel{m.pchannelName}, subName)
-	defer m.stream.Close()
+	subName := fmt.Sprintf("%s-%s-%d", t.roleName, t.pchannelName, t.nodeID)
+	t.stream.AsConsumer([]pchannel{t.pchannelName}, subName)
+	defer t.stream.Close()
 	for {
 		select {
-		case <-m.closeChan:
-			log.Info("close TtMsgDispatcher", zap.String("role", m.roleName), zap.String("pchannel", m.pchannelName))
+		case <-t.closeChan:
+			log.Info("close TtMsgDispatcher", zap.String("role", t.roleName), zap.String("pchannel", t.pchannelName))
 			return nil
-		case pack, ok := <-m.stream.Chan():
+		case pack, ok := <-t.stream.Chan():
 			if !ok {
-				return fmt.Errorf("stream closed, role = %s, pchannel = %s", m.roleName, m.pchannelName)
+				return fmt.Errorf("stream closed, role = %s, pchannel = %s", t.roleName, t.pchannelName)
 			}
-			dispatchResults := m.dispatchFunc(pack)
-			m.consumersMu.Lock()
+			dispatchResults := t.dispatchFunc(pack)
+			t.consumersMu.Lock()
 			for k, v := range dispatchResults {
-				if _, ok = m.consumers[k]; ok {
+				if _, ok = t.consumers[k]; ok {
 					// TODO: select?
-					m.consumers[k] <- v
+					t.consumers[k] <- v
 				}
 			}
-			m.consumersMu.Unlock()
-			m.currentTick.Store(pack.EndTs)
-			fmt.Println("currentTick:", m.currentTick.Load())
+			t.consumersMu.Unlock()
+			t.currentTick.Store(pack.EndTs)
+			fmt.Println("currentTick:", t.currentTick.Load())
 		}
 	}
 }
 
-func (m *TtMsgDispatcher) Close() {
-	m.closeOnce.Do(func() {
-		close(m.closeChan)
+func (t *TtMsgDispatcher) close() {
+	t.closeOnce.Do(func() {
+		close(t.closeChan)
 	})
 }
 
 // chaseToCurrent would consume messages from given position to current consumed position.
-func (m *TtMsgDispatcher) chaseToCurrent(ctx context.Context, vchannel vchannel, position *MsgPosition) error {
-	readStream, err := m.factory.NewTtMsgStream(ctx)
+func (t *TtMsgDispatcher) chaseToCurrent(ctx context.Context, vchannel vchannel, position *MsgPosition) error {
+	readStream, err := t.factory.NewTtMsgStream(ctx)
 	if err != nil {
 		return err
 	}
 	defer readStream.Close()
-	subName := fmt.Sprintf("%s-%d-%s", m.roleName, m.nodeID, vchannel)
+	subName := fmt.Sprintf("%s-%d-%s", t.roleName, t.nodeID, vchannel)
 	readStream.AsConsumer([]string{position.GetChannelName()}, subName)
 
 	err = readStream.Seek([]*internalpb.MsgPosition{position})
@@ -134,26 +127,26 @@ func (m *TtMsgDispatcher) chaseToCurrent(ctx context.Context, vchannel vchannel,
 	for hasMore {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("context done, role = %s, vchannel = %s", m.roleName, vchannel)
+			return fmt.Errorf("context done, role = %s, vchannel = %s", t.roleName, vchannel)
 		case msgPack, ok := <-readStream.Chan():
 			if !ok {
-				return fmt.Errorf("readStream chan has been closed, role = %s, vchannel = %s", m.roleName, vchannel)
+				return fmt.Errorf("readStream chan has been closed, role = %s, vchannel = %s", t.roleName, vchannel)
 			}
 			if msgPack == nil {
 				continue
 			}
 
-			dispatchResults := m.dispatchFunc(msgPack)
-			m.consumersMu.Lock()
+			dispatchResults := t.dispatchFunc(msgPack)
+			t.consumersMu.Lock()
 			for k, v := range dispatchResults {
-				if _, ok = m.consumers[k]; ok {
+				if _, ok = t.consumers[k]; ok {
 					// TODO: select?
-					m.consumers[k] <- v
+					t.consumers[k] <- v
 				}
 			}
-			m.consumersMu.Unlock()
+			t.consumersMu.Unlock()
 
-			if msgPack.EndTs >= m.currentTick.Load() {
+			if msgPack.EndTs >= t.currentTick.Load() {
 				hasMore = false
 			}
 		}
@@ -161,39 +154,52 @@ func (m *TtMsgDispatcher) chaseToCurrent(ctx context.Context, vchannel vchannel,
 	return nil
 }
 
-func (m *TtMsgDispatcher) addConsumer(vchannel vchannel) error {
-	m.consumersMu.Lock()
-	defer m.consumersMu.Unlock()
-	if _, ok := m.consumers[vchannel]; ok {
+func (t *TtMsgDispatcher) addConsumer(vchannel vchannel) error {
+	t.consumersMu.Lock()
+	defer t.consumersMu.Unlock()
+	if _, ok := t.consumers[vchannel]; ok {
 		return fmt.Errorf("addConsumer failed, vchannel already existed, vchannel = %s", vchannel)
 	}
-	m.consumers[vchannel] = make(chan *MsgPack, consumerChannelSize)
+	t.consumers[vchannel] = make(chan *MsgPack, consumerChannelSize)
 	return nil
 }
 
-func (m *TtMsgDispatcher) Register(vchannel vchannel, position *MsgPosition) (<-chan *MsgPack, error) {
+func (t *TtMsgDispatcher) register(vchannel vchannel, position *MsgPosition) (<-chan *MsgPack, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), chaseTimeout)
 	defer cancel()
 
-	err := m.addConsumer(vchannel)
+	err := t.addConsumer(vchannel)
 	if err != nil {
 		return nil, err
 	}
 
-	if position.GetTimestamp() >= m.currentTick.Load() {
+	if position.GetTimestamp() >= t.currentTick.Load() {
 		log.Info("position is latter than current, no need to chase",
-			zap.String("role", m.roleName), zap.String("vchannel", vchannel))
-		m.consumersMu.Lock()
-		defer m.consumersMu.Unlock()
-		return m.consumers[vchannel], nil
+			zap.String("role", t.roleName), zap.String("vchannel", vchannel))
+		t.consumersMu.Lock()
+		defer t.consumersMu.Unlock()
+		return t.consumers[vchannel], nil
 	}
 
-	err = m.chaseToCurrent(ctx, vchannel, position)
+	err = t.chaseToCurrent(ctx, vchannel, position)
 	if err != nil {
 		return nil, err
 	}
 
-	m.consumersMu.Lock()
-	defer m.consumersMu.Unlock()
-	return m.consumers[vchannel], nil
+	t.consumersMu.Lock()
+	defer t.consumersMu.Unlock()
+	return t.consumers[vchannel], nil
+}
+
+func (t *TtMsgDispatcher) deregister(vchannel vchannel) {
+	t.consumersMu.Lock()
+	defer t.consumersMu.Unlock()
+	close(t.consumers[vchannel])
+	delete(t.consumers, vchannel)
+}
+
+func (t *TtMsgDispatcher) getConsumerNum() int {
+	t.consumersMu.Lock()
+	defer t.consumersMu.Unlock()
+	return len(t.consumers)
 }

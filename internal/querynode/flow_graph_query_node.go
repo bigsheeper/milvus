@@ -183,13 +183,8 @@ func newQueryNodeDeltaFlowGraph(ctx context.Context,
 }
 
 // newDmInputNode returns a new inputNode
-func (q *queryNodeFlowGraph) newDmInputNode(ctx context.Context, factory msgstream.Factory, collectionID UniqueID, channel Channel) (*flowgraph.InputNode, error) {
-	insertStream, err := factory.NewTtMsgStream(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	q.dmlStream = insertStream
+func (q *queryNodeFlowGraph) newDmInputNode(ctx context.Context, manager *msgstream.TtMsgDispatcherManager, factory msgstream.Factory, collectionID UniqueID, channel Channel) (*flowgraph.InputNode, error) {
+	manager.Register()
 
 	maxQueueLength := Params.QueryNodeCfg.FlowGraphMaxQueueLength
 	maxParallelism := Params.QueryNodeCfg.FlowGraphMaxParallelism

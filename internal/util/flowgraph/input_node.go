@@ -28,8 +28,8 @@ import (
 // InputNode is the entry point of flowgragh
 type InputNode struct {
 	BaseNode
-	inStream msgstream.MsgStream
-	name     string
+	input <-chan *msgstream.MsgPack
+	name  string
 }
 
 // IsInputNode returns whether Node is InputNode
@@ -37,32 +37,14 @@ func (inNode *InputNode) IsInputNode() bool {
 	return true
 }
 
-// Start is used to start input msgstream
-func (inNode *InputNode) Start() {
-	inNode.inStream.Start()
-}
-
-// Close implements node
-func (inNode *InputNode) Close() {
-	inNode.inStream.Close()
-	log.Debug("message stream closed",
-		zap.String("node name", inNode.name),
-	)
-}
-
 // Name returns node name
 func (inNode *InputNode) Name() string {
 	return inNode.name
 }
 
-// InStream returns the internal MsgStream
-func (inNode *InputNode) InStream() msgstream.MsgStream {
-	return inNode.inStream
-}
-
 // Operate consume a message pack from msgstream and return
 func (inNode *InputNode) Operate(in []Msg) []Msg {
-	msgPack, ok := <-inNode.inStream.Chan()
+	msgPack, ok := <-inNode.input
 	if !ok {
 		log.Warn("MsgStream closed", zap.Any("input node", inNode.Name()))
 		return []Msg{}
@@ -96,14 +78,14 @@ func (inNode *InputNode) Operate(in []Msg) []Msg {
 }
 
 // NewInputNode composes an InputNode with provided MsgStream, name and parameters
-func NewInputNode(inStream msgstream.MsgStream, nodeName string, maxQueueLength int32, maxParallelism int32) *InputNode {
+func NewInputNode(input <-chan *msgstream.MsgPack, nodeName string, maxQueueLength int32, maxParallelism int32) *InputNode {
 	baseNode := BaseNode{}
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &InputNode{
 		BaseNode: baseNode,
-		inStream: inStream,
+		input:    input,
 		name:     nodeName,
 	}
 }

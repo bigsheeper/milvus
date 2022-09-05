@@ -218,17 +218,17 @@ func TestTtMsgDispatcher(t *testing.T) {
 
 	t.Run("test TtMsgDispatcher", func(t *testing.T) {
 		pchannel := "testTtMsgDispatcher-pchannel-" + funcutil.RandomString(8)
-		dispatcher := NewTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
+		dispatcher := newTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
 		outputs := make(map[vchannel]<-chan *MsgPack)
 		for _, collectionID := range collectionIDList {
 			vchannel := collectionID2VChannelName(collectionID)
-			output, err := dispatcher.Register(vchannel, nil)
+			output, err := dispatcher.register(vchannel, nil)
 			assert.NoError(t, err)
 			outputs[vchannel] = output
 		}
 
 		go func() {
-			err := dispatcher.Run()
+			err := dispatcher.run()
 			assert.NoError(t, err)
 		}()
 
@@ -268,16 +268,16 @@ func TestTtMsgDispatcher(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		for i := 0; i < producePackNum; i++ {
 			fmt.Println("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", i)
-			dispatcher := NewTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
+			dispatcher := newTtMsgDispatcher(0, "role", pchannel, mockDispatcherFunc, genFactory(t))
 			for _, collectionID := range collectionIDList {
 				if collectionID != chaseCollectionID {
 					vchannel := collectionID2VChannelName(collectionID)
-					_, err := dispatcher.Register(vchannel, nil)
+					_, err := dispatcher.register(vchannel, nil)
 					assert.NoError(t, err)
 				}
 			}
 			go func() {
-				err := dispatcher.Run()
+				err := dispatcher.run()
 				assert.NoError(t, err)
 			}()
 

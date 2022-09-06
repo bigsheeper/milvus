@@ -99,8 +99,8 @@ func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, da
 
 // run starts the service of QuotaCenter.
 func (q *QuotaCenter) run() {
-	log.Info("Start QuotaCenter", zap.Int64("collectInterval[ms]", Params.QuotaConfig.QuotaCenterCollectInterval))
-	ticker := time.NewTicker(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval) * time.Millisecond)
+	log.Info("Start QuotaCenter", zap.Float64("collectInterval/s", Params.QuotaConfig.QuotaCenterCollectInterval))
+	ticker := time.NewTicker(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval * float64(time.Second)))
 	defer ticker.Stop()
 	for {
 		select {

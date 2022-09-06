@@ -29,7 +29,7 @@ func TestQuotaParam(t *testing.T) {
 
 	t.Run("test quota", func(t *testing.T) {
 		assert.True(t, qc.EnableQuotaAndLimits)
-		assert.Equal(t, int64(1000), qc.QuotaCenterCollectInterval)
+		assert.Equal(t, float64(3), qc.QuotaCenterCollectInterval)
 	})
 
 	t.Run("test ddl", func(t *testing.T) {

@@ -355,7 +355,7 @@ quotaAndLimits:
 
   # quotaCenterCollectInterval is the time interval that quotaCenter
   # collects metrics from Query cluster and Data cluster.
-  quotaCenterCollectInterval: 1000 # milliseconds
+  quotaCenterCollectInterval: 3 # seconds
 
   ddl:
     collectionRate: 10 # requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection

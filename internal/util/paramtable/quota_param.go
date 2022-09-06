@@ -28,7 +28,7 @@ type quotaConfig struct {
 
 	EnableQuotaAndLimits bool
 
-	QuotaCenterCollectInterval int64
+	QuotaCenterCollectInterval float64
 
 	// ddl
 	DDLCollectionRate float64
@@ -99,7 +99,7 @@ func (p *quotaConfig) initEnableQuotaAndLimits() {
 }
 
 func (p *quotaConfig) initQuotaCenterCollectInterval() {
-	p.QuotaCenterCollectInterval = p.Base.ParseInt64WithDefault("quotaAndLimits.quotaCenterCollectInterval", 1000)
+	p.QuotaCenterCollectInterval = p.Base.ParseFloatWithDefault("quotaAndLimits.quotaCenterCollectInterval", 3.0)
 }
 
 func (p *quotaConfig) initDDLCollectionRate() {

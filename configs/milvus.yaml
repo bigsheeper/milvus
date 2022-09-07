@@ -357,21 +357,21 @@ quotaAndLimits:
   # collects metrics from Query cluster and Data cluster.
   quotaCenterCollectInterval: 3 # seconds
 
-  ddl:
-    collectionRate: 10 # requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
-    partitionRate: 10 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
-    indexRate: 10 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
-    flushRate: 10 # requests per minute
-    compactionRate: 10 # requests per minute
+  ddl: # ddl limit rates, -1 means no limit, default no limit.
+    collectionRate: -1 # requests per minute, rate for CreateCollection, DropCollection, HasCollection, DescribeCollection, LoadCollection, ReleaseCollection
+    partitionRate: -1 # requests per minute, rate for CreatePartition, DropPartition, HasPartition, LoadPartition, ReleasePartition
+    indexRate: -1 # requests per minute, rate for CreateIndex, DropIndex, DescribeIndex
+    flushRate: -1 # requests per minute
+    compactionRate: -1 # requests per minute
 
-  dml:
-    insertRate: 64 # MB/s
-    deleteRate: 1 # MB/s
-    bulkLoadRate: 1 # requests per second TODO: limit bulkLoad rate
+  dml: # dml limit rates, -1 means no limit, default no limit.
+    insertRate: -1 # MB/s
+    deleteRate: -1 # MB/s
+    bulkLoadRate: -1 # MB/s TODO: limit bulkLoad rate
 
-  dql:
-    searchRate: 0.1 # MB/s
-    queryRate: 0.01 # MB/s
+  dql: # dql limit rates, -1 means no limit, default no limit.
+    searchRate: -1 # rps/nq*qps
+    queryRate: -1 # rps/nq*qps
 
   limits: # TODO: add comments
     collection:
@@ -394,9 +394,6 @@ quotaAndLimits:
       maxQueryParamLength: 256
       maxReturnSize: 512 # MB
       maxNQ: 32768
-    cluster:
-      maxMinio: 10 # TODO: ???
-      maxTotalMetaSize: 1024 # MB TODO: ???
 
   # limitWriting decides whether dml requests are allowed.
   limitWriting:

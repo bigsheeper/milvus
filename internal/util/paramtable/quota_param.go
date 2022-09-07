@@ -103,23 +103,23 @@ func (p *quotaConfig) initQuotaCenterCollectInterval() {
 }
 
 func (p *quotaConfig) initDDLCollectionRate() {
-	p.DDLCollectionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.collectionRate", 10)
+	p.DDLCollectionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.collectionRate", -1)
 }
 
 func (p *quotaConfig) initDDLPartitionRate() {
-	p.DDLPartitionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.partitionRate", 10)
+	p.DDLPartitionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.partitionRate", -1)
 }
 
 func (p *quotaConfig) initDDLIndexRate() {
-	p.DDLIndexRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.indexRate", 10)
+	p.DDLIndexRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.indexRate", -1)
 }
 
 func (p *quotaConfig) initDDLFlushRate() {
-	p.DDLFlushRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.flushRate", 10)
+	p.DDLFlushRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.flushRate", -1)
 }
 
 func (p *quotaConfig) initDDLCompactionRate() {
-	p.DDLCompactionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.compactionRate", 10)
+	p.DDLCompactionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.compactionRate", -1)
 }
 
 func megaBytesRate2Bytes(f float64) float64 {
@@ -127,26 +127,26 @@ func megaBytesRate2Bytes(f float64) float64 {
 }
 
 func (p *quotaConfig) initDMLInsertRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate", 64)
+	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate", -1)
 	p.DMLInsertRate = megaBytesRate2Bytes(rate)
 }
 
 func (p *quotaConfig) initDMLDeleteRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", 1)
+	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", -1)
 	p.DMLDeleteRate = megaBytesRate2Bytes(rate)
 }
 
 func (p *quotaConfig) initDMLBulkLoadRate() {
-	p.DMLBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", 1)
+	p.DMLBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", -1)
 }
 
 func (p *quotaConfig) initDQLSearchRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate", 0.1)
+	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate", -1)
 	p.DQLSearchRate = megaBytesRate2Bytes(rate)
 }
 
 func (p *quotaConfig) initDQLQueryRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate", 0.01)
+	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate", -1)
 	p.DQLQueryRate = megaBytesRate2Bytes(rate)
 }
 

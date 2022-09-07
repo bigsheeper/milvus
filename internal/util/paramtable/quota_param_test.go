@@ -33,22 +33,22 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test ddl", func(t *testing.T) {
-		assert.Equal(t, float64(10), qc.DDLCollectionRate)
-		assert.Equal(t, float64(10), qc.DDLPartitionRate)
-		assert.Equal(t, float64(10), qc.DDLIndexRate)
-		assert.Equal(t, float64(10), qc.DDLFlushRate)
-		assert.Equal(t, float64(10), qc.DDLCompactionRate)
+		assert.Equal(t, float64(-1), qc.DDLCollectionRate)
+		assert.Equal(t, float64(-1), qc.DDLPartitionRate)
+		assert.Equal(t, float64(-1), qc.DDLIndexRate)
+		assert.Equal(t, float64(-1), qc.DDLFlushRate)
+		assert.Equal(t, float64(-1), qc.DDLCompactionRate)
 	})
 
 	t.Run("test dml", func(t *testing.T) {
-		assert.Equal(t, megaBytesRate2Bytes(64), qc.DMLInsertRate)
-		assert.Equal(t, megaBytesRate2Bytes(1), qc.DMLDeleteRate)
-		assert.Equal(t, float64(1), qc.DMLBulkLoadRate)
+		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLInsertRate)
+		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLDeleteRate)
+		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLBulkLoadRate)
 	})
 
 	t.Run("test dql", func(t *testing.T) {
-		assert.Equal(t, megaBytesRate2Bytes(0.1), qc.DQLSearchRate)
-		assert.Equal(t, megaBytesRate2Bytes(0.01), qc.DQLQueryRate)
+		assert.Equal(t, float64(-1), qc.DQLSearchRate)
+		assert.Equal(t, float64(-1), qc.DQLQueryRate)
 	})
 
 	t.Run("test limits", func(t *testing.T) {

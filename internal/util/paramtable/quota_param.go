@@ -17,7 +17,6 @@
 package paramtable
 
 import (
-	"math"
 	"sync"
 	"time"
 )
@@ -57,9 +56,9 @@ type quotaConfig struct {
 	QueryNodeMemoryLowWaterLevel  float64
 	QueryNodeMemoryHighWaterLevel float64
 
-	ForceDenyReading     bool
-	MaxNQInQueue         int64
-	MaxQueryTasksInQueue int64
+	ForceDenyReading      bool
+	NQInQueueThreshold    int64
+	QueueLatencyThreshold float64
 }
 
 func (p *quotaConfig) init(base *BaseTable) {
@@ -91,8 +90,8 @@ func (p *quotaConfig) init(base *BaseTable) {
 	p.initQueryNodeMemoryHighWaterLevel()
 
 	p.initForceDenyReading()
-	p.initMaxNQInQueue()
-	p.initMaxQueryTasksInQueue()
+	p.initNQInQueueThreshold()
+	p.initQueueLatencyThreshold()
 }
 
 func (p *quotaConfig) initEnableQuotaAndLimits() {
@@ -105,37 +104,22 @@ func (p *quotaConfig) initQuotaCenterCollectInterval() {
 
 func (p *quotaConfig) initDDLCollectionRate() {
 	p.DDLCollectionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.collectionRate", -1)
-	if p.DDLCollectionRate < 0 {
-		p.DDLCollectionRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initDDLPartitionRate() {
 	p.DDLPartitionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.partitionRate", -1)
-	if p.DDLPartitionRate < 0 {
-		p.DDLPartitionRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initDDLIndexRate() {
 	p.DDLIndexRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.indexRate", -1)
-	if p.DDLIndexRate < 0 {
-		p.DDLIndexRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initDDLFlushRate() {
 	p.DDLFlushRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.flushRate", -1)
-	if p.DDLFlushRate < 0 {
-		p.DDLFlushRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initDDLCompactionRate() {
 	p.DDLCompactionRate = p.Base.ParseFloatWithDefault("quotaAndLimits.ddl.compactionRate", -1)
-	if p.DDLCompactionRate < 0 {
-		p.DDLCompactionRate = math.MaxFloat64 // no limit
-	}
 }
 
 func megaBytesRate2Bytes(f float64) float64 {
@@ -143,44 +127,32 @@ func megaBytesRate2Bytes(f float64) float64 {
 }
 
 func (p *quotaConfig) initDMLInsertRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate", -1)
-	if rate < 0 {
-		p.DMLInsertRate = math.MaxFloat64 // no limit
-	} else {
-		p.DMLInsertRate = megaBytesRate2Bytes(rate)
+	p.DMLInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate", -1)
+	if p.DMLInsertRate > 0 {
+		p.DMLInsertRate = megaBytesRate2Bytes(p.DMLInsertRate)
 	}
 }
 
 func (p *quotaConfig) initDMLDeleteRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", -1)
-	if rate < 0 {
-		p.DMLDeleteRate = math.MaxFloat64 // no limit
-	} else {
-		p.DMLDeleteRate = megaBytesRate2Bytes(rate)
+	p.DMLDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", -1)
+	if p.DMLDeleteRate > 0 {
+		p.DMLDeleteRate = megaBytesRate2Bytes(p.DMLDeleteRate)
 	}
 }
 
 func (p *quotaConfig) initDMLBulkLoadRate() {
-	rate := p.Base.ParseFloatWithDefault("quotaAndLimits.dml.bulkLoadRate", -1)
-	if rate < 0 {
-		p.DMLBulkLoadRate = math.MaxFloat64 // no limit
-	} else {
-		p.DMLBulkLoadRate = megaBytesRate2Bytes(rate)
+	p.DMLBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.bulkLoadRate", -1)
+	if p.DMLBulkLoadRate > 0 {
+		p.DMLBulkLoadRate = megaBytesRate2Bytes(p.DMLBulkLoadRate)
 	}
 }
 
 func (p *quotaConfig) initDQLSearchRate() {
 	p.DQLSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate", -1)
-	if p.DQLSearchRate < 0 {
-		p.DQLSearchRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initDQLQueryRate() {
 	p.DQLQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate", -1)
-	if p.DQLQueryRate < 0 {
-		p.DQLQueryRate = math.MaxFloat64 // no limit
-	}
 }
 
 func (p *quotaConfig) initMaxCollectionNum() {
@@ -228,10 +200,10 @@ func (p *quotaConfig) initForceDenyReading() {
 	p.ForceDenyReading = p.Base.ParseBool("quotaAndLimits.limitReading.forceDeny", false)
 }
 
-func (p *quotaConfig) initMaxNQInQueue() {
-	p.MaxNQInQueue = p.Base.ParseInt64WithDefault("quotaAndLimits.limitReading.maxNQInQueue", 100000)
+func (p *quotaConfig) initNQInQueueThreshold() {
+	p.NQInQueueThreshold = p.Base.ParseInt64WithDefault("quotaAndLimits.limitReading.NQInQueueThreshold", -1)
 }
 
-func (p *quotaConfig) initMaxQueryTasksInQueue() {
-	p.MaxQueryTasksInQueue = p.Base.ParseInt64WithDefault("quotaAndLimits.limitReading.maxQueryTasksInQueue", 1024)
+func (p *quotaConfig) initQueueLatencyThreshold() {
+	p.QueueLatencyThreshold = p.Base.ParseFloatWithDefault("quotaAndLimits.limitReading.queueLatencyThreshold", -1)
 }

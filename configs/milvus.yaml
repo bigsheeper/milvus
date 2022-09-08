@@ -350,6 +350,15 @@ common:
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
 
+# Configurations of Milvus quota and limits.
+# By default, we enable:
+#   1. TT protection;
+#   2. Memory protection.
+# You can enable:
+#   1. DML throughput limitation;
+#   2. DDL, DQL qps/rps limitation;
+#   3. DQL Queue length/latency protection;
+# If necessary, you can also manually force denying reading or writing.
 quotaAndLimits:
   enable: true # `true` to enable quota and limits, `false` to disable.
 
@@ -418,11 +427,12 @@ quotaAndLimits:
     # forceDeny `false` means dql requests are allowed (except for some
     # specific conditions, such as collection has been dropped), `true` means always reject all dql requests.
     forceDeny: false
-    # maxNQInQueue indicates the backpressure for Search Operation.
-    # Search rates would be reduced by the ratio of NQ in QueryNode's task queue to maxNQInQueue,
-    # if NQ in QueryNode's task queue is greater than maxNQInQueue, all Search requests would be rejected.
-    maxNQInQueue: 100000
-    # maxQueryTasksInQueue indicates the backpressure for Query Operation.
-    # Query rates would be reduced according to the ratio of query tasks number to maxQueryTasksInQueue,
-    # if number of query tasks is greater than maxQueryTasksInQueue, all Query requests would be rejected.
-    maxQueryTasksInQueue: 1024
+    # NQInQueueThreshold indicated that the system was under backpressure for Search/Query path.
+    # If NQ in any QueryNode's queue is greater than NQInQueueThreshold, search&query rates would be reduced gradually
+    # until the NQ in queue no longer exceeds NQInQueueThreshold. We think of the NQ of query request as 1.
+    NQInQueueThreshold: -1 # milliseconds
+    # queueLatencyThreshold indicated that the system was under backpressure for Search/Query path.
+    # If dql latency of queuing is greater than queueLatencyThreshold, search&query rates would be reduced gradually
+    # until the latency of queuing no longer exceeds queueLatencyThreshold.
+    # The latency here refers to the averaged latency over a period of time.
+    queueLatencyThreshold: -1 # milliseconds

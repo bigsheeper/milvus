@@ -99,43 +99,36 @@ func (rl *rateLimiter) printRates(rates []*internalpb.Rate) {
 func (rl *rateLimiter) registerLimiters() {
 	for rt := range internalpb.RateType_name {
 		var r float64
-		var b int
 		switch internalpb.RateType(rt) {
 		case internalpb.RateType_DDLCollection:
 			r = Params.QuotaConfig.DDLCollectionRate
-			b = int(Params.QuotaConfig.DDLCollectionRate)
 		case internalpb.RateType_DDLPartition:
 			r = Params.QuotaConfig.DDLPartitionRate
-			b = int(Params.QuotaConfig.DDLPartitionRate)
 		case internalpb.RateType_DDLIndex:
 			r = Params.QuotaConfig.DDLIndexRate
-			b = int(Params.QuotaConfig.DDLIndexRate)
 		case internalpb.RateType_DDLFlush:
 			r = Params.QuotaConfig.DDLFlushRate
-			b = int(Params.QuotaConfig.DDLFlushRate)
 		case internalpb.RateType_DDLCompaction:
 			r = Params.QuotaConfig.DDLCompactionRate
-			b = int(Params.QuotaConfig.DDLCompactionRate)
 		case internalpb.RateType_DMLInsert:
 			r = Params.QuotaConfig.DMLInsertRate
-			b = int(Params.QuotaConfig.DMLInsertRate)
 		case internalpb.RateType_DMLDelete:
 			r = Params.QuotaConfig.DMLDeleteRate
-			b = int(Params.QuotaConfig.DMLDeleteRate)
 		case internalpb.RateType_DMLBulkLoad:
 			r = Params.QuotaConfig.DMLBulkLoadRate
-			b = int(Params.QuotaConfig.DMLBulkLoadRate)
 		case internalpb.RateType_DQLSearch:
 			r = Params.QuotaConfig.DQLSearchRate
-			b = int(Params.QuotaConfig.DQLSearchRate)
 		case internalpb.RateType_DQLQuery:
 			r = Params.QuotaConfig.DQLQueryRate
-			b = int(Params.QuotaConfig.DQLQueryRate)
 		}
 		log.Info("RateLimiter register for rateType",
 			zap.String("rateType", internalpb.RateType_name[rt]),
-			zap.Float64("r", r),
-			zap.Int("b", b))
-		rl.limiters[internalpb.RateType(rt)] = NewLimiter(Limit(r), b)
+			zap.Float64("rate", r))
+		limit := Limit(r)
+		if limit < 0 {
+			limit = Inf
+		}
+		burst := int(r) // use rate as burst, because Limiter is with punishment mechanism, burst is insignificant.
+		rl.limiters[internalpb.RateType(rt)] = NewLimiter(limit, burst)
 	}
 }

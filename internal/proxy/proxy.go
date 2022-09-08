@@ -41,6 +41,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -60,6 +61,9 @@ var _ types.Proxy = (*Proxy)(nil)
 
 var Params paramtable.ComponentParam
 
+// rateCol is global rateCollector in Proxy.
+var rateCol *ratecollector.RateCollector
+
 // Proxy of milvus
 type Proxy struct {
 	ctx    context.Context
@@ -78,7 +82,7 @@ type Proxy struct {
 	dataCoord  types.DataCoord
 	queryCoord types.QueryCoord
 
-	MultiRateLimiter *MultiRateLimiter
+	multiRateLimiter *MultiRateLimiter
 
 	chMgr channelsMgr
 
@@ -115,7 +119,7 @@ func NewProxy(ctx context.Context, factory dependency.Factory) (*Proxy, error) {
 		factory:          factory,
 		searchResultCh:   make(chan *internalpb.SearchResults, n),
 		shardMgr:         newShardClientMgr(),
-		MultiRateLimiter: NewMultiRateLimiter(),
+		multiRateLimiter: NewMultiRateLimiter(),
 	}
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
 	logutil.Logger(ctx).Debug("create a new Proxy instance", zap.Any("state", node.stateCode.Load()))
@@ -153,6 +157,22 @@ func (node *Proxy) initSession() error {
 	return nil
 }
 
+// initRateCollector creates and starts rateCollector in Proxy.
+func (node *Proxy) initRateCollector() error {
+	var err error
+	rateCol, err = ratecollector.NewRateCollector(ratecollector.DefaultWindow, ratecollector.DefaultGranularity)
+	if err != nil {
+		return err
+	}
+	rateCol.Register(internalpb.RateType_DMLInsert.String())
+	rateCol.Register(internalpb.RateType_DMLDelete.String())
+	// TODO: add bulkLoad rate
+	rateCol.Register(internalpb.RateType_DQLSearch.String())
+	rateCol.Register(internalpb.RateType_DQLQuery.String())
+	rateCol.Start()
+	return nil
+}
+
 // Init initialize proxy.
 func (node *Proxy) Init() error {
 	log.Info("init session for Proxy")
@@ -164,6 +184,12 @@ func (node *Proxy) Init() error {
 
 	node.factory.Init(&Params)
 	log.Debug("init parameters for factory", zap.String("role", typeutil.ProxyRole), zap.Any("parameters", Params.ServiceParam))
+
+	err := node.initRateCollector()
+	if err != nil {
+		return err
+	}
+	log.Info("Proxy init rateCollector done", zap.Int64("nodeID", Params.ProxyCfg.GetNodeID()))
 
 	log.Debug("create id allocator", zap.String("role", typeutil.ProxyRole), zap.Int64("ProxyID", Params.ProxyCfg.GetNodeID()))
 	idAllocator, err := allocator.NewIDAllocator(node.ctx, node.rootCoord, Params.ProxyCfg.GetNodeID())
@@ -352,6 +378,9 @@ func (node *Proxy) Start() error {
 func (node *Proxy) Stop() error {
 	node.cancel()
 
+	rateCol.Stop()
+	log.Info("Proxy rate collector stopped", zap.Int64("nodeID", Params.ProxyCfg.GetNodeID()))
+
 	if node.idAllocator != nil {
 		node.idAllocator.Close()
 		log.Info("close id allocator", zap.String("role", typeutil.ProxyRole))
@@ -435,8 +464,8 @@ func (node *Proxy) SetQueryCoordClient(cli types.QueryCoord) {
 
 // GetRateLimiter returns the rateLimiter in Proxy.
 func (node *Proxy) GetRateLimiter() (types.Limiter, error) {
-	if node.MultiRateLimiter == nil {
+	if node.multiRateLimiter == nil {
 		return nil, fmt.Errorf("nil rate limiter in Proxy")
 	}
-	return node.MultiRateLimiter, nil
+	return node.multiRateLimiter, nil
 }

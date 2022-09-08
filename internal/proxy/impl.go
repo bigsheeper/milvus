@@ -2274,6 +2274,7 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 	method := "Insert"
 	tr := timerecord.NewTimeRecorder(method)
 	receiveSize := proto.Size(request)
+	rateCol.Add(internalpb.RateType_DMLInsert.String(), float64(receiveSize))
 	metrics.ProxyReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.InsertLabel).Add(float64(receiveSize))
 
 	defer func() {
@@ -2397,6 +2398,7 @@ func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) 
 	defer log.Info("Finish processing delete request in Proxy", zap.String("traceID", traceID))
 
 	receiveSize := proto.Size(request)
+	rateCol.Add(internalpb.RateType_DMLDelete.String(), float64(receiveSize))
 	metrics.ProxyReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.DeleteLabel).Add(float64(receiveSize))
 
 	if !node.checkHealthy() {
@@ -2488,6 +2490,8 @@ func (node *Proxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest) 
 func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
 	receiveSize := proto.Size(request)
 	metrics.ProxyReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.SearchLabel).Add(float64(receiveSize))
+
+	rateCol.Add(internalpb.RateType_DQLSearch.String(), float64(request.GetNq()))
 
 	if !node.checkHealthy() {
 		return &milvuspb.SearchResults{
@@ -2732,6 +2736,8 @@ func (node *Proxy) Flush(ctx context.Context, request *milvuspb.FlushRequest) (*
 func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*milvuspb.QueryResults, error) {
 	receiveSize := proto.Size(request)
 	metrics.ProxyReceiveBytes.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), metrics.QueryLabel).Add(float64(receiveSize))
+
+	rateCol.Add(internalpb.RateType_DQLQuery.String(), 1)
 
 	if !node.checkHealthy() {
 		return &milvuspb.QueryResults{
@@ -4392,7 +4398,7 @@ func (node *Proxy) SetRates(ctx context.Context, request *proxypb.SetRatesReques
 		return resp, nil
 	}
 
-	err := node.MultiRateLimiter.globalRateLimiter.setRates(request.GetRates())
+	err := node.multiRateLimiter.globalRateLimiter.setRates(request.GetRates())
 	// TODO: set multiple rate limiter rates
 	if err != nil {
 		resp.Reason = err.Error()

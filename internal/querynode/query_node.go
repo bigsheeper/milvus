@@ -333,6 +333,9 @@ func (node *QueryNode) Stop() error {
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
 	node.queryNodeLoopCancel()
 
+	rateCol.Stop()
+	log.Info("QueryNode rate collector stopped", zap.Int64("nodeID", Params.QueryNodeCfg.GetNodeID()))
+
 	// close services
 	if node.dataSyncService != nil {
 		node.dataSyncService.close()

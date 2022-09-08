@@ -24,6 +24,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/milvuspb"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
+	"github.com/milvus-io/milvus/internal/util/ratecollector"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -32,9 +33,29 @@ type showConfigurationsFuncType func(ctx context.Context, request *internalpb.Sh
 
 // getQuotaMetrics returns ProxyQuotaMetrics.
 func getQuotaMetrics() (*metricsinfo.ProxyQuotaMetrics, error) {
+	var err error
+	rms := make([]metricsinfo.RateMetric, 0)
+	getRateMetric := func(rateType internalpb.RateType) {
+		rate, err2 := rateCol.Rate(rateType.String(), ratecollector.DefaultAvgDuration)
+		if err2 != nil {
+			err = err2
+			return
+		}
+		rms = append(rms, metricsinfo.RateMetric{
+			Label: rateType.String(),
+			Rate:  rate,
+		})
+	}
+	getRateMetric(internalpb.RateType_DMLInsert)
+	getRateMetric(internalpb.RateType_DMLDelete)
+	getRateMetric(internalpb.RateType_DQLSearch)
+	getRateMetric(internalpb.RateType_DQLQuery)
+	if err != nil {
+		return nil, err
+	}
 	return &metricsinfo.ProxyQuotaMetrics{
 		Hms: metricsinfo.HardwareMetrics{},
-		Rms: nil,
+		Rms: rms,
 	}, nil
 }
 
@@ -108,19 +129,7 @@ func getSystemInfoMetrics(
 	request *milvuspb.GetMetricsRequest,
 	node *Proxy,
 ) (*milvuspb.GetMetricsResponse, error) {
-
 	var err error
-
-	quotaMetrics, err := getQuotaMetrics()
-	if err != nil {
-		return &milvuspb.GetMetricsResponse{
-			Status: &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    err.Error(),
-			},
-			ComponentName: metricsinfo.ConstructComponentName(typeutil.ProxyRole, Params.ProxyCfg.GetNodeID()),
-		}, nil
-	}
 	systemTopology := metricsinfo.SystemTopology{
 		NodesInfo: make([]metricsinfo.SystemTopologyNode, 0),
 	}
@@ -157,7 +166,6 @@ func getSystemInfoMetrics(
 				DefaultPartitionName: Params.CommonCfg.DefaultPartitionName,
 				DefaultIndexName:     Params.CommonCfg.DefaultIndexName,
 			},
-			QuotaMetrics: quotaMetrics,
 		},
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&(proxyTopologyNode.Infos.(*metricsinfo.ProxyInfos).SystemInfo))

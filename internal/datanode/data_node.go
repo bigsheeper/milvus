@@ -681,6 +681,9 @@ func (node *DataNode) Stop() error {
 	// https://github.com/milvus-io/milvus/issues/12282
 	node.UpdateStateCode(internalpb.StateCode_Abnormal)
 
+	rateCol.Stop()
+	log.Info("DataNode rate collector stopped", zap.Int64("nodeID", Params.DataNodeCfg.GetNodeID()))
+
 	node.cancel()
 	node.flowgraphManager.dropAll()
 

@@ -95,7 +95,7 @@ func TestTaskReadCounter(t *testing.T) {
 			counter.increaseQueueTime(&searchTask{baseReadTask: getBaseTask(queueDur, waitDur)})
 			expected += queueDur - waitDur
 		}
-		assert.Equal(t, int64(expected/time.Duration(increaseNum)), counter.getSearchNQInQueue().AvgQueueDuration)
+		assert.Equal(t, expected/time.Duration(increaseNum), counter.getSearchNQInQueue().AvgQueueDuration)
 
 		expected = time.Duration(0)
 		for i := 0; i < increaseNum; i++ {
@@ -104,10 +104,10 @@ func TestTaskReadCounter(t *testing.T) {
 			counter.increaseQueueTime(&queryTask{baseReadTask: getBaseTask(queueDur, waitDur)})
 			expected += queueDur - waitDur
 		}
-		assert.Equal(t, int64(expected/time.Duration(increaseNum)), counter.getQueryTasksInQueue().AvgQueueDuration)
+		assert.Equal(t, expected/time.Duration(increaseNum), counter.getQueryTasksInQueue().AvgQueueDuration)
 
 		counter.resetQueueTime()
-		assert.Equal(t, int64(0), counter.getSearchNQInQueue().AvgQueueDuration)
-		assert.Equal(t, int64(0), counter.getQueryTasksInQueue().AvgQueueDuration)
+		assert.Equal(t, time.Duration(0), counter.getSearchNQInQueue().AvgQueueDuration)
+		assert.Equal(t, time.Duration(0), counter.getQueryTasksInQueue().AvgQueueDuration)
 	})
 }

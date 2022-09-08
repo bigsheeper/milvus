@@ -18,6 +18,7 @@ package metricsinfo
 
 import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
+	"time"
 )
 
 // RateMetricLabel defines the metric label collected from nodes.
@@ -49,7 +50,7 @@ type ReadInfoInQueue struct {
 	ReadyQueue       int64
 	ReceiveChan      int64
 	ExecuteChan      int64
-	AvgQueueDuration int64
+	AvgQueueDuration time.Duration
 }
 
 // QueryNodeQuotaMetrics are metrics of QueryNode.

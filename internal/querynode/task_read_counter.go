@@ -108,9 +108,9 @@ func (r *readTaskCounter) resetQueueTime() {
 func (r *readTaskCounter) getSearchNQInQueue() metricsinfo.ReadInfoInQueue {
 	r.Lock()
 	defer r.Unlock()
-	var avgDuration int64
+	var avgDuration time.Duration
 	if r.searchQueueTime.count > 0 {
-		avgDuration = int64(r.searchQueueTime.totalDuration) / r.searchQueueTime.count
+		avgDuration = r.searchQueueTime.totalDuration / time.Duration(r.searchQueueTime.count)
 	}
 	return metricsinfo.ReadInfoInQueue{
 		UnsolvedQueue:    r.searchNQCounter[unsolvedQueueType],
@@ -125,9 +125,9 @@ func (r *readTaskCounter) getSearchNQInQueue() metricsinfo.ReadInfoInQueue {
 func (r *readTaskCounter) getQueryTasksInQueue() metricsinfo.ReadInfoInQueue {
 	r.Lock()
 	defer r.Unlock()
-	var avgDuration int64
+	var avgDuration time.Duration
 	if r.queryQueueTime.count > 0 {
-		avgDuration = int64(r.queryQueueTime.totalDuration) / r.queryQueueTime.count
+		avgDuration = r.queryQueueTime.totalDuration / time.Duration(r.queryQueueTime.count)
 	}
 	return metricsinfo.ReadInfoInQueue{
 		UnsolvedQueue:    r.queryTasksCounter[unsolvedQueueType],

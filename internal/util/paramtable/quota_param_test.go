@@ -17,6 +17,7 @@
 package paramtable
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -33,22 +34,22 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test ddl", func(t *testing.T) {
-		assert.Equal(t, float64(-1), qc.DDLCollectionRate)
-		assert.Equal(t, float64(-1), qc.DDLPartitionRate)
-		assert.Equal(t, float64(-1), qc.DDLIndexRate)
-		assert.Equal(t, float64(-1), qc.DDLFlushRate)
-		assert.Equal(t, float64(-1), qc.DDLCompactionRate)
+		assert.Equal(t, math.MaxFloat64, qc.DDLCollectionRate)
+		assert.Equal(t, math.MaxFloat64, qc.DDLPartitionRate)
+		assert.Equal(t, math.MaxFloat64, qc.DDLIndexRate)
+		assert.Equal(t, math.MaxFloat64, qc.DDLFlushRate)
+		assert.Equal(t, math.MaxFloat64, qc.DDLCompactionRate)
 	})
 
 	t.Run("test dml", func(t *testing.T) {
-		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLInsertRate)
-		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLDeleteRate)
-		assert.Equal(t, megaBytesRate2Bytes(-1), qc.DMLBulkLoadRate)
+		assert.Equal(t, math.MaxFloat64, qc.DMLInsertRate)
+		assert.Equal(t, math.MaxFloat64, qc.DMLDeleteRate)
+		assert.Equal(t, math.MaxFloat64, qc.DMLBulkLoadRate)
 	})
 
 	t.Run("test dql", func(t *testing.T) {
-		assert.Equal(t, float64(-1), qc.DQLSearchRate)
-		assert.Equal(t, float64(-1), qc.DQLQueryRate)
+		assert.Equal(t, math.MaxFloat64, qc.DQLSearchRate)
+		assert.Equal(t, math.MaxFloat64, qc.DQLQueryRate)
 	})
 
 	t.Run("test limits", func(t *testing.T) {

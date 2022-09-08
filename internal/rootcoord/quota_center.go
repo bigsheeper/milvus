@@ -19,6 +19,7 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proxy"
 	"sync"
 	"time"
 
@@ -46,7 +47,7 @@ type ForceDenyTriggerReason string
 const (
 	ManualForceDeny    ForceDenyTriggerReason = "ManualForceDeny"
 	MemoryExhausted    ForceDenyTriggerReason = "MemoryExhausted"
-	TaskQueueExhausted ForceDenyTriggerReason = "TaskQueueExhausted"
+	ReadQueueExhausted ForceDenyTriggerReason = "ReadQueueExhausted"
 	TimeTickLongDelay  ForceDenyTriggerReason = "TimeTickLongDelay"
 )
 
@@ -58,6 +59,8 @@ const (
 )
 
 var DefaultRateAllocateStrategy = Average
+
+const Inf = float64(proxy.Inf)
 
 // QuotaCenter manages the quota and limitations of the whole cluster,
 // it receives metrics info from DataNodes, QueryNodes and Proxies, and
@@ -73,6 +76,10 @@ type QuotaCenter struct {
 	queryNodeMetrics []*metricsinfo.QueryNodeQuotaMetrics
 	dataNodeMetrics  []*metricsinfo.DataNodeQuotaMetrics
 	proxyMetrics     []*metricsinfo.ProxyQuotaMetrics
+
+	enableTTProtection bool
+	enableTTProtection bool
+	enableTTProtection bool // TODO:
 
 	currentRates map[internalpb.RateType]float64
 	tsoAllocator tso.Allocator
@@ -225,48 +232,83 @@ func (q *QuotaCenter) syncMetrics() error {
 }
 
 // forceDenyWriting sets dml rates to 0 to reject all dml requests.
-func (q *QuotaCenter) forceDenyWriting() {
+func (q *QuotaCenter) forceDenyWriting(reason ForceDenyTriggerReason) {
 	q.currentRates[internalpb.RateType_DMLInsert] = 0
 	q.currentRates[internalpb.RateType_DMLDelete] = 0
-	log.Warn("QuotaCenter force to deny writing") // TODO: add trigger reason
+	log.Warn("QuotaCenter force to deny writing", zap.String("reason", string(reason)))
 }
 
 // forceDenyWriting sets dql rates to 0 to reject all dql requests.
-func (q *QuotaCenter) forceDenyReading() {
+func (q *QuotaCenter) forceDenyReading(reason ForceDenyTriggerReason) {
 	q.currentRates[internalpb.RateType_DQLSearch] = 0
 	q.currentRates[internalpb.RateType_DQLQuery] = 0
-	log.Warn("QuotaCenter force to deny reading") // TODO: add trigger reason
+	log.Warn("QuotaCenter force to deny reading", zap.String("reason", string(reason)))
+}
+
+func (q *QuotaCenter) calculateReadRates() {
+	if Params.QuotaConfig.ForceDenyReading {
+		q.forceDenyReading(ManualForceDeny)
+		return
+	}
+
+	queueFactor := q.checkQueryQueue()
+	if queueFactor <= 0 {
+		q.forceDenyReading(ReadQueueExhausted)
+		return
+	}
+	log.RatedDebug(10, "QuotaCenter check checkQueryQueue done", zap.Float64("queueFactor", queueFactor))
+	if q.currentRates[internalpb.RateType_DQLSearch] != Inf {
+		q.currentRates[internalpb.RateType_DQLSearch] *= queueFactor
+	}
+	if q.currentRates[internalpb.RateType_DQLQuery] != Inf {
+		q.currentRates[internalpb.RateType_DQLQuery] *= queueFactor
+	}
+}
+
+func (q *QuotaCenter) calculateWriteRates() error {
+	if Params.QuotaConfig.ForceDenyWriting {
+		q.forceDenyWriting(ManualForceDeny)
+		return nil
+	}
+
+	ttFactor, err := q.timeTickDelay()
+	if err != nil {
+		return err
+	}
+	if ttFactor <= 0 {
+		q.forceDenyWriting(TimeTickLongDelay) // tt protection
+		return nil
+	}
+	log.RatedDebug(10, "QuotaCenter check timeTickDelay done", zap.Float64("ttFactor", ttFactor))
+
+	memFactor := q.memoryToWaterLevel()
+	if ttFactor <= 0 {
+		q.forceDenyWriting(MemoryExhausted) // memory protection
+		return nil
+	}
+	log.RatedDebug(10, "QuotaCenter check memoryWaterLevel done", zap.Float64("memFactor", memFactor))
+
+	if ttFactor < memFactor {
+		ttFactor = memFactor
+	}
+	if q.currentRates[internalpb.RateType_DMLInsert] != Inf {
+		q.currentRates[internalpb.RateType_DMLInsert] *= ttFactor
+	}
+	if q.currentRates[internalpb.RateType_DMLDelete] != Inf {
+		q.currentRates[internalpb.RateType_DMLDelete] *= ttFactor
+	}
+	return nil
 }
 
 // calculateRates calculates target rates by different strategies.
 func (q *QuotaCenter) calculateRates() error {
 	q.resetCurrentRates()
 
-	if Params.QuotaConfig.ForceDenyWriting {
-		q.forceDenyWriting()
-	} else {
-		ttFactor, err := q.timeTickDelay()
-		if err != nil {
-			return err
-		}
-		log.RatedDebug(10, "QuotaCenter check timeTickDelay done", zap.Float64("ttFactor", ttFactor))
-		memFactor := q.memoryToWaterLevel()
-		if ttFactor < memFactor {
-			ttFactor = memFactor
-		}
-		log.RatedDebug(10, "QuotaCenter check memoryWaterLevel done", zap.Float64("memFactor", memFactor))
-		q.currentRates[internalpb.RateType_DMLInsert] *= ttFactor
-		q.currentRates[internalpb.RateType_DMLDelete] *= ttFactor
+	err := q.calculateWriteRates()
+	if err != nil {
+		return err
 	}
-
-	if Params.QuotaConfig.ForceDenyReading {
-		q.forceDenyReading()
-	} else {
-		queueFactor := q.checkQueryQueue()
-		log.RatedDebug(10, "QuotaCenter check checkQueryQueue done", zap.Float64("queueFactor", queueFactor))
-		q.currentRates[internalpb.RateType_DQLSearch] *= queueFactor
-		q.currentRates[internalpb.RateType_DQLQuery] *= queueFactor
-	}
+	q.calculateReadRates()
 
 	log.RatedDebug(10, "QuotaCenter calculates rate done", zap.Any("rates", q.currentRates))
 	return nil
@@ -292,6 +334,11 @@ func (q *QuotaCenter) resetCurrentRates() {
 // timeTickDelay gets time tick delay of DataNodes and QueryNodes,
 // and return the factor according to max tolerable time tick delay.
 func (q *QuotaCenter) timeTickDelay() (float64, error) {
+	maxTt := Params.QuotaConfig.MaxTimeTickDelay
+	if maxTt < 0 {
+		return -1, nil
+	}
+
 	minTSafe := typeutil.MaxTimestamp
 	for _, metric := range q.queryNodeMetrics {
 		if metric.Fgm.MinFlowGraphTt < minTSafe {
@@ -313,7 +360,6 @@ func (q *QuotaCenter) timeTickDelay() (float64, error) {
 	t1, _ := tsoutil.ParseTS(minTSafe)
 	t2, _ := tsoutil.ParseTS(ts)
 	delay := t2.Sub(t1)
-	maxTt := Params.QuotaConfig.MaxTimeTickDelay
 	if delay.Nanoseconds() >= maxTt.Nanoseconds() {
 		return 0, nil
 	}

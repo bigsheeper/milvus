@@ -45,10 +45,11 @@ type FlowGraphMetric struct {
 
 // ReadInfoInQueue contains NQ num or task num in QueryNode's task queue.
 type ReadInfoInQueue struct {
-	UnsolvedQueue int64
-	ReadyQueue    int64
-	ReceiveChan   int64
-	ExecuteChan   int64
+	UnsolvedQueue    int64
+	ReadyQueue       int64
+	ReceiveChan      int64
+	ExecuteChan      int64
+	AvgQueueDuration int64
 }
 
 // QueryNodeQuotaMetrics are metrics of QueryNode.

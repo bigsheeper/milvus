@@ -72,6 +72,7 @@ func getQuotaMetrics() (*metricsinfo.QueryNodeQuotaMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer rateCol.rtCounter.resetQueueTime()
 	return &metricsinfo.QueryNodeQuotaMetrics{
 		Hms: metricsinfo.HardwareMetrics{},
 		Rms: rms,

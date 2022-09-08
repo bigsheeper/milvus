@@ -18,7 +18,9 @@ package querynode
 
 import (
 	"math"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -74,5 +76,38 @@ func TestTaskReadCounter(t *testing.T) {
 		assert.Equal(t, int64(0), queryTasksMetric.ReadyQueue)
 		assert.Equal(t, int64(-1), queryTasksMetric.ReceiveChan)
 		assert.Equal(t, int64(-200+1000), queryTasksMetric.ExecuteChan)
+	})
+
+	t.Run("test queueTime", func(t *testing.T) {
+		getBaseTask := func(queueDur, waitTSDur time.Duration) baseReadTask {
+			return baseReadTask{
+				queueDur:  queueDur,
+				waitTsDur: waitTSDur,
+			}
+		}
+
+		counter := newReadTaskCounter()
+		increaseNum := 100
+		expected := time.Duration(0)
+		for i := 0; i < increaseNum; i++ {
+			queueDur := time.Duration(rand.Int63n(100000))
+			waitDur := time.Duration(rand.Int63n(100000))
+			counter.increaseQueueTime(&searchTask{baseReadTask: getBaseTask(queueDur, waitDur)})
+			expected += queueDur - waitDur
+		}
+		assert.Equal(t, int64(expected/time.Duration(increaseNum)), counter.getSearchNQInQueue().AvgQueueDuration)
+
+		expected = time.Duration(0)
+		for i := 0; i < increaseNum; i++ {
+			queueDur := time.Duration(rand.Int63n(100000))
+			waitDur := time.Duration(rand.Int63n(100000))
+			counter.increaseQueueTime(&queryTask{baseReadTask: getBaseTask(queueDur, waitDur)})
+			expected += queueDur - waitDur
+		}
+		assert.Equal(t, int64(expected/time.Duration(increaseNum)), counter.getQueryTasksInQueue().AvgQueueDuration)
+
+		counter.resetQueueTime()
+		assert.Equal(t, int64(0), counter.getSearchNQInQueue().AvgQueueDuration)
+		assert.Equal(t, int64(0), counter.getQueryTasksInQueue().AvgQueueDuration)
 	})
 }

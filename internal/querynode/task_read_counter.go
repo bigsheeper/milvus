@@ -18,6 +18,7 @@ package querynode
 
 import (
 	"sync"
+	"time"
 
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 )
@@ -32,11 +33,20 @@ const (
 	executeQueueType
 )
 
+// queueTime counts average queue latency.
+type queueTime struct {
+	totalDuration time.Duration
+	count         int64
+}
+
 // readTaskCounter counts readTask by readTaskQueueType.
 type readTaskCounter struct {
 	sync.Mutex
-	searchNQCounter   map[readTaskQueueType]int64
-	queryTasksCounter map[readTaskQueueType]int64
+	searchNQCounter   map[readTaskQueueType]int64 // search nq in queue
+	queryTasksCounter map[readTaskQueueType]int64 // query task in queue
+
+	searchQueueTime *queueTime
+	queryQueueTime  *queueTime
 }
 
 // newReadTaskCounter returns a new readTaskCounter.
@@ -44,6 +54,8 @@ func newReadTaskCounter() *readTaskCounter {
 	return &readTaskCounter{
 		searchNQCounter:   make(map[readTaskQueueType]int64),
 		queryTasksCounter: make(map[readTaskQueueType]int64),
+		searchQueueTime:   &queueTime{},
+		queryQueueTime:    &queueTime{},
 	}
 }
 
@@ -69,15 +81,43 @@ func (r *readTaskCounter) sub(t readTask, rtQueueType readTaskQueueType) {
 	}
 }
 
+// increaseQueueTime increases search or query queue duration.
+func (r *readTaskCounter) increaseQueueTime(t readTask) {
+	r.Lock()
+	defer r.Unlock()
+	if st, ok := t.(*searchTask); ok {
+		r.searchQueueTime.totalDuration += st.queueDur - st.waitTsDur // ignore tSafe waiting duration
+		// TODO: increase nq or 1(request)?
+		r.searchQueueTime.count++
+	} else {
+		qt := t.(*queryTask)
+		r.queryQueueTime.totalDuration += qt.queueDur - qt.waitTsDur
+		r.queryQueueTime.count++
+	}
+}
+
+// resetQueueTime resets searchQueueTime and queryQueueTime of readTaskCounter.
+func (r *readTaskCounter) resetQueueTime() {
+	r.Lock()
+	defer r.Unlock()
+	r.searchQueueTime = &queueTime{}
+	r.queryQueueTime = &queueTime{}
+}
+
 // getSearchNQInQueue returns search nq count.
 func (r *readTaskCounter) getSearchNQInQueue() metricsinfo.ReadInfoInQueue {
 	r.Lock()
 	defer r.Unlock()
+	var avgDuration int64
+	if r.searchQueueTime.count > 0 {
+		avgDuration = int64(r.searchQueueTime.totalDuration) / r.searchQueueTime.count
+	}
 	return metricsinfo.ReadInfoInQueue{
-		UnsolvedQueue: r.searchNQCounter[unsolvedQueueType],
-		ReadyQueue:    r.searchNQCounter[readyQueueType],
-		ReceiveChan:   r.searchNQCounter[receiveQueueType],
-		ExecuteChan:   r.searchNQCounter[executeQueueType],
+		UnsolvedQueue:    r.searchNQCounter[unsolvedQueueType],
+		ReadyQueue:       r.searchNQCounter[readyQueueType],
+		ReceiveChan:      r.searchNQCounter[receiveQueueType],
+		ExecuteChan:      r.searchNQCounter[executeQueueType],
+		AvgQueueDuration: avgDuration,
 	}
 }
 
@@ -85,10 +125,15 @@ func (r *readTaskCounter) getSearchNQInQueue() metricsinfo.ReadInfoInQueue {
 func (r *readTaskCounter) getQueryTasksInQueue() metricsinfo.ReadInfoInQueue {
 	r.Lock()
 	defer r.Unlock()
+	var avgDuration int64
+	if r.queryQueueTime.count > 0 {
+		avgDuration = int64(r.queryQueueTime.totalDuration) / r.queryQueueTime.count
+	}
 	return metricsinfo.ReadInfoInQueue{
-		UnsolvedQueue: r.queryTasksCounter[unsolvedQueueType],
-		ReadyQueue:    r.queryTasksCounter[readyQueueType],
-		ReceiveChan:   r.queryTasksCounter[receiveQueueType],
-		ExecuteChan:   r.queryTasksCounter[executeQueueType],
+		UnsolvedQueue:    r.queryTasksCounter[unsolvedQueueType],
+		ReadyQueue:       r.queryTasksCounter[readyQueueType],
+		ReceiveChan:      r.queryTasksCounter[receiveQueueType],
+		ExecuteChan:      r.queryTasksCounter[executeQueueType],
+		AvgQueueDuration: avgDuration,
 	}
 }

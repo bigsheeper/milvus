@@ -371,7 +371,7 @@ quotaAndLimits:
 
   dql: # dql limit rates, -1 means no limit, default no limit.
     searchRate: -1 # rps/nq*qps
-    queryRate: -1 # rps/nq*qps
+    queryRate: -1 # rps
 
   limits: # TODO: add comments
     collection:

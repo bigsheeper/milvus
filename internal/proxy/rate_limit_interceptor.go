@@ -53,9 +53,9 @@ func getRequestInfo(req interface{}) (internalpb.RateType, int, error) {
 		return internalpb.RateType_DMLDelete, proto.Size(r), nil
 	// TODO: add bulkLoad
 	case *milvuspb.SearchRequest:
-		return internalpb.RateType_DQLSearch, proto.Size(r), nil
+		return internalpb.RateType_DQLSearch, int(r.GetNq()), nil
 	case *milvuspb.QueryRequest:
-		return internalpb.RateType_DQLQuery, proto.Size(r), nil
+		return internalpb.RateType_DQLQuery, 1, nil // think of the query request's nq as 1
 	case *milvuspb.CreateCollectionRequest, *milvuspb.DropCollectionRequest, *milvuspb.HasCollectionRequest:
 		return internalpb.RateType_DDLCollection, 1, nil
 	case *milvuspb.LoadCollectionRequest, *milvuspb.ReleaseCollectionRequest, *milvuspb.ShowCollectionsRequest:

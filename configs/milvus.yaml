@@ -350,7 +350,7 @@ common:
     # 0 is close, 1 is one-way authentication, 2 is two-way authentication.
     tlsMode: 0
 
-# Configurations of Milvus quota and limits.
+# QuotaConfig, configurations of Milvus quota and limits.
 # By default, we enable:
 #   1. TT protection;
 #   2. Memory protection.

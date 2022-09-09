@@ -68,6 +68,15 @@ const Inf = float64(proxy.Inf)
 // it receives metrics info from DataNodes, QueryNodes and Proxies, and
 // notifies Proxies to limit rate of requests from clients or reject
 // all requests when the cluster met resources issues.
+// Limitations:
+//   1. DML throughput limitation;
+//   2. DDL, DQL qps/rps limitation;
+// Protections:
+//   1. TT protection -> 				dqlRate = maxDQLRate * (maxDelay - ttDelay) / maxDelay
+//   2. Memory protection -> 			dmlRate = maxDMLRate * (highMem - curMem) / (highMem - lowMem)
+//   3. DQL Queue length protection ->  dqlRate = curDQLRate * RateCoolOffSpeed
+//   4. DQL queue latency protection -> dqlRate = curDQLRate * RateCoolOffSpeed
+// If necessary, user can also manually force denying reading or writing.
 type QuotaCenter struct {
 	// clients
 	proxies    *proxyClientManager

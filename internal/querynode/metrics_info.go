@@ -79,8 +79,8 @@ func getQuotaMetrics() (*metricsinfo.QueryNodeQuotaMetrics, error) {
 		Fgm: metricsinfo.FlowGraphMetric{
 			MinFlowGraphTt: rateCol.getMinTSafe(),
 		},
-		SearchNQInQueue:   rateCol.rtCounter.getSearchNQInQueue(),
-		QueryTasksInQueue: rateCol.rtCounter.getQueryTasksInQueue(),
+		SearchQueue: rateCol.rtCounter.getSearchNQInQueue(),
+		QueryQueue:  rateCol.rtCounter.getQueryTasksInQueue(),
 	}, nil
 }
 

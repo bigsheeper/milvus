@@ -411,8 +411,8 @@ func (q *QuotaCenter) checkNQInQuery() float64 {
 		return factor
 	}
 	for _, metric := range q.queryNodeMetrics {
-		searchNQSum := sum(metric.SearchNQInQueue)
-		queryTasksSum := sum(metric.QueryTasksInQueue)
+		searchNQSum := sum(metric.SearchQueue)
+		queryTasksSum := sum(metric.QueryQueue)
 		nqInQueue := searchNQSum + queryTasksSum // We think of the NQ of query request as 1.
 		if nqInQueue >= nqInQueueThreshold {
 			return RateCoolOffSpeed
@@ -431,8 +431,8 @@ func (q *QuotaCenter) checkQueryLatency() float64 {
 		return factor
 	}
 	for _, metric := range q.queryNodeMetrics {
-		searchLatency := metric.SearchNQInQueue.AvgQueueDuration
-		queryLatency := metric.QueryTasksInQueue.AvgQueueDuration
+		searchLatency := metric.SearchQueue.AvgQueueDuration
+		queryLatency := metric.QueryQueue.AvgQueueDuration
 		if float64(searchLatency) >= queueLatencyThreshold || float64(queryLatency) >= queueLatencyThreshold {
 			return RateCoolOffSpeed
 		}

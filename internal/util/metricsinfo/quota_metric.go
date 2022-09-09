@@ -55,11 +55,11 @@ type ReadInfoInQueue struct {
 
 // QueryNodeQuotaMetrics are metrics of QueryNode.
 type QueryNodeQuotaMetrics struct {
-	Hms               HardwareMetrics
-	Rms               []RateMetric
-	Fgm               FlowGraphMetric
-	SearchNQInQueue   ReadInfoInQueue
-	QueryTasksInQueue ReadInfoInQueue
+	Hms         HardwareMetrics
+	Rms         []RateMetric
+	Fgm         FlowGraphMetric
+	SearchQueue ReadInfoInQueue
+	QueryQueue  ReadInfoInQueue
 }
 
 // DataNodeQuotaMetrics are metrics of DataNode.

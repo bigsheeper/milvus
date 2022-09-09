@@ -164,8 +164,8 @@ func (p *quotaConfig) initForceDenyWriting() {
 }
 
 func (p *quotaConfig) initMaxTimeTickDelay() {
-	delay := p.Base.ParseInt64WithDefault("quotaAndLimits.limitWriting.maxTimeTickDelay", 10)
-	p.MaxTimeTickDelay = time.Duration(delay) * time.Second
+	delay := p.Base.ParseFloatWithDefault("quotaAndLimits.limitWriting.maxTimeTickDelay", 10)
+	p.MaxTimeTickDelay = time.Duration(delay * float64(time.Second))
 }
 
 func (p *quotaConfig) initDataNodeMemoryLowWaterLevel() {

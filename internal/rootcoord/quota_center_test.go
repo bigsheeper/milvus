@@ -134,11 +134,13 @@ func TestQuotaCenter(t *testing.T) {
 
 		now := time.Now()
 
+		bak := Params.QuotaConfig.MaxTimeTickDelay
+		Params.QuotaConfig.MaxTimeTickDelay = 3 * time.Second
 		// test force deny writing
 		alloc.GenerateTSOF = func(count uint32) (typeutil.Timestamp, error) {
 			added := now.Add(Params.QuotaConfig.MaxTimeTickDelay)
-			oneThirdTs := tsoutil.ComposeTSByTime(added, 0)
-			return oneThirdTs, nil
+			ts := tsoutil.ComposeTSByTime(added, 0)
+			return ts, nil
 		}
 		core.tsoAllocator = alloc
 		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{
@@ -175,41 +177,67 @@ func TestQuotaCenter(t *testing.T) {
 		core.tsoAllocator = alloc
 		_, err = quotaCenter.timeTickDelay()
 		assert.Error(t, err)
+		Params.QuotaConfig.MaxTimeTickDelay = bak
 	})
 
-	t.Run("test checkQueryQueue", func(t *testing.T) {
+	t.Run("test checkNQInQuery", func(t *testing.T) {
 		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.tsoAllocator)
-		factor := quotaCenter.checkQueryQueue()
+		factor := quotaCenter.checkNQInQuery()
 		assert.Equal(t, float64(1), factor)
 
-		// test force deny reading
+		// test cool off
+		bak := Params.QuotaConfig.NQInQueueThreshold
+		Params.QuotaConfig.NQInQueueThreshold = 100
 		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{
-			SearchNQInQueue: metricsinfo.ReadInfoInQueue{
-				UnsolvedQueue: Params.QuotaConfig.MaxNQInQueue,
+			SearchQueue: metricsinfo.ReadInfoInQueue{
+				UnsolvedQueue: Params.QuotaConfig.NQInQueueThreshold,
 			},
 		}}
-		factor = quotaCenter.checkQueryQueue()
-		assert.Equal(t, float64(0), factor)
+		factor = quotaCenter.checkNQInQuery()
+		assert.Equal(t, RateCoolOffSpeed, factor)
 
-		// test one-third queue
+		// test no cool off
 		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{
-			SearchNQInQueue: metricsinfo.ReadInfoInQueue{
-				UnsolvedQueue: Params.QuotaConfig.MaxNQInQueue / 3,
+			SearchQueue: metricsinfo.ReadInfoInQueue{
+				UnsolvedQueue: Params.QuotaConfig.NQInQueueThreshold - 1,
 			},
 		}}
-		factor = quotaCenter.checkQueryQueue()
-		ok := math.Abs(factor-2.0/3.0) < 0.0001
-		assert.True(t, ok)
+		factor = quotaCenter.checkNQInQuery()
+		assert.Equal(t, 1.0, factor)
+		//ok := math.Abs(factor-1.0) < 0.0001
+		//assert.True(t, ok)
 
-		// test half queue
+		Params.QuotaConfig.NQInQueueThreshold = bak
+	})
+
+	t.Run("test checkQueryLatency", func(t *testing.T) {
+		quotaCenter := NewQuotaCenter(pcm, &queryCoordMockForQuota{}, &dataCoordMockForQuota{}, core.tsoAllocator)
+		factor := quotaCenter.checkQueryLatency()
+		assert.Equal(t, float64(1), factor)
+
+		// test cool off
+		bak := Params.QuotaConfig.QueueLatencyThreshold
+		Params.QuotaConfig.QueueLatencyThreshold = float64(3 * time.Second)
 		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{
-			QueryTasksInQueue: metricsinfo.ReadInfoInQueue{
-				UnsolvedQueue: Params.QuotaConfig.MaxQueryTasksInQueue / 2,
+			SearchQueue: metricsinfo.ReadInfoInQueue{
+				AvgQueueDuration: time.Duration(Params.QuotaConfig.QueueLatencyThreshold),
 			},
 		}}
-		factor = quotaCenter.checkQueryQueue()
-		ok = math.Abs(factor-0.5) < 0.0001
-		assert.True(t, ok)
+		factor = quotaCenter.checkQueryLatency()
+		assert.Equal(t, RateCoolOffSpeed, factor)
+
+		// test no cool off
+		quotaCenter.queryNodeMetrics = []*metricsinfo.QueryNodeQuotaMetrics{{
+			SearchQueue: metricsinfo.ReadInfoInQueue{
+				AvgQueueDuration: 1 * time.Second,
+			},
+		}}
+		factor = quotaCenter.checkQueryLatency()
+		assert.Equal(t, 1.0, factor)
+		//ok := math.Abs(factor-1.0) < 0.0001
+		//assert.True(t, ok)
+
+		Params.QuotaConfig.QueueLatencyThreshold = bak
 	})
 
 	t.Run("test memoryToWaterLevel", func(t *testing.T) {

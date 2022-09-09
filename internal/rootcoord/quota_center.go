@@ -265,6 +265,13 @@ func (q *QuotaCenter) getRealTimeRate(rateType internalpb.RateType) float64 {
 	return rate
 }
 
+// guaranteeMinRate make sure the rate will not be less than the min rate.
+func (q *QuotaCenter) guaranteeMinRate(minRate float64, rateType internalpb.RateType) {
+	if minRate > 0 && q.currentRates[rateType] < minRate {
+		q.currentRates[rateType] = minRate
+	}
+}
+
 // calculateReadRates calculates and sets dql rates.
 func (q *QuotaCenter) calculateReadRates() {
 	if Params.QuotaConfig.ForceDenyReading {
@@ -279,6 +286,8 @@ func (q *QuotaCenter) calculateReadRates() {
 		if q.currentRates[internalpb.RateType_DQLQuery] != Inf {
 			q.currentRates[internalpb.RateType_DQLQuery] = realTimeQueryRate * RateCoolOffSpeed
 		}
+		q.guaranteeMinRate(Params.QuotaConfig.DQLMinSearchRate, internalpb.RateType_DQLSearch)
+		q.guaranteeMinRate(Params.QuotaConfig.DQLMinQueryRate, internalpb.RateType_DQLQuery)
 	}
 
 	// TODO: unify search and query?
@@ -333,6 +342,8 @@ func (q *QuotaCenter) calculateWriteRates() error {
 	if q.currentRates[internalpb.RateType_DMLDelete] != Inf {
 		q.currentRates[internalpb.RateType_DMLDelete] *= ttFactor
 	}
+	q.guaranteeMinRate(Params.QuotaConfig.DMLMinInsertRate, internalpb.RateType_DMLInsert)
+	q.guaranteeMinRate(Params.QuotaConfig.DMLMinDeleteRate, internalpb.RateType_DMLDelete)
 	return nil
 }
 
@@ -356,13 +367,13 @@ func (q *QuotaCenter) resetCurrentRates() {
 		rt := internalpb.RateType(rateType)
 		switch rt {
 		case internalpb.RateType_DMLInsert:
-			q.currentRates[rt] = Params.QuotaConfig.DMLInsertRate
+			q.currentRates[rt] = Params.QuotaConfig.DMLMaxInsertRate
 		case internalpb.RateType_DMLDelete:
-			q.currentRates[rt] = Params.QuotaConfig.DMLDeleteRate
+			q.currentRates[rt] = Params.QuotaConfig.DMLMaxDeleteRate
 		case internalpb.RateType_DQLSearch:
-			q.currentRates[rt] = Params.QuotaConfig.DQLSearchRate
+			q.currentRates[rt] = Params.QuotaConfig.DQLMaxSearchRate
 		case internalpb.RateType_DQLQuery:
-			q.currentRates[rt] = Params.QuotaConfig.DQLQueryRate
+			q.currentRates[rt] = Params.QuotaConfig.DQLMaxQueryRate
 		}
 		if q.currentRates[rt] < 0 {
 			q.currentRates[rt] = Inf // no limit

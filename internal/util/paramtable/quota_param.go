@@ -17,6 +17,7 @@
 package paramtable
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -38,13 +39,18 @@ type quotaConfig struct {
 	DDLCompactionRate float64
 
 	// dml
-	DMLInsertRate   float64
-	DMLDeleteRate   float64
-	DMLBulkLoadRate float64
+	DMLMaxInsertRate   float64
+	DMLMinInsertRate   float64
+	DMLMaxDeleteRate   float64
+	DMLMinDeleteRate   float64
+	DMLMaxBulkLoadRate float64
+	DMLMinBulkLoadRate float64
 
 	// dql
-	DQLSearchRate float64
-	DQLQueryRate  float64
+	DQLMaxSearchRate float64
+	DQLMinSearchRate float64
+	DQLMaxQueryRate  float64
+	DQLMinQueryRate  float64
 
 	// limits
 	MaxCollectionNum int
@@ -73,12 +79,17 @@ func (p *quotaConfig) init(base *BaseTable) {
 	p.initDDLFlushRate()
 	p.initDDLCompactionRate()
 
-	p.initDMLInsertRate()
-	p.initDMLDeleteRate()
-	p.initDMLBulkLoadRate()
+	p.initDMLMaxInsertRate()
+	p.initDMLMinInsertRate()
+	p.initDMLMaxDeleteRate()
+	p.initDMLMinDeleteRate()
+	p.initDMLMaxBulkLoadRate()
+	p.initDMLMinBulkLoadRate()
 
-	p.initDQLSearchRate()
-	p.initDQLQueryRate()
+	p.initDQLMaxSearchRate()
+	p.initDQLMinSearchRate()
+	p.initDQLMaxQueryRate()
+	p.initDQLMinQueryRate()
 
 	p.initMaxCollectionNum()
 
@@ -126,33 +137,73 @@ func megaBytesRate2Bytes(f float64) float64 {
 	return f * 1024 * 1024
 }
 
-func (p *quotaConfig) initDMLInsertRate() {
-	p.DMLInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate", -1)
-	if p.DMLInsertRate > 0 {
-		p.DMLInsertRate = megaBytesRate2Bytes(p.DMLInsertRate)
+func (p *quotaConfig) checkMinMax(min, max float64) {
+	if min > 0 && max > 0 && min > max {
+		panic(fmt.Errorf("init QuotaConfig failed, max rate must be greater than or equal to min rate"))
 	}
 }
 
-func (p *quotaConfig) initDMLDeleteRate() {
-	p.DMLDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate", -1)
-	if p.DMLDeleteRate > 0 {
-		p.DMLDeleteRate = megaBytesRate2Bytes(p.DMLDeleteRate)
+func (p *quotaConfig) initDMLMaxInsertRate() {
+	p.DMLMaxInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate.max", -1)
+	if p.DMLMaxInsertRate > 0 {
+		p.DMLMaxInsertRate = megaBytesRate2Bytes(p.DMLMaxInsertRate)
 	}
 }
 
-func (p *quotaConfig) initDMLBulkLoadRate() {
-	p.DMLBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.bulkLoadRate", -1)
-	if p.DMLBulkLoadRate > 0 {
-		p.DMLBulkLoadRate = megaBytesRate2Bytes(p.DMLBulkLoadRate)
+func (p *quotaConfig) initDMLMinInsertRate() {
+	p.DMLMinInsertRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.insertRate.min", -1)
+	if p.DMLMinInsertRate > 0 {
+		p.DMLMinInsertRate = megaBytesRate2Bytes(p.DMLMinInsertRate)
+	}
+	p.checkMinMax(p.DMLMinInsertRate, p.DMLMaxInsertRate)
+}
+
+func (p *quotaConfig) initDMLMaxDeleteRate() {
+	p.DMLMaxDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate.max", -1)
+	if p.DMLMaxDeleteRate > 0 {
+		p.DMLMaxDeleteRate = megaBytesRate2Bytes(p.DMLMaxDeleteRate)
 	}
 }
 
-func (p *quotaConfig) initDQLSearchRate() {
-	p.DQLSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate", -1)
+func (p *quotaConfig) initDMLMinDeleteRate() {
+	p.DMLMinDeleteRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.deleteRate.min", -1)
+	if p.DMLMinDeleteRate > 0 {
+		p.DMLMinDeleteRate = megaBytesRate2Bytes(p.DMLMinDeleteRate)
+	}
+	p.checkMinMax(p.DMLMinDeleteRate, p.DMLMaxDeleteRate)
 }
 
-func (p *quotaConfig) initDQLQueryRate() {
-	p.DQLQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate", -1)
+func (p *quotaConfig) initDMLMaxBulkLoadRate() {
+	p.DMLMaxBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.bulkLoadRate.max", -1)
+	if p.DMLMaxBulkLoadRate > 0 {
+		p.DMLMaxBulkLoadRate = megaBytesRate2Bytes(p.DMLMaxBulkLoadRate)
+	}
+}
+
+func (p *quotaConfig) initDMLMinBulkLoadRate() {
+	p.DMLMinBulkLoadRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dml.bulkLoadRate.min", -1)
+	if p.DMLMinBulkLoadRate > 0 {
+		p.DMLMinBulkLoadRate = megaBytesRate2Bytes(p.DMLMinBulkLoadRate)
+	}
+	p.checkMinMax(p.DMLMinBulkLoadRate, p.DMLMaxBulkLoadRate)
+}
+
+func (p *quotaConfig) initDQLMaxSearchRate() {
+	p.DQLMaxSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate.max", -1)
+}
+
+func (p *quotaConfig) initDQLMinSearchRate() {
+	p.DQLMinSearchRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.searchRate.min", -1)
+	p.checkMinMax(p.DQLMinSearchRate, p.DQLMaxSearchRate)
+}
+
+func (p *quotaConfig) initDQLMaxQueryRate() {
+	p.DQLMaxQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate.max", -1)
+}
+
+func (p *quotaConfig) initDQLMinQueryRate() {
+	p.DQLMinQueryRate = p.Base.ParseFloatWithDefault("quotaAndLimits.dql.queryRate.min", -1)
+	p.checkMinMax(p.DQLMinQueryRate, p.DQLMaxQueryRate)
 }
 
 func (p *quotaConfig) initMaxCollectionNum() {

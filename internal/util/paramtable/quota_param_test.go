@@ -41,14 +41,19 @@ func TestQuotaParam(t *testing.T) {
 	})
 
 	t.Run("test dml", func(t *testing.T) {
-		assert.Equal(t, float64(-1), qc.DMLInsertRate)
-		assert.Equal(t, float64(-1), qc.DMLDeleteRate)
-		assert.Equal(t, float64(-1), qc.DMLBulkLoadRate)
+		assert.Equal(t, float64(-1), qc.DMLMaxInsertRate)
+		assert.Equal(t, float64(-1), qc.DMLMinInsertRate)
+		assert.Equal(t, float64(-1), qc.DMLMaxDeleteRate)
+		assert.Equal(t, float64(-1), qc.DMLMinDeleteRate)
+		assert.Equal(t, float64(-1), qc.DMLMaxBulkLoadRate)
+		assert.Equal(t, float64(-1), qc.DMLMinBulkLoadRate)
 	})
 
 	t.Run("test dql", func(t *testing.T) {
-		assert.Equal(t, float64(-1), qc.DQLSearchRate)
-		assert.Equal(t, float64(-1), qc.DQLQueryRate)
+		assert.Equal(t, float64(-1), qc.DQLMaxSearchRate)
+		assert.Equal(t, float64(-1), qc.DQLMinSearchRate)
+		assert.Equal(t, float64(-1), qc.DQLMaxQueryRate)
+		assert.Equal(t, float64(-1), qc.DQLMinQueryRate)
 	})
 
 	t.Run("test limits", func(t *testing.T) {

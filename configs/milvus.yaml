@@ -373,16 +373,32 @@ quotaAndLimits:
     flushRate: -1 # requests per minute
     compactionRate: -1 # requests per minute
 
-  dml: # dml limit rates, -1 means no limit, default no limit.
-    insertRate: -1 # MB/s
-    deleteRate: -1 # MB/s
-    bulkLoadRate: -1 # MB/s TODO: limit bulkLoad rate
+  # dml limit rates, -1 means no limit, default no limit.
+  # The maximum rate will not be greater than `max`,
+  # and the rate after handling back pressure will not be less than `min`.
+  dml:
+    insertRate:
+      max: -1 # MB/s
+      min: -1 # MB/s
+    deleteRate:
+      max: -1 # MB/s
+      min: -1 # MB/s
+    bulkLoadRate: # not support yet. TODO: limit bulkLoad rate
+      max: -1 # MB/s
+      min: -1 # MB/s
 
-  dql: # dql limit rates, -1 means no limit, default no limit.
-    searchRate: -1 # rps/nq*qps
-    queryRate: -1 # rps
+  # dql limit rates, -1 means no limit, default no limit.
+  # The maximum rate will not be greater than `max`,
+  # and the rate after handling back pressure will not be less than `min`.
+  dql:
+    searchRate:
+      max: -1 # vps/nq*qps
+      min: -1 # vps/nq*qps
+    queryRate:
+      max: -1 # vps/nq*qps
+      min: -1 # vps/nq*qps
 
-  limits: # TODO: add comments
+  limits: # not fully support yet. TODO: add comments and support limits
     collection:
       maxNum: 64 # max number of collections in a Milvus instance.
       maxNameLength: 256 # Maximum length of name for a collection or alias.

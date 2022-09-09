@@ -111,15 +111,15 @@ func (rl *rateLimiter) registerLimiters() {
 		case internalpb.RateType_DDLCompaction:
 			r = Params.QuotaConfig.DDLCompactionRate
 		case internalpb.RateType_DMLInsert:
-			r = Params.QuotaConfig.DMLInsertRate
+			r = Params.QuotaConfig.DMLMaxInsertRate
 		case internalpb.RateType_DMLDelete:
-			r = Params.QuotaConfig.DMLDeleteRate
+			r = Params.QuotaConfig.DMLMaxDeleteRate
 		case internalpb.RateType_DMLBulkLoad:
-			r = Params.QuotaConfig.DMLBulkLoadRate
+			r = Params.QuotaConfig.DMLMaxBulkLoadRate
 		case internalpb.RateType_DQLSearch:
-			r = Params.QuotaConfig.DQLSearchRate
+			r = Params.QuotaConfig.DQLMaxSearchRate
 		case internalpb.RateType_DQLQuery:
-			r = Params.QuotaConfig.DQLQueryRate
+			r = Params.QuotaConfig.DQLMaxQueryRate
 		}
 		log.Info("RateLimiter register for rateType",
 			zap.String("rateType", internalpb.RateType_name[rt]),

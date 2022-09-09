@@ -19,7 +19,6 @@ package rootcoord
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/proxy"
 	"sync"
 	"time"
 
@@ -30,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
+	"github.com/milvus-io/milvus/internal/proxy"
 	"github.com/milvus-io/milvus/internal/tso"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
@@ -40,15 +40,17 @@ import (
 const (
 	GetMetricsTimeout = 10 * time.Second
 	SetRatesTimeout   = 10 * time.Second
+
+	RateWarmUpSpeed  = 1.5 // TODO: 1. add to config; 2. warm up gradually?
+	RateCoolOffSpeed = 0.9 // TODO: add to config
 )
 
 type ForceDenyTriggerReason string
 
 const (
-	ManualForceDeny    ForceDenyTriggerReason = "ManualForceDeny"
-	MemoryExhausted    ForceDenyTriggerReason = "MemoryExhausted"
-	ReadQueueExhausted ForceDenyTriggerReason = "ReadQueueExhausted"
-	TimeTickLongDelay  ForceDenyTriggerReason = "TimeTickLongDelay"
+	ManualForceDeny   ForceDenyTriggerReason = "ManualForceDeny"
+	MemoryExhausted   ForceDenyTriggerReason = "MemoryExhausted"
+	TimeTickLongDelay ForceDenyTriggerReason = "TimeTickLongDelay"
 )
 
 type RateAllocateStrategy int32
@@ -76,10 +78,6 @@ type QuotaCenter struct {
 	queryNodeMetrics []*metricsinfo.QueryNodeQuotaMetrics
 	dataNodeMetrics  []*metricsinfo.DataNodeQuotaMetrics
 	proxyMetrics     []*metricsinfo.ProxyQuotaMetrics
-
-	enableTTProtection bool
-	enableTTProtection bool
-	enableTTProtection bool // TODO:
 
 	currentRates map[internalpb.RateType]float64
 	tsoAllocator tso.Allocator
@@ -245,26 +243,54 @@ func (q *QuotaCenter) forceDenyReading(reason ForceDenyTriggerReason) {
 	log.Warn("QuotaCenter force to deny reading", zap.String("reason", string(reason)))
 }
 
+// getRealTimeRate return real time rate in Proxy.
+func (q *QuotaCenter) getRealTimeRate(rateType internalpb.RateType) float64 {
+	var rate float64
+	for _, metric := range q.proxyMetrics {
+		for _, r := range metric.Rms {
+			if r.Label == rateType.String() {
+				rate += r.Rate
+			}
+		}
+	}
+	return rate
+}
+
+// calculateReadRates calculates and sets dql rates.
 func (q *QuotaCenter) calculateReadRates() {
 	if Params.QuotaConfig.ForceDenyReading {
 		q.forceDenyReading(ManualForceDeny)
 		return
 	}
 
-	queueFactor := q.checkQueryQueue()
-	if queueFactor <= 0 {
-		q.forceDenyReading(ReadQueueExhausted)
+	coolOff := func(realTimeSearchRate float64, realTimeQueryRate float64) {
+		if q.currentRates[internalpb.RateType_DQLSearch] != Inf {
+			q.currentRates[internalpb.RateType_DQLSearch] = realTimeSearchRate * RateCoolOffSpeed
+		}
+		if q.currentRates[internalpb.RateType_DQLQuery] != Inf {
+			q.currentRates[internalpb.RateType_DQLQuery] = realTimeQueryRate * RateCoolOffSpeed
+		}
+	}
+
+	// TODO: unify search and query?
+	realTimeSearchRate := q.getRealTimeRate(internalpb.RateType_DQLSearch)
+	realTimeQueryRate := q.getRealTimeRate(internalpb.RateType_DQLQuery)
+
+	queueLatencyFactor := q.checkQueryLatency()
+	log.RatedDebug(10, "QuotaCenter checkQueryLatency done", zap.Float64("queueLatencyFactor", queueLatencyFactor))
+	if queueLatencyFactor == RateCoolOffSpeed {
+		coolOff(realTimeSearchRate, realTimeQueryRate)
 		return
 	}
-	log.RatedDebug(10, "QuotaCenter check checkQueryQueue done", zap.Float64("queueFactor", queueFactor))
-	if q.currentRates[internalpb.RateType_DQLSearch] != Inf {
-		q.currentRates[internalpb.RateType_DQLSearch] *= queueFactor
-	}
-	if q.currentRates[internalpb.RateType_DQLQuery] != Inf {
-		q.currentRates[internalpb.RateType_DQLQuery] *= queueFactor
+
+	queueLengthFactor := q.checkNQInQuery()
+	log.RatedDebug(10, "QuotaCenter checkNQInQuery done", zap.Float64("queueLengthFactor", queueLengthFactor))
+	if queueLengthFactor == RateCoolOffSpeed {
+		coolOff(realTimeSearchRate, realTimeQueryRate)
 	}
 }
 
+// calculateWriteRates calculates and sets dml rates.
 func (q *QuotaCenter) calculateWriteRates() error {
 	if Params.QuotaConfig.ForceDenyWriting {
 		q.forceDenyWriting(ManualForceDeny)
@@ -291,6 +317,7 @@ func (q *QuotaCenter) calculateWriteRates() error {
 	if ttFactor < memFactor {
 		ttFactor = memFactor
 	}
+
 	if q.currentRates[internalpb.RateType_DMLInsert] != Inf {
 		q.currentRates[internalpb.RateType_DMLInsert] *= ttFactor
 	}
@@ -328,6 +355,9 @@ func (q *QuotaCenter) resetCurrentRates() {
 		case internalpb.RateType_DQLQuery:
 			q.currentRates[rt] = Params.QuotaConfig.DQLQueryRate
 		}
+		if q.currentRates[rt] < 0 {
+			q.currentRates[rt] = Inf // no limit
+		}
 	}
 }
 
@@ -336,7 +366,8 @@ func (q *QuotaCenter) resetCurrentRates() {
 func (q *QuotaCenter) timeTickDelay() (float64, error) {
 	maxTt := Params.QuotaConfig.MaxTimeTickDelay
 	if maxTt < 0 {
-		return -1, nil
+		// < 0 means disable tt protection
+		return 1, nil
 	}
 
 	minTSafe := typeutil.MaxTimestamp
@@ -366,32 +397,44 @@ func (q *QuotaCenter) timeTickDelay() (float64, error) {
 	return float64(maxTt.Nanoseconds()-delay.Nanoseconds()) / float64(maxTt.Nanoseconds()), nil
 }
 
-// checkQueryQueue checks search nq and query tasks number in QueryNode,
-// and return the factor according to max query task number and max search nq number.
-func (q *QuotaCenter) checkQueryQueue() float64 {
+// checkNQInQuery checks search&query nq in QueryNode,
+// and return the factor according to NQInQueueThreshold.
+func (q *QuotaCenter) checkNQInQuery() float64 {
 	sum := func(ri metricsinfo.ReadInfoInQueue) int64 {
 		return ri.UnsolvedQueue + ri.ReadyQueue + ri.ReceiveChan + ri.ExecuteChan
 	}
 
 	factor := float64(1)
-	maxNQInQueue := Params.QuotaConfig.MaxNQInQueue
-	maxQueriesInQueue := Params.QuotaConfig.MaxQueryTasksInQueue
+	nqInQueueThreshold := Params.QuotaConfig.NQInQueueThreshold
+	if nqInQueueThreshold < 0 {
+		// < 0 means disable queue length protection
+		return factor
+	}
 	for _, metric := range q.queryNodeMetrics {
 		searchNQSum := sum(metric.SearchNQInQueue)
 		queryTasksSum := sum(metric.QueryTasksInQueue)
-		if searchNQSum >= maxNQInQueue {
-			return 0
-		} else if queryTasksSum >= maxQueriesInQueue {
-			return 0
-		} else {
-			p := float64(maxNQInQueue-searchNQSum) / float64(maxNQInQueue)
-			if p < factor {
-				factor = p
-			}
-			p = float64(maxQueriesInQueue-queryTasksSum) / float64(maxQueriesInQueue)
-			if p < factor {
-				factor = p
-			}
+		nqInQueue := searchNQSum + queryTasksSum // We think of the NQ of query request as 1.
+		if nqInQueue >= nqInQueueThreshold {
+			return RateCoolOffSpeed
+		}
+	}
+	return factor
+}
+
+// checkQueryLatency checks queueing latency in QueryNode for search&query requests,
+// and return the factor according to QueueLatencyThreshold.
+func (q *QuotaCenter) checkQueryLatency() float64 {
+	factor := float64(1)
+	queueLatencyThreshold := Params.QuotaConfig.QueueLatencyThreshold
+	if queueLatencyThreshold < 0 {
+		// < 0 means disable queue latency protection
+		return factor
+	}
+	for _, metric := range q.queryNodeMetrics {
+		searchLatency := metric.SearchNQInQueue.AvgQueueDuration
+		queryLatency := metric.QueryTasksInQueue.AvgQueueDuration
+		if float64(searchLatency) >= queueLatencyThreshold || float64(queryLatency) >= queueLatencyThreshold {
+			return RateCoolOffSpeed
 		}
 	}
 	return factor

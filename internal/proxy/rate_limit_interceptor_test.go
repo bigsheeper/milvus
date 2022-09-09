@@ -30,10 +30,11 @@ import (
 
 type limiterMock struct {
 	limit bool
+	rate  float64
 }
 
-func (l *limiterMock) Limit(_ internalpb.RateType, _ int) bool {
-	return l.limit
+func (l *limiterMock) Limit(_ internalpb.RateType, _ int) (bool, float64) {
+	return l.limit, l.rate
 }
 
 func TestRateLimitInterceptor(t *testing.T) {
@@ -85,7 +86,7 @@ func TestRateLimitInterceptor(t *testing.T) {
 	})
 
 	t.Run("test RateLimitInterceptor", func(t *testing.T) {
-		limiter := limiterMock{}
+		limiter := limiterMock{rate: 100}
 		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 			return nil, nil
 		}

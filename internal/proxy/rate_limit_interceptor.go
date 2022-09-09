@@ -19,6 +19,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/commonpb"
 	"reflect"
 
 	"github.com/golang/protobuf/proto"
@@ -36,8 +37,12 @@ func RateLimitInterceptor(limiter types.Limiter) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		rt, n, err := getRequestInfo(req)
 		if err == nil {
-			if limiter.Limit(rt, n) {
+			limit, rate := limiter.Limit(rt, n)
+			if limit {
 				return nil, status.Errorf(codes.ResourceExhausted, "%s is rejected by grpc RateLimiter middleware, please retry later.", info.FullMethod)
+			}
+			if rate == 0 {
+				return nil, status.Errorf(codes.ResourceExhausted, commonpb.ErrorCode_ForceDeny.String())
 			}
 		}
 		return handler(ctx, req)
@@ -70,7 +75,7 @@ func getRequestInfo(req interface{}) (internalpb.RateType, int, error) {
 		return internalpb.RateType_DDLFlush, 1, nil
 	case *milvuspb.ManualCompactionRequest:
 		return internalpb.RateType_DDLCompaction, 1, nil
-		// TODO: support more ddl request
+		// TODO: support more request
 	default:
 		if req == nil {
 			return 0, 0, fmt.Errorf("null request")

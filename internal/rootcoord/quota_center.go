@@ -76,7 +76,7 @@ const Inf = float64(proxy.Inf)
 //   2. Memory protection -> 			dmlRate = maxDMLRate * (highMem - curMem) / (highMem - lowMem)
 //   3. DQL Queue length protection ->  dqlRate = curDQLRate * RateCoolOffSpeed
 //   4. DQL queue latency protection -> dqlRate = curDQLRate * RateCoolOffSpeed
-// If necessary, user can also manually force denying reading or writing.
+// If necessary, user can also manually force to deny RW requests.
 type QuotaCenter struct {
 	// clients
 	proxies    *proxyClientManager

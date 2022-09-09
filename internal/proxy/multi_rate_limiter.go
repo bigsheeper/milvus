@@ -42,10 +42,10 @@ func NewMultiRateLimiter() *MultiRateLimiter {
 }
 
 // Limit returns true, the request will be rejected.
-// Otherwise, the request will pass.
-func (m *MultiRateLimiter) Limit(rt internalpb.RateType, n int) bool {
+// Otherwise, the request will pass. Limit also returns limit of limiter.
+func (m *MultiRateLimiter) Limit(rt internalpb.RateType, n int) (bool, float64) {
 	if !Params.QuotaConfig.EnableQuotaAndLimits {
-		return false // never limit
+		return false, 0 // no limit
 	}
 	// TODO: call other rate limiters
 	return m.globalRateLimiter.limit(rt, n)
@@ -67,8 +67,8 @@ func newRateLimiter() *rateLimiter {
 
 // limit returns true, the request will be rejected.
 // Otherwise, the request will pass.
-func (rl *rateLimiter) limit(rt internalpb.RateType, n int) bool {
-	return !rl.limiters[rt].AllowN(time.Now(), n)
+func (rl *rateLimiter) limit(rt internalpb.RateType, n int) (bool, float64) {
+	return !rl.limiters[rt].AllowN(time.Now(), n), float64(rl.limiters[rt].Limit())
 }
 
 // setRates sets new rates for the limiters.

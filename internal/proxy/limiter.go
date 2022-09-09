@@ -60,6 +60,13 @@ func NewLimiter(r Limit, b int) *Limiter {
 	}
 }
 
+// Limit returns the maximum overall event rate.
+func (lim *Limiter) Limit() Limit {
+	lim.mu.Lock()
+	defer lim.mu.Unlock()
+	return lim.limit
+}
+
 // AllowN reports whether n events may happen at time now.
 func (lim *Limiter) AllowN(now time.Time, n int) bool {
 	lim.mu.Lock()

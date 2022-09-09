@@ -39,9 +39,9 @@ type TimeTickProvider interface {
 
 // Limiter defines the interface to perform request rate limiting.
 // If Limit function return true, the request will be rejected.
-// Otherwise, the request will pass.
+// Otherwise, the request will pass. Limit also returns limit of limiter.
 type Limiter interface {
-	Limit(rt internalpb.RateType, n int) bool
+	Limit(rt internalpb.RateType, n int) (bool, float64)
 }
 
 // Component is the interface all services implement

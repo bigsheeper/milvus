@@ -358,7 +358,7 @@ common:
 #   1. DML throughput limitation;
 #   2. DDL, DQL qps/rps limitation;
 #   3. DQL Queue length/latency protection;
-# If necessary, you can also manually force denying reading or writing.
+# If necessary, you can also manually force to deny RW requests.
 quotaAndLimits:
   enable: true # `true` to enable quota and limits, `false` to disable.
 

@@ -406,28 +406,6 @@ quotaAndLimits:
       #max: -1 # qps, default no limit
       #min: -1 # qps, default 0
 
-#  limits: # not support yet. TODO: add comments and support limits
-#    collection:
-#      maxNum: 64 # max number of collections in a Milvus instance.
-#      maxNameLength: 256 # Maximum length of name for a collection or alias.
-#      maxDimension: 32768
-#      maxShardNum: 256
-#      maxRetention: 60 # days,
-#    partition:
-#      maxNum: 4096
-#      maxNameLength: 256
-#    field:
-#      maxNum: 256 # Maximum number of fields in a collection.
-#      maxNameLength: 256
-#    index:
-#      maxNum: 16
-#      maxNameLength: 256
-#      maxDescriptionLength: 4096
-#    dql:
-#      maxQueryParamLength: 256
-#      maxReturnSize: 512 # MB
-#      maxNQ: 32768
-
   # limitWriting decides whether dml requests are allowed.
   limitWriting:
     # forceDeny `false` means dml requests are allowed (except for some

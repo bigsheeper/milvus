@@ -18,18 +18,58 @@ package querynode
 
 import (
 	"context"
-	"log"
 	"math"
 	"testing"
 
-	"github.com/milvus-io/milvus/internal/util/funcutil"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/milvus-io/milvus/api/commonpb"
 	"github.com/milvus-io/milvus/internal/common"
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 )
+
+// command: go test -bench=^\QBenchmarkReduce_reduceSearchResultsAndFillData\E$ -benchtime=10000x
+func BenchmarkReduce_reduceSearchResultsAndFillData(b *testing.B) {
+	const (
+		nb = 200000
+		nq = 100
+	)
+
+	log.SetLevel(zapcore.ErrorLevel)
+	defer log.SetLevel(zapcore.DebugLevel)
+
+	collection := newCollection(defaultCollectionID, genTestCollectionSchema())
+	segment1, err := genSimpleSealedSegment(nb)
+	assert.NoError(b, err)
+
+	sliceNQs := []int64{nq / 2, nq / 2}
+	sliceTopKs := []int64{defaultTopK, defaultTopK}
+	sInfo := parseSliceInfo(sliceNQs, sliceTopKs, nq)
+	req, err := genSearchPlanAndRequests(collection, IndexFaissIDMap, nq)
+	assert.NoError(b, err)
+
+	results := make([][]*SearchResult, 0)
+	for i := 0; i < b.N; i++ {
+		res1, err := segment1.search(req)
+		assert.NoError(b, err)
+		res2, err := segment1.search(req)
+		assert.NoError(b, err)
+		searchResults := make([]*SearchResult, 0, 2)
+		searchResults = append(searchResults, res1)
+		searchResults = append(searchResults, res2)
+		results = append(results, searchResults)
+	}
+
+	// start benchmark
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err = reduceSearchResultsAndFillData(req.plan, results[i], 2, sInfo.sliceNQs, sInfo.sliceTopKs)
+		assert.NoError(b, err)
+	}
+}
 
 func TestReduce_parseSliceInfo(t *testing.T) {
 	originNQs := []int64{2, 3, 2}
@@ -81,9 +121,7 @@ func TestReduce_AllFunc(t *testing.T) {
 	}
 
 	placeGroupByte, err := proto.Marshal(&placeholderGroup)
-	if err != nil {
-		log.Print("marshal placeholderGroup failed")
-	}
+	assert.NoError(t, err)
 
 	dslString := "{\"bool\": { \n\"vector\": {\n \"floatVectorField\": {\n \"metric_type\": \"L2\", \n \"params\": {\n \"nprobe\": 10 \n},\n \"query\": \"$0\",\n \"topk\": 10 \n,\"round_decimal\": 6\n } \n } \n } \n }"
 

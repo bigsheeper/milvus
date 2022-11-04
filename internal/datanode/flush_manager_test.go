@@ -538,7 +538,7 @@ func TestFlushNotifyFunc(t *testing.T) {
 	}
 	cm := storage.NewLocalChunkManager(storage.RootPath(flushTestDir))
 
-	channel := newChannel("channel", 1, nil, rcf, cm)
+	channel := newChannel("channel", 1, nil, rcf, nil, cm)
 
 	dataCoord := &DataCoordFactory{}
 	flushingCache := newCache()
@@ -614,7 +614,7 @@ func TestDropVirtualChannelFunc(t *testing.T) {
 	vchanName := "vchan_01"
 
 	cm := storage.NewLocalChunkManager(storage.RootPath(flushTestDir))
-	channel := newChannel(vchanName, 1, nil, rcf, cm)
+	channel := newChannel(vchanName, 1, nil, rcf, nil, cm)
 
 	dataCoord := &DataCoordFactory{}
 	flushingCache := newCache()

@@ -50,7 +50,7 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 		rc := &RootCoordFactory{
 			pkType: schemapb.DataType_Int64,
 		}
-		channel := newChannel("a", 1, nil, rc, cm)
+		channel := newChannel("a", 1, nil, rc, nil, cm)
 		var err error
 
 		task := &compactionTask{
@@ -269,7 +269,7 @@ func TestCompactionTaskInnerMethods(t *testing.T) {
 			Return(&milvuspb.DescribeCollectionResponse{
 				Schema: meta.GetSchema(),
 			}, nil)
-		channel := newChannel("a", collectionID, meta.GetSchema(), rc, nil)
+		channel := newChannel("a", collectionID, meta.GetSchema(), rc, nil, nil)
 		t.Run("Merge without expiration", func(t *testing.T) {
 			alloc := NewAllocatorFactory(1)
 			mockbIO := &binlogIO{cm, alloc}
@@ -638,7 +638,7 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 			mockfm := &mockFlushManager{}
 			mockKv := memkv.NewMemoryKV()
 			mockbIO := &binlogIO{cm, alloc}
-			channel := newChannel("a", c.colID, nil, rc, cm)
+			channel := newChannel("a", c.colID, nil, rc, nil, cm)
 
 			channel.addFlushedSegmentWithPKs(c.segID1, c.colID, c.parID, 2, c.iData1)
 			channel.addFlushedSegmentWithPKs(c.segID2, c.colID, c.parID, 2, c.iData2)
@@ -764,7 +764,7 @@ func TestCompactorInterfaceMethods(t *testing.T) {
 		}
 		mockfm := &mockFlushManager{}
 		mockbIO := &binlogIO{cm, alloc}
-		channel := newChannel("channelname", collID, nil, rc, cm)
+		channel := newChannel("channelname", collID, nil, rc, nil, cm)
 
 		channel.addFlushedSegmentWithPKs(segID1, collID, partID, 2, &storage.Int64FieldData{Data: []UniqueID{1}})
 		channel.addFlushedSegmentWithPKs(segID2, collID, partID, 2, &storage.Int64FieldData{Data: []UniqueID{1}})

@@ -850,6 +850,7 @@ func flushNotifyFunc(dsService *dataSyncService, opts ...retry.Option) notifyMet
 		if pack.flushed || pack.dropped {
 			dsService.channel.segmentFlushed(pack.segmentID)
 		}
+		dsService.channel.updateSegmentDMLPosition(pack.segmentID, pack.pos)
 		dsService.flushingSegCache.Remove(req.GetSegmentID())
 	}
 }

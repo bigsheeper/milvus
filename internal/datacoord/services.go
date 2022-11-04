@@ -514,6 +514,12 @@ func (s *Server) DropVirtualChannel(ctx context.Context, req *datapb.DropVirtual
 	}
 
 	log.Info("DropVChannel plan to remove", zap.String("channel", channel))
+	err = s.meta.RemoveChannelPosition(channel)
+	if err != nil {
+		log.Error("RemoveChannelPosition failed", zap.String("vChannel", channel), zap.Error(err))
+		resp.Status.Reason = err.Error()
+		return resp, nil
+	}
 	err = s.channelManager.Release(nodeID, channel)
 	if err != nil {
 		log.Warn("DropVChannel failed to ReleaseAndRemove", zap.String("channel", channel), zap.Error(err))
@@ -1164,6 +1170,29 @@ func (s *Server) UpdateSegmentStatistics(ctx context.Context, req *datapb.Update
 		return resp, nil
 	}
 	s.updateSegmentStatistics(req.GetStats())
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+	}, nil
+}
+
+// UpdateChannelPosition updates channelPosition in dataCoord.
+func (s *Server) UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error) {
+	resp := &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_UnexpectedError,
+	}
+	if s.isClosed() {
+		log.Warn("failed to update channel position for closed server")
+		resp.Reason = msgDataCoordIsUnhealthy(Params.DataCoordCfg.GetNodeID())
+		return resp, nil
+	}
+
+	err := s.meta.UpdateChannelPosition(req.GetVChannel(), req.GetPosition())
+	if err != nil {
+		log.Warn("failed to UpdateChannelPosition", zap.String("vChannel", req.GetVChannel()), zap.Error(err))
+		resp.Reason = err.Error()
+		return resp, nil
+	}
+
 	return &commonpb.Status{
 		ErrorCode: commonpb.ErrorCode_Success,
 	}, nil

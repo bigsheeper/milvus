@@ -372,6 +372,11 @@ func (s *Server) UpdateSegmentStatistics(ctx context.Context, req *datapb.Update
 	return s.dataCoord.UpdateSegmentStatistics(ctx, req)
 }
 
+// UpdateChannelPosition updates channelPosition in dataCoord.
+func (s *Server) UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error) {
+	return s.dataCoord.UpdateChannelPosition(ctx, req)
+}
+
 // AcquireSegmentLock acquire the reference lock of the segments.
 func (s *Server) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
 	return s.dataCoord.AcquireSegmentLock(ctx, req)

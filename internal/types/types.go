@@ -311,6 +311,8 @@ type DataCoord interface {
 
 	// UpdateSegmentStatistics updates a segment's stats.
 	UpdateSegmentStatistics(ctx context.Context, req *datapb.UpdateSegmentStatisticsRequest) (*commonpb.Status, error)
+	// UpdateChannelPosition updates channelPosition in dataCoord.
+	UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error)
 
 	AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error)
 	ReleaseSegmentLock(ctx context.Context, req *datapb.ReleaseSegmentLockRequest) (*commonpb.Status, error)

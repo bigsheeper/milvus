@@ -169,6 +169,8 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 
 	ibNode.WriteTimeTick(fgMsg.timeRange.timestampMax, seg2Upload)
 
+	ibNode.channel.setChannelPosition(endPositions[0])
+
 	res := flowGraphMsg{
 		deleteMessages: fgMsg.deleteMessages,
 		timeRange:      fgMsg.timeRange,
@@ -555,9 +557,6 @@ func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, endPos
 
 	// store in buffer
 	ibNode.insertBuffer.Store(currentSegID, buffer)
-
-	// store current endPositions as Segment->EndPostion
-	ibNode.channel.updateSegmentEndPosition(currentSegID, endPos)
 
 	return nil
 }

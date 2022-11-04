@@ -657,6 +657,25 @@ func (c *Client) UpdateSegmentStatistics(ctx context.Context, req *datapb.Update
 	return ret.(*commonpb.Status), err
 }
 
+// UpdateChannelPosition updates channelPosition in dataCoord.
+func (c *Client) UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error) {
+	req = typeutil.Clone(req)
+	commonpbutil.UpdateMsgBase(
+		req.GetBase(),
+		commonpbutil.FillMsgBaseFromClient(Params.DataCoordCfg.GetNodeID(), commonpbutil.WithTargetID(c.sess.ServerID)),
+	)
+	ret, err := c.grpcClient.ReCall(ctx, func(client datapb.DataCoordClient) (any, error) {
+		if !funcutil.CheckCtxValid(ctx) {
+			return nil, ctx.Err()
+		}
+		return client.UpdateChannelPosition(ctx, req)
+	})
+	if err != nil || ret == nil {
+		return nil, err
+	}
+	return ret.(*commonpb.Status), err
+}
+
 // AcquireSegmentLock acquire the reference lock of the segments.
 func (c *Client) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
 	req = typeutil.Clone(req)

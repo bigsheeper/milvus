@@ -57,6 +57,11 @@ func (mek *mockEtcdKv) LoadWithPrefix(key string) ([]string, []string, error) {
 	case strings.Contains(key, datacoord.SegmentStatslogPathPrefix):
 		segInfo := getFieldBinlogPaths(1, "statslog1")
 		val, _ = proto.Marshal(segInfo)
+	case strings.Contains(key, datacoord.ChannelPositionPrefix):
+		channelPosition := &internalpb.MsgPosition{
+			Timestamp: 1000,
+		}
+		val, _ = proto.Marshal(channelPosition)
 	default:
 		return nil, nil, fmt.Errorf("invalid key")
 	}
@@ -1046,4 +1051,55 @@ func equalCollectionInfo(t *testing.T, a *collectionInfo, b *collectionInfo) {
 	assert.Equal(t, a.Schema, b.Schema)
 	assert.Equal(t, a.Properties, b.Properties)
 	assert.Equal(t, a.StartPositions, b.StartPositions)
+}
+
+func TestChannelPosition(t *testing.T) {
+	mockVChannel := "fake-by-dev-rootcoord-dml-1-testchannel-position-v0"
+	mockPChannel := "fake-by-dev-rootcoord-dml-1"
+
+	pos := &internalpb.MsgPosition{
+		ChannelName: mockPChannel,
+		MsgID:       []byte{},
+		Timestamp:   1000,
+	}
+
+	t.Run("UpdateChannelPosition", func(t *testing.T) {
+		meta, err := newMeta(context.TODO(), memkv.NewMemoryKV(), "")
+		assert.NoError(t, err)
+
+		// nil position
+		err = meta.UpdateChannelPosition(mockVChannel, nil)
+		assert.Error(t, err)
+
+		err = meta.UpdateChannelPosition(mockVChannel, pos)
+		assert.NoError(t, err)
+	})
+
+	t.Run("GetChannelPosition", func(t *testing.T) {
+		meta, err := newMeta(context.TODO(), memkv.NewMemoryKV(), "")
+		assert.NoError(t, err)
+
+		position := meta.GetChannelPosition(mockVChannel)
+		assert.Nil(t, position)
+
+		err = meta.UpdateChannelPosition(mockVChannel, pos)
+		assert.NoError(t, err)
+		position = meta.GetChannelPosition(mockVChannel)
+		assert.NotNil(t, position)
+		assert.True(t, position.ChannelName == pos.ChannelName)
+		assert.True(t, position.Timestamp == pos.Timestamp)
+	})
+
+	t.Run("RemoveChannelPosition", func(t *testing.T) {
+		meta, err := newMeta(context.TODO(), memkv.NewMemoryKV(), "")
+		assert.NoError(t, err)
+
+		err = meta.RemoveChannelPosition(mockVChannel)
+		assert.NoError(t, err)
+
+		err = meta.UpdateChannelPosition(mockVChannel, pos)
+		assert.NoError(t, err)
+		err = meta.RemoveChannelPosition(mockVChannel)
+		assert.NoError(t, err)
+	})
 }

@@ -271,6 +271,13 @@ func (coord *DataCoordMock) UpdateSegmentStatistics(ctx context.Context, req *da
 	}, nil
 }
 
+func (coord *DataCoordMock) UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error) {
+	return &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+		Reason:    "",
+	}, nil
+}
+
 func (coord *DataCoordMock) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
 	return &commonpb.Status{
 		ErrorCode: commonpb.ErrorCode_Success,

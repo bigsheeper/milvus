@@ -132,6 +132,7 @@ func (dsService *dataSyncService) start() {
 		log.Warn("dataSyncService starting flow graph is nil", zap.Int64("collectionID", dsService.collectionID),
 			zap.String("vChanName", dsService.vchannelName))
 	}
+	go dsService.channel.start()
 }
 
 func (dsService *dataSyncService) close() {
@@ -147,6 +148,7 @@ func (dsService *dataSyncService) close() {
 
 	dsService.cancelFn()
 	dsService.flushManager.close()
+	dsService.channel.stop()
 }
 
 func (dsService *dataSyncService) clearGlobalFlushingCache() {
@@ -202,6 +204,7 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 				partitionID:  segment.PartitionID,
 				numOfRows:    segment.GetNumOfRows(),
 				statsBinLogs: segment.Statslogs,
+				startPos:     segment.GetStartPosition(),
 				endPos:       segment.GetDmlPosition(),
 				recoverTs:    vchanInfo.GetSeekPosition().GetTimestamp()}); err != nil {
 				return nil, err
@@ -237,6 +240,8 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 				partitionID:  segment.PartitionID,
 				numOfRows:    segment.GetNumOfRows(),
 				statsBinLogs: segment.Statslogs,
+				startPos:     segment.GetStartPosition(),
+				endPos:       segment.GetDmlPosition(),
 				recoverTs:    vchanInfo.GetSeekPosition().GetTimestamp(),
 			}); err != nil {
 				return nil, err

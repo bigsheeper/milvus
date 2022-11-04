@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/stretchr/testify/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -85,6 +86,9 @@ func (m *MockDataCoord) Stop() error {
 
 func (m *MockDataCoord) Register() error {
 	return m.regErr
+}
+
+func (*MockDataCoord) SetAddress(address string) {
 }
 
 func (m *MockDataCoord) SetEtcdClient(etcdClient *clientv3.Client) {
@@ -237,6 +241,7 @@ func (m *MockDataCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHeal
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func Test_NewServer(t *testing.T) {
+	paramtable.Init()
 	ctx := context.Background()
 	server := NewServer(ctx, nil)
 	assert.NotNil(t, server)

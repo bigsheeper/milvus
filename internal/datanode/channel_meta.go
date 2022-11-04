@@ -36,6 +36,7 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/commonpbutil"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -131,7 +132,7 @@ func (c *ChannelMeta) segmentFlushed(segID UniqueID) {
 	if seg, ok := c.segments[segID]; ok {
 		seg.setType(datapb.SegmentType_Flushed)
 	}
-	metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID())).Dec()
+	metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 }
 
 // new2NormalSegment transfers a segment from *New* to *Normal*.
@@ -216,7 +217,7 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 	c.segments[req.segID] = seg
 	c.segMu.Unlock()
 	if req.segType == datapb.SegmentType_New || req.segType == datapb.SegmentType_Normal {
-		metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID())).Inc()
+		metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 	}
 	return nil
 }
@@ -414,7 +415,7 @@ func (c *ChannelMeta) removeSegments(segIDs ...UniqueID) {
 
 		delete(c.segments, segID)
 	}
-	metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID())).Sub(float64(cnt))
+	metrics.DataNodeNumUnflushedSegments.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Sub(float64(cnt))
 }
 
 // hasSegment checks whether this channel has a segment according to segment ID.
@@ -684,7 +685,7 @@ func (c *ChannelMeta) updateChannelPosition() {
 	defer cancel()
 	resp, err := c.dataCoord.UpdateChannelPosition(ctx, &datapb.UpdateChannelPositionRequest{
 		Base: commonpbutil.NewMsgBase(
-			commonpbutil.WithSourceID(Params.DataNodeCfg.GetNodeID()),
+			commonpbutil.WithSourceID(paramtable.GetNodeID()),
 		),
 		VChannel: c.channelName,
 		Position: channelPos,

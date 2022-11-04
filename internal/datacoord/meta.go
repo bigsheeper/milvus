@@ -44,10 +44,11 @@ import (
 
 type meta struct {
 	sync.RWMutex
-	ctx         context.Context
-	catalog     metastore.DataCoordCatalog
-	collections map[UniqueID]*collectionInfo // collection id to collection info
-	segments    *SegmentsInfo                // segment id to segment info
+	ctx              context.Context
+	catalog          metastore.DataCoordCatalog
+	collections      map[UniqueID]*collectionInfo       // collection id to collection info
+	segments         *SegmentsInfo                      // segment id to segment info
+	channelPositions map[string]*internalpb.MsgPosition // vChannel -> seek position
 }
 
 type collectionInfo struct {
@@ -61,10 +62,11 @@ type collectionInfo struct {
 // NewMeta creates meta from provided `kv.TxnKV`
 func newMeta(ctx context.Context, kv kv.TxnKV, chunkManagerRootPath string) (*meta, error) {
 	mt := &meta{
-		ctx:         ctx,
-		catalog:     &datacoord.Catalog{Txn: kv, ChunkManagerRootPath: chunkManagerRootPath},
-		collections: make(map[UniqueID]*collectionInfo),
-		segments:    NewSegmentsInfo(),
+		ctx:              ctx,
+		catalog:          &datacoord.Catalog{Txn: kv, ChunkManagerRootPath: chunkManagerRootPath},
+		collections:      make(map[UniqueID]*collectionInfo),
+		segments:         NewSegmentsInfo(),
+		channelPositions: make(map[string]*internalpb.MsgPosition),
 	}
 	err := mt.reloadFromKV()
 	if err != nil {
@@ -96,6 +98,14 @@ func (m *meta) reloadFromKV() error {
 	}
 	metrics.DataCoordNumStoredRows.WithLabelValues().Set(float64(numStoredRows))
 	metrics.DataCoordNumStoredRowsCounter.WithLabelValues().Add(float64(numStoredRows))
+
+	channelPositions, err := m.catalog.ListChannelPositions(m.ctx)
+	if err != nil {
+		return err
+	}
+	for vChannel, pos := range channelPositions {
+		m.channelPositions[vChannel] = pos
+	}
 	return nil
 }
 
@@ -1122,5 +1132,45 @@ func (m *meta) GetCompactionTo(segmentID int64) *SegmentInfo {
 			return segment
 		}
 	}
+	return nil
+}
+
+// UpdateChannelPosition updates and saves channelPosition.
+func (m *meta) UpdateChannelPosition(vChannel string, pos *internalpb.MsgPosition) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if pos == nil {
+		return fmt.Errorf("channelPosition is nil, vChannel=%s", vChannel)
+	}
+
+	oldPosition, ok := m.channelPositions[vChannel]
+	if !ok || oldPosition.Timestamp < pos.Timestamp {
+		err := m.catalog.SaveChannelPosition(m.ctx, vChannel, pos)
+		if err != nil {
+			return err
+		}
+		m.channelPositions[vChannel] = pos
+	}
+	return nil
+}
+
+func (m *meta) GetChannelPosition(vChannel string) *internalpb.MsgPosition {
+	m.RLock()
+	defer m.RUnlock()
+	if m.channelPositions[vChannel] == nil {
+		return nil
+	}
+	return proto.Clone(m.channelPositions[vChannel]).(*internalpb.MsgPosition)
+}
+
+func (m *meta) RemoveChannelPosition(vChannel string) error {
+	m.Lock()
+	defer m.Unlock()
+	err := m.catalog.RemoveChannelPosition(m.ctx, vChannel)
+	if err != nil {
+		return err
+	}
+	delete(m.channelPositions, vChannel)
 	return nil
 }

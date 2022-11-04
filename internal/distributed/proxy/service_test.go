@@ -593,6 +593,10 @@ func (m *MockDataCoord) UpdateSegmentStatistics(ctx context.Context, req *datapb
 	return nil, nil
 }
 
+func (m *MockDataCoord) UpdateChannelPosition(ctx context.Context, req *datapb.UpdateChannelPositionRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
 func (m *MockDataCoord) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
 	return nil, nil
 }

@@ -152,7 +152,7 @@ func TestDataSyncService_newDataSyncService(te *testing.T) {
 			df := &DataCoordFactory{}
 			rc := &RootCoordFactory{pkType: schemapb.DataType_Int64}
 
-			channel := newChannel("channel", test.collID, nil, rc, cm)
+			channel := newChannel("channel", test.collID, nil, rc, nil, cm)
 			if test.channelNil {
 				channel = nil
 			}
@@ -212,7 +212,7 @@ func TestDataSyncService_Start(t *testing.T) {
 	resendTTChan := make(chan resendTTMsg, 100)
 	cm := storage.NewLocalChunkManager(storage.RootPath(dataSyncServiceTestDir))
 	defer cm.RemoveWithPrefix(ctx, "")
-	channel := newChannel(insertChannelName, collectionID, collMeta.GetSchema(), mockRootCoord, cm)
+	channel := newChannel(insertChannelName, collectionID, collMeta.GetSchema(), mockRootCoord, nil, cm)
 
 	allocFactory := NewAllocatorFactory(1)
 	factory := dependency.NewDefaultFactory(true)
@@ -415,7 +415,7 @@ func TestClearGlobalFlushingCache(t *testing.T) {
 	dataCoord := &DataCoordFactory{}
 	cm := storage.NewLocalChunkManager(storage.RootPath(dataSyncServiceTestDir))
 	defer cm.RemoveWithPrefix(ctx, "")
-	channel := newChannel("channel", 1, nil, &RootCoordFactory{pkType: schemapb.DataType_Int64}, cm)
+	channel := newChannel("channel", 1, nil, &RootCoordFactory{pkType: schemapb.DataType_Int64}, nil, cm)
 	var err error
 
 	cache := newCache()

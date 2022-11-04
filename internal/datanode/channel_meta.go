@@ -19,8 +19,12 @@ package datanode
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/common"
@@ -30,9 +34,11 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/commonpbutil"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"go.uber.org/zap"
 )
 
 type (
@@ -60,7 +66,7 @@ type Channel interface {
 	filterSegments(partitionID UniqueID) []*Segment
 	listNewSegmentsStartPositions() []*datapb.SegmentStartPosition
 	transferNewSegments(segmentIDs []UniqueID)
-	updateSegmentEndPosition(segID UniqueID, endPos *internalpb.MsgPosition)
+	updateSegmentDMLPosition(segID UniqueID, endPos *internalpb.MsgPosition)
 	updateSegmentPKRange(segID UniqueID, ids storage.FieldData)
 	mergeFlushedSegments(seg *Segment, planID UniqueID, compactedFrom []UniqueID) error
 	hasSegment(segID UniqueID, countFlushed bool) bool
@@ -72,25 +78,34 @@ type Channel interface {
 	RollPKstats(segID UniqueID, stats []*storage.PrimaryKeyStats)
 	getSegmentStatisticsUpdates(segID UniqueID) (*datapb.SegmentStats, error)
 	segmentFlushed(segID UniqueID)
+
+	start()
+	stop()
+	setChannelPosition(pos *internalpb.MsgPosition)
 }
 
 // ChannelMeta contains channel meta and the latest segments infos of the channel.
 type ChannelMeta struct {
-	collectionID UniqueID
-	channelName  string
-	collSchema   *schemapb.CollectionSchema
-	schemaMut    sync.RWMutex
+	collectionID    UniqueID
+	channelName     string
+	channelPosition *internalpb.MsgPosition
+	collSchema      *schemapb.CollectionSchema
+	schemaMut       sync.RWMutex
 
 	segMu    sync.RWMutex
 	segments map[UniqueID]*Segment
 
+	dataCoord    types.DataCoord
 	metaService  *metaService
 	chunkManager storage.ChunkManager
+
+	stopOnce sync.Once
+	stopChan chan struct{}
 }
 
 var _ Channel = &ChannelMeta{}
 
-func newChannel(channelName string, collID UniqueID, schema *schemapb.CollectionSchema, rc types.RootCoord, cm storage.ChunkManager) *ChannelMeta {
+func newChannel(channelName string, collID UniqueID, schema *schemapb.CollectionSchema, rc types.RootCoord, dc types.DataCoord, cm storage.ChunkManager) *ChannelMeta {
 	metaService := newMetaService(rc, collID)
 
 	channel := ChannelMeta{
@@ -100,8 +115,10 @@ func newChannel(channelName string, collID UniqueID, schema *schemapb.Collection
 
 		segments: make(map[UniqueID]*Segment),
 
+		dataCoord:    dc,
 		metaService:  metaService,
 		chunkManager: cm,
+		stopChan:     make(chan struct{}),
 	}
 
 	return &channel
@@ -184,7 +201,7 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 		segmentID:    req.segID,
 		numRows:      req.numOfRows, // 0 if segType == NEW
 		startPos:     req.startPos,
-		endPos:       req.endPos,
+		dmlPos:       req.endPos,
 	}
 	seg.sType.Store(req.segType)
 	// Set up pk stats
@@ -356,18 +373,18 @@ func (c *ChannelMeta) transferNewSegments(segmentIDs []UniqueID) {
 	}
 }
 
-// updateSegmentEndPosition updates *New* or *Normal* segment's end position.
-func (c *ChannelMeta) updateSegmentEndPosition(segID UniqueID, endPos *internalpb.MsgPosition) {
+// updateSegmentDMLPosition updates segment's dml position.
+func (c *ChannelMeta) updateSegmentDMLPosition(segID UniqueID, endPos *internalpb.MsgPosition) {
 	c.segMu.Lock()
 	defer c.segMu.Unlock()
 
 	seg, ok := c.segments[segID]
-	if ok && seg.notFlushed() {
-		seg.endPos = endPos
+	if ok {
+		seg.dmlPos = endPos
 		return
 	}
 
-	log.Warn("No match segment", zap.Int64("ID", segID))
+	log.Warn("No match segment", zap.String("vChannel", c.channelName), zap.Int64("ID", segID))
 }
 
 func (c *ChannelMeta) updateSegmentPKRange(segID UniqueID, ids storage.FieldData) {
@@ -605,4 +622,79 @@ func (c *ChannelMeta) listNotFlushedSegmentIDs() []UniqueID {
 	}
 
 	return segIDs
+}
+
+const (
+	updateChanPosInterval = 1 * time.Minute
+	updateChanPosTimeout  = 10 * time.Second
+)
+
+func (c *ChannelMeta) start() {
+	timer := time.NewTicker(updateChanPosInterval)
+	defer c.updateChannelPosition() // updateChannelPosition before exit
+	for {
+		select {
+		case <-c.stopChan:
+			log.Debug("Stop ChannelMeta", zap.String("vChannel", c.channelName))
+			return
+		case <-timer.C:
+			c.updateChannelPosition()
+		}
+	}
+}
+
+func (c *ChannelMeta) stop() {
+	c.stopOnce.Do(func() {
+		c.stopChan <- struct{}{}
+	})
+}
+
+func (c *ChannelMeta) setChannelPosition(pos *internalpb.MsgPosition) {
+	c.channelPosition = pos
+}
+
+func (c *ChannelMeta) getChannelPosition() *internalpb.MsgPosition {
+	var channelPos = &internalpb.MsgPosition{Timestamp: math.MaxUint64}
+	if c.channelPosition != nil {
+		channelPos = proto.Clone(c.channelPosition).(*internalpb.MsgPosition)
+	}
+	c.segMu.RLock()
+	defer c.segMu.RUnlock()
+	for _, seg := range c.segments {
+		var segPos *internalpb.MsgPosition
+		if seg.dmlPos != nil {
+			segPos = seg.dmlPos
+		} else {
+			segPos = seg.startPos
+		}
+		if segPos.Timestamp < channelPos.Timestamp {
+			channelPos = segPos
+		}
+	}
+	return channelPos
+}
+
+func (c *ChannelMeta) updateChannelPosition() {
+	channelPos := c.getChannelPosition()
+	if channelPos.MsgID == nil {
+		return
+	}
+	channelPosTs, _ := tsoutil.ParseTS(channelPos.Timestamp)
+
+	ctx, cancel := context.WithTimeout(context.Background(), updateChanPosTimeout)
+	defer cancel()
+	resp, err := c.dataCoord.UpdateChannelPosition(ctx, &datapb.UpdateChannelPositionRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithSourceID(paramtable.GetNodeID()),
+		),
+		VChannel: c.channelName,
+		Position: channelPos,
+	})
+	if err = funcutil.VerifyResponse(resp, err); err != nil {
+		log.Warn("UpdateChannelPosition failed", zap.String("channel", c.channelName),
+			zap.Time("channelPosTs", channelPosTs), zap.Error(err))
+		return
+	}
+
+	log.Info("UpdateChannelPosition success", zap.String("channel", c.channelName), zap.Time("channelPosTs", channelPosTs))
 }

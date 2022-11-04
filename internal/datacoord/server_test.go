@@ -3138,6 +3138,36 @@ func TestDataCoord_MarkSegmentsDropped(t *testing.T) {
 	})
 }
 
+func TestDataCoordServer_UpdateChannelPosition(t *testing.T) {
+	mockVChannel := "fake-by-dev-rootcoord-dml-1-testchannel-position-v0"
+	mockPChannel := "fake-by-dev-rootcoord-dml-1"
+
+	t.Run("UpdateChannelPosition", func(t *testing.T) {
+		svr := newTestServer(t, nil)
+		defer closeTestServer(t, svr)
+
+		req := &datapb.UpdateChannelPositionRequest{
+			Base: &commonpb.MsgBase{
+				SourceID: paramtable.GetNodeID(),
+			},
+			VChannel: mockVChannel,
+			Position: &internalpb.MsgPosition{
+				ChannelName: mockPChannel,
+				Timestamp:   1000,
+			},
+		}
+
+		resp, err := svr.UpdateChannelPosition(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.EqualValues(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+
+		req.Position = nil
+		resp, err = svr.UpdateChannelPosition(context.TODO(), req)
+		assert.NoError(t, err)
+		assert.EqualValues(t, commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	})
+}
+
 // https://github.com/milvus-io/milvus/issues/15659
 func TestIssue15659(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/samber/lo"
@@ -43,7 +44,7 @@ func TestNewChannel(t *testing.T) {
 	rc := &RootCoordFactory{}
 	cm := storage.NewLocalChunkManager(storage.RootPath(channelMetaNodeTestDir))
 	defer cm.RemoveWithPrefix(context.Background(), "")
-	channel := newChannel("channel", 0, nil, rc, cm)
+	channel := newChannel("channel", 0, nil, rc, nil, cm)
 	assert.NotNil(t, channel)
 }
 
@@ -112,7 +113,7 @@ func TestChannelMeta_InnerFunction(t *testing.T) {
 	var (
 		collID  = UniqueID(1)
 		cm      = storage.NewLocalChunkManager(storage.RootPath(channelMetaNodeTestDir))
-		channel = newChannel("insert-01", collID, nil, rc, cm)
+		channel = newChannel("insert-01", collID, nil, rc, nil, cm)
 	)
 	defer cm.RemoveWithPrefix(ctx, "")
 
@@ -142,7 +143,7 @@ func TestChannelMeta_InnerFunction(t *testing.T) {
 	assert.Equal(t, UniqueID(1), seg.collectionID)
 	assert.Equal(t, UniqueID(2), seg.partitionID)
 	assert.Equal(t, Timestamp(100), seg.startPos.Timestamp)
-	assert.Equal(t, Timestamp(200), seg.endPos.Timestamp)
+	assert.Equal(t, Timestamp(200), seg.dmlPos.Timestamp)
 	assert.Equal(t, int64(0), seg.numRows)
 	assert.Equal(t, datapb.SegmentType_New, seg.getType())
 
@@ -218,7 +219,7 @@ func TestChannelMeta_segmentFlushed(t *testing.T) {
 	defer cm.RemoveWithPrefix(ctx, "")
 
 	t.Run("Test coll mot match", func(t *testing.T) {
-		channel := newChannel("channel", collID, nil, rc, cm)
+		channel := newChannel("channel", collID, nil, rc, nil, cm)
 		err := channel.addSegment(
 			addSegmentReq{
 				segType:     datapb.SegmentType_New,
@@ -301,7 +302,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 		}
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				channel := newChannel("a", test.channelCollID, nil, rc, cm)
+				channel := newChannel("a", test.channelCollID, nil, rc, nil, cm)
 				if test.isvalid {
 					channel.addFlushedSegmentWithPKs(100, test.incollID, 10, 1, primaryKeyData)
 
@@ -336,7 +337,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				channel := newChannel("a", test.channelCollID, nil, rc, cm)
+				channel := newChannel("a", test.channelCollID, nil, rc, nil, cm)
 				require.False(t, channel.hasSegment(test.inSegID, true))
 				err := channel.addSegment(
 					addSegmentReq{
@@ -379,7 +380,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				channel := newChannel("a", test.channelCollID, nil, rc, &mockDataCM{})
+				channel := newChannel("a", test.channelCollID, nil, rc, nil, &mockDataCM{})
 				require.False(t, channel.hasSegment(test.inSegID, true))
 				err := channel.addSegment(
 					addSegmentReq{
@@ -407,7 +408,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 	})
 
 	t.Run("Test_addNormalSegmentWithNilDml", func(t *testing.T) {
-		channel := newChannel("a", 1, nil, rc, &mockDataCM{})
+		channel := newChannel("a", 1, nil, rc, nil, &mockDataCM{})
 		segID := int64(101)
 		require.False(t, channel.hasSegment(segID, true))
 		assert.NotPanics(t, func() {
@@ -455,7 +456,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				channel.updateSegmentEndPosition(test.inSegID, new(internalpb.MsgPosition))
+				channel.updateSegmentDMLPosition(test.inSegID, new(internalpb.MsgPosition))
 			})
 		}
 	})
@@ -476,7 +477,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				channel := newChannel("a", test.channelCollID, nil, rc, cm)
+				channel := newChannel("a", test.channelCollID, nil, rc, nil, cm)
 
 				if test.metaServiceErr {
 					channel.collSchema = nil
@@ -548,7 +549,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 	})
 
 	t.Run("Test_addSegmentMinIOLoadError", func(t *testing.T) {
-		channel := newChannel("a", 1, nil, rc, cm)
+		channel := newChannel("a", 1, nil, rc, nil, cm)
 		channel.chunkManager = &mockDataCMError{}
 
 		err := channel.addSegment(
@@ -576,7 +577,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 	})
 
 	t.Run("Test_addSegmentStatsError", func(t *testing.T) {
-		channel := newChannel("insert-01", 1, nil, rc, cm)
+		channel := newChannel("insert-01", 1, nil, rc, nil, cm)
 		channel.chunkManager = &mockDataCMStatsError{}
 		var err error
 
@@ -605,7 +606,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 	})
 
 	t.Run("Test_addSegmentPkfilterError", func(t *testing.T) {
-		channel := newChannel("insert-01", 1, nil, rc, cm)
+		channel := newChannel("insert-01", 1, nil, rc, nil, cm)
 		channel.chunkManager = &mockPkfilterMergeError{}
 		var err error
 
@@ -634,7 +635,7 @@ func TestChannelMeta_InterfaceMethod(t *testing.T) {
 	})
 
 	t.Run("Test_mergeFlushedSegments", func(t *testing.T) {
-		channel := newChannel("channel", 1, nil, rc, cm)
+		channel := newChannel("channel", 1, nil, rc, nil, cm)
 
 		primaryKeyData := &storage.Int64FieldData{
 			Data: []UniqueID{1},
@@ -742,7 +743,7 @@ func TestChannelMeta_UpdatePKRange(t *testing.T) {
 
 	cm := storage.NewLocalChunkManager(storage.RootPath(channelMetaNodeTestDir))
 	defer cm.RemoveWithPrefix(ctx, "")
-	channel := newChannel("chanName", collID, nil, rc, cm)
+	channel := newChannel("chanName", collID, nil, rc, nil, cm)
 	channel.chunkManager = &mockDataCM{}
 
 	err := channel.addSegment(
@@ -787,6 +788,93 @@ func TestChannelMeta_UpdatePKRange(t *testing.T) {
 
 }
 
+func TestChannelMeta_ChannelPosition(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rc := &RootCoordFactory{
+		pkType: schemapb.DataType_Int64,
+	}
+	dc := &DataCoordFactory{}
+
+	mockVChannel := "fake-by-dev-rootcoord-dml-1-testchannel-position-v0"
+	mockPChannel := "fake-by-dev-rootcoord-dml-1"
+
+	collID := UniqueID(1)
+	cm := storage.NewLocalChunkManager(storage.RootPath(channelMetaNodeTestDir))
+	defer func() {
+		err := cm.RemoveWithPrefix(ctx, "")
+		assert.NoError(t, err)
+	}()
+
+	t.Run("start and stop", func(t *testing.T) {
+		channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
+		channel.chunkManager = &mockDataCM{}
+		go channel.start()
+		time.Sleep(10 * time.Millisecond)
+		channel.stop()
+	})
+
+	t.Run("get and set", func(t *testing.T) {
+		pos := &internalpb.MsgPosition{
+			ChannelName: mockPChannel,
+			Timestamp:   1000,
+		}
+		channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
+		channel.chunkManager = &mockDataCM{}
+		channel.setChannelPosition(pos)
+		position := channel.getChannelPosition()
+		assert.NotNil(t, position)
+		assert.True(t, position.ChannelName == pos.ChannelName)
+		assert.True(t, position.Timestamp == pos.Timestamp)
+	})
+
+	t.Run("updateSegmentDMLPosition and get", func(t *testing.T) {
+		run := func(segStartPos, segDMLPos, dmlPos, expectedPos *internalpb.MsgPosition) {
+			segmentID := UniqueID(1)
+			channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
+			channel.chunkManager = &mockDataCM{}
+			if segStartPos != nil {
+				err := channel.addSegment(
+					addSegmentReq{
+						segType:  datapb.SegmentType_New,
+						segID:    segmentID,
+						collID:   collID,
+						startPos: segStartPos,
+					})
+				assert.NoError(t, err)
+			}
+			channel.updateSegmentDMLPosition(segmentID, segDMLPos)
+			channel.setChannelPosition(dmlPos)
+			resPos := channel.getChannelPosition()
+			assert.NotNil(t, resPos)
+			assert.True(t, resPos.ChannelName == expectedPos.ChannelName)
+			assert.True(t, resPos.Timestamp == expectedPos.Timestamp)
+		}
+
+		run(&internalpb.MsgPosition{Timestamp: 50},
+			&internalpb.MsgPosition{Timestamp: 100},
+			&internalpb.MsgPosition{Timestamp: 120},
+			&internalpb.MsgPosition{Timestamp: 100})
+
+		// nil endDMLPos
+		run(&internalpb.MsgPosition{Timestamp: 50},
+			nil,
+			&internalpb.MsgPosition{Timestamp: 120},
+			&internalpb.MsgPosition{Timestamp: 50})
+
+		// nil segment
+		run(nil, nil,
+			&internalpb.MsgPosition{Timestamp: 120},
+			&internalpb.MsgPosition{Timestamp: 120})
+	})
+
+	t.Run("updateChannelPosition", func(t *testing.T) {
+		channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
+		channel.chunkManager = &mockDataCM{}
+		channel.updateChannelPosition()
+	})
+}
+
 // ChannelMetaSuite setup test suite for ChannelMeta
 type ChannelMetaSuite struct {
 	suite.Suite
@@ -804,7 +892,7 @@ func (s *ChannelMetaSuite) SetupSuite() {
 	}
 	s.collID = 1
 	s.cm = storage.NewLocalChunkManager(storage.RootPath(channelMetaNodeTestDir))
-	s.channel = newChannel("channel", s.collID, nil, rc, s.cm)
+	s.channel = newChannel("channel", s.collID, nil, rc, nil, s.cm)
 	s.vchanName = "channel"
 }
 

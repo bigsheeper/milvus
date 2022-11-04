@@ -43,7 +43,7 @@ func (fm *flowgraphManager) addAndStart(dn *DataNode, vchan *datapb.VchannelInfo
 		return nil
 	}
 
-	channel := newChannel(vchan.GetChannelName(), vchan.GetCollectionID(), schema, dn.rootCoord, dn.chunkManager)
+	channel := newChannel(vchan.GetChannelName(), vchan.GetCollectionID(), schema, dn.rootCoord, dn.dataCoord, dn.chunkManager)
 
 	var alloc allocatorInterface = newAllocator(dn.rootCoord)
 

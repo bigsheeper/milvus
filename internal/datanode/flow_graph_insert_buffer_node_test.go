@@ -78,7 +78,7 @@ func TestFlowGraphInsertBufferNodeCreate(t *testing.T) {
 		pkType: schemapb.DataType_Int64,
 	}
 
-	channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, cm)
+	channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, nil, cm)
 	err = channel.addSegment(
 		addSegmentReq{
 			segType:     datapb.SegmentType_New,
@@ -171,7 +171,7 @@ func TestFlowGraphInsertBufferNode_Operate(t *testing.T) {
 		pkType: schemapb.DataType_Int64,
 	}
 
-	channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, cm)
+	channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, nil, cm)
 
 	err = channel.addSegment(
 		addSegmentReq{
@@ -637,7 +637,7 @@ func TestRollBF(t *testing.T) {
 		assert.Equal(t, datapb.SegmentType_New, seg.getType())
 		assert.Equal(t, int64(1), seg.numRows)
 		assert.Equal(t, uint64(100), seg.startPos.GetTimestamp())
-		assert.Equal(t, uint64(123), seg.endPos.GetTimestamp())
+		assert.Equal(t, uint64(123), seg.dmlPos.GetTimestamp())
 		// because this is the origincal
 		assert.True(t, seg.currentStat.PkFilter.Cap() > uint(1000000))
 
@@ -666,7 +666,7 @@ func TestRollBF(t *testing.T) {
 		assert.Equal(t, datapb.SegmentType_Normal, seg.getType())
 		assert.Equal(t, int64(2), seg.numRows)
 		assert.Equal(t, uint64(100), seg.startPos.GetTimestamp())
-		assert.Equal(t, uint64(234), seg.endPos.GetTimestamp())
+		assert.Equal(t, uint64(234), seg.dmlPos.GetTimestamp())
 		// filter should be rolled
 
 		assert.Nil(t, seg.currentStat)
@@ -695,7 +695,7 @@ func (s *InsertBufferNodeSuit) SetupSuite() {
 
 	s.collID = 1
 	s.partID = 10
-	s.channel = newChannel("channel", s.collID, nil, rc, s.cm)
+	s.channel = newChannel("channel", s.collID, nil, rc, nil, s.cm)
 	s.cm = storage.NewLocalChunkManager(storage.RootPath(insertBufferNodeTestDir))
 
 	s.originalConfig = Params.DataNodeCfg.FlushInsertBufferSize
@@ -930,7 +930,7 @@ func TestInsertBufferNode_bufferInsertMsg(t *testing.T) {
 			compactTs: 100,
 		}
 
-		channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, cm)
+		channel := newChannel(insertChannelName, collMeta.ID, collMeta.Schema, mockRootCoord, nil, cm)
 		err = channel.addSegment(
 			addSegmentReq{
 				segType:     datapb.SegmentType_New,
@@ -989,7 +989,7 @@ func TestInsertBufferNode_updateSegmentStates(te *testing.T) {
 	}
 
 	for _, test := range invalideTests {
-		channel := newChannel("channel", test.channelCollID, nil, &RootCoordFactory{pkType: schemapb.DataType_Int64}, cm)
+		channel := newChannel("channel", test.channelCollID, nil, &RootCoordFactory{pkType: schemapb.DataType_Int64}, nil, cm)
 
 		ibNode := &insertBufferNode{
 			channel: channel,

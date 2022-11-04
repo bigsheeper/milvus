@@ -42,7 +42,7 @@ type Segment struct {
 	historyStats []*storage.PkStatistics
 
 	startPos *internalpb.MsgPosition // TODO readonly
-	endPos   *internalpb.MsgPosition
+	dmlPos   *internalpb.MsgPosition
 }
 
 type addSegmentReq struct {

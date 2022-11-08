@@ -319,10 +319,9 @@ func TestDataNode(t *testing.T) {
 			Base: &commonpb.MsgBase{
 				TargetID: node1.session.ServerID,
 			},
-			DbID:           0,
-			CollectionID:   1,
-			SegmentIDs:     []int64{},
-			MarkSegmentIDs: []int64{2},
+			DbID:         0,
+			CollectionID: 1,
+			SegmentIDs:   []int64{},
 		}
 
 		status, err = node1.FlushSegments(node1.ctx, req)

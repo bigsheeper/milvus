@@ -29,7 +29,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
-	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
@@ -47,11 +46,10 @@ import (
 type insertBufferNode struct {
 	BaseNode
 
-	ctx          context.Context
-	channelName  string
-	insertBuffer sync.Map // SegmentID to BufferData
-	channel      Channel
-	idAllocator  allocatorInterface
+	ctx         context.Context
+	channelName string
+	channel     Channel
+	idAllocator allocatorInterface
 
 	flushMap         sync.Map
 	flushChan        <-chan flushMsg
@@ -155,7 +153,7 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 
 	// insert messages -> buffer
 	for _, msg := range fgMsg.insertMessages {
-		err := ibNode.bufferInsertMsg(msg, endPositions[0])
+		err := ibNode.bufferInsertMsg(msg, startPositions[0], endPositions[0])
 		if err != nil {
 			// error occurs when missing schema info or data is misaligned, should not happen
 			err = fmt.Errorf("insertBufferNode msg to buffer failed, err = %s", err)
@@ -207,8 +205,8 @@ func (ibNode *insertBufferNode) verifyInMsg(in []Msg) (*flowGraphMsg, bool) {
 }
 
 func (ibNode *insertBufferNode) GetBufferIfFull(segID UniqueID) (*BufferData, bool) {
-	if bd, ok := ibNode.insertBuffer.Load(segID); ok && bd.(*BufferData).effectiveCap() <= 0 {
-		return bd.(*BufferData), true
+	if bd, ok := ibNode.channel.getCurInsertBuffer(segID); ok && bd.effectiveCap() <= 0 {
+		return bd, true
 	}
 
 	return nil, false
@@ -217,8 +215,8 @@ func (ibNode *insertBufferNode) GetBufferIfFull(segID UniqueID) (*BufferData, bo
 // GetBuffer returns buffer data for a segment, returns nil if segment's not in buffer
 func (ibNode *insertBufferNode) GetBuffer(segID UniqueID) *BufferData {
 	var buf *BufferData
-	if bd, ok := ibNode.insertBuffer.Load(segID); ok {
-		buf = bd.(*BufferData)
+	if bd, ok := ibNode.channel.getCurInsertBuffer(segID); ok {
+		buf = bd
 	}
 	return buf
 }
@@ -272,13 +270,13 @@ func (ibNode *insertBufferNode) DisplayStatistics(seg2Upload []UniqueID) {
 	displaySize := min(10, len(seg2Upload))
 
 	for k, segID := range seg2Upload[:displaySize] {
-		if bd, ok := ibNode.insertBuffer.Load(segID); ok {
+		if bd, ok := ibNode.channel.getCurInsertBuffer(segID); ok {
 			log.Info("segment buffer status",
 				zap.Int("no.", k),
 				zap.Int64("segmentID", segID),
 				zap.String("channel", ibNode.channelName),
-				zap.Int64("size", bd.(*BufferData).size),
-				zap.Int64("limit", bd.(*BufferData).limit))
+				zap.Int64("size", bd.size),
+				zap.Int64("limit", bd.limit))
 		}
 	}
 }
@@ -423,7 +421,11 @@ func (ibNode *insertBufferNode) Sync(fgMsg *flowGraphMsg, seg2Upload []UniqueID,
 			panic(err)
 		}
 		segmentsToSync = append(segmentsToSync, task.segmentID)
-		ibNode.insertBuffer.Delete(task.segmentID)
+		err = ibNode.channel.rollInsertBuffer(task.segmentID)
+		if err != nil {
+			log.Error("rollInsertBuffer failed", zap.Error(err))
+			panic(err) // cannot find collection or collection's dim info, should not happen
+		}
 		ibNode.channel.RollPKstats(task.segmentID, pkStats)
 		metrics.DataNodeFlushBufferCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SuccessLabel).Inc()
 		metrics.DataNodeFlushBufferCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.TotalLabel).Inc()
@@ -487,7 +489,7 @@ func (ibNode *insertBufferNode) updateSegmentStates(insertMsgs []*msgstream.Inse
 // 	1.2 Get buffer data and put data into each field buffer
 // 	1.3 Put back into buffer
 // 	1.4 Update related statistics
-func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, endPos *internalpb.MsgPosition) error {
+func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, startPos, endPos *internalpb.MsgPosition) error {
 	if err := msg.CheckAligned(); err != nil {
 		return err
 	}
@@ -500,30 +502,10 @@ func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, endPos
 		return err
 	}
 
-	// Get Dimension
-	// TODO GOOSE: under assumption that there's only 1 Vector field in one collection schema
-	var dimension int
-	for _, field := range collSchema.Fields {
-		if field.DataType == schemapb.DataType_FloatVector ||
-			field.DataType == schemapb.DataType_BinaryVector {
-
-			dimension, err = storage.GetDimFromParams(field.TypeParams)
-			if err != nil {
-				log.Error("failed to get dim from field", zap.Error(err))
-				return err
-			}
-			break
-		}
+	buffer, ok := ibNode.channel.getCurInsertBuffer(currentSegID)
+	if !ok {
+		return fmt.Errorf("cannot find insertBuffer, segmentID=%d", currentSegID)
 	}
-
-	newbd, err := newBufferData(int64(dimension))
-	if err != nil {
-		return err
-	}
-	bd, _ := ibNode.insertBuffer.LoadOrStore(currentSegID, newbd)
-
-	buffer := bd.(*BufferData)
-	// idata := buffer.buffer
 
 	addedBuffer, err := storage.InsertMsgToInsertData(msg, collSchema)
 	if err != nil {
@@ -549,16 +531,14 @@ func (ibNode *insertBufferNode) bufferInsertMsg(msg *msgstream.InsertMsg, endPos
 
 	// update buffer size
 	buffer.updateSize(int64(msg.NRows()))
-	// update timestamp range
+	// update timestamp range and start-end position
 	buffer.updateTimeRange(ibNode.getTimestampRange(tsData))
+	buffer.updateStartAndEndPosition(startPos, endPos)
 
 	metrics.DataNodeConsumeMsgRowsCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel).Add(float64(len(msg.RowData)))
 
 	// store in buffer
-	ibNode.insertBuffer.Store(currentSegID, buffer)
-
-	// store current endPositions as Segment->EndPostion
-	ibNode.channel.updateSegmentEndPosition(currentSegID, endPos)
+	ibNode.channel.setCurInsertBuffer(currentSegID, buffer)
 
 	return nil
 }
@@ -657,9 +637,8 @@ func newInsertBufferNode(ctx context.Context, collID UniqueID, flushCh <-chan fl
 	})
 
 	return &insertBufferNode{
-		ctx:          ctx,
-		BaseNode:     baseNode,
-		insertBuffer: sync.Map{},
+		ctx:      ctx,
+		BaseNode: baseNode,
 
 		timeTickStream:   wTtMsgStream,
 		flushMap:         sync.Map{},

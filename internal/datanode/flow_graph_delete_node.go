@@ -20,16 +20,17 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sync"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/opentracing/opentracing-go"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/trace"
-
-	"github.com/opentracing/opentracing-go"
-	"go.uber.org/zap"
 )
 
 // DeleteNode is to process delete msg, flush delete info into storage.
@@ -91,6 +92,12 @@ func (dn *deleteNode) Operate(in []Msg) []Msg {
 		msg.SetTraceCtx(ctx)
 	}
 
+	// replace pchannel with vchannel
+	startPosition := proto.Clone(fgMsg.startPositions[0]).(*internalpb.MsgPosition)
+	startPosition.ChannelName = dn.channelName
+	endPosition := proto.Clone(fgMsg.endPositions[0]).(*internalpb.MsgPosition)
+	endPosition.ChannelName = dn.channelName
+
 	// update compacted segment before operation
 	if len(fgMsg.deleteMessages) > 0 || len(fgMsg.segmentsToSync) > 0 {
 		dn.updateCompactedSegments()
@@ -101,7 +108,7 @@ func (dn *deleteNode) Operate(in []Msg) []Msg {
 	for i, msg := range fgMsg.deleteMessages {
 		traceID, _, _ := trace.InfoFromSpan(spans[i])
 		log.Debug("Buffer delete request in DataNode", zap.String("traceID", traceID))
-		tmpSegIDs, err := dn.bufferDeleteMsg(msg, fgMsg.timeRange)
+		tmpSegIDs, err := dn.bufferDeleteMsg(msg, fgMsg.timeRange, startPosition, endPosition)
 		if err != nil {
 			// error occurs only when deleteMsg is misaligned, should not happen
 			err = fmt.Errorf("buffer delete msg failed, err = %s", err)
@@ -197,7 +204,7 @@ func (dn *deleteNode) updateCompactedSegments() {
 	}
 }
 
-func (dn *deleteNode) bufferDeleteMsg(msg *msgstream.DeleteMsg, tr TimeRange) ([]UniqueID, error) {
+func (dn *deleteNode) bufferDeleteMsg(msg *msgstream.DeleteMsg, tr TimeRange, startPos, endPos *internalpb.MsgPosition) ([]UniqueID, error) {
 	log.Debug("bufferDeleteMsg", zap.Any("primary keys", msg.PrimaryKeys), zap.String("vChannelName", dn.channelName))
 
 	primaryKeys := storage.ParseIDs2PrimaryKeys(msg.PrimaryKeys)
@@ -211,7 +218,7 @@ func (dn *deleteNode) bufferDeleteMsg(msg *msgstream.DeleteMsg, tr TimeRange) ([
 		if !ok || len(pks) != len(tss) {
 			return nil, fmt.Errorf("primary keys and timestamp's element num mis-match, segmentID = %d", segID)
 		}
-		dn.delBufferManager.StoreNewDeletes(segID, pks, tss, tr)
+		dn.delBufferManager.StoreNewDeletes(segID, pks, tss, tr, startPos, endPos)
 	}
 
 	return segIDs, nil
@@ -247,7 +254,7 @@ func newDeleteNode(ctx context.Context, fm flushManager, sig chan<- string, conf
 		ctx:      ctx,
 		BaseNode: baseNode,
 		delBufferManager: &DelBufferManager{
-			delBufMap:     sync.Map{},
+			channel:       config.channel,
 			delMemorySize: 0,
 			delBufHeap:    &PriorityQueue{},
 		},

@@ -20,6 +20,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"sync"
 	"time"
 
@@ -46,8 +47,9 @@ type meta struct {
 	sync.RWMutex
 	ctx         context.Context
 	catalog     metastore.DataCoordCatalog
-	collections map[UniqueID]*collectionInfo // collection id to collection info
-	segments    *SegmentsInfo                // segment id to segment info
+	collections map[UniqueID]*collectionInfo       // collection id to collection info
+	segments    *SegmentsInfo                      // segment id to segment info
+	channelCPs  map[string]*internalpb.MsgPosition // vChannel -> channel checkpoint/see position
 }
 
 type collectionInfo struct {
@@ -65,6 +67,7 @@ func newMeta(ctx context.Context, kv kv.TxnKV, chunkManagerRootPath string) (*me
 		catalog:     &datacoord.Catalog{Txn: kv, ChunkManagerRootPath: chunkManagerRootPath},
 		collections: make(map[UniqueID]*collectionInfo),
 		segments:    NewSegmentsInfo(),
+		channelCPs:  make(map[string]*internalpb.MsgPosition),
 	}
 	err := mt.reloadFromKV()
 	if err != nil {
@@ -96,6 +99,14 @@ func (m *meta) reloadFromKV() error {
 	}
 	metrics.DataCoordNumStoredRows.WithLabelValues().Set(float64(numStoredRows))
 	metrics.DataCoordNumStoredRowsCounter.WithLabelValues().Add(float64(numStoredRows))
+
+	channelCPs, err := m.catalog.ListChannelCheckpoint(m.ctx)
+	if err != nil {
+		return err
+	}
+	for vChannel, pos := range channelCPs {
+		m.channelCPs[vChannel] = pos
+	}
 	return nil
 }
 
@@ -1122,5 +1133,47 @@ func (m *meta) GetCompactionTo(segmentID int64) *SegmentInfo {
 			return segment
 		}
 	}
+	return nil
+}
+
+// UpdateChannelCheckpoint updates and saves channel checkpoint.
+func (m *meta) UpdateChannelCheckpoint(vChannel string, pos *internalpb.MsgPosition) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if pos == nil {
+		return fmt.Errorf("channelCP is nil, vChannel=%s", vChannel)
+	}
+
+	oldPosition, ok := m.channelCPs[vChannel]
+	if !ok || oldPosition.Timestamp < pos.Timestamp {
+		err := m.catalog.SaveChannelCheckpoint(m.ctx, vChannel, pos)
+		if err != nil {
+			return err
+		}
+		m.channelCPs[vChannel] = pos
+		ts, _ := tsoutil.ParseTS(pos.Timestamp)
+		log.Debug("UpdateChannelCheckpoint done", zap.String("vChannel", vChannel), zap.Time("ts", ts))
+	}
+	return nil
+}
+
+func (m *meta) GetChannelCheckpoint(vChannel string) *internalpb.MsgPosition {
+	m.RLock()
+	defer m.RUnlock()
+	if m.channelCPs[vChannel] == nil {
+		return nil
+	}
+	return proto.Clone(m.channelCPs[vChannel]).(*internalpb.MsgPosition)
+}
+
+func (m *meta) DropChannelCheckpoint(vChannel string) error {
+	m.Lock()
+	defer m.Unlock()
+	err := m.catalog.DropChannelCheckpoint(m.ctx, vChannel)
+	if err != nil {
+		return err
+	}
+	delete(m.channelCPs, vChannel)
 	return nil
 }

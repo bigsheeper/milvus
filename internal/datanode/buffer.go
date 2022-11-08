@@ -18,6 +18,7 @@ package datanode
 
 import (
 	"errors"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"math"
 
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -27,11 +28,13 @@ import (
 // BufferData buffers insert data, monitoring buffer size and limit
 // size and limit both indicate numOfRows
 type BufferData struct {
-	buffer *InsertData
-	size   int64
-	limit  int64
-	tsFrom Timestamp
-	tsTo   Timestamp
+	buffer   *InsertData
+	size     int64
+	limit    int64
+	tsFrom   Timestamp
+	tsTo     Timestamp
+	startPos *internalpb.MsgPosition
+	endPos   *internalpb.MsgPosition
 }
 
 func (bd *BufferData) effectiveCap() int64 {
@@ -52,11 +55,21 @@ func (bd *BufferData) updateTimeRange(tr TimeRange) {
 	}
 }
 
+func (bd *BufferData) setStartAndEndPosition(startPos *internalpb.MsgPosition, endPos *internalpb.MsgPosition) {
+	if bd.startPos == nil || startPos.Timestamp < bd.startPos.Timestamp {
+		bd.startPos = startPos
+	}
+	if bd.endPos == nil || endPos.Timestamp > bd.endPos.Timestamp {
+		bd.endPos = endPos
+	}
+}
+
 // DelDataBuf buffers delete data, monitoring buffer size and limit
 // size and limit both indicate numOfRows
 type DelDataBuf struct {
 	datapb.Binlog
-	delData *DeleteData
+	delData  *DeleteData
+	startPos *internalpb.MsgPosition
 }
 
 func (ddb *DelDataBuf) updateSize(size int64) {
@@ -80,6 +93,12 @@ func (ddb *DelDataBuf) updateFromBuf(buf *DelDataBuf) {
 
 	ddb.delData.Pks = append(ddb.delData.Pks, buf.delData.Pks...)
 	ddb.delData.Tss = append(ddb.delData.Tss, buf.delData.Tss...)
+}
+
+func (ddb *DelDataBuf) setStartPosition(pos *internalpb.MsgPosition) {
+	if ddb.startPos == nil || pos.Timestamp < ddb.startPos.Timestamp {
+		ddb.startPos = pos
+	}
 }
 
 // newBufferData needs an input dimension to calculate the limit of this buffer

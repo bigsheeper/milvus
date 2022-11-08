@@ -821,8 +821,8 @@ func TestChannelMeta_ChannelPosition(t *testing.T) {
 		}
 		channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
 		channel.chunkManager = &mockDataCM{}
-		channel.setChannelPosition(pos)
-		position := channel.getChannelPosition()
+		channel.setChannelCheckPoint(pos)
+		position := channel.getChannelCheckPoint()
 		assert.NotNil(t, position)
 		assert.True(t, position.ChannelName == pos.ChannelName)
 		assert.True(t, position.Timestamp == pos.Timestamp)
@@ -844,8 +844,8 @@ func TestChannelMeta_ChannelPosition(t *testing.T) {
 				assert.NoError(t, err)
 			}
 			channel.updateSegmentDMLPosition(segmentID, segDMLPos)
-			channel.setChannelPosition(dmlPos)
-			resPos := channel.getChannelPosition()
+			channel.setChannelCheckPoint(dmlPos)
+			resPos := channel.getChannelCheckPoint()
 			assert.NotNil(t, resPos)
 			assert.True(t, resPos.ChannelName == expectedPos.ChannelName)
 			assert.True(t, resPos.Timestamp == expectedPos.Timestamp)
@@ -868,7 +868,7 @@ func TestChannelMeta_ChannelPosition(t *testing.T) {
 			&internalpb.MsgPosition{Timestamp: 120})
 	})
 
-	t.Run("updateChannelPosition", func(t *testing.T) {
+	t.Run("updateChannelCheckPoint", func(t *testing.T) {
 		channel := newChannel(mockVChannel, collID, nil, rc, dc, cm)
 		channel.chunkManager = &mockDataCM{}
 		channel.updateChannelPosition()

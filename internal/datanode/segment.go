@@ -17,6 +17,9 @@
 package datanode
 
 import (
+	"github.com/milvus-io/milvus-proto/go-api/schemapb"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 
@@ -37,12 +40,17 @@ type Segment struct {
 	memorySize  int64
 	compactedTo UniqueID
 
-	statLock     sync.Mutex
+	bufferLock       sync.Mutex
+	curInsertBuf     *BufferData
+	historyInsertBuf []*BufferData
+	curDeleteBuf     *DelDataBuf
+	historyDeleteBuf []*DelDataBuf
+
+	statLock     sync.RWMutex
 	currentStat  *storage.PkStatistics
 	historyStats []*storage.PkStatistics
 
 	startPos *internalpb.MsgPosition // TODO readonly
-	dmlPos   *internalpb.MsgPosition
 }
 
 type addSegmentReq struct {
@@ -103,4 +111,33 @@ func (s *Segment) isPKExist(pk primaryKey) bool {
 		}
 	}
 	return false
+}
+
+func (s *Segment) initCurInsertBuffer(collSchema *schemapb.CollectionSchema) error {
+	s.bufferLock.Lock()
+	defer s.bufferLock.Unlock()
+	if s.curInsertBuf == nil {
+		// Get Dimension
+		// TODO GOOSE: under assumption that there's only 1 Vector field in one collection schema
+		var dimension int
+		var err error
+		for _, field := range collSchema.Fields {
+			if field.DataType == schemapb.DataType_FloatVector ||
+				field.DataType == schemapb.DataType_BinaryVector {
+
+				dimension, err = storage.GetDimFromParams(field.TypeParams)
+				if err != nil {
+					log.Error("failed to get dim from field", zap.Error(err))
+					return err
+				}
+				break
+			}
+		}
+		newBuf, err := newBufferData(int64(dimension))
+		if err != nil {
+			return err
+		}
+		s.curInsertBuf = newBuf
+	}
+	return nil
 }

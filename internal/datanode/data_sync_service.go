@@ -133,7 +133,6 @@ func (dsService *dataSyncService) start() {
 		log.Warn("dataSyncService starting flow graph is nil", zap.Int64("collectionID", dsService.collectionID),
 			zap.String("vChanName", dsService.vchannelName))
 	}
-	go dsService.channel.start()
 }
 
 func (dsService *dataSyncService) close() {
@@ -149,7 +148,6 @@ func (dsService *dataSyncService) close() {
 
 	dsService.cancelFn()
 	dsService.flushManager.close()
-	dsService.channel.stop()
 }
 
 func (dsService *dataSyncService) clearGlobalFlushingCache() {
@@ -307,10 +305,17 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 		return err
 	}
 
+	var ttNode Node
+	ttNode, err = newTTNode(c, dsService.dataCoord)
+	if err != nil {
+		return err
+	}
+
 	dsService.fg.AddNode(dmStreamNode)
 	dsService.fg.AddNode(ddNode)
 	dsService.fg.AddNode(insertBufferNode)
 	dsService.fg.AddNode(deleteNode)
+	dsService.fg.AddNode(ttNode)
 
 	// ddStreamNode
 	err = dsService.fg.SetEdges(dmStreamNode.Name(),
@@ -341,10 +346,19 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo) erro
 
 	//deleteNode
 	err = dsService.fg.SetEdges(deleteNode.Name(),
-		[]string{},
+		[]string{ttNode.Name()},
 	)
 	if err != nil {
 		log.Error("set edges failed in node", zap.String("name", deleteNode.Name()), zap.Error(err))
+		return err
+	}
+
+	// ttNode
+	err = dsService.fg.SetEdges(ttNode.Name(),
+		[]string{},
+	)
+	if err != nil {
+		log.Error("set edges failed in node", zap.String("name", ttNode.Name()), zap.Error(err))
 		return err
 	}
 	return nil

@@ -19,11 +19,10 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"math"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
@@ -34,10 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/internal/util/commonpbutil"
-	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
@@ -66,7 +62,6 @@ type Channel interface {
 	filterSegments(partitionID UniqueID) []*Segment
 	listNewSegmentsStartPositions() []*datapb.SegmentStartPosition
 	transferNewSegments(segmentIDs []UniqueID)
-	updateSegmentDMLPosition(segID UniqueID, endPos *internalpb.MsgPosition)
 	updateSegmentPKRange(segID UniqueID, ids storage.FieldData)
 	mergeFlushedSegments(seg *Segment, planID UniqueID, compactedFrom []UniqueID) error
 	hasSegment(segID UniqueID, countFlushed bool) bool
@@ -79,18 +74,29 @@ type Channel interface {
 	getSegmentStatisticsUpdates(segID UniqueID) (*datapb.SegmentStats, error)
 	segmentFlushed(segID UniqueID)
 
-	start()
-	stop()
-	setChannelPosition(pos *internalpb.MsgPosition)
+	setChannelCheckPoint(pos *internalpb.MsgPosition)
+	getChannelCheckPoint() *internalpb.MsgPosition
+
+	updateInsertBufferSize(segmentID UniqueID, numRows int64)
+	updateInsertBufferTimeRange(segmentID UniqueID, tr TimeRange)
+	mergeInsertData(segmentID UniqueID, data *InsertData)
+	getCurInsertBuffer(segmentID UniqueID) (*BufferData, bool)
+	setCurInsertBuffer(segmentID UniqueID, buf *BufferData)
+	rollInsertBuffer(segmentID UniqueID) error
+	syncHistoryInsertBuffer(segmentID UniqueID, endPos *internalpb.MsgPosition)
+
+	setCurDeleteBuffer(segmentID UniqueID, buf *DelDataBuf)
+	getCurDeleteBuffer(segmentID UniqueID) (*DelDataBuf, bool)
+	rollDeleteBuffer(segmentID UniqueID)
 }
 
 // ChannelMeta contains channel meta and the latest segments infos of the channel.
 type ChannelMeta struct {
-	collectionID    UniqueID
-	channelName     string
-	channelPosition *internalpb.MsgPosition
-	collSchema      *schemapb.CollectionSchema
-	schemaMut       sync.RWMutex
+	collectionID UniqueID
+	channelName  string
+	channelCP    *internalpb.MsgPosition
+	collSchema   *schemapb.CollectionSchema
+	schemaMut    sync.RWMutex
 
 	segMu    sync.RWMutex
 	segments map[UniqueID]*Segment
@@ -98,9 +104,6 @@ type ChannelMeta struct {
 	dataCoord    types.DataCoord
 	metaService  *metaService
 	chunkManager storage.ChunkManager
-
-	stopOnce sync.Once
-	stopChan chan struct{}
 }
 
 var _ Channel = &ChannelMeta{}
@@ -118,7 +121,6 @@ func newChannel(channelName string, collID UniqueID, schema *schemapb.Collection
 		dataCoord:    dc,
 		metaService:  metaService,
 		chunkManager: cm,
-		stopChan:     make(chan struct{}),
 	}
 
 	return &channel
@@ -195,17 +197,29 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 		zap.Uint64("recoverTs", req.recoverTs),
 		zap.Bool("importing", req.importing),
 	)
+	collSchema, err := c.getCollectionSchema(req.collID, 0)
+	if err != nil {
+		log.Error("Get schema wrong:", zap.Error(err))
+		return err
+	}
+
+	insertBuf, err := newBufferData(collSchema)
+	if err != nil {
+		return err
+	}
+	deleteBuf := newDelDataBuf()
 	seg := &Segment{
 		collectionID: req.collID,
 		partitionID:  req.partitionID,
 		segmentID:    req.segID,
 		numRows:      req.numOfRows, // 0 if segType == NEW
+		insertBuffer: insertBuf,
+		deleteBuffer: deleteBuf,
 		startPos:     req.startPos,
-		dmlPos:       req.endPos,
 	}
 	seg.sType.Store(req.segType)
 	// Set up pk stats
-	err := c.InitPKstats(context.TODO(), seg, req.statsBinLogs, req.recoverTs)
+	err = c.InitPKstats(context.TODO(), seg, req.statsBinLogs, req.recoverTs)
 	if err != nil {
 		log.Error("failed to init bloom filter",
 			zap.Int64("segment ID", req.segID),
@@ -373,20 +387,6 @@ func (c *ChannelMeta) transferNewSegments(segmentIDs []UniqueID) {
 	}
 }
 
-// updateSegmentDMLPosition updates segment's dml position.
-func (c *ChannelMeta) updateSegmentDMLPosition(segID UniqueID, endPos *internalpb.MsgPosition) {
-	c.segMu.Lock()
-	defer c.segMu.Unlock()
-
-	seg, ok := c.segments[segID]
-	if ok {
-		seg.dmlPos = endPos
-		return
-	}
-
-	log.Warn("No match segment", zap.String("vChannel", c.channelName), zap.Int64("ID", segID))
-}
-
 func (c *ChannelMeta) updateSegmentPKRange(segID UniqueID, ids storage.FieldData) {
 	c.segMu.Lock()
 	defer c.segMu.Unlock()
@@ -407,10 +407,14 @@ func (c *ChannelMeta) removeSegments(segIDs ...UniqueID) {
 	log.Info("remove segments if exist", zap.Int64s("segmentIDs", segIDs))
 	cnt := 0
 	for _, segID := range segIDs {
-		seg, ok := c.segments[segID]
-		if ok &&
-			(seg.getType() == datapb.SegmentType_New || seg.getType() == datapb.SegmentType_Normal) {
-			cnt++
+		if seg, ok := c.segments[segID]; ok {
+			if seg.getType() == datapb.SegmentType_New || seg.getType() == datapb.SegmentType_Normal {
+				cnt++
+			}
+			seg.curInsertBuf = nil
+			seg.curDeleteBuf = nil
+			seg.historyInsertBuf = nil
+			seg.historyDeleteBuf = nil
 		}
 
 		delete(c.segments, segID)
@@ -624,77 +628,145 @@ func (c *ChannelMeta) listNotFlushedSegmentIDs() []UniqueID {
 	return segIDs
 }
 
-const (
-	updateChanPosInterval = 1 * time.Minute
-	updateChanPosTimeout  = 10 * time.Second
-)
-
-func (c *ChannelMeta) start() {
-	timer := time.NewTicker(updateChanPosInterval)
-	defer c.updateChannelPosition() // updateChannelPosition before exit
-	for {
-		select {
-		case <-c.stopChan:
-			log.Debug("Stop ChannelMeta", zap.String("vChannel", c.channelName))
-			return
-		case <-timer.C:
-			c.updateChannelPosition()
-		}
-	}
-}
-
-func (c *ChannelMeta) stop() {
-	c.stopOnce.Do(func() {
-		c.stopChan <- struct{}{}
-	})
-}
-
-func (c *ChannelMeta) setChannelPosition(pos *internalpb.MsgPosition) {
-	c.channelPosition = pos
-}
-
-func (c *ChannelMeta) getChannelPosition() *internalpb.MsgPosition {
-	var channelPos = &internalpb.MsgPosition{Timestamp: math.MaxUint64}
-	if c.channelPosition != nil {
-		channelPos = proto.Clone(c.channelPosition).(*internalpb.MsgPosition)
-	}
+func (c *ChannelMeta) setChannelCheckPoint(pos *internalpb.MsgPosition) {
 	c.segMu.RLock()
 	defer c.segMu.RUnlock()
+	var channelCP *internalpb.MsgPosition
 	for _, seg := range c.segments {
-		var segPos *internalpb.MsgPosition
-		if seg.dmlPos != nil {
-			segPos = seg.dmlPos
-		} else {
-			segPos = seg.startPos
+		if seg.insertBuffer.startPos != nil && (channelCP == nil || seg.insertBuffer.startPos.Timestamp < channelCP.Timestamp) {
+			channelCP = seg.insertBuffer.startPos
 		}
-		if segPos.Timestamp < channelPos.Timestamp {
-			channelPos = segPos
+		if seg.deleteBuffer.startPos != nil && (channelCP == nil || seg.deleteBuffer.startPos.Timestamp < channelCP.Timestamp) {
+			channelCP = seg.deleteBuffer.startPos
 		}
 	}
-	return channelPos
+	if channelCP == nil {
+		channelCP = pos // no dml in buffer, use current tt as channelCP
+	}
+	c.channelCP = channelCP
 }
 
-func (c *ChannelMeta) updateChannelPosition() {
-	channelPos := c.getChannelPosition()
-	if channelPos.MsgID == nil {
+func (c *ChannelMeta) getChannelCheckPoint() *internalpb.MsgPosition {
+	return c.channelCP
+}
+
+func (c *ChannelMeta) updateInsertBufferSize(segmentID UniqueID, numRows int64) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.curInsertBuf.updateSize(numRows)
+	}
+	log.Warn("cannot find segment when updateInsertBufferSize", zap.Int64("segmentID", segmentID))
+}
+
+func (c *ChannelMeta) updateInsertBufferTimeRange(segmentID UniqueID, tr TimeRange) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.curInsertBuf.updateTimeRange(tr)
+	}
+	log.Warn("cannot find segment when updateInsertBufferTimeRange", zap.Int64("segmentID", segmentID))
+}
+
+func (c *ChannelMeta) mergeInsertData(segmentID UniqueID, data *InsertData) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.curInsertBuf.buffer = storage.MergeInsertData(data)
+	}
+	log.Warn("cannot find segment when mergeInsertData", zap.Int64("segmentID", segmentID))
+}
+
+func (c *ChannelMeta) getCurInsertBuffer(segmentID UniqueID) (*BufferData, bool) {
+	c.segMu.RLock()
+	defer c.segMu.RUnlock()
+	seg, ok := c.segments[segmentID]
+	if ok {
+		err := seg.initCurInsertBuffer()
+		return seg.curInsertBuf, true
+	}
+	return nil, false
+}
+
+func (c *ChannelMeta) setCurInsertBuffer(segmentID UniqueID, buf *BufferData) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.curInsertBuf = buf
+	}
+	log.Warn("cannot find segment when setCurInsertBuffer", zap.Int64("segmentID", segmentID))
+}
+
+func (c *ChannelMeta) rollInsertBuffer(segmentID UniqueID) error {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.historyInsertBuf = append(seg.historyInsertBuf, seg.curInsertBuf)
+		seg.curInsertBuf = nil
+	}
+	log.Warn("cannot find segment when rollInsertBuffer", zap.Int64("segmentID", segmentID))
+	return nil
+}
+
+func (c *ChannelMeta) syncHistoryInsertBuffer(segmentID UniqueID, endPos *internalpb.MsgPosition) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		tmpBuffers := make([]*BufferData, 0)
+		for _, buf := range seg.historyInsertBuf {
+			if buf.endPos.Timestamp > endPos.Timestamp {
+				tmpBuffers = append(tmpBuffers, buf)
+			}
+		}
+		seg.historyInsertBuf = tmpBuffers
+		ts, _ := tsoutil.ParseTS(endPos.Timestamp)
+		log.Debug("SyncHistoryInsertBuffer", zap.Int64("segmentID", segmentID), zap.Time("ts", ts))
 		return
 	}
-	channelPosTs, _ := tsoutil.ParseTS(channelPos.Timestamp)
+	log.Warn("cannot find segment when synHistoryInsertBuffer", zap.Int64("segmentID", segmentID))
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), updateChanPosTimeout)
-	defer cancel()
-	resp, err := c.dataCoord.UpdateChannelPosition(ctx, &datapb.UpdateChannelPositionRequest{
-		Base: commonpbutil.NewMsgBase(
-			commonpbutil.WithSourceID(paramtable.GetNodeID()),
-		),
-		VChannel: c.channelName,
-		Position: channelPos,
-	})
-	if err = funcutil.VerifyResponse(resp, err); err != nil {
-		log.Warn("UpdateChannelPosition failed", zap.String("channel", c.channelName),
-			zap.Time("channelPosTs", channelPosTs), zap.Error(err))
-		return
+func (c *ChannelMeta) getCurDeleteBuffer(segmentID UniqueID) (*DelDataBuf, bool) {
+	c.segMu.RLock()
+	defer c.segMu.RUnlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		return seg.deleteBuffer, true
 	}
+	return nil, false
+}
 
-	log.Info("UpdateChannelPosition success", zap.String("channel", c.channelName), zap.Time("channelPosTs", channelPosTs))
+func (c *ChannelMeta) setCurDeleteBuffer(segmentID UniqueID, buf *DelDataBuf) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.deleteBuffer = buf
+	}
+	log.Warn("cannot find segment when setCurDeleteBuffer", zap.Int64("segmentID", segmentID))
+}
+
+func (c *ChannelMeta) rollDeleteBuffer(segmentID UniqueID) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+
+	seg, ok := c.segments[segmentID]
+	if ok {
+		seg.deleteBuffer = newDelDataBuf()
+	}
+	log.Warn("cannot find segment when rollDeleteBuffer", zap.Int64("segmentID", segmentID))
 }

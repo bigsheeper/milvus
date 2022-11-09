@@ -61,6 +61,7 @@ type insertBufferNode struct {
 	ttLogger       *timeTickLogger
 	ttMerger       *mergedTimeTickerSender
 
+	syncPolicies  []segmentSyncPolicy
 	lastTimestamp Timestamp
 }
 
@@ -313,7 +314,7 @@ func (ibNode *insertBufferNode) FillInSyncTasks(fgMsg *flowGraphMsg, seg2Upload 
 		return syncTasks
 	}
 
-	// Auto Sync
+	// Auto Sync // TODO: move to segment_sync_policy
 	for _, segID := range seg2Upload {
 		if ibuffer, ok := ibNode.GetBufferIfFull(segID); ok {
 			log.Info("(Auto Sync)",
@@ -330,6 +331,19 @@ func (ibNode *insertBufferNode) FillInSyncTasks(fgMsg *flowGraphMsg, seg2Upload 
 				auto:      true,
 			}
 		}
+	}
+
+	syncSegmentIDs := ibNode.channel.listSegmentIDsToSync(fgMsg.endPositions[0].Timestamp)
+	for _, segID := range syncSegmentIDs {
+		buf := ibNode.GetBuffer(segID)
+		syncTasks[segID] = &syncTask{
+			buffer:    buf, // nil is valid
+			segmentID: segID,
+		}
+	}
+	if len(syncSegmentIDs) > 0 {
+		log.Debug("sync segments", zap.String("vChannel", ibNode.channelName),
+			zap.Int64s("segIDs", syncSegmentIDs)) // TODO: maybe too many prints here
 	}
 
 	mergeSyncTask := func(segmentIDs []UniqueID, syncTasks map[UniqueID]*syncTask, setupTask func(task *syncTask)) {
@@ -360,6 +374,7 @@ func (ibNode *insertBufferNode) FillInSyncTasks(fgMsg *flowGraphMsg, seg2Upload 
 	mergeSyncTask(flushedSegments, syncTasks, func(task *syncTask) {
 		task.flushed = true
 	})
+	mergeSyncTask(syncSegmentIDs, syncTasks, func(task *syncTask) {})
 
 	// process drop partition
 	for _, partitionDrop := range fgMsg.dropPartitions {

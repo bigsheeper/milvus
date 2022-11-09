@@ -50,7 +50,8 @@ type Segment struct {
 	currentStat  *storage.PkStatistics
 	historyStats []*storage.PkStatistics
 
-	startPos *internalpb.MsgPosition // TODO readonly
+	lastSyncTs Timestamp
+	startPos   *internalpb.MsgPosition // TODO readonly
 }
 
 type addSegmentReq struct {
@@ -157,4 +158,11 @@ func (s *Segment) evictHistoryDeleteBuffer(endPos *internalpb.MsgPosition) {
 	s.historyDeleteBuf = tmpBuffers
 	ts, _ := tsoutil.ParseTS(endPos.Timestamp)
 	log.Debug("evictHistoryDeleteBuffer done", zap.Int64("segmentID", s.segmentID), zap.Time("ts", ts), zap.String("channel", endPos.ChannelName))
+}
+
+func (s *Segment) isBufferEmpty() bool {
+	return s.curInsertBuf == nil &&
+		s.curDeleteBuf == nil &&
+		len(s.historyInsertBuf) == 0 &&
+		len(s.historyDeleteBuf) == 0
 }

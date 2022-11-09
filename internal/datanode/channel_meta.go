@@ -67,6 +67,7 @@ type Channel interface {
 	hasSegment(segID UniqueID, countFlushed bool) bool
 	removeSegments(segID ...UniqueID)
 	listCompactedSegmentIDs() map[UniqueID][]UniqueID
+	listSegmentIDsToSync(ts Timestamp) []UniqueID
 
 	updateStatistics(segID UniqueID, numRows int64)
 	InitPKstats(ctx context.Context, s *Segment, statsBinlogs []*datapb.FieldBinlog, ts Timestamp) error
@@ -97,7 +98,7 @@ type ChannelMeta struct {
 	segMu    sync.RWMutex
 	segments map[UniqueID]*Segment
 
-	delBufferManager *DelBufferManager // manager of delete msg
+	syncPolicies []segmentSyncPolicy
 
 	metaService  *metaService
 	chunkManager storage.ChunkManager
@@ -114,6 +115,10 @@ func newChannel(channelName string, collID UniqueID, schema *schemapb.Collection
 		channelName:  channelName,
 
 		segments: make(map[UniqueID]*Segment),
+
+		syncPolicies: []segmentSyncPolicy{
+			toSyncPeriod(),
+		},
 
 		metaService:  metaService,
 		chunkManager: cm,
@@ -233,6 +238,22 @@ func (c *ChannelMeta) listCompactedSegmentIDs() map[UniqueID][]UniqueID {
 		}
 	}
 	return compactedTo2From
+}
+
+func (c *ChannelMeta) listSegmentIDsToSync(ts Timestamp) []UniqueID {
+	c.segMu.RLock()
+	defer c.segMu.RUnlock()
+
+	segIDsToSync := make([]UniqueID, 0)
+	for segID, seg := range c.segments {
+		for _, policy := range c.syncPolicies {
+			if policy(seg, ts) {
+				segIDsToSync = append(segIDsToSync, segID)
+				seg.lastSyncTs = ts
+			}
+		}
+	}
+	return segIDsToSync
 }
 
 // filterSegments return segments with same partitionID for all segments

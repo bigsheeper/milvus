@@ -515,12 +515,6 @@ func (s *Server) DropVirtualChannel(ctx context.Context, req *datapb.DropVirtual
 	}
 
 	log.Info("DropVChannel plan to remove", zap.String("channel", channel))
-	err = s.meta.DropChannelCheckpoint(channel)
-	if err != nil {
-		log.Error("DropChannelCheckpoint failed", zap.String("vChannel", channel), zap.Error(err))
-		resp.Status.Reason = err.Error()
-		return resp, nil
-	}
 	err = s.channelManager.Release(nodeID, channel)
 	if err != nil {
 		log.Warn("DropVChannel failed to ReleaseAndRemove", zap.String("channel", channel), zap.Error(err))

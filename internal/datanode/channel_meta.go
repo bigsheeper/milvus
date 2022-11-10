@@ -68,6 +68,7 @@ type Channel interface {
 	removeSegments(segID ...UniqueID)
 	listCompactedSegmentIDs() map[UniqueID][]UniqueID
 	listSegmentIDsToSync(ts Timestamp) []UniqueID
+	setSegmentLastSyncTs(segID UniqueID, ts Timestamp)
 
 	updateStatistics(segID UniqueID, numRows int64)
 	InitPKstats(ctx context.Context, s *Segment, statsBinlogs []*datapb.FieldBinlog, ts Timestamp) error
@@ -117,7 +118,7 @@ func newChannel(channelName string, collID UniqueID, schema *schemapb.Collection
 		segments: make(map[UniqueID]*Segment),
 
 		syncPolicies: []segmentSyncPolicy{
-			toSyncPeriod(),
+			syncPeriodically(),
 		},
 
 		metaService:  metaService,
@@ -207,7 +208,7 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 		historyDeleteBuf: make([]*DelDataBuf, 0),
 		startPos:         req.startPos,
 	}
-	seg.sType.Store(req.segType)
+	seg.setType(req.segType)
 	// Set up pk stats
 	err := c.InitPKstats(context.TODO(), seg, req.statsBinLogs, req.recoverTs)
 	if err != nil {
@@ -246,14 +247,25 @@ func (c *ChannelMeta) listSegmentIDsToSync(ts Timestamp) []UniqueID {
 
 	segIDsToSync := make([]UniqueID, 0)
 	for segID, seg := range c.segments {
+		if !seg.isValid() {
+			continue
+		}
 		for _, policy := range c.syncPolicies {
 			if policy(seg, ts) {
 				segIDsToSync = append(segIDsToSync, segID)
-				seg.lastSyncTs = ts
+				break
 			}
 		}
 	}
 	return segIDsToSync
+}
+
+func (c *ChannelMeta) setSegmentLastSyncTs(segID UniqueID, ts Timestamp) {
+	c.segMu.Lock()
+	defer c.segMu.Unlock()
+	if _, ok := c.segments[segID]; ok {
+		c.segments[segID].lastSyncTs = ts
+	}
 }
 
 // filterSegments return segments with same partitionID for all segments

@@ -29,8 +29,8 @@ const (
 // segmentSyncPolicy sync policy applies to segment
 type segmentSyncPolicy func(segment *Segment, ts Timestamp) bool
 
-// toSyncPeriod get segmentSyncPolicy with segment sync period and last sync time
-func toSyncPeriod() segmentSyncPolicy {
+// syncPeriodically get segmentSyncPolicy with segment sync periodically.
+func syncPeriodically() segmentSyncPolicy {
 	return func(segment *Segment, ts Timestamp) bool {
 		endTime := tsoutil.PhysicalTime(ts)
 		lastSyncTime := tsoutil.PhysicalTime(segment.lastSyncTs)

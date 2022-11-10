@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -253,7 +254,9 @@ func (s *Server) initMeta() error {
 		log.Error("failed to recover collections")
 		return err
 	}
-	err = s.meta.ReplicaManager.Recover()
+	metrics.QueryCoordNumCollections.WithLabelValues().Set(float64(len(s.meta.GetAll())))
+
+	err = s.meta.ReplicaManager.Recover(s.meta.CollectionManager.GetAll())
 	if err != nil {
 		log.Error("failed to recover replicas")
 		return err

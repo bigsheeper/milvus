@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
@@ -179,8 +180,14 @@ func (job *LoadCollectionJob) Execute() error {
 		zap.Int64("collectionID", req.GetCollectionID()),
 	)
 
+	// Clear stale replicas
+	err := job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
+	if err != nil {
+		log.Warn("failed to clear stale replicas", zap.Error(err))
+		return err
+	}
+
 	// Create replicas
-	// TODO(yah01): store replicas and collection atomically
 	replicas, err := utils.SpawnReplicas(job.meta.ReplicaManager,
 		job.nodeMgr,
 		req.GetCollectionID(),
@@ -227,6 +234,7 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
+	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
@@ -285,6 +293,7 @@ func (job *ReleaseCollectionJob) Execute() error {
 
 	job.targetMgr.RemoveCollection(req.GetCollectionID())
 	waitCollectionReleased(job.dist, req.GetCollectionID())
+	metrics.QueryCoordNumCollections.WithLabelValues().Dec()
 	return nil
 }
 
@@ -378,8 +387,14 @@ func (job *LoadPartitionJob) Execute() error {
 		zap.Int64s("partitionIDs", req.GetPartitionIDs()),
 	)
 
+	// Clear stale replicas
+	err := job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
+	if err != nil {
+		log.Warn("failed to clear stale replicas", zap.Error(err))
+		return err
+	}
+
 	// Create replicas
-	// TODO(yah01): store replicas and collection atomically
 	replicas, err := utils.SpawnReplicas(job.meta.ReplicaManager,
 		job.nodeMgr,
 		req.GetCollectionID(),
@@ -422,6 +437,7 @@ func (job *LoadPartitionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
+	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
@@ -510,5 +526,6 @@ func (job *ReleasePartitionJob) Execute() error {
 		job.targetMgr.RemovePartition(req.GetCollectionID(), toRelease...)
 		waitCollectionReleased(job.dist, req.GetCollectionID(), toRelease...)
 	}
+	metrics.QueryCoordNumCollections.WithLabelValues().Dec()
 	return nil
 }

@@ -112,3 +112,27 @@ TEST(ConcurrentVector, TestAckSingle) {
     }
     EXPECT_EQ(ack.GetAck(), N);
 }
+
+TEST(ConcurrentVector, TestPermutation) {
+    ConcurrentVectorImpl<int, true> id(1, 32);
+    ConcurrentVectorImpl<int, true> unordered_timestamp(1, 32);
+    std::default_random_engine e(42);
+    int data = 0;
+    auto total_count = 0;
+    for (int i = 0; i < 10; ++i) {
+        int insert_size = e() % 150;
+        vector<int> vec(insert_size);
+        for (auto& x : vec) {
+            x = data++;
+        }
+        id.grow_to_at_least(total_count + insert_size);
+        id.set_data(total_count, vec.data(), insert_size);
+        unordered_timestamp.grow_to_at_least(total_count + insert_size);
+        unordered_timestamp.set_data(total_count, vec.data(), insert_size);
+        total_count += insert_size;
+    }
+    ASSERT_EQ(unordered_timestamp.num_chunk(), (total_count + 31) / 32);
+    for (int i = 0; i < total_count; ++i) {
+        ASSERT_EQ(*unordered_timestamp.get_element(i), i);
+    }
+}

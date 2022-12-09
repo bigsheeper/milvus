@@ -266,6 +266,45 @@ class ConcurrentVectorImpl : public VectorBase {
         chunks_.clear();
     }
 
+    std::vector<Type>
+    to_vector() {
+        static_assert(std::is_same_v<Timestamp, Type>);
+        std::vector<Type> res((chunks_.size()-1)*size_per_chunk_+ get_chunk(chunks_.size()-1).size());
+        for (size_t i = 0; i < chunks_.size(); i++) {
+            res.insert(res.end(), get_chunk(i).begin(), get_chunk(i).end());
+        }
+        return res;
+    }
+
+    std::vector<int>
+    sort_permutation(std::vector<Type>& vec) {
+        static_assert(std::is_same_v<Timestamp, Type>);
+        std::vector<std::size_t> permutation(vec.size());
+        std::iota(permutation.begin(), permutation.end(), 0);
+        std::sort(permutation.begin(), permutation.end(), [&](std::size_t i, std::size_t j) {
+            return vec[i] < vec[j];
+        });
+    }
+
+    void
+    apply_permutation(std::vector<std::size_t> permutation) {
+        std::vector<bool> done(permutation.size());
+        for (std::size_t i = 0; i < permutation.size(); ++i) {
+            if (done[i]) {
+                continue;
+            }
+            done[i] = true;
+            std::size_t prev_j = i;
+            std::size_t j = permutation[i];
+            while (i != j) {
+                std::swap(this->operator[](prev_j), this->operator[](j));
+                done[j] = true;
+                prev_j = j;
+                j = permutation[j];
+            }
+        }
+    }
+
  private:
     void
     fill_chunk(

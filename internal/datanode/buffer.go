@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 // DelBufferManager is in charge of managing insertBuf and delBuf from an overall prospect
@@ -38,6 +40,7 @@ import (
 // but at the first stage, this struct is only used for delete buff
 type DelBufferManager struct {
 	channel       Channel
+	mu            sync.Mutex // guards delMemorySize and delBufHeap
 	delMemorySize int64
 	delBufHeap    *PriorityQueue
 }
@@ -95,6 +98,8 @@ func (bm *DelBufferManager) StoreNewDeletes(segID UniqueID, pks []primaryKey,
 	delDataBuf.updateStartAndEndPosition(startPos, endPos)
 
 	//4. update and sync memory size with priority queue
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	if !loaded {
 		delDataBuf.item.segmentID = segID
 		delDataBuf.item.memorySize = bufSize
@@ -118,6 +123,8 @@ func (bm *DelBufferManager) Load(segID UniqueID) (delDataBuf *DelDataBuf, ok boo
 }
 
 func (bm *DelBufferManager) Delete(segID UniqueID) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	if buf, ok := bm.channel.getCurDeleteBuffer(segID); ok {
 		item := buf.item
 		bm.delMemorySize -= item.memorySize
@@ -139,6 +146,8 @@ func (bm *DelBufferManager) CompactSegBuf(compactedToSegID UniqueID, compactedFr
 			bm.Delete(segID)
 		}
 	}
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	// only store delBuf if EntriesNum > 0
 	if compactToDelBuff.EntriesNum > 0 {
 		if loaded {
@@ -154,6 +163,8 @@ func (bm *DelBufferManager) CompactSegBuf(compactedToSegID UniqueID, compactedFr
 }
 
 func (bm *DelBufferManager) ShouldFlushSegments() []UniqueID {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
 	var shouldFlushSegments []UniqueID
 	if bm.delMemorySize < Params.DataNodeCfg.FlushDeleteBufferBytes {
 		return shouldFlushSegments
@@ -330,33 +341,19 @@ func (ddb *DelDataBuf) updateStartAndEndPosition(startPos *internalpb.MsgPositio
 //
 // * This need to change for string field support and multi-vector fields support.
 func newBufferData(collSchema *schemapb.CollectionSchema) (*BufferData, error) {
-	// Get Dimension
-	// TODO GOOSE: under assumption that there's only 1 Vector field in one collection schema
-	var vectorSize int
-	for _, field := range collSchema.Fields {
-		if field.DataType == schemapb.DataType_FloatVector ||
-			field.DataType == schemapb.DataType_BinaryVector {
-
-			dimension, err := storage.GetDimFromParams(field.TypeParams)
-			switch field.DataType {
-			case schemapb.DataType_FloatVector:
-				vectorSize = dimension * 4
-			case schemapb.DataType_BinaryVector:
-				vectorSize = dimension / 8
-			}
-			if err != nil {
-				log.Error("failed to get dim from field", zap.Error(err))
-				return nil, err
-			}
-			break
-		}
+	size, err := typeutil.EstimateSizePerRecord(collSchema)
+	if err != nil {
+		log.Warn("failed to estimate size per record", zap.Error(err))
+		return nil, err
 	}
 
-	if vectorSize == 0 {
-		return nil, errors.New("Invalid dimension")
+	if size == 0 {
+		return nil, errors.New("Invalid schema")
 	}
-
-	limit := Params.DataNodeCfg.FlushInsertBufferSize / int64(vectorSize)
+	limit := Params.DataNodeCfg.FlushInsertBufferSize / int64(size)
+	if Params.DataNodeCfg.FlushInsertBufferSize%int64(size) != 0 {
+		limit++
+	}
 
 	//TODO::xige-16 eval vec and string field
 	return &BufferData{

@@ -114,25 +114,52 @@ TEST(ConcurrentVector, TestAckSingle) {
 }
 
 TEST(ConcurrentVector, TestPermutation) {
-    ConcurrentVectorImpl<int, true> id(1, 32);
+    ConcurrentVectorImpl<int, true> ids(1, 32);
     ConcurrentVectorImpl<int, true> unordered_timestamp(1, 32);
+    std::map<int, int> records;
     std::default_random_engine e(42);
-    int data = 0;
     auto total_count = 0;
-    for (int i = 0; i < 10; ++i) {
-        int insert_size = e() % 150;
-        vector<int> vec(insert_size);
-        for (auto& x : vec) {
-            x = data++;
+    for (int i = 0; i < 3; ++i) {
+        int insert_size = e() % 15;
+        vector<int> vec;
+        vector<int> timestamps;
+        while (vec.size() < insert_size) {
+            int v = e() % 10000000;
+            int t = e() % 100000000;
+            if (!records.count(t)) {
+                records.insert(std::pair<int, int>(t, v));
+                vec.emplace_back(v);
+                timestamps.emplace_back(t);
+            }
         }
-        id.grow_to_at_least(total_count + insert_size);
-        id.set_data(total_count, vec.data(), insert_size);
+        ASSERT_EQ(vec.size(), insert_size);
+        ids.grow_to_at_least(total_count + insert_size);
+        ids.set_data(total_count, vec.data(), insert_size);
         unordered_timestamp.grow_to_at_least(total_count + insert_size);
-        unordered_timestamp.set_data(total_count, vec.data(), insert_size);
+        unordered_timestamp.set_data(total_count, timestamps.data(), insert_size);
         total_count += insert_size;
     }
     ASSERT_EQ(unordered_timestamp.num_chunk(), (total_count + 31) / 32);
-    for (int i = 0; i < total_count; ++i) {
-        ASSERT_EQ(*unordered_timestamp.get_element(i), i);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto timestamp_vec = unordered_timestamp.to_vector();
+//    ASSERT_EQ(timestamp_vec.size(), total_count);
+    auto permutation = unordered_timestamp.sort_permutation(timestamp_vec);
+    ids.apply_permutation(permutation);
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Time taken: " << duration.count() << " ms" << ", total_insert: " << timestamp_vec.size() << std::endl;
+
+    // check
+    auto pre = unordered_timestamp[0];
+    ASSERT_TRUE(records.count(unordered_timestamp[0]));
+    ASSERT_EQ(records.at(unordered_timestamp[0]), ids[0]);
+    for (int i = 1; i < timestamp_vec.size(); ++i) {
+        ASSERT_TRUE(unordered_timestamp[i]>pre);
+        ASSERT_TRUE(records.count(unordered_timestamp[i]));
+        ASSERT_EQ(records.at(unordered_timestamp[i]), ids[i]);
+        pre = unordered_timestamp[i];
     }
 }

@@ -55,7 +55,7 @@ class ThreadSafeVector {
 
     Type&
     operator[](int64_t index) {
-        Assert(index < size_);
+        AssertInfo(index < size_, "index="+std::to_string(index)+", size_="+std::to_string(size_));
         std::shared_lock lck(mutex_);
         return vec_[index];
     }
@@ -268,22 +268,41 @@ class ConcurrentVectorImpl : public VectorBase {
 
     std::vector<Type>
     to_vector() {
-        static_assert(std::is_same_v<Timestamp, Type>);
-        std::vector<Type> res((chunks_.size()-1)*size_per_chunk_+ get_chunk(chunks_.size()-1).size());
+//        static_assert(std::is_same_v<Timestamp, Type>);
+        auto size_total = 0;
+        for (size_t i = 0; i < chunks_.size(); i++) {
+            size_total+= get_chunk(i).size();
+        }
+        std::vector<Type> res;
+        res.reserve(size_total);
         for (size_t i = 0; i < chunks_.size(); i++) {
             res.insert(res.end(), get_chunk(i).begin(), get_chunk(i).end());
         }
+        AssertInfo(res.size()==size_total, "res.size="+std::to_string(res.size())+", size_total="+std::to_string(size_total));
         return res;
     }
 
-    std::vector<int>
+    std::vector<std::size_t>
     sort_permutation(std::vector<Type>& vec) {
-        static_assert(std::is_same_v<Timestamp, Type>);
+//        static_assert(std::is_same_v<Timestamp, Type>);
         std::vector<std::size_t> permutation(vec.size());
         std::iota(permutation.begin(), permutation.end(), 0);
         std::sort(permutation.begin(), permutation.end(), [&](std::size_t i, std::size_t j) {
             return vec[i] < vec[j];
         });
+        return permutation;
+    }
+
+    void
+    swap(ssize_t i, ssize_t j) {
+        auto chunk_id_i = i / size_per_chunk_;
+        auto chunk_offset_i = i % size_per_chunk_;
+        auto tmp = chunks_[chunk_id_i][chunk_offset_i];
+
+        auto chunk_id_j = j / size_per_chunk_;
+        auto chunk_offset_j = j % size_per_chunk_;
+        chunks_[chunk_id_i][chunk_offset_i] = chunks_[chunk_id_j][chunk_offset_j];
+        chunks_[chunk_id_j][chunk_offset_j] = tmp;
     }
 
     void
@@ -297,7 +316,9 @@ class ConcurrentVectorImpl : public VectorBase {
             std::size_t prev_j = i;
             std::size_t j = permutation[i];
             while (i != j) {
-                std::swap(this->operator[](prev_j), this->operator[](j));
+                // swap
+                swap(prev_j, j);
+                // std::swap(this->operator[](prev_j), this->operator[](j));
                 done[j] = true;
                 prev_j = j;
                 j = permutation[j];

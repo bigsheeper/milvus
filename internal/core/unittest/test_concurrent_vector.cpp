@@ -119,8 +119,8 @@ TEST(ConcurrentVector, TestPermutation) {
     std::map<int, int> records;
     std::default_random_engine e(42);
     auto total_count = 0;
-    for (int i = 0; i < 3; ++i) {
-        int insert_size = e() % 15;
+    for (int i = 0; i < 100; ++i) {
+        int insert_size = e() % 20000;
         vector<int> vec;
         vector<int> timestamps;
         while (vec.size() < insert_size) {
@@ -143,14 +143,26 @@ TEST(ConcurrentVector, TestPermutation) {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    auto timestamp_vec = unordered_timestamp.to_vector();
-//    ASSERT_EQ(timestamp_vec.size(), total_count);
+    auto timestamp_vec = unordered_timestamp.to_vector(total_count);
+    auto t_to_vec = std::chrono::high_resolution_clock::now();
+    auto d_to_vec = std::chrono::duration_cast<std::chrono::microseconds>(t_to_vec - start);
+    std::cout << "to_vector taken: " << d_to_vec.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+    ASSERT_EQ(timestamp_vec.size(), total_count);
     auto permutation = unordered_timestamp.sort_permutation(timestamp_vec);
+    auto t_sort_permutation = std::chrono::high_resolution_clock::now();
+    auto d_sort_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_sort_permutation - t_to_vec);
+    std::cout << "sort_permutation taken: " << d_sort_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
     ids.apply_permutation(permutation);
+    unordered_timestamp.apply_permutation(permutation);
+    auto t_apply_permutation = std::chrono::high_resolution_clock::now();
+    auto d_apply_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_apply_permutation - t_sort_permutation);
+    std::cout << "apply_permutation taken: " << d_apply_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
 
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-    std::cout << "Time taken: " << duration.count() << " ms" << ", total_insert: " << timestamp_vec.size() << std::endl;
+    std::cout << "Total Time taken: " << duration.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
 
     // check
     auto pre = unordered_timestamp[0];

@@ -48,7 +48,7 @@ class ThreadSafeVector {
     }
     const Type&
     operator[](int64_t index) const {
-        Assert(index < size_);
+        AssertInfo(index < size_, "index="+std::to_string(index)+", size_="+std::to_string(size_));
         std::shared_lock lck(mutex_);
         return vec_[index];
     }
@@ -267,19 +267,28 @@ class ConcurrentVectorImpl : public VectorBase {
     }
 
     std::vector<Type>
-    to_vector() {
+    to_vector(ssize_t total) {
 //        static_assert(std::is_same_v<Timestamp, Type>);
-        auto size_total = 0;
-        for (size_t i = 0; i < chunks_.size(); i++) {
-            size_total+= get_chunk(i).size();
-        }
         std::vector<Type> res;
-        res.reserve(size_total);
-        for (size_t i = 0; i < chunks_.size(); i++) {
+        res.reserve(total);
+        auto remain_size = total;
+        for (size_t i = 0; i < chunks_.size()-1; i++) {
             res.insert(res.end(), get_chunk(i).begin(), get_chunk(i).end());
+            remain_size-=size_per_chunk_;
         }
-        AssertInfo(res.size()==size_total, "res.size="+std::to_string(res.size())+", size_total="+std::to_string(size_total));
+        // last chunk
+        if (remain_size > 0) {
+            res.insert(res.end(), get_chunk(chunks_.size()-1).begin(), get_chunk(chunks_.size()-1).begin()+remain_size);
+        }
+        AssertInfo(res.size()==total, "res.size="+std::to_string(res.size())+", total="+std::to_string(total));
         return res;
+    }
+
+    void
+    from_vector(std::vector<Type>& vec) {
+//        clear();
+//        grow_to_at_least(vec.size());
+        set_data(0, vec.data(), vec.size());
     }
 
     std::vector<std::size_t>
@@ -324,6 +333,14 @@ class ConcurrentVectorImpl : public VectorBase {
                 j = permutation[j];
             }
         }
+    }
+
+    void
+    apply_permutation2(std::vector<std::size_t> permutation) {
+        std::vector<Type> sorted_vec(permutation.size());
+        std::transform(permutation.begin(), permutation.end(), sorted_vec.begin(),
+                       [&](std::size_t i){ return this->operator[](i); });
+        from_vector(sorted_vec);
     }
 
  private:

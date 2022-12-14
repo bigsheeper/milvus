@@ -245,6 +245,14 @@ class ConcurrentVectorImpl : public VectorBase {
         return get_chunk(chunk_id)[chunk_offset];
     }
 
+    Type&
+    operator[](ssize_t element_index) {
+//        Assert(Dim == 1);
+        auto chunk_id = element_index / size_per_chunk_;
+        auto chunk_offset = (element_index % size_per_chunk_) * Dim;
+        return chunks_[chunk_id][chunk_offset];
+    }
+
     ssize_t
     num_chunk() const override {
         return chunks_.size();
@@ -268,13 +276,15 @@ class ConcurrentVectorImpl : public VectorBase {
 
     std::vector<Type>
     to_vector(ssize_t total) {
+//        Assert(Dim == 1);
 //        static_assert(std::is_same_v<Timestamp, Type>);
+        total*=Dim;
         std::vector<Type> res;
         res.reserve(total);
         auto remain_size = total;
         for (size_t i = 0; i < chunks_.size()-1; i++) {
             res.insert(res.end(), get_chunk(i).begin(), get_chunk(i).end());
-            remain_size-=size_per_chunk_;
+            remain_size-=size_per_chunk_*Dim;
         }
         // last chunk
         if (remain_size > 0) {
@@ -294,6 +304,7 @@ class ConcurrentVectorImpl : public VectorBase {
     std::vector<std::size_t>
     sort_permutation(std::vector<Type>& vec) {
 //        static_assert(std::is_same_v<Timestamp, Type>);
+        ssize_t s = vec.size();
         std::vector<std::size_t> permutation(vec.size());
         std::iota(permutation.begin(), permutation.end(), 0);
         std::sort(permutation.begin(), permutation.end(), [&](std::size_t i, std::size_t j) {
@@ -307,7 +318,6 @@ class ConcurrentVectorImpl : public VectorBase {
         auto chunk_id_i = i / size_per_chunk_;
         auto chunk_offset_i = i % size_per_chunk_;
         auto tmp = chunks_[chunk_id_i][chunk_offset_i];
-
         auto chunk_id_j = j / size_per_chunk_;
         auto chunk_offset_j = j % size_per_chunk_;
         chunks_[chunk_id_i][chunk_offset_i] = chunks_[chunk_id_j][chunk_offset_j];
@@ -315,8 +325,22 @@ class ConcurrentVectorImpl : public VectorBase {
     }
 
     void
-    apply_permutation(std::vector<std::size_t> permutation) {
+    swap_vec(ssize_t i, ssize_t j) {
+        auto chunk_id_i = i / size_per_chunk_;
+        auto chunk_offset_i = (i % size_per_chunk_) * Dim;
+        std::vector<float> tmp_vec(Dim);
+        std::copy_n(&chunks_[chunk_id_i][chunk_offset_i], Dim, tmp_vec.begin());
+        auto chunk_id_j = j / size_per_chunk_;
+        auto chunk_offset_j = (j % size_per_chunk_) * Dim;
+        std::copy_n(&chunks_[chunk_id_j][chunk_offset_j], Dim, &chunks_[chunk_id_i][chunk_offset_i]);
+        chunks_[chunk_id_i][chunk_offset_i] = chunks_[chunk_id_j][chunk_offset_j];
+        std::copy_n(tmp_vec.begin(), Dim, &chunks_[chunk_id_j][chunk_offset_j]);
+    }
+
+    void
+    apply_permutation_to_vec_field(std::vector<std::size_t>& permutation) {
         std::vector<bool> done(permutation.size());
+//        ssize_t swap_count = 0;
         for (std::size_t i = 0; i < permutation.size(); ++i) {
             if (done[i]) {
                 continue;
@@ -325,22 +349,73 @@ class ConcurrentVectorImpl : public VectorBase {
             std::size_t prev_j = i;
             std::size_t j = permutation[i];
             while (i != j) {
-                // swap
-                swap(prev_j, j);
-                // std::swap(this->operator[](prev_j), this->operator[](j));
+                swap_vec(prev_j, j);
+//                swap_count++;
                 done[j] = true;
                 prev_j = j;
                 j = permutation[j];
             }
         }
+//        std::cout << "size: " << permutation.size() << ", swap_count: " << swap_count << std::endl;
     }
 
     void
-    apply_permutation2(std::vector<std::size_t> permutation) {
+    apply_permutation(std::vector<std::size_t>& permutation) {
+        std::vector<bool> done(permutation.size());
+//        ssize_t swap_count = 0;
+        for (std::size_t i = 0; i < permutation.size(); ++i) {
+            if (done[i]) {
+                continue;
+            }
+            done[i] = true;
+            std::size_t prev_j = i;
+            std::size_t j = permutation[i];
+            while (i != j) {
+//                swap(prev_j, j);
+                std::swap(this->operator[](prev_j), this->operator[](j));
+//                swap_count++;
+                done[j] = true;
+                prev_j = j;
+                j = permutation[j];
+            }
+        }
+//        std::cout << "size: " << permutation.size() << ", swap_count: " << swap_count << std::endl;
+    }
+
+    void
+    apply_permutation2(std::vector<std::size_t>& permutation) {
         std::vector<Type> sorted_vec(permutation.size());
         std::transform(permutation.begin(), permutation.end(), sorted_vec.begin(),
                        [&](std::size_t i){ return this->operator[](i); });
         from_vector(sorted_vec);
+    }
+
+    void
+    apply_permutation3(std::vector<std::size_t>& permutation) {
+        ssize_t swap_count = 0;
+        auto n = permutation.size();
+        // Declaring new vector
+        std::vector<int> p;
+        std::copy(permutation.begin(), permutation.end(), back_inserter(p));
+        for (int i = 0; i < n; i++) {
+            int next = i;
+            // Check if it is already
+            // considered in cycle
+            while (p[next] >= 0) {
+                // Swap the current element according
+                // to the permutation in P
+                std::swap(this->operator[](i), this->operator[](p[next]));
+                swap_count++;
+                int temp = p[next];
+                // Subtract n from an entry in P
+                // to make it negative which indicates
+                // the corresponding move
+                // has been performed
+                p[next] -= n;
+                next = temp;
+            }
+        }
+        std::cout << "size: " << p.size() << ", swap_count: " << swap_count << std::endl;
     }
 
  private:

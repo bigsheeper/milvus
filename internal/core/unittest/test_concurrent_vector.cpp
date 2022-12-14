@@ -114,11 +114,13 @@ TEST(ConcurrentVector, TestAckSingle) {
 }
 
 TEST(ConcurrentVector, TestPermutation) {
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< scalar <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
     ConcurrentVectorImpl<int, true> ids(1, 32);
     ConcurrentVectorImpl<int, true> unordered_timestamp(1, 32);
     std::map<int, int> records;
     std::default_random_engine e(42);
     auto total_count = 0;
+    int data = 0;
     for (int i = 0; i < 100; ++i) {
         int insert_size = e() % 20000;
         vector<int> vec;
@@ -126,6 +128,9 @@ TEST(ConcurrentVector, TestPermutation) {
         while (vec.size() < insert_size) {
             int v = e() % 10000000;
             int t = e() % 100000000;
+//            int v = data;
+//            int t = data;
+            data++;
             if (!records.count(t)) {
                 records.insert(std::pair<int, int>(t, v));
                 vec.emplace_back(v);
@@ -145,8 +150,8 @@ TEST(ConcurrentVector, TestPermutation) {
 
     auto timestamp_vec = unordered_timestamp.to_vector(total_count);
     auto t_to_vec = std::chrono::high_resolution_clock::now();
-    auto d_to_vec = std::chrono::duration_cast<std::chrono::microseconds>(t_to_vec - start);
-    std::cout << "to_vector taken: " << d_to_vec.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+    auto d_to_vec = std::chrono::duration_cast<std::chrono::milliseconds>(t_to_vec - start);
+    std::cout << "to_vector taken: " << d_to_vec.count() << " ms" << ", total_insert: " << total_count << std::endl;
 
     ASSERT_EQ(timestamp_vec.size(), total_count);
     auto permutation = unordered_timestamp.sort_permutation(timestamp_vec);
@@ -156,6 +161,7 @@ TEST(ConcurrentVector, TestPermutation) {
 
     ids.apply_permutation(permutation);
     unordered_timestamp.apply_permutation(permutation);
+//    auto vv = unordered_timestamp.to_vector(total_count);
     auto t_apply_permutation = std::chrono::high_resolution_clock::now();
     auto d_apply_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_apply_permutation - t_sort_permutation);
     std::cout << "apply_permutation taken: " << d_apply_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
@@ -172,6 +178,158 @@ TEST(ConcurrentVector, TestPermutation) {
         ASSERT_TRUE(unordered_timestamp[i]>pre);
         ASSERT_TRUE(records.count(unordered_timestamp[i]));
         ASSERT_EQ(records.at(unordered_timestamp[i]), ids[i]);
+        pre = unordered_timestamp[i];
+    }
+}
+
+TEST(ConcurrentVector, TestPermutation_vector) {
+    auto dim = 128;
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< vector " << dim << " <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
+    ConcurrentVectorImpl<int, false> vecs(dim, 32);
+    ConcurrentVectorImpl<int, true> unordered_timestamp(1, 32);
+    std::map<int, int> records;
+    std::default_random_engine e(42);
+    auto total_count = 0;
+    for (int i = 0; i < 100; ++i) {
+        int insert_size = e() % 20000;
+        vector<int> vec;
+        vector<int> timestamps;
+        while (timestamps.size() < insert_size) {
+            int t = e() % 100000000;
+            if (!records.count(t)) {
+                auto tmp = 0;
+                for (int j = 0; j < dim; j++) {
+                    int v = e() % 10000000;
+                    vec.emplace_back(v);
+                    tmp+=v;
+                }
+                records.insert(std::pair<int, int>(t, tmp));
+                timestamps.emplace_back(t);
+            }
+        }
+        ASSERT_EQ(vec.size(), insert_size*dim);
+        vecs.grow_to_at_least(total_count + insert_size);
+        vecs.set_data(total_count, vec.data(), insert_size);
+        unordered_timestamp.grow_to_at_least(total_count + insert_size);
+        unordered_timestamp.set_data(total_count, timestamps.data(), insert_size);
+        total_count += insert_size;
+    }
+    ASSERT_EQ(unordered_timestamp.num_chunk(), (total_count + 31) / 32);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto timestamp_vec = unordered_timestamp.to_vector(total_count);
+    auto t_to_vec = std::chrono::high_resolution_clock::now();
+    auto d_to_vec = std::chrono::duration_cast<std::chrono::milliseconds>(t_to_vec - start);
+    std::cout << "to_vector taken: " << d_to_vec.count() << " ms" << ", total_insert: " << total_count << std::endl;
+
+    ASSERT_EQ(timestamp_vec.size(), total_count);
+    auto permutation = unordered_timestamp.sort_permutation(timestamp_vec);
+    auto t_sort_permutation = std::chrono::high_resolution_clock::now();
+    auto d_sort_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_sort_permutation - t_to_vec);
+    std::cout << "sort_permutation taken: " << d_sort_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+//    auto before = vecs.to_vector(total_count);
+    vecs.apply_permutation_to_vec_field(permutation);
+//    auto after = vecs.to_vector(total_count);
+    unordered_timestamp.apply_permutation(permutation);
+//    auto vv = unordered_timestamp.to_vector(total_count);
+    auto t_apply_permutation = std::chrono::high_resolution_clock::now();
+    auto d_apply_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_apply_permutation - t_sort_permutation);
+    std::cout << "apply_permutation taken: " << d_apply_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Total Time taken: " << duration.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+    // check
+    auto pre = unordered_timestamp[0];
+    ASSERT_TRUE(records.count(unordered_timestamp[0]));
+
+    std::vector<int> vecSum;
+    for (int i = 0; i < total_count; i++) {
+        int tmp_sum = 0;
+        auto ptr = &vecs[i];
+        for (int j = 0; j < dim; j++) {
+            tmp_sum += *ptr;
+            ptr++;
+        }
+        vecSum.emplace_back(tmp_sum);
+    }
+
+    ASSERT_EQ(records.at(unordered_timestamp[0]), vecSum[0]);
+    for (int i = 1; i < timestamp_vec.size(); ++i) {
+        ASSERT_TRUE(unordered_timestamp[i]>pre);
+        ASSERT_TRUE(records.count(unordered_timestamp[i]));
+        ASSERT_EQ(records.at(unordered_timestamp[i]), vecSum[i]);
+        pre = unordered_timestamp[i];
+    }
+}
+
+TEST(ConcurrentVector, TestPermutation_string) {
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< string <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
+    ConcurrentVectorImpl<std::string, true> strings(1, 32);
+    ConcurrentVectorImpl<int, true> unordered_timestamp(1, 32);
+    std::map<int, std::string> records;
+    std::default_random_engine e(42);
+    auto total_count = 0;
+    for (int i = 0; i < 100; ++i) {
+        int insert_size = e() % 20000;
+        vector<std::string> vec;
+        vector<int> timestamps;
+        while (timestamps.size() < insert_size) {
+            int t = e() % 100000000;
+            int v = e() % 10000000;
+            if (!records.count(t)) {
+                records.insert(std::pair<int, std::string>(t, std::to_string(v)));
+                vec.emplace_back(std::to_string(v));
+                timestamps.emplace_back(t);
+            }
+        }
+        ASSERT_EQ(vec.size(), insert_size);
+        strings.grow_to_at_least(total_count + insert_size);
+        strings.set_data(total_count, vec.data(), insert_size);
+        unordered_timestamp.grow_to_at_least(total_count + insert_size);
+        unordered_timestamp.set_data(total_count, timestamps.data(), insert_size);
+        total_count += insert_size;
+    }
+    ASSERT_EQ(unordered_timestamp.num_chunk(), (total_count + 31) / 32);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto timestamp_vec = unordered_timestamp.to_vector(total_count);
+    auto t_to_vec = std::chrono::high_resolution_clock::now();
+    auto d_to_vec = std::chrono::duration_cast<std::chrono::milliseconds>(t_to_vec - start);
+    std::cout << "to_vector taken: " << d_to_vec.count() << " ms" << ", total_insert: " << total_count << std::endl;
+
+    ASSERT_EQ(timestamp_vec.size(), total_count);
+    auto permutation = unordered_timestamp.sort_permutation(timestamp_vec);
+    auto t_sort_permutation = std::chrono::high_resolution_clock::now();
+    auto d_sort_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_sort_permutation - t_to_vec);
+    std::cout << "sort_permutation taken: " << d_sort_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+//    auto before = strings.to_vector(total_count);
+    strings.apply_permutation(permutation);
+//    auto after = strings.to_vector(total_count);
+    unordered_timestamp.apply_permutation(permutation);
+//    auto vv = unordered_timestamp.to_vector(total_count);
+    auto t_apply_permutation = std::chrono::high_resolution_clock::now();
+    auto d_apply_permutation = std::chrono::duration_cast<std::chrono::microseconds>(t_apply_permutation - t_sort_permutation);
+    std::cout << "apply_permutation taken: " << d_apply_permutation.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Total Time taken: " << duration.count()/1000 << " ms" << ", total_insert: " << total_count << std::endl;
+
+    // check
+    auto pre = unordered_timestamp[0];
+    ASSERT_TRUE(records.count(unordered_timestamp[0]));
+
+    ASSERT_EQ(records.at(unordered_timestamp[0]), strings[0]);
+    for (int i = 1; i < timestamp_vec.size(); ++i) {
+        ASSERT_TRUE(unordered_timestamp[i]>pre);
+        ASSERT_TRUE(records.count(unordered_timestamp[i]));
+        ASSERT_EQ(records.at(unordered_timestamp[i]), strings[i]);
         pre = unordered_timestamp[i];
     }
 }

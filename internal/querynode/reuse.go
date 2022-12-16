@@ -18,6 +18,7 @@ package querynode
 
 import (
 	"context"
+	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -74,6 +75,7 @@ func (d *dispatcher) register(ctx context.Context, vchannel string, position *in
 	boundedBuffer := make(chan interface{}, 1024)
 	d.mu.Lock()
 	d.vchannels[vchannel] = boundedBuffer
+	seekFinishPos := proto.Clone(d.curPos).(*internalpb.MsgPosition)
 	d.mu.Unlock()
 
 	// pull back
@@ -92,22 +94,18 @@ func (d *dispatcher) register(ctx context.Context, vchannel string, position *in
 		case <-ctx.Done():
 			return ctx.Err()
 		case pack := <-stream.Chan():
-			d.mu.Lock()
-			if pack.EndPositions[0].GetTimestamp() >= d.curPos.GetTimestamp() {
-				d.mu.Unlock()
+			if pack.EndPositions[0].GetTimestamp() >= seekFinishPos.GetTimestamp() {
 				hasMore = false
 				break
 			}
-			d.mu.Unlock()
 			input <- pack // TODO: check
 		}
 	}
 
+	d.mu.Lock()
 	for pack := range boundedBuffer {
 		input <- pack
 	}
-
-	d.mu.Lock()
 	delete(d.vchannels, vchannel)
 	d.vchannels[vchannel] = input
 	d.mu.Unlock()

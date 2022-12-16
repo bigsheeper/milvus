@@ -55,7 +55,7 @@ func (d *dispatcher) start(ctx context.Context, position *internalpb.MsgPosition
 			d.mu.Lock()
 			d.curPos = pack.EndPositions[0]
 			for _, msg := range pack.Msgs {
-				msg.ID() // TODO: msg.VChannel/collection
+				msg.ID() // TODO: group by collectionID, and send to vchannels
 				d.vchannels["vchannel-x"] <- msg
 			}
 			d.mu.Unlock()
@@ -95,7 +95,7 @@ func (d *dispatcher) register(ctx context.Context, vchannel string, position *in
 				break
 			}
 			d.mu.Unlock()
-			input <- pack // TODO: check
+			input <- pack // TODO: check if belongs to vchannel x
 		}
 	}
 

@@ -57,8 +57,9 @@ CUDA_ARCH="DEFAULT"
 CUSTOM_THIRDPARTY_PATH=""
 EMBEDDED_MILVUS="OFF"
 BUILD_DISK_ANN="OFF"
+USE_ASAN="OFF"
 
-while getopts "p:d:t:s:f:n:ulrcghzmeb" arg; do
+while getopts "p:d:t:s:f:n:ulrcghzmeba" arg; do
   case $arg in
   f)
     CUSTOM_THIRDPARTY_PATH=$OPTARG
@@ -105,6 +106,10 @@ while getopts "p:d:t:s:f:n:ulrcghzmeb" arg; do
   n)
     BUILD_DISK_ANN=$OPTARG
     ;;
+  a)
+    USE_ASAN="ON"
+    BUILD_TYPE=Debug
+    ;;
   h) # help
     echo "
 
@@ -122,6 +127,7 @@ parameter:
 -e: build without prometheus(default: OFF)
 -s: build with CUDA arch(default:DEFAULT), for example '-gencode=compute_61,code=sm_61;-gencode=compute_75,code=sm_75'
 -b: build embedded milvus(default: OFF)
+-a: build milvus with AddressSanitizer
 -h: help
 
 usage:
@@ -187,33 +193,17 @@ case "${unameOut}" in
     export CXX="${llvm_prefix}/bin/clang++"
     export LDFLAGS="-L${llvm_prefix}/lib -L/usr/local/opt/libomp/lib"
     export CXXFLAGS="-I${llvm_prefix}/include -I/usr/local/include -I/usr/local/opt/libomp/include"
-    conan install ${CPP_SRC_DIR} --install-folder conan --build=missing -s compiler=clang -s compiler.libcxx=libc++
+    conan install ${CPP_SRC_DIR} --install-folder conan --build=missing -s compiler=clang -s compiler.libcxx=libc++ || { echo 'conan install failed'; exit 1; }
     ;;
   Linux*)
     if [[ `gcc -v 2>&1 | sed -n 's/.*\(--with-default-libstdcxx-abi\)=\(\w*\).*/\2/p'` == "gcc4" ]]; then
-      conan install ${CPP_SRC_DIR} --install-folder conan --build=missing
+      conan install ${CPP_SRC_DIR} --install-folder conan --build=missing || { echo 'conan install failed'; exit 1; }
     else 
-      conan install ${CPP_SRC_DIR} --install-folder conan --build=missing -s compiler.libcxx=libstdc++11
+      conan install ${CPP_SRC_DIR} --install-folder conan --build=missing -s compiler.libcxx=libstdc++11 || { echo 'conan install failed'; exit 1; }
     fi 
     ;;
   *)   
-    cat << EOF >> msys2_profile
-[tool_requires]
-mingw-w64/8.1
-
-[settings]
-os_build=Windows
-os=Windows
-arch=x86_64
-arch_build=x86_64
-compiler=gcc
-compiler.version=8.4
-compiler.exception=seh
-compiler.libcxx=libstdc++11
-compiler.threads=posix
-build_type=Release
-EOF
-    conan install ${CPP_SRC_DIR} --install-folder conan --build=missing --profile msys2_profile
+    echo "Cannot build on windows"
     ;;
 esac
 
@@ -233,6 +223,7 @@ ${CMAKE_EXTRA_ARGS} \
 -DCUSTOM_THIRDPARTY_DOWNLOAD_PATH=${CUSTOM_THIRDPARTY_PATH} \
 -DEMBEDDED_MILVUS=${EMBEDDED_MILVUS} \
 -DBUILD_DISK_ANN=${BUILD_DISK_ANN} \
+-DUSE_ASAN=${USE_ASAN} \
 ${CPP_SRC_DIR}"
 
 echo ${CMAKE_CMD}

@@ -59,6 +59,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/errorutil"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/retry"
@@ -301,9 +302,6 @@ func (c *Core) Register() error {
 	c.session.Register()
 	if c.enableActiveStandBy {
 		c.session.ProcessActiveStandBy(c.activateFunc)
-	} else {
-		c.UpdateStateCode(commonpb.StateCode_Healthy)
-		log.Debug("RootCoord start successfully ", zap.String("State Code", commonpb.StateCode_Healthy.String()))
 	}
 	log.Info("RootCoord Register Finished")
 	go c.session.LivenessCheck(c.ctx, func() {
@@ -424,6 +422,7 @@ func (c *Core) initImportManager() error {
 		f.NewIDAllocator(),
 		f.NewImportFunc(),
 		f.NewMarkSegmentsDroppedFunc(),
+		f.NewGetSegmentStatesFunc(),
 		f.NewGetCollectionNameFunc(),
 		f.NewDescribeIndexFunc(),
 		f.NewGetSegmentIndexStateFunc(),
@@ -626,14 +625,6 @@ func (c *Core) startInternal() error {
 		panic(err)
 	}
 
-	c.wg.Add(6)
-	go c.startTimeTickLoop()
-	go c.tsLoop()
-	go c.chanTimeTick.startWatch(&c.wg)
-	go c.importManager.cleanupLoop(&c.wg)
-	go c.importManager.sendOutTasksLoop(&c.wg)
-	go c.importManager.flipTaskStateLoop(&c.wg)
-
 	if Params.QuotaConfig.QuotaAndLimitsEnabled.GetAsBool() {
 		go c.quotaCenter.run()
 	}
@@ -645,11 +636,27 @@ func (c *Core) startInternal() error {
 		c.activateFunc = func() {
 			// todo to complete
 			log.Info("rootcoord switch from standby to active, activating")
+			c.startServerLoop()
 			c.UpdateStateCode(commonpb.StateCode_Healthy)
 		}
 		c.UpdateStateCode(commonpb.StateCode_StandBy)
+		logutil.Logger(c.ctx).Info("rootcoord enter standby mode successfully")
+	} else {
+		c.startServerLoop()
+		c.UpdateStateCode(commonpb.StateCode_Healthy)
+		logutil.Logger(c.ctx).Info("rootcoord startup successfully")
 	}
 	return nil
+}
+
+func (c *Core) startServerLoop() {
+	c.wg.Add(6)
+	go c.startTimeTickLoop()
+	go c.tsLoop()
+	go c.chanTimeTick.startWatch(&c.wg)
+	go c.importManager.cleanupLoop(&c.wg)
+	go c.importManager.sendOutTasksLoop(&c.wg)
+	go c.importManager.flipTaskStateLoop(&c.wg)
 }
 
 // Start starts RootCoord.
@@ -1757,28 +1764,6 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 	if code, ok := c.checkHealthy(); !ok {
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+commonpb.StateCode_name[int32(code)]), nil
 	}
-	// If setting ImportState_ImportCompleted, simply update the state and return directly.
-	if ir.GetState() == commonpb.ImportState_ImportCompleted {
-		if err := c.importManager.setImportTaskState(ir.GetTaskId(), commonpb.ImportState_ImportCompleted); err != nil {
-			errMsg := "failed to set import task as ImportState_ImportCompleted"
-			log.Error(errMsg, zap.Error(err))
-			return &commonpb.Status{
-				ErrorCode: commonpb.ErrorCode_UnexpectedError,
-				Reason:    fmt.Sprintf("%s %s", errMsg, err.Error()),
-			}, nil
-		}
-		return &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
-		}, nil
-	}
-	// Upon receiving ReportImport request, update the related task's state in task store.
-	ti, err := c.importManager.updateTaskInfo(ir)
-	if err != nil {
-		return &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_UpdateImportTaskFailure,
-			Reason:    err.Error(),
-		}, nil
-	}
 
 	// This method update a busy node to idle node, and send import task to idle node
 	resendTaskFunc := func() {
@@ -1797,6 +1782,19 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 		}
 	}
 
+	// If setting ImportState_ImportCompleted, simply update the state and return directly.
+	if ir.GetState() == commonpb.ImportState_ImportCompleted {
+		log.Warn("this should not be called!")
+	}
+	// Upon receiving ReportImport request, update the related task's state in task store.
+	ti, err := c.importManager.updateTaskInfo(ir)
+	if err != nil {
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UpdateImportTaskFailure,
+			Reason:    err.Error(),
+		}, nil
+	}
+
 	// If task failed, send task to idle datanode
 	if ir.GetState() == commonpb.ImportState_ImportFailed {
 		// When a DataNode failed importing, remove this DataNode from the busy node list and send out import tasks again.
@@ -1810,9 +1808,7 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 		resendTaskFunc()
 	} else {
 		// Here ir.GetState() == commonpb.ImportState_ImportPersisted
-		// When a DataNode finishes importing, remove this DataNode from the busy node list and send out import tasks again.
-		resendTaskFunc()
-		// Flush all import data segments.
+		// Seal these import segments, so they can be auto-flushed later.
 		if err := c.broker.Flush(ctx, ti.GetCollectionId(), ir.GetSegments()); err != nil {
 			log.Error("failed to call Flush on bulk insert segments",
 				zap.Int64("task ID", ir.GetTaskId()))

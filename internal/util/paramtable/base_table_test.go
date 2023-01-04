@@ -22,7 +22,7 @@ import (
 var baseParams = BaseTable{}
 
 func TestMain(m *testing.M) {
-	baseParams.Init()
+	baseParams.Init(0)
 	code := m.Run()
 	os.Exit(code)
 }
@@ -109,7 +109,7 @@ func TestBaseTable_Get(t *testing.T) {
 func TestBaseTable_Pulsar(t *testing.T) {
 	//test PULSAR ADDRESS
 	t.Setenv("PULSAR_ADDRESS", "pulsar://localhost:6650")
-	baseParams.Init()
+	baseParams.Init(0)
 
 	address := baseParams.Get("pulsar.address")
 	assert.Equal(t, "pulsar://localhost:6650", address)
@@ -118,40 +118,11 @@ func TestBaseTable_Pulsar(t *testing.T) {
 	assert.NotEqual(t, "", port)
 }
 
-// func TestBaseTable_ConfDir(t *testing.T) {
-// 	rightConfig := baseParams.configDir
-// 	// fake dir
-// 	baseParams.configDir = "./"
-
-// 	assert.Panics(t, func() { baseParams.loadFromYaml(defaultYaml) })
-
-// 	baseParams.configDir = rightConfig
-// 	baseParams.loadFromYaml(defaultYaml)
-// 	baseParams.GlobalInitWithYaml(defaultYaml)
-// }
-
-// func TestBateTable_ConfPath(t *testing.T) {
-// 	os.Setenv("MILVUSCONF", "test")
-// 	config := baseParams.initConfPath()
-// 	assert.Equal(t, config, "test")
-
-// 	os.Unsetenv("MILVUSCONF")
-// 	dir, _ := os.Getwd()
-// 	config = baseParams.initConfPath()
-// 	assert.Equal(t, filepath.Clean(config), filepath.Clean(dir+"/../../../configs/"))
-
-// 	// test use get dir
-// 	os.Chdir(dir + "/../../../")
-// 	defer os.Chdir(dir)
-// 	config = baseParams.initConfPath()
-// 	assert.Equal(t, filepath.Clean(config), filepath.Clean(dir+"/../../../configs/"))
-// }
-
 func TestBaseTable_Env(t *testing.T) {
 	t.Setenv("milvus.test", "test")
 	t.Setenv("milvus.test.test2", "test2")
 
-	baseParams.Init()
+	baseParams.Init(0)
 	result, _ := baseParams.Load("test")
 	assert.Equal(t, result, "test")
 
@@ -160,100 +131,9 @@ func TestBaseTable_Env(t *testing.T) {
 
 	t.Setenv("milvus.invalid", "xxx=test")
 
-	baseParams.Init()
+	baseParams.Init(0)
 	result, _ = baseParams.Load("invalid")
 	assert.Equal(t, result, "xxx=test")
-}
-
-func TestBaseTable_Parse(t *testing.T) {
-	t.Run("ParseBool", func(t *testing.T) {
-		assert.Nil(t, baseParams.Save("key", "true"))
-		assert.True(t, baseParams.ParseBool("key", false))
-		assert.False(t, baseParams.ParseBool("not_exist_key", false))
-
-		assert.Nil(t, baseParams.Save("key", "rand"))
-		assert.Panics(t, func() { baseParams.ParseBool("key", false) })
-	})
-
-	t.Run("ParseFloat", func(t *testing.T) {
-		assert.Nil(t, baseParams.Save("key", "0"))
-		assert.Equal(t, float64(0), baseParams.ParseFloat("key"))
-
-		assert.Nil(t, baseParams.Save("key", "3.14"))
-		assert.Equal(t, float64(3.14), baseParams.ParseFloat("key"))
-
-		assert.Panics(t, func() { baseParams.ParseFloat("not_exist_key") })
-		assert.Nil(t, baseParams.Save("key", "abc"))
-		assert.Panics(t, func() { baseParams.ParseFloat("key") })
-	})
-
-	t.Run("ParseFloatWithDefault", func(t *testing.T) {
-		baseParams.Remove("key")
-		assert.Equal(t, float64(0.0), baseParams.ParseFloatWithDefault("key", 0.0))
-		assert.Equal(t, float64(3.14), baseParams.ParseFloatWithDefault("key", 3.14))
-
-		assert.Nil(t, baseParams.Save("key", "2"))
-		assert.Equal(t, float64(2.0), baseParams.ParseFloatWithDefault("key", 3.14))
-	})
-
-	t.Run("ParseInt32", func(t *testing.T) {
-		assert.Nil(t, baseParams.Save("key", "0"))
-		assert.Equal(t, int32(0), baseParams.ParseInt32("key"))
-
-		assert.Nil(t, baseParams.Save("key", "314"))
-		assert.Equal(t, int32(314), baseParams.ParseInt32("key"))
-
-		assert.Panics(t, func() { baseParams.ParseInt32("not_exist_key") })
-		assert.Nil(t, baseParams.Save("key", "abc"))
-		assert.Panics(t, func() { baseParams.ParseInt32("key") })
-	})
-
-	t.Run("ParseInt32WithDefault", func(t *testing.T) {
-		baseParams.Remove("key")
-		assert.Equal(t, int32(1), baseParams.ParseInt32WithDefault("key", 1))
-		assert.Nil(t, baseParams.Save("key", "2"))
-		assert.Equal(t, int32(2), baseParams.ParseInt32WithDefault("key", 1))
-	})
-
-	t.Run("ParseInt64", func(t *testing.T) {
-		assert.Nil(t, baseParams.Save("key", "0"))
-		assert.Equal(t, int64(0), baseParams.ParseInt64("key"))
-
-		assert.Nil(t, baseParams.Save("key", "314"))
-		assert.Equal(t, int64(314), baseParams.ParseInt64("key"))
-
-		assert.Panics(t, func() { baseParams.ParseInt64("not_exist_key") })
-		assert.Nil(t, baseParams.Save("key", "abc"))
-		assert.Panics(t, func() { baseParams.ParseInt64("key") })
-	})
-
-	t.Run("ParseInt64WithDefault", func(t *testing.T) {
-		baseParams.Remove("key")
-		assert.Equal(t, int64(1), baseParams.ParseInt64WithDefault("key", 1))
-		assert.Nil(t, baseParams.Save("key", "2"))
-		assert.Equal(t, int64(2), baseParams.ParseInt64WithDefault("key", 1))
-	})
-
-	t.Run("ParseIntWithDefault", func(t *testing.T) {
-		baseParams.Remove("key")
-		assert.Equal(t, int(1), baseParams.ParseIntWithDefault("key", 1))
-		assert.Nil(t, baseParams.Save("key", "2"))
-		assert.Equal(t, int(2), baseParams.ParseIntWithDefault("key", 1))
-	})
-}
-
-func Test_ConvertRangeToIntSlice(t *testing.T) {
-	t.Run("ConvertRangeToIntSlice", func(t *testing.T) {
-		slice := ConvertRangeToIntSlice("0,10", ",")
-		assert.Equal(t, 10, len(slice))
-
-		assert.Panics(t, func() { ConvertRangeToIntSlice("0", ",") })
-		assert.Panics(t, func() { ConvertRangeToIntSlice("0, 10", ",") })
-		assert.Panics(t, func() { ConvertRangeToIntSlice("abc,10", ",") })
-		assert.Panics(t, func() { ConvertRangeToIntSlice("0,abc", ",") })
-		assert.Panics(t, func() { ConvertRangeToIntSlice("-1,9", ",") })
-		assert.Panics(t, func() { ConvertRangeToIntSlice("9,0", ",") })
-	})
 }
 
 func TestNewBaseTableFromYamlOnly(t *testing.T) {

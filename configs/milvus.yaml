@@ -202,6 +202,7 @@ queryNode:
   loadMemoryUsageFactor: 3 # The multiply factor of calculating the memory usage while loading segments
   enableDisk: true # enable querynode load disk index, and search on disk index
   maxDiskUsagePercentage: 95
+  gracefulStopTimeout: 30
 
   stats:
     publishInterval: 1000 # Interval for querynode to report node information (milliseconds)
@@ -230,6 +231,10 @@ queryNode:
     # Max read concurrency must greater than or equal to 1, and less than or equal to runtime.NumCPU * 100.
     maxReadConcurrentRatio: 2.0 # (0, 100]
     cpuRatio: 10.0 # ratio used to estimate read task cpu usage.
+    # maxTimestampLag is the max ts lag between serviceable and guarantee timestamp.
+    # if the lag is larger than this config, scheduler will return error without waiting.
+    # the valid value is [3600, infinite)
+    maxTimestampLag: 86400
 
   grouping:
     enabled: true
@@ -256,6 +261,7 @@ indexNode:
   port: 21121
   enableDisk: true # enable index node build disk vector index
   maxDiskUsagePercentage: 95
+  gracefulStopTimeout: 30
 
   scheduler:
     buildParallel: 1
@@ -283,10 +289,14 @@ dataCoord:
     # `minSizeFromIdleToSealed`, Milvus will automatically seal it.
     maxIdleTime: 600 # The max idle time of segment in seconds, 10*60.
     minSizeFromIdleToSealed: 16 # The min size in MB of segment which can be idle from sealed.
+    # The max number of binlog file for one segment, the segment will be sealed if
+    # the number of binlog file reaches to max value.
+    maxBinlogFileNumber: 256
     smallProportion: 0.5 # The segment is considered as "small segment" when its # of rows is smaller than
     # (smallProportion * segment max # of rows).
     compactableProportion: 0.5 # A compaction will happen on small segments if the segment after compaction will have
     # over (compactableProportion * segment max # of rows) rows.
+    # MUST BE GREATER THAN OR EQUAL TO <smallProportion>!!!
     expansionRate: 1.25 # During compaction, the size of segment # of rows is able to exceed segment max # of rows by (expansionRate-1) * 100%.
 
   compaction:

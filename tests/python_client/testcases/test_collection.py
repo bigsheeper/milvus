@@ -986,6 +986,7 @@ class TestCollectionParams(TestcaseBase):
                                              check_items={exp_name: c_name, exp_schema: schema})
 
     @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.xfail(reason="issue #21238")
     def test_create_collection_over_maximum_fields(self):
         """
         target: Test create collection with more than the maximum fields
@@ -1003,7 +1004,7 @@ class TestCollectionParams(TestcaseBase):
         int_fields.append(cf.gen_float_vec_field())
         int_fields.append(cf.gen_int64_field(is_primary=True))
         schema = cf.gen_collection_schema(fields=int_fields)
-        error = {ct.err_code: 1, ct.err_msg: "maximum field's number should be limited to 256"}
+        error = {ct.err_code: 1, ct.err_msg: "maximum field's number should be limited to 64"}
         self.collection_wrap.init_collection(c_name, schema=schema, check_task=CheckTasks.err_res, check_items=error)
 
 
@@ -1689,6 +1690,7 @@ class TestCreateCollectionInvalid(TestcaseBase):
     """
 
     @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.xfail(reason="issue #21238")
     def test_create_collection_limit_fields(self):
         """
         target: test create collection with maximum fields
@@ -1708,7 +1710,7 @@ class TestCreateCollectionInvalid(TestcaseBase):
             field_name_tmp = gen_unique_str("field_name")
             field_schema_temp = cf.gen_int64_field(field_name_tmp)
             field_schema_list.append(field_schema_temp)
-        error = {ct.err_code: 1, ct.err_msg: "'maximum field\'s number should be limited to 256'"}
+        error = {ct.err_code: 1, ct.err_msg: "'maximum field\'s number should be limited to 64'"}
         schema, _ = self.collection_schema_wrap.init_collection_schema(fields=field_schema_list)
         self.init_collection_wrap(name=c_name, schema=schema, check_task=CheckTasks.err_res, check_items=error)
 
@@ -2571,7 +2573,7 @@ class TestLoadCollection(TestcaseBase):
         method: create a collection without index, then load
         expected: raise exception
         """
-        collection_w = self.init_collection_general(prefix, True, is_index=True)[0]
+        collection_w = self.init_collection_general(prefix, True, is_index=False)[0]
         collection_w.load(check_task=CheckTasks.err_res,
                           check_items={"err_code": 1,
                                        "err_msg": "index not exist"})
@@ -2609,7 +2611,7 @@ class TestReleaseAdvanced(TestcaseBase):
         """
         self._connect()
         partition_num = 1
-        collection_w = self.init_collection_general(prefix, True, 10, partition_num, is_index=True)[0]
+        collection_w = self.init_collection_general(prefix, True, 10, partition_num, is_index=False)[0]
         collection_w.create_index(ct.default_float_vec_field_name, index_params=ct.default_flat_index)
         par = collection_w.partitions
         par_name = par[partition_num].name
@@ -2635,7 +2637,7 @@ class TestReleaseAdvanced(TestcaseBase):
         """
         self._connect()
         partition_num = 1
-        collection_w = self.init_collection_general(prefix, True, 10, partition_num, is_index=True)[0]
+        collection_w = self.init_collection_general(prefix, True, 10, partition_num, is_index=False)[0]
         collection_w.create_index(ct.default_float_vec_field_name, index_params=ct.default_flat_index)
         par = collection_w.partitions
         par_name = par[partition_num].name
@@ -2690,7 +2692,7 @@ class TestLoadPartition(TestcaseBase):
         self._connect()
         partition_num = 1
         collection_w = self.init_collection_general(prefix, True, ct.default_nb, partition_num,
-                                                    is_binary=True, is_index=True)[0]
+                                                    is_binary=True, is_index=False)[0]
 
         # for metric_type in ct.binary_metrics:
         binary_index["metric_type"] = metric_type

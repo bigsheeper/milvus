@@ -30,6 +30,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -214,7 +215,7 @@ func (c *ChannelMeta) addSegment(req addSegmentReq) error {
 		historyInsertBuf: make([]*BufferData, 0),
 		historyDeleteBuf: make([]*DelDataBuf, 0),
 		startPos:         req.startPos,
-		lastSyncTs:       req.recoverTs,
+		lastSyncTs:       tsoutil.GetCurrentTime(),
 	}
 	seg.setType(req.segType)
 	// Set up pk stats
@@ -543,7 +544,7 @@ func (c *ChannelMeta) mergeFlushedSegments(seg *Segment, planID UniqueID, compac
 		return fmt.Errorf("mismatch collection, ID=%d", seg.collectionID)
 	}
 
-	compactedFrom = lo.Filter[int64](compactedFrom, func(segID int64, _ int) bool {
+	compactedFrom = lo.Filter(compactedFrom, func(segID int64, _ int) bool {
 		// which means the segment is the `flushed` state
 		has := c.hasSegment(segID, true) && !c.hasSegment(segID, false)
 		if !has {

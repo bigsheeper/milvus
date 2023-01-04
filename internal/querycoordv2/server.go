@@ -252,9 +252,11 @@ func (s *Server) initMeta() error {
 		log.Error("failed to recover collections")
 		return err
 	}
-	metrics.QueryCoordNumCollections.WithLabelValues().Set(float64(len(s.meta.GetAll())))
+	collections := s.meta.GetAll()
+	log.Info("recovering collections...", zap.Int64s("collections", collections))
+	metrics.QueryCoordNumCollections.WithLabelValues().Set(float64(len(collections)))
 
-	err = s.meta.ReplicaManager.Recover(s.meta.CollectionManager.GetAll())
+	err = s.meta.ReplicaManager.Recover(collections)
 	if err != nil {
 		log.Error("failed to recover replicas")
 		return err
@@ -323,6 +325,25 @@ func (s *Server) Start() error {
 		return err
 	}
 
+	if s.enableActiveStandBy {
+		s.activateFunc = func() {
+			log.Info("querycoord switch from standby to active, activating")
+			s.startServerLoop()
+			s.UpdateStateCode(commonpb.StateCode_Healthy)
+		}
+		s.UpdateStateCode(commonpb.StateCode_StandBy)
+	} else {
+		s.startServerLoop()
+		s.UpdateStateCode(commonpb.StateCode_Healthy)
+	}
+	log.Info("QueryCoord started")
+
+	s.afterStart()
+
+	return nil
+}
+
+func (s *Server) startServerLoop() {
 	log.Info("start cluster...")
 	s.cluster.Start(s.ctx)
 
@@ -339,23 +360,6 @@ func (s *Server) Start() error {
 	s.collectionObserver.Start(s.ctx)
 	s.leaderObserver.Start(s.ctx)
 	s.targetObserver.Start(s.ctx)
-
-	if s.enableActiveStandBy {
-		s.activateFunc = func() {
-			// todo to complete
-			log.Info("querycoord switch from standby to active, activating")
-			s.initMeta()
-			s.UpdateStateCode(commonpb.StateCode_Healthy)
-		}
-		s.UpdateStateCode(commonpb.StateCode_StandBy)
-	} else {
-		s.UpdateStateCode(commonpb.StateCode_Healthy)
-	}
-	log.Info("QueryCoord started")
-
-	s.afterStart()
-
-	return nil
 }
 
 func (s *Server) Stop() error {

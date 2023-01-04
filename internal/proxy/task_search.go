@@ -22,7 +22,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/commonpbutil"
 	"github.com/milvus-io/milvus/internal/util/distance"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/grpcclient"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/trace"
@@ -388,6 +387,7 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 func (t *searchTask) Execute(ctx context.Context) error {
 	sp, ctx := trace.StartSpanFromContextWithOperationName(t.TraceCtx(), "Proxy-Search-Execute")
 	defer sp.Finish()
+	log := log.Ctx(ctx)
 
 	tr := timerecord.NewTimeRecorder(fmt.Sprintf("proxy execute search %d", t.ID()))
 	defer tr.CtxElapse(ctx, "done")
@@ -400,23 +400,25 @@ func (t *searchTask) Execute(ctx context.Context) error {
 		t.resultBuf = make(chan *internalpb.SearchResults, len(shard2Leaders))
 		t.toReduceResults = make([]*internalpb.SearchResults, 0, len(shard2Leaders))
 		if err := t.searchShardPolicy(ctx, t.shardMgr, t.searchShard, shard2Leaders); err != nil {
-			log.Ctx(ctx).Warn("failed to do search", zap.Error(err), zap.String("Shards", fmt.Sprintf("%v", shard2Leaders)))
+			log.Warn("failed to do search", zap.Error(err), zap.String("Shards", fmt.Sprintf("%v", shard2Leaders)))
 			return err
 		}
 		return nil
 	}
 
 	err := executeSearch(WithCache)
-	if errors.Is(err, errInvalidShardLeaders) || funcutil.IsGrpcErr(err) || errors.Is(err, grpcclient.ErrConnect) {
-		log.Ctx(ctx).Warn("first search failed, updating shardleader caches and retry search",
+	if err != nil {
+		log.Warn("first search failed, updating shardleader caches and retry search",
 			zap.Error(err))
-		return executeSearch(WithoutCache)
+		// invalidate cache first, since ctx may be canceled or timeout here
+		globalMetaCache.ClearShards(t.collectionName)
+		err = executeSearch(WithoutCache)
 	}
 	if err != nil {
 		return fmt.Errorf("fail to search on all shard leaders, err=%v", err)
 	}
 
-	log.Ctx(ctx).Debug("Search Execute done.")
+	log.Debug("Search Execute done.")
 	return nil
 }
 

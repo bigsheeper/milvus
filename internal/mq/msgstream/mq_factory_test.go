@@ -21,10 +21,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestPmsFactory(t *testing.T) {
+	Params.Init()
 	pmsFactory := NewPmsFactory(&Params.PulsarCfg)
 
 	ctx := context.Background()
@@ -78,6 +80,7 @@ func TestPmsFactoryWithAuth(t *testing.T) {
 
 func TestRmsFactory(t *testing.T) {
 	defer os.Unsetenv("ROCKSMQ_PATH")
+	paramtable.Init()
 
 	dir := t.TempDir()
 

@@ -20,13 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"math/rand"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
@@ -35,9 +32,14 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	queryPb "github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/util/concurrency"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
+	"github.com/panjf2000/ants/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestImpl_GetComponentStates(t *testing.T) {
@@ -115,6 +117,16 @@ func TestImpl_WatchDmChannels(t *testing.T) {
 		status, err := node.WatchDmChannels(ctx, req)
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
+
+		originPool := node.taskPool
+		defer func() {
+			node.taskPool = originPool
+		}()
+		node.taskPool, _ = concurrency.NewPool(runtime.GOMAXPROCS(0), ants.WithPreAlloc(true))
+		node.taskPool.Release()
+		status, err = node.WatchDmChannels(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, status.ErrorCode)
 	})
 
 	t.Run("target not match", func(t *testing.T) {
@@ -192,7 +204,6 @@ func TestImpl_WatchDmChannels(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, status.ErrorCode)
 	})
-
 }
 
 func TestImpl_UnsubDmChannel(t *testing.T) {
@@ -200,6 +211,54 @@ func TestImpl_UnsubDmChannel(t *testing.T) {
 	defer cancel()
 	node, err := genSimpleQueryNode(ctx)
 	assert.NoError(t, err)
+
+	t.Run("normal run", func(t *testing.T) {
+		schema := genTestCollectionSchema()
+		req := &queryPb.WatchDmChannelsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType:  commonpb.MsgType_WatchDmChannels,
+				MsgID:    rand.Int63(),
+				TargetID: node.session.ServerID,
+			},
+			NodeID:       0,
+			CollectionID: defaultCollectionID,
+			PartitionIDs: []UniqueID{defaultPartitionID},
+			Schema:       schema,
+			Infos: []*datapb.VchannelInfo{
+				{
+					CollectionID: 1000,
+					ChannelName:  "1000-dmc0",
+				},
+			},
+		}
+
+		status, err := node.WatchDmChannels(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
+
+		{
+			req := &queryPb.UnsubDmChannelRequest{
+				Base: &commonpb.MsgBase{
+					MsgType:  commonpb.MsgType_UnsubDmChannel,
+					MsgID:    rand.Int63(),
+					TargetID: node.session.ServerID,
+				},
+				NodeID:       0,
+				CollectionID: defaultCollectionID,
+				ChannelName:  "1000-dmc0",
+			}
+			originMetaReplica := node.metaReplica
+			node.metaReplica = newMockReplicaInterface()
+			status, err := node.UnsubDmChannel(ctx, req)
+			assert.NoError(t, err)
+			assert.Equal(t, commonpb.ErrorCode_UnexpectedError, status.ErrorCode)
+
+			node.metaReplica = originMetaReplica
+			status, err = node.UnsubDmChannel(ctx, req)
+			assert.NoError(t, err)
+			assert.Equal(t, commonpb.ErrorCode_Success, status.ErrorCode)
+		}
+	})
 
 	t.Run("target not match", func(t *testing.T) {
 		req := &queryPb.UnsubDmChannelRequest{

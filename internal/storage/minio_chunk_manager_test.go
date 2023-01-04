@@ -55,11 +55,11 @@ func newMinIOChunkManager(ctx context.Context, bucketName string, rootPath strin
 }
 
 func getMinioAddress() string {
-	minioHost := Params.LoadWithDefault("minio.address", paramtable.DefaultMinioHost)
+	minioHost := Params.GetWithDefault("minio.address", paramtable.DefaultMinioHost)
 	if strings.Contains(minioHost, ":") {
 		return minioHost
 	}
-	port := Params.LoadWithDefault("minio.port", paramtable.DefaultMinioPort)
+	port := Params.GetWithDefault("minio.port", paramtable.DefaultMinioPort)
 	return minioHost + ":" + port
 }
 
@@ -84,7 +84,7 @@ func TestMinIOCMFail(t *testing.T) {
 }
 
 func TestMinIOCM(t *testing.T) {
-	Params.Init()
+	Params.Init(0)
 	testBucket, err := Params.Load("minio.bucketName")
 	require.NoError(t, err)
 

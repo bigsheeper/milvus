@@ -30,15 +30,33 @@ import (
 	"github.com/golang/protobuf/proto"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	ot "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/keepalive"
-
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
+	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/common"
+	"github.com/milvus-io/milvus/internal/datacoord"
+	"github.com/milvus-io/milvus/internal/datanode"
+	grpcdatacoordclient "github.com/milvus-io/milvus/internal/distributed/datacoord"
+	grpcdatacoordclient2 "github.com/milvus-io/milvus/internal/distributed/datacoord/client"
+	grpcdatanode "github.com/milvus-io/milvus/internal/distributed/datanode"
+	grpcindexcoord "github.com/milvus-io/milvus/internal/distributed/indexcoord"
+	grpcindexcoordclient "github.com/milvus-io/milvus/internal/distributed/indexcoord/client"
+	grpcindexnode "github.com/milvus-io/milvus/internal/distributed/indexnode"
+	grpcquerycoord "github.com/milvus-io/milvus/internal/distributed/querycoord"
+	grpcquerycoordclient "github.com/milvus-io/milvus/internal/distributed/querycoord/client"
+	grpcquerynode "github.com/milvus-io/milvus/internal/distributed/querynode"
+	grpcrootcoord "github.com/milvus-io/milvus/internal/distributed/rootcoord"
+	rcc "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
+	"github.com/milvus-io/milvus/internal/indexcoord"
+	"github.com/milvus-io/milvus/internal/indexnode"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/proto/proxypb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
+	querycoord "github.com/milvus-io/milvus/internal/querycoordv2"
+	"github.com/milvus-io/milvus/internal/querynode"
 	"github.com/milvus-io/milvus/internal/rootcoord"
 	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/internal/util/crypto"
@@ -53,32 +71,11 @@ import (
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
-	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
-	"github.com/milvus-io/milvus-proto/go-api/schemapb"
-	"github.com/milvus-io/milvus/internal/proto/internalpb"
-	"github.com/milvus-io/milvus/internal/proto/proxypb"
-	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
-
-	grpcdatacoordclient "github.com/milvus-io/milvus/internal/distributed/datacoord"
-	grpcdatacoordclient2 "github.com/milvus-io/milvus/internal/distributed/datacoord/client"
-	grpcdatanode "github.com/milvus-io/milvus/internal/distributed/datanode"
-	grpcindexcoord "github.com/milvus-io/milvus/internal/distributed/indexcoord"
-	grpcindexcoordclient "github.com/milvus-io/milvus/internal/distributed/indexcoord/client"
-	grpcindexnode "github.com/milvus-io/milvus/internal/distributed/indexnode"
-	grpcquerycoord "github.com/milvus-io/milvus/internal/distributed/querycoord"
-	grpcquerycoordclient "github.com/milvus-io/milvus/internal/distributed/querycoord/client"
-	grpcquerynode "github.com/milvus-io/milvus/internal/distributed/querynode"
-	grpcrootcoord "github.com/milvus-io/milvus/internal/distributed/rootcoord"
-	rcc "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
-
-	"github.com/milvus-io/milvus/internal/datacoord"
-	"github.com/milvus-io/milvus/internal/datanode"
-	"github.com/milvus-io/milvus/internal/indexcoord"
-	"github.com/milvus-io/milvus/internal/indexnode"
-	querycoord "github.com/milvus-io/milvus/internal/querycoordv2"
-	"github.com/milvus-io/milvus/internal/querynode"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 const (
@@ -346,14 +343,14 @@ func (s *proxyTestServer) startGrpc(ctx context.Context, wg *sync.WaitGroup, p *
 		Timeout: 10 * time.Second, // Wait 10 second for the ping ack before assuming the connection is dead
 	}
 
-	log.Debug("Proxy server listen on tcp", zap.Int("port", p.Port))
-	lis, err := net.Listen("tcp", ":"+strconv.Itoa(p.Port))
+	log.Debug("Proxy server listen on tcp", zap.Int("port", p.Port.GetAsInt()))
+	lis, err := net.Listen("tcp", ":"+p.Port.GetValue())
 	if err != nil {
-		log.Warn("Proxy server failed to listen on", zap.Error(err), zap.Int("port", p.Port))
+		log.Warn("Proxy server failed to listen on", zap.Error(err), zap.Int("port", p.Port.GetAsInt()))
 		s.ch <- err
 		return
 	}
-	log.Debug("Proxy server already listen on tcp", zap.Int("port", p.Port))
+	log.Debug("Proxy server already listen on tcp", zap.Int("port", p.Port.GetAsInt()))
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -365,8 +362,8 @@ func (s *proxyTestServer) startGrpc(ctx context.Context, wg *sync.WaitGroup, p *
 	s.grpcServer = grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(kaep),
 		grpc.KeepaliveParams(kasp),
-		grpc.MaxRecvMsgSize(p.ServerMaxRecvSize),
-		grpc.MaxSendMsgSize(p.ServerMaxSendSize),
+		grpc.MaxRecvMsgSize(p.ServerMaxRecvSize.GetAsInt()),
+		grpc.MaxSendMsgSize(p.ServerMaxSendSize.GetAsInt()),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			ot.UnaryServerInterceptor(opts...),
 			RateLimitInterceptor(multiLimiter),
@@ -514,8 +511,10 @@ func TestProxy(t *testing.T) {
 	testServer := newProxyTestServer(proxy)
 	wg.Add(1)
 
+	base := paramtable.BaseTable{}
+	base.Init(0)
 	var p paramtable.GrpcServerConfig
-	p.InitOnce(typeutil.ProxyRole)
+	p.Init(typeutil.ProxyRole, &base)
 	testServer.Proxy.SetAddress(p.GetAddress())
 
 	go testServer.startGrpc(ctx, &wg, &p)
@@ -1050,6 +1049,16 @@ func TestProxy(t *testing.T) {
 		// default partition
 		assert.Equal(t, 2, len(resp.PartitionNames))
 
+		{
+			stateResp, err := proxy.GetLoadState(ctx, &milvuspb.GetLoadStateRequest{
+				CollectionName: collectionName,
+				PartitionNames: resp.PartitionNames,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+			assert.Equal(t, commonpb.LoadState_LoadStateNotLoad, stateResp.State)
+		}
+
 		// non-exist collection -> fail
 		resp, err = proxy.ShowPartitions(ctx, &milvuspb.ShowPartitionsRequest{
 			Base:           nil,
@@ -1201,6 +1210,15 @@ func TestProxy(t *testing.T) {
 	wg.Add(1)
 	t.Run("load collection", func(t *testing.T) {
 		defer wg.Done()
+		{
+			stateResp, err := proxy.GetLoadState(ctx, &milvuspb.GetLoadStateRequest{
+				CollectionName: collectionName,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+			assert.Equal(t, commonpb.LoadState_LoadStateNotLoad, stateResp.State)
+		}
+
 		resp, err := proxy.LoadCollection(ctx, &milvuspb.LoadCollectionRequest{
 			Base:           nil,
 			DbName:         dbName,
@@ -1306,6 +1324,15 @@ func TestProxy(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotEqual(t, commonpb.ErrorCode_Success, progressResp.Status.ErrorCode)
 			assert.Equal(t, int64(0), progressResp.Progress)
+		}
+
+		{
+			stateResp, err := proxy.GetLoadState(ctx, &milvuspb.GetLoadStateRequest{
+				CollectionName: otherCollectionName,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+			assert.Equal(t, commonpb.LoadState_LoadStateNotExist, stateResp.State)
 		}
 	})
 
@@ -2512,6 +2539,14 @@ func TestProxy(t *testing.T) {
 	t.Run("GetLoadingProgress fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.GetLoadingProgress(ctx, &milvuspb.GetLoadingProgressRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+	})
+
+	wg.Add(1)
+	t.Run("GetLoadState fail, unhealthy", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.GetLoadState(ctx, &milvuspb.GetLoadStateRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
@@ -3978,4 +4013,136 @@ func TestProxy_ListImportTasks(t *testing.T) {
 
 func TestProxy_GetStatistics(t *testing.T) {
 
+}
+
+func TestProxy_GetLoadState(t *testing.T) {
+	originCache := globalMetaCache
+	m := newMockCache()
+	m.setGetIDFunc(func(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
+		return 1, nil
+	})
+	m.setGetPartitionIDFunc(func(ctx context.Context, collectionName string, partitionName string) (typeutil.UniqueID, error) {
+		return 2, nil
+	})
+	globalMetaCache = m
+	defer func() {
+		globalMetaCache = originCache
+	}()
+
+	{
+		q := NewQueryCoordMock()
+		q.state.Store(commonpb.StateCode_Abnormal)
+		proxy := &Proxy{queryCoord: q}
+		proxy.stateCode.Store(commonpb.StateCode_Healthy)
+		stateResp, err := proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, stateResp.Status.ErrorCode)
+
+		progressResp, err := proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, progressResp.Status.ErrorCode)
+	}
+
+	{
+		q := NewQueryCoordMock(SetQueryCoordShowCollectionsFunc(func(ctx context.Context, request *querypb.ShowCollectionsRequest) (*querypb.ShowCollectionsResponse, error) {
+			return nil, errors.New("test")
+		}), SetQueryCoordShowPartitionsFunc(func(ctx context.Context, request *querypb.ShowPartitionsRequest) (*querypb.ShowPartitionsResponse, error) {
+			return nil, errors.New("test")
+		}))
+		q.state.Store(commonpb.StateCode_Healthy)
+		proxy := &Proxy{queryCoord: q}
+		proxy.stateCode.Store(commonpb.StateCode_Healthy)
+
+		stateResp, err := proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+		assert.Equal(t, commonpb.LoadState_LoadStateNotLoad, stateResp.State)
+
+		stateResp, err = proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo", PartitionNames: []string{"p1"}})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+		assert.Equal(t, commonpb.LoadState_LoadStateNotLoad, stateResp.State)
+
+		progressResp, err := proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, progressResp.Status.ErrorCode)
+		assert.Equal(t, int64(0), progressResp.Progress)
+
+		progressResp, err = proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo", PartitionNames: []string{"p1"}})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, progressResp.Status.ErrorCode)
+		assert.Equal(t, int64(0), progressResp.Progress)
+	}
+
+	{
+		q := NewQueryCoordMock(SetQueryCoordShowCollectionsFunc(func(ctx context.Context, request *querypb.ShowCollectionsRequest) (*querypb.ShowCollectionsResponse, error) {
+			return &querypb.ShowCollectionsResponse{
+				Status:              &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				CollectionIDs:       request.CollectionIDs,
+				InMemoryPercentages: []int64{},
+			}, nil
+		}))
+		q.state.Store(commonpb.StateCode_Healthy)
+		proxy := &Proxy{queryCoord: q}
+		proxy.stateCode.Store(commonpb.StateCode_Healthy)
+
+		stateResp, err := proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+		assert.Equal(t, commonpb.LoadState_LoadStateNotLoad, stateResp.State)
+
+		progressResp, err := proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, progressResp.Status.ErrorCode)
+	}
+
+	{
+		q := NewQueryCoordMock(SetQueryCoordShowCollectionsFunc(func(ctx context.Context, request *querypb.ShowCollectionsRequest) (*querypb.ShowCollectionsResponse, error) {
+			return &querypb.ShowCollectionsResponse{
+				Status:              &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				CollectionIDs:       request.CollectionIDs,
+				InMemoryPercentages: []int64{100},
+			}, nil
+		}))
+		q.state.Store(commonpb.StateCode_Healthy)
+		proxy := &Proxy{queryCoord: q}
+		proxy.stateCode.Store(commonpb.StateCode_Healthy)
+
+		stateResp, err := proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo", Base: &commonpb.MsgBase{}})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+		assert.Equal(t, commonpb.LoadState_LoadStateLoaded, stateResp.State)
+
+		stateResp, err = proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: ""})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, stateResp.Status.ErrorCode)
+
+		progressResp, err := proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, progressResp.Status.ErrorCode)
+		assert.Equal(t, int64(100), progressResp.Progress)
+	}
+
+	{
+		q := NewQueryCoordMock(SetQueryCoordShowCollectionsFunc(func(ctx context.Context, request *querypb.ShowCollectionsRequest) (*querypb.ShowCollectionsResponse, error) {
+			return &querypb.ShowCollectionsResponse{
+				Status:              &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
+				CollectionIDs:       request.CollectionIDs,
+				InMemoryPercentages: []int64{50},
+			}, nil
+		}))
+		q.state.Store(commonpb.StateCode_Healthy)
+		proxy := &Proxy{queryCoord: q}
+		proxy.stateCode.Store(commonpb.StateCode_Healthy)
+
+		stateResp, err := proxy.GetLoadState(context.Background(), &milvuspb.GetLoadStateRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, stateResp.Status.ErrorCode)
+		assert.Equal(t, commonpb.LoadState_LoadStateLoading, stateResp.State)
+
+		progressResp, err := proxy.GetLoadingProgress(context.Background(), &milvuspb.GetLoadingProgressRequest{CollectionName: "foo"})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, progressResp.Status.ErrorCode)
+		assert.Equal(t, int64(50), progressResp.Progress)
+	}
 }

@@ -18,86 +18,132 @@ package querynode
 
 import (
 	"context"
+	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"sync"
 )
 
-// just for test
+type signal int32
+
+const (
+	start     signal = 0
+	pause     signal = 1
+	resume    signal = 2
+	terminate signal = 3
+)
 
 type dispatcher struct {
-	mu sync.Mutex
+	done chan struct{}
+	wg   sync.WaitGroup
 
-	pchannel  string
-	vchannels map[string]chan interface{}
-	curPos    *internalpb.MsgPosition
+	vchannelsMu sync.RWMutex
+	vchannels   map[string]chan<- *msgstream.MsgPack
 
-	factory msgstream.Factory
+	curPosMu sync.RWMutex
+	curPos   *internalpb.MsgPosition
+
+	stream msgstream.MsgStream
 }
 
-func (d *dispatcher) start(ctx context.Context, position *internalpb.MsgPosition) error {
-	stream, err := d.factory.NewTtMsgStream(ctx)
+func NewDispatcher(factory msgstream.Factory, pchannel string, position *internalpb.MsgPosition) (*dispatcher, error) {
+	stream, err := factory.NewTtMsgStream(context.Background())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	stream.AsConsumer([]string{d.pchannel}, "aaa", mqwrapper.SubscriptionPositionUnknown)
+	stream.AsConsumer([]string{pchannel}, "aaa", mqwrapper.SubscriptionPositionUnknown)
 	err = stream.Seek([]*internalpb.MsgPosition{position})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	d := &dispatcher{
+		done:      make(chan struct{}),
+		vchannels: make(map[string]chan<- *msgstream.MsgPack),
+		stream:    stream,
+	}
+	return d, nil
+}
 
+func (d *dispatcher) handle(signal signal) {
+	switch signal {
+	case start:
+		d.wg.Add(1)
+		go d.work()
+	case pause:
+		d.done <- struct{}{}
+		d.wg.Wait()
+	case resume:
+		d.wg.Add(1)
+		go d.work()
+	case terminate:
+		d.done <- struct{}{}
+		d.stream.Close()
+		d.wg.Wait()
+	default:
+		panic("invalid signal in dispatcher handler")
+	}
+}
+
+func (d *dispatcher) work() {
+	defer d.wg.Done()
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case pack := <-stream.Chan(): // TODO: check ok
-			d.mu.Lock()
+		case <-d.done:
+			return
+		case pack := <-d.stream.Chan(): // TODO: check ok
+			d.curPosMu.Lock()
 			d.curPos = pack.EndPositions[0]
+			d.curPosMu.Unlock()
+
+			// group by vchannel
+			packs := make(map[string]*msgstream.MsgPack)
 			for _, msg := range pack.Msgs {
-				msg.ID() // TODO: group by collectionID, and send to vchannels
-				d.vchannels["vchannel-x"] <- msg
+				if _, ok := packs[msg.VChannel()]; !ok {
+					packs[msg.VChannel()] = &msgstream.MsgPack{
+						BeginTs:        pack.BeginTs,
+						EndTs:          pack.EndTs,
+						Msgs:           make([]msgstream.TsMsg, 0),
+						StartPositions: pack.StartPositions,
+						EndPositions:   pack.EndPositions,
+					}
+				}
+				packs[msg.VChannel()].Msgs = append(packs[msg.VChannel()].Msgs, msg)
 			}
-			d.mu.Unlock()
+			// dispatch
+			d.vchannelsMu.RLock()
+			for vchannel, p := range packs {
+				// TODO: separate if timeout
+				d.vchannels[vchannel] <- p
+			}
+			d.vchannelsMu.RUnlock()
 		}
 	}
 }
 
-func (d *dispatcher) register(ctx context.Context, vchannel string, position *internalpb.MsgPosition, input chan interface{}) error {
-	d.mu.Lock()
-	if position.GetTimestamp() > d.curPos.GetTimestamp() {
-		d.vchannels[vchannel] = input
-		d.mu.Unlock()
-		return nil
-	}
+func (d *dispatcher) getCurPosition() *internalpb.MsgPosition {
+	d.curPosMu.RLock()
+	defer d.curPosMu.RUnlock()
+	return proto.Clone(d.curPos).(*internalpb.MsgPosition)
+}
 
-	// pull back
-	stream, err := d.factory.NewTtMsgStream(ctx)
-	if err != nil {
-		return err // TODO: roll back
+func (d *dispatcher) getTarget() (string, chan<- *msgstream.MsgPack) {
+	d.vchannelsMu.RLock()
+	defer d.vchannelsMu.RUnlock()
+	for vch, ch := range d.vchannels {
+		return vch, ch
 	}
-	stream.AsConsumer([]string{d.pchannel}, "aaa", mqwrapper.SubscriptionPositionUnknown)
-	err = stream.Seek([]*internalpb.MsgPosition{position})
-	if err != nil {
-		return err
-	}
-	hasMore := true
-	for hasMore {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case pack := <-stream.Chan():
-			d.mu.Lock()
-			if pack.EndPositions[0].GetTimestamp() == d.curPos.GetTimestamp() {
-				d.vchannels[vchannel] = input
-				d.mu.Unlock()
-				hasMore = false
-				break
-			}
-			d.mu.Unlock()
-			input <- pack // TODO: check if belongs to vchannel x
-		}
-	}
+	panic("should not get here")
+}
 
-	return nil
+func (d *dispatcher) addTarget(vchannel string, output chan<- *msgstream.MsgPack) {
+	d.vchannelsMu.Lock()
+	defer d.vchannelsMu.Unlock()
+	d.vchannels[vchannel] = output
+}
+
+func (d *dispatcher) removeTarget(vchannel string) {
+	d.vchannelsMu.Lock()
+	defer d.vchannelsMu.Unlock()
+	delete(d.vchannels, vchannel)
 }

@@ -53,6 +53,7 @@ type TsMsg interface {
 	Unmarshal(MarshalType) (TsMsg, error)
 	Position() *MsgPosition
 	SetPosition(*MsgPosition)
+	VChannel() string
 }
 
 // BaseMsg is a basic structure that contains begin timestamp, end timestamp and the position of msgstream
@@ -97,6 +98,10 @@ func (bm *BaseMsg) Position() *MsgPosition {
 // SetPosition is used to set position of this message in msgstream
 func (bm *BaseMsg) SetPosition(position *MsgPosition) {
 	bm.MsgPosition = position
+}
+
+func (bm *BaseMsg) VChannel() string {
+	panic("TODO: implement")
 }
 
 func convertToByteArray(input interface{}) ([]byte, error) {

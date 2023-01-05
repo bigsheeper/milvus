@@ -308,6 +308,7 @@ func (ddn *ddNode) sendDeltaTimeTick(ts Timestamp) error {
 		BeginTimestamp: ts,
 		EndTimestamp:   ts,
 		HashValues:     []uint32{0},
+		Vchannel:       ddn.vChannelName,
 	}
 	timeTickResult := internalpb.TimeTickMsg{
 		Base: commonpbutil.NewMsgBase(

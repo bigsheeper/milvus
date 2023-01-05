@@ -54,6 +54,7 @@ type TsMsg interface {
 	Position() *MsgPosition
 	SetPosition(*MsgPosition)
 	VChannel() string
+	SetVChannel(string)
 }
 
 // BaseMsg is a basic structure that contains begin timestamp, end timestamp and the position of msgstream
@@ -63,6 +64,7 @@ type BaseMsg struct {
 	EndTimestamp   Timestamp
 	HashValues     []uint32
 	MsgPosition    *MsgPosition
+	Vchannel       string
 }
 
 // TraceCtx returns the context of opentracing
@@ -101,7 +103,11 @@ func (bm *BaseMsg) SetPosition(position *MsgPosition) {
 }
 
 func (bm *BaseMsg) VChannel() string {
-	panic("TODO: implement")
+	return bm.Vchannel
+}
+
+func (bm *BaseMsg) SetVChannel(vchannel string) {
+	bm.Vchannel = vchannel
 }
 
 func convertToByteArray(input interface{}) ([]byte, error) {
@@ -175,6 +181,7 @@ func (it *InsertMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 			insertMsg.BeginTimestamp = timestamp
 		}
 	}
+	insertMsg.Vchannel = insertMsg.ShardName
 
 	return insertMsg, nil
 }
@@ -283,6 +290,7 @@ func (it *InsertMsg) IndexMsg(index int) *InsertMsg {
 			Ctx:            it.TraceCtx(),
 			BeginTimestamp: it.BeginTimestamp,
 			EndTimestamp:   it.EndTimestamp,
+			Vchannel:       it.Vchannel,
 			HashValues:     it.HashValues,
 			MsgPosition:    it.MsgPosition,
 		},
@@ -366,7 +374,7 @@ func (dt *DeleteMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 			deleteMsg.BeginTimestamp = timestamp
 		}
 	}
-
+	deleteMsg.Vchannel = deleteMsg.ShardName
 	return deleteMsg, nil
 }
 
@@ -491,7 +499,9 @@ func (cc *CreateCollectionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	createCollectionMsg := &CreateCollectionMsg{CreateCollectionRequest: createCollectionRequest}
 	createCollectionMsg.BeginTimestamp = createCollectionMsg.Base.Timestamp
 	createCollectionMsg.EndTimestamp = createCollectionMsg.Base.Timestamp
+	createCollectionMsg.Vchannel = createCollectionMsg.CollectionName
 
+	fmt.Println("dyh, debug 3333, vchannel:", createCollectionMsg.Vchannel)
 	return createCollectionMsg, nil
 }
 
@@ -546,6 +556,7 @@ func (dc *DropCollectionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	dropCollectionMsg := &DropCollectionMsg{DropCollectionRequest: dropCollectionRequest}
 	dropCollectionMsg.BeginTimestamp = dropCollectionMsg.Base.Timestamp
 	dropCollectionMsg.EndTimestamp = dropCollectionMsg.Base.Timestamp
+	dropCollectionMsg.Vchannel = dropCollectionMsg.BaseMsg.Vchannel
 
 	return dropCollectionMsg, nil
 }
@@ -601,6 +612,7 @@ func (cp *CreatePartitionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	createPartitionMsg := &CreatePartitionMsg{CreatePartitionRequest: createPartitionRequest}
 	createPartitionMsg.BeginTimestamp = createPartitionMsg.Base.Timestamp
 	createPartitionMsg.EndTimestamp = createPartitionMsg.Base.Timestamp
+	createPartitionMsg.Vchannel = createPartitionMsg.BaseMsg.Vchannel
 
 	return createPartitionMsg, nil
 }
@@ -656,6 +668,7 @@ func (dp *DropPartitionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	dropPartitionMsg := &DropPartitionMsg{DropPartitionRequest: dropPartitionRequest}
 	dropPartitionMsg.BeginTimestamp = dropPartitionMsg.Base.Timestamp
 	dropPartitionMsg.EndTimestamp = dropPartitionMsg.Base.Timestamp
+	dropPartitionMsg.Vchannel = dropPartitionMsg.BaseMsg.Vchannel
 
 	return dropPartitionMsg, nil
 }

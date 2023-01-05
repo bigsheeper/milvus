@@ -210,7 +210,7 @@ func (t *createCollectionTask) genCreateCollectionMsg(ctx context.Context) *ms.M
 func (t *createCollectionTask) addChannelsAndGetStartPositions(ctx context.Context) (map[string][]byte, error) {
 	t.core.chanTimeTick.addDmlChannels(t.channels.physicalChannels...)
 	msg := t.genCreateCollectionMsg(ctx)
-	return t.core.chanTimeTick.broadcastMarkDmlChannels(t.channels.physicalChannels, msg)
+	return t.core.chanTimeTick.broadcastMarkDmlChannels(t.channels.physicalChannels, t.channels.virtualChannels, msg)
 }
 
 func (t *createCollectionTask) Execute(ctx context.Context) error {

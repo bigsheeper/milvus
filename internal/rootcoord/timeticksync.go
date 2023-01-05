@@ -307,7 +307,7 @@ func (t *timetickSync) sendTimeTickToChannel(chanNames []string, ts typeutil.Tim
 		TimeTickMsg: timeTickResult,
 	}
 	msgPack.Msgs = append(msgPack.Msgs, timeTickMsg)
-	if err := t.dmlChannels.broadcast(chanNames, &msgPack); err != nil {
+	if err := t.dmlChannels.broadcast(chanNames, nil, &msgPack); err != nil {
 		return err
 	}
 
@@ -355,13 +355,13 @@ func (t *timetickSync) removeDmlChannels(names ...string) {
 }
 
 // BroadcastDmlChannels broadcasts msg pack into dml channels
-func (t *timetickSync) broadcastDmlChannels(chanNames []string, pack *msgstream.MsgPack) error {
-	return t.dmlChannels.broadcast(chanNames, pack)
+func (t *timetickSync) broadcastDmlChannels(chanNames []string, vchannelNames []string, pack *msgstream.MsgPack) error {
+	return t.dmlChannels.broadcast(chanNames, vchannelNames, pack)
 }
 
 // BroadcastMarkDmlChannels broadcasts msg pack into dml channels
-func (t *timetickSync) broadcastMarkDmlChannels(chanNames []string, pack *msgstream.MsgPack) (map[string][]byte, error) {
-	return t.dmlChannels.broadcastMark(chanNames, pack)
+func (t *timetickSync) broadcastMarkDmlChannels(chanNames []string, vchannelNames []string, pack *msgstream.MsgPack) (map[string][]byte, error) {
+	return t.dmlChannels.broadcastMark(chanNames, vchannelNames, pack)
 }
 
 func (t *timetickSync) getSyncedTimeTick(channel string) Timestamp {

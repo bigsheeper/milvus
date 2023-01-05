@@ -18,13 +18,14 @@ package dispatcher
 
 import (
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"sync"
 )
 
 type Manager interface {
-	Register(vchannel string, pos *internalpb.MsgPosition) (<-chan *msgstream.MsgPack, error)
+	Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error)
 	Deregister(vchannel string)
 }
 
@@ -41,14 +42,14 @@ func NewManager(factory msgstream.Factory) Manager {
 	}
 }
 
-func (g *GlobalManager) Register(vchannel string, pos *internalpb.MsgPosition) (<-chan *msgstream.MsgPack, error) {
+func (g *GlobalManager) Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; !ok {
 		g.checkers[pchannel] = newChecker(pchannel, g.factory)
 	}
-	return g.checkers[pchannel].addDispatcher(vchannel, pos)
+	return g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
 }
 
 func (g *GlobalManager) Deregister(vchannel string) {

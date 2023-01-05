@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/mq/dispatcher"
 	"io"
 	"math/rand"
 	"os"
@@ -86,6 +87,7 @@ var Params *paramtable.ComponentParam = paramtable.Get()
 
 // rateCol is global rateCollector in DataNode.
 var rateCol *rateCollector
+var dispatcherManager dispatcher.Manager
 
 // DataNode communicates with outside services and unioun all
 // services in datanode package.
@@ -145,6 +147,7 @@ func NewDataNode(ctx context.Context, factory dependency.Factory) *DataNode {
 		flowgraphManager: newFlowgraphManager(),
 		clearSignal:      make(chan string, 100),
 	}
+	dispatcherManager = dispatcher.NewManager(factory)
 	node.UpdateStateCode(commonpb.StateCode_Abnormal)
 	return node
 }

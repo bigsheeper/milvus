@@ -163,7 +163,10 @@ func (c *bgGarbageCollector) notifyCollectionGc(ctx context.Context, coll *model
 		},
 	}
 	msgPack.Msgs = append(msgPack.Msgs, msg)
-	if err := c.s.chanTimeTick.broadcastDmlChannels(coll.PhysicalChannelNames, &msgPack); err != nil {
+	if len(coll.VirtualChannelNames) == 0 {
+		panic("dyh debug, should not happen")
+	}
+	if err := c.s.chanTimeTick.broadcastDmlChannels(coll.PhysicalChannelNames, coll.VirtualChannelNames, &msgPack); err != nil {
 		return 0, err
 	}
 
@@ -197,7 +200,7 @@ func (c *bgGarbageCollector) notifyPartitionGc(ctx context.Context, pChannels []
 		},
 	}
 	msgPack.Msgs = append(msgPack.Msgs, msg)
-	if err := c.s.chanTimeTick.broadcastDmlChannels(pChannels, &msgPack); err != nil {
+	if err := c.s.chanTimeTick.broadcastDmlChannels(pChannels, nil, &msgPack); err != nil {
 		return 0, err
 	}
 

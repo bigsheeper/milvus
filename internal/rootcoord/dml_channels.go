@@ -220,8 +220,8 @@ func (d *dmlChannels) getChannelNum() int {
 	return len(d.listChannels())
 }
 
-func (d *dmlChannels) broadcast(chanNames []string, pack *msgstream.MsgPack) error {
-	for _, chanName := range chanNames {
+func (d *dmlChannels) broadcast(chanNames []string, vchannelNames []string, pack *msgstream.MsgPack) error {
+	for i, chanName := range chanNames {
 		v, ok := d.pool.Load(chanName)
 		if !ok {
 			log.Error("invalid channel name", zap.String("chanName", chanName))
@@ -231,6 +231,11 @@ func (d *dmlChannels) broadcast(chanNames []string, pack *msgstream.MsgPack) err
 
 		dms.mutex.RLock()
 		if dms.refcnt > 0 {
+			fmt.Println("dyh debug xxxx", zap.Any("vchannels", vchannelNames), zap.Any("pchannels", chanNames))
+			if i < len(vchannelNames) {
+				pack.Msgs[0].SetVChannel(vchannelNames[i])
+				fmt.Println("dyh debug, setVchannel done")
+			}
 			if _, err := dms.ms.Broadcast(pack); err != nil {
 				log.Error("Broadcast failed", zap.Error(err), zap.String("chanName", chanName))
 				dms.mutex.RUnlock()
@@ -242,9 +247,9 @@ func (d *dmlChannels) broadcast(chanNames []string, pack *msgstream.MsgPack) err
 	return nil
 }
 
-func (d *dmlChannels) broadcastMark(chanNames []string, pack *msgstream.MsgPack) (map[string][]byte, error) {
+func (d *dmlChannels) broadcastMark(chanNames []string, vchannelNames []string, pack *msgstream.MsgPack) (map[string][]byte, error) {
 	result := make(map[string][]byte)
-	for _, chanName := range chanNames {
+	for i, chanName := range chanNames {
 		v, ok := d.pool.Load(chanName)
 		if !ok {
 			log.Error("invalid channel name", zap.String("chanName", chanName))
@@ -254,6 +259,14 @@ func (d *dmlChannels) broadcastMark(chanNames []string, pack *msgstream.MsgPack)
 
 		dms.mutex.RLock()
 		if dms.refcnt > 0 {
+			fmt.Println("dyh debug yyy", zap.Any("vchannels", vchannelNames), zap.Any("pchannels", chanNames))
+			if i < len(vchannelNames) {
+				if len(pack.Msgs) != 1 {
+					panic("dyh, unexpected")
+				}
+				pack.Msgs[0].SetVChannel(vchannelNames[i])
+				fmt.Println("dyh debug, setVchannel done, msgType:", pack.Msgs[0].Type().String(), ", vchannel:", pack.Msgs[0].VChannel())
+			}
 			ids, err := dms.ms.Broadcast(pack)
 			if err != nil {
 				log.Error("BroadcastMark failed", zap.Error(err), zap.String("chanName", chanName))

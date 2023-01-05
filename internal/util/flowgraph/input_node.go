@@ -37,6 +37,7 @@ import (
 type InputNode struct {
 	BaseNode
 	inStream     msgstream.MsgStream
+	input        <-chan *msgstream.MsgPack
 	name         string
 	role         string
 	nodeID       int64
@@ -73,12 +74,18 @@ func (inNode *InputNode) InStream() msgstream.MsgStream {
 
 // Operate consume a message pack from msgstream and return
 func (inNode *InputNode) Operate(in []Msg) []Msg {
-	msgPack, ok := <-inNode.inStream.Chan()
-	if !ok {
-		log.Warn("MsgStream closed", zap.Any("input node", inNode.Name()))
-		return []Msg{&MsgStreamMsg{
-			isCloseMsg: true,
-		}}
+	var msgPack *msgstream.MsgPack
+	if inNode.inStream != nil {
+		var ok bool
+		msgPack, ok = <-inNode.inStream.Chan()
+		if !ok {
+			log.Warn("MsgStream closed", zap.Any("input node", inNode.Name()))
+			return []Msg{&MsgStreamMsg{
+				isCloseMsg: true,
+			}}
+		}
+	} else {
+		msgPack = <-inNode.input
 	}
 
 	// TODO: add status
@@ -140,6 +147,23 @@ func NewInputNode(inStream msgstream.MsgStream, nodeName string, maxQueueLength 
 	return &InputNode{
 		BaseNode:     baseNode,
 		inStream:     inStream,
+		name:         nodeName,
+		role:         role,
+		nodeID:       nodeID,
+		collectionID: collectionID,
+		dataType:     dataType,
+	}
+}
+
+func NewInputNode2(input <-chan *msgstream.MsgPack, nodeName string, maxQueueLength int32, maxParallelism int32, role string, nodeID int64, collectionID int64, dataType string) *InputNode {
+	baseNode := BaseNode{}
+	baseNode.SetMaxQueueLength(maxQueueLength)
+	baseNode.SetMaxParallelism(maxParallelism)
+
+	return &InputNode{
+		BaseNode:     baseNode,
+		inStream:     nil,
+		input:        input,
 		name:         nodeName,
 		role:         role,
 		nodeID:       nodeID,

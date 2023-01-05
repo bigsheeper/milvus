@@ -17,8 +17,11 @@
 package dispatcher
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 )
@@ -48,9 +51,9 @@ func newChecker(pchannel string, factory msgstream.Factory) *checker {
 	}
 }
 
-func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition) (<-chan *msgstream.MsgPack, error) {
+func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
 	target := make(chan *msgstream.MsgPack, targetChanSize)
-	d, err := newDispatcher(c.factory, c.pchannel, pos, c.lagChan)
+	d, err := newDispatcher(c.factory, c.pchannel, pos, subPos, c.lagChan)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +63,7 @@ func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition) (<
 	} else {
 		c.soloDispatchers[vchannel] = d
 	}
+	d.handle(start)
 	return target, nil
 }
 
@@ -108,19 +112,23 @@ func (c *checker) check() {
 }
 
 func (c *checker) merge(vchannel string) {
+	log.Info("checker is merging soloDispatcher to primeDispatcher", zap.String("vchannel", vchannel))
 	c.primeDispatcher.handle(pause)
 	c.soloDispatchers[vchannel].handle(pause)
 	c.primeDispatcher.addTarget(c.soloDispatchers[vchannel].getTarget())
 	c.soloDispatchers[vchannel].handle(terminate)
 	delete(c.soloDispatchers, vchannel)
 	c.soloDispatchers[vchannel].handle(resume)
+	log.Info("checker merges soloDispatcher to primeDispatcher done", zap.String("vchannel", vchannel))
 }
 
 func (c *checker) separate(vchannel string, pos *internalpb.MsgPosition) {
-	newSolo, err := newDispatcher(c.factory, c.pchannel, pos, c.lagChan)
+	log.Info("checker is separating soloDispatcher from primeDispatcher", zap.String("vchannel", vchannel))
+	newSolo, err := newDispatcher(c.factory, c.pchannel, pos, mqwrapper.SubscriptionPositionUnknown, c.lagChan)
 	if err != nil {
 		panic(err)
 	}
 	c.soloDispatchers[vchannel] = newSolo
 	newSolo.handle(start)
+	log.Info("checker is separates soloDispatcher from primeDispatcher done", zap.String("vchannel", vchannel))
 }

@@ -141,6 +141,7 @@ func (suite *ServiceSuite) SetupTest() {
 		suite.meta,
 		suite.targetMgr,
 	)
+	meta.GlobalLoadCache = meta.NewLoadStatusCache()
 
 	suite.server = &Server{
 		kv:                  suite.kv,
@@ -185,6 +186,16 @@ func (suite *ServiceSuite) TestShowCollections() {
 	suite.Len(resp.CollectionIDs, 1)
 	suite.Equal(collection, resp.CollectionIDs[0])
 
+	// Test insufficient memory
+	meta.GlobalLoadCache.Put(collection, &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_InsufficientMemoryToLoad,
+		Reason:    "mock insufficient memory reason",
+	})
+	resp, err = server.ShowCollections(ctx, req)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_InsufficientMemoryToLoad, resp.GetStatus().GetErrorCode())
+	meta.GlobalLoadCache.Remove(collection)
+
 	// Test when server is not healthy
 	server.UpdateStateCode(commonpb.StateCode_Initializing)
 	resp, err = server.ShowCollections(ctx, req)
@@ -225,6 +236,16 @@ func (suite *ServiceSuite) TestShowPartitions() {
 		for _, partition := range partitions[0:1] {
 			suite.Contains(resp.PartitionIDs, partition)
 		}
+
+		// Test insufficient memory
+		meta.GlobalLoadCache.Put(collection, &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_InsufficientMemoryToLoad,
+			Reason:    "mock insufficient memory reason",
+		})
+		resp, err = server.ShowPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_InsufficientMemoryToLoad, resp.GetStatus().GetErrorCode())
+		meta.GlobalLoadCache.Remove(collection)
 	}
 
 	// Test when server is not healthy

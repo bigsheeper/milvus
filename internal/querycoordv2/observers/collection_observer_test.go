@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus/internal/kv"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/log"
@@ -67,12 +68,14 @@ type CollectionObserverSuite struct {
 func (suite *CollectionObserverSuite) SetupSuite() {
 	Params.Init()
 
-	suite.collections = []int64{100, 101, 102, 103}
+	suite.collections = []int64{100, 101, 102, 103, 104, 105}
 	suite.partitions = map[int64][]int64{
 		100: {10},
 		101: {11, 12},
 		102: {13},
 		103: {14},
+		104: {15},
+		105: {15, 17},
 	}
 	suite.channels = map[int64][]*meta.DmChannel{
 		100: {
@@ -145,12 +148,16 @@ func (suite *CollectionObserverSuite) SetupSuite() {
 		101: querypb.LoadType_LoadPartition,
 		102: querypb.LoadType_LoadCollection,
 		103: querypb.LoadType_LoadCollection,
+		104: querypb.LoadType_LoadCollection,
+		105: querypb.LoadType_LoadPartition,
 	}
 	suite.replicaNumber = map[int64]int32{
 		100: 1,
 		101: 1,
 		102: 1,
 		103: 2,
+		104: 1,
+		105: 1,
 	}
 	suite.nodes = []int64{1, 2, 3}
 }
@@ -187,6 +194,7 @@ func (suite *CollectionObserverSuite) SetupTest() {
 		suite.meta,
 		suite.targetMgr,
 	)
+	meta.GlobalLoadCache = meta.NewLoadStatusCache()
 
 	suite.loadAll()
 }
@@ -235,6 +243,20 @@ func (suite *CollectionObserverSuite) TestObserve() {
 		Channel:      "102-dmc0",
 		Segments:     map[int64]*querypb.SegmentDist{2: {NodeID: 5, Version: 0}},
 	})
+	suite.dist.LeaderViewManager.Update(3, &meta.LeaderView{
+		ID:           3,
+		CollectionID: 104,
+	})
+	suite.dist.LeaderViewManager.Update(3, &meta.LeaderView{
+		ID:           3,
+		CollectionID: 105,
+	})
+	failedStatus := &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_InsufficientMemoryToLoad,
+		Reason:    "mock insufficient memory reason",
+	}
+	meta.GlobalLoadCache.Put(suite.collections[4], failedStatus)
+	meta.GlobalLoadCache.Put(suite.collections[5], failedStatus)
 
 	segmentsInfo, ok := suite.segments[103]
 	suite.True(ok)
@@ -266,6 +288,14 @@ func (suite *CollectionObserverSuite) TestObserve() {
 	suite.Eventually(func() bool {
 		return suite.isCollectionLoaded(suite.collections[3])
 	}, timeout*2, timeout/10)
+
+	suite.Eventually(func() bool {
+		return suite.isCollectionLoadFailed(suite.collections[4])
+	}, timeout*2, timeout/10)
+
+	suite.Eventually(func() bool {
+		return suite.isCollectionLoadFailed(suite.collections[5])
+	}, timeout*2, timeout/10)
 }
 
 func (suite *CollectionObserverSuite) isCollectionLoaded(collection int64) bool {
@@ -285,6 +315,17 @@ func (suite *CollectionObserverSuite) isCollectionLoaded(collection int64) bool 
 }
 
 func (suite *CollectionObserverSuite) isCollectionTimeout(collection int64) bool {
+	exist := suite.meta.Exist(collection)
+	replicas := suite.meta.ReplicaManager.GetByCollection(collection)
+	channels := suite.targetMgr.GetDmChannelsByCollection(collection, meta.CurrentTarget)
+	segments := suite.targetMgr.GetHistoricalSegmentsByCollection(collection, meta.CurrentTarget)
+	return !(exist ||
+		len(replicas) > 0 ||
+		len(channels) > 0 ||
+		len(segments) > 0)
+}
+
+func (suite *CollectionObserverSuite) isCollectionLoadFailed(collection int64) bool {
 	exist := suite.meta.Exist(collection)
 	replicas := suite.meta.ReplicaManager.GetByCollection(collection)
 	channels := suite.targetMgr.GetDmChannelsByCollection(collection, meta.CurrentTarget)

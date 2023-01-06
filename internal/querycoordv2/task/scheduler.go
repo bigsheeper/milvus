@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -42,6 +43,8 @@ const (
 	TaskTypeMove
 )
 
+const MaxSegmentTaskFailures = 10
+
 var (
 	ErrConflictTaskExisted = errors.New("ConflictTaskExisted")
 
@@ -53,8 +56,8 @@ var (
 	// or the target channel is not in TargetManager
 	ErrTaskStale = errors.New("TaskStale")
 
-	// No enough memory to load segment
-	ErrResourceNotEnough = errors.New("ResourceNotEnough")
+	// ErrInsufficientMemory returns insufficient memory error.
+	ErrInsufficientMemory = errors.New("InsufficientMemoryToLoad")
 
 	ErrFailedResponse  = errors.New("RpcFailed")
 	ErrTaskAlreadyDone = errors.New("TaskAlreadyDone")
@@ -157,6 +160,8 @@ type taskScheduler struct {
 	channelTasks map[replicaChannelIndex]Task
 	processQueue *taskQueue
 	waitQueue    *taskQueue
+
+	segmentTaskFailRecord map[replicaSegmentIndex]map[commonpb.ErrorCode]int // index -> map[errorCode]failedCount
 }
 
 func NewScheduler(ctx context.Context,
@@ -182,11 +187,12 @@ func NewScheduler(ctx context.Context,
 		cluster:   cluster,
 		nodeMgr:   nodeMgr,
 
-		tasks:        make(UniqueSet),
-		segmentTasks: make(map[replicaSegmentIndex]Task),
-		channelTasks: make(map[replicaChannelIndex]Task),
-		processQueue: newTaskQueue(),
-		waitQueue:    newTaskQueue(),
+		tasks:                 make(UniqueSet),
+		segmentTasks:          make(map[replicaSegmentIndex]Task),
+		channelTasks:          make(map[replicaChannelIndex]Task),
+		processQueue:          newTaskQueue(),
+		waitQueue:             newTaskQueue(),
+		segmentTaskFailRecord: make(map[replicaSegmentIndex]map[commonpb.ErrorCode]int),
 	}
 }
 
@@ -658,6 +664,27 @@ func (scheduler *taskScheduler) RemoveByNode(node int64) {
 	}
 }
 
+func (scheduler *taskScheduler) recordSegmentTaskError(index replicaSegmentIndex, task *SegmentTask) {
+	if _, ok := scheduler.segmentTaskFailRecord[index]; !ok {
+		scheduler.segmentTaskFailRecord[index] = make(map[commonpb.ErrorCode]int)
+	}
+
+	var errCode commonpb.ErrorCode
+	if errors.Is(task.Err(), ErrInsufficientMemory) {
+		errCode = commonpb.ErrorCode_InsufficientMemoryToLoad
+	} else {
+		errCode = commonpb.ErrorCode_UnexpectedError
+	}
+	scheduler.segmentTaskFailRecord[index][errCode]++
+	if scheduler.segmentTaskFailRecord[index][errCode] > MaxSegmentTaskFailures {
+		meta.GlobalLoadCache.Put(task.collectionID, &commonpb.Status{
+			ErrorCode: errCode,
+			Reason:    task.Err().Error(),
+		})
+		delete(scheduler.segmentTaskFailRecord, index)
+	}
+}
+
 func (scheduler *taskScheduler) remove(task Task) {
 	log := log.With(
 		zap.Int64("taskID", task.ID()),
@@ -675,6 +702,10 @@ func (scheduler *taskScheduler) remove(task Task) {
 		index := NewReplicaSegmentIndex(task)
 		delete(scheduler.segmentTasks, index)
 		log = log.With(zap.Int64("segmentID", task.SegmentID()))
+		if task.Err() != nil {
+			log.Warn("task scheduler recordSegmentTaskError", zap.Error(task.err))
+			scheduler.recordSegmentTaskError(index, task)
+		}
 
 	case *ChannelTask:
 		index := replicaChannelIndex{task.ReplicaID(), task.Channel()}

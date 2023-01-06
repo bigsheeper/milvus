@@ -136,6 +136,7 @@ func (suite *JobSuite) SetupTest() {
 	suite.scheduler = NewScheduler()
 
 	suite.scheduler.Start(context.Background())
+	meta.GlobalLoadCache = meta.NewLoadStatusCache()
 }
 
 func (suite *JobSuite) TearDownTest() {

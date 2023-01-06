@@ -23,6 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -89,6 +90,51 @@ func (ob *CollectionObserver) Stop() {
 func (ob *CollectionObserver) Observe() {
 	ob.observeTimeout()
 	ob.observeLoadStatus()
+	ob.observeLoadCache()
+}
+
+func (ob *CollectionObserver) observeLoadCache() {
+	collections := ob.meta.CollectionManager.GetAllCollections()
+	for _, collection := range collections {
+		status := meta.GlobalLoadCache.Get(collection.GetCollectionID())
+		if status.GetErrorCode() == commonpb.ErrorCode_Success {
+			continue
+		}
+
+		log.Info("load collection failed, cancel it",
+			zap.Int64("collectionID", collection.GetCollectionID()),
+			zap.String("errCode", status.GetErrorCode().String()),
+			zap.String("reason", status.GetReason()))
+		ob.meta.CollectionManager.RemoveCollection(collection.GetCollectionID())
+		ob.meta.ReplicaManager.RemoveCollection(collection.GetCollectionID())
+		ob.targetMgr.RemoveCollection(collection.GetCollectionID())
+	}
+
+	partitions := utils.GroupPartitionsByCollection(
+		ob.meta.CollectionManager.GetAllPartitions())
+	if len(partitions) > 0 {
+		log.Info("observes LoadCache for partitions", zap.Int("partitionNum", len(partitions)))
+	}
+	for collection, partitions := range partitions {
+		log := log.With(
+			zap.Int64("collectionID", collection),
+		)
+		for _, partition := range partitions {
+			status := meta.GlobalLoadCache.Get(collection)
+			if status.GetErrorCode() == commonpb.ErrorCode_Success {
+				continue
+			}
+
+			log.Info("load partition failed, cancel all partitions",
+				zap.Int64("partitionID", partition.GetPartitionID()),
+				zap.String("errCode", status.GetErrorCode().String()),
+				zap.String("reason", status.GetReason()))
+			ob.meta.CollectionManager.RemoveCollection(partition.GetCollectionID())
+			ob.meta.ReplicaManager.RemoveCollection(partition.GetCollectionID())
+			ob.targetMgr.RemoveCollection(partition.GetCollectionID())
+			break
+		}
+	}
 }
 
 func (ob *CollectionObserver) observeTimeout() {

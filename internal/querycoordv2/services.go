@@ -56,6 +56,7 @@ func (s *Server) ShowCollections(ctx context.Context, req *querypb.ShowCollectio
 			Status: utils.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg, ErrNotHealthy),
 		}, nil
 	}
+	defer meta.GlobalLoadCache.TryExpire()
 
 	isGetAll := false
 	collectionSet := typeutil.NewUniqueSet(req.GetCollectionIDs()...)
@@ -78,6 +79,14 @@ func (s *Server) ShowCollections(ctx context.Context, req *querypb.ShowCollectio
 	}
 	for _, collectionID := range collections {
 		log := log.With(zap.Int64("collectionID", collectionID))
+
+		status := meta.GlobalLoadCache.Get(collectionID)
+		if status.ErrorCode != commonpb.ErrorCode_Success {
+			log.Warn("show collection failed", zap.String("errCode", status.GetErrorCode().String()), zap.String("reason", status.GetReason()))
+			return &querypb.ShowCollectionsResponse{
+				Status: status,
+			}, nil
+		}
 
 		percentage := s.meta.CollectionManager.GetLoadPercentage(collectionID)
 		if percentage < 0 {
@@ -112,6 +121,15 @@ func (s *Server) ShowPartitions(ctx context.Context, req *querypb.ShowPartitions
 		log.Warn(msg, zap.Error(ErrNotHealthy))
 		return &querypb.ShowPartitionsResponse{
 			Status: utils.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg, ErrNotHealthy),
+		}, nil
+	}
+	defer meta.GlobalLoadCache.TryExpire()
+
+	status := meta.GlobalLoadCache.Get(req.GetCollectionID())
+	if status.ErrorCode != commonpb.ErrorCode_Success {
+		log.Warn("show collection failed", zap.String("errCode", status.GetErrorCode().String()), zap.String("reason", status.GetReason()))
+		return &querypb.ShowPartitionsResponse{
+			Status: status,
 		}, nil
 	}
 
@@ -251,6 +269,8 @@ func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseColl
 	log.Info("collection released")
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()
 	metrics.QueryCoordReleaseLatency.WithLabelValues().Observe(float64(tr.ElapseSpan().Milliseconds()))
+	meta.GlobalLoadCache.Remove(req.GetCollectionID())
+
 	return successStatus, nil
 }
 
@@ -333,6 +353,8 @@ func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePart
 
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()
 	metrics.QueryCoordReleaseLatency.WithLabelValues().Observe(float64(tr.ElapseSpan().Milliseconds()))
+
+	meta.GlobalLoadCache.Remove(req.GetCollectionID())
 	return successStatus, nil
 }
 

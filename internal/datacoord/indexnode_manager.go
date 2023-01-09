@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package indexcoord
+package datacoord
 
 import (
 	"context"
@@ -32,56 +32,44 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 )
 
-// NodeManager is used by IndexCoord to manage the client of IndexNode.
-type NodeManager struct {
+// IndexNodeManager is used to manage the client of IndexNode.
+type IndexNodeManager struct {
 	nodeClients   map[UniqueID]types.IndexNode
 	stoppingNodes map[UniqueID]struct{}
-	pq            *PriorityQueue
 	lock          sync.RWMutex
 	ctx           context.Context
 }
 
-// NewNodeManager is used to create a new NodeManager.
-func NewNodeManager(ctx context.Context) *NodeManager {
-	return &NodeManager{
+// NewNodeManager is used to create a new IndexNodeManager.
+func NewNodeManager(ctx context.Context) *IndexNodeManager {
+	return &IndexNodeManager{
 		nodeClients:   make(map[UniqueID]types.IndexNode),
 		stoppingNodes: make(map[UniqueID]struct{}),
-		pq: &PriorityQueue{
-			policy: PeekClientV1,
-		},
-		lock: sync.RWMutex{},
-		ctx:  ctx,
+		lock:          sync.RWMutex{},
+		ctx:           ctx,
 	}
 }
 
 // setClient sets IndexNode client to node manager.
-func (nm *NodeManager) setClient(nodeID UniqueID, client types.IndexNode) {
-	log.Debug("IndexCoord NodeManager setClient", zap.Int64("nodeID", nodeID))
-	item := &PQItem{
-		key:      nodeID,
-		priority: 0,
-		weight:   0,
-		totalMem: 0,
-	}
+func (nm *IndexNodeManager) setClient(nodeID UniqueID, client types.IndexNode) {
+	log.Debug("set IndexNode client", zap.Int64("nodeID", nodeID))
 	nm.lock.Lock()
+	defer nm.lock.Unlock()
 	nm.nodeClients[nodeID] = client
-	log.Debug("IndexNode NodeManager setClient success", zap.Int64("nodeID", nodeID), zap.Int("IndexNode num", len(nm.nodeClients)))
-	nm.lock.Unlock()
-	nm.pq.Push(item)
+	log.Debug("IndexNode IndexNodeManager setClient success", zap.Int64("nodeID", nodeID), zap.Int("IndexNode num", len(nm.nodeClients)))
 }
 
 // RemoveNode removes the unused client of IndexNode.
-func (nm *NodeManager) RemoveNode(nodeID UniqueID) {
-	log.Debug("IndexCoord", zap.Any("Remove node with ID", nodeID))
+func (nm *IndexNodeManager) RemoveNode(nodeID UniqueID) {
+	log.Debug("remove IndexNode", zap.Int64("nodeID", nodeID))
 	nm.lock.Lock()
+	defer nm.lock.Unlock()
 	delete(nm.nodeClients, nodeID)
 	delete(nm.stoppingNodes, nodeID)
-	nm.lock.Unlock()
-	nm.pq.Remove(nodeID)
-	metrics.IndexCoordIndexNodeNum.WithLabelValues().Dec()
+	metrics.IndexNodeNum.WithLabelValues().Dec()
 }
 
-func (nm *NodeManager) StoppingNode(nodeID UniqueID) {
+func (nm *IndexNodeManager) StoppingNode(nodeID UniqueID) {
 	log.Info("IndexCoord", zap.Any("Stopping node with ID", nodeID))
 	nm.lock.Lock()
 	defer nm.lock.Unlock()
@@ -89,36 +77,26 @@ func (nm *NodeManager) StoppingNode(nodeID UniqueID) {
 }
 
 // AddNode adds the client of IndexNode.
-func (nm *NodeManager) AddNode(nodeID UniqueID, address string) error {
-
-	log.Debug("IndexCoord addNode", zap.Any("nodeID", nodeID), zap.Any("node address", address))
-	if nm.pq.CheckExist(nodeID) {
-		log.Warn("IndexCoord", zap.Any("Node client already exist with ID:", nodeID))
-		return nil
-	}
+func (nm *IndexNodeManager) AddNode(nodeID UniqueID, address string) error {
+	log.Debug("add IndexNode", zap.Any("nodeID", nodeID), zap.Any("node address", address))
 	var (
 		nodeClient types.IndexNode
 		err        error
 	)
 
-	nodeClient, err = grpcindexnodeclient.NewClient(context.TODO(), address, Params.IndexCoordCfg.WithCredential.GetAsBool())
+	nodeClient, err = grpcindexnodeclient.NewClient(context.TODO(), address, Params.DataCoordCfg.WithCredential.GetAsBool())
 	if err != nil {
-		log.Error("IndexCoord NodeManager", zap.Any("Add node err", err))
+		log.Error("create IndexNode client fail", zap.Error(err))
 		return err
 	}
 
-	err = nodeClient.Init()
-	if err != nil {
-		log.Error("IndexCoord NodeManager", zap.Any("Add node err", err))
-		return err
-	}
-	metrics.IndexCoordIndexNodeNum.WithLabelValues().Inc()
+	metrics.IndexNodeNum.WithLabelValues().Inc()
 	nm.setClient(nodeID, nodeClient)
 	return nil
 }
 
 // PeekClient peeks the client with the least load.
-func (nm *NodeManager) PeekClient(meta *model.SegmentIndex) (UniqueID, types.IndexNode) {
+func (nm *IndexNodeManager) PeekClient(meta *model.SegmentIndex) (UniqueID, types.IndexNode) {
 	allClients := nm.GetAllClients()
 	if len(allClients) == 0 {
 		log.Error("there is no IndexNode online")
@@ -165,16 +143,16 @@ func (nm *NodeManager) PeekClient(meta *model.SegmentIndex) (UniqueID, types.Ind
 	wg.Wait()
 	cancel()
 	if peekNodeID != 0 {
-		log.Info("IndexCoord peek client success", zap.Int64("nodeID", peekNodeID))
+		log.Info("peek client success", zap.Int64("nodeID", peekNodeID))
 		return peekNodeID, allClients[peekNodeID]
 	}
 
-	log.RatedDebug(30, "IndexCoord peek client fail")
+	log.RatedDebug(5, "peek client fail")
 	return 0, nil
 }
 
-func (nm *NodeManager) ClientSupportDisk() bool {
-	log.Info("IndexCoord check if client support disk index")
+func (nm *IndexNodeManager) ClientSupportDisk() bool {
+	log.Info("check if client support disk index")
 	allClients := nm.GetAllClients()
 	if len(allClients) == 0 {
 		log.Warn("there is no IndexNode online")
@@ -228,7 +206,7 @@ func (nm *NodeManager) ClientSupportDisk() bool {
 	return false
 }
 
-func (nm *NodeManager) GetAllClients() map[UniqueID]types.IndexNode {
+func (nm *IndexNodeManager) GetAllClients() map[UniqueID]types.IndexNode {
 	nm.lock.RLock()
 	defer nm.lock.RUnlock()
 
@@ -242,7 +220,7 @@ func (nm *NodeManager) GetAllClients() map[UniqueID]types.IndexNode {
 	return allClients
 }
 
-func (nm *NodeManager) GetClientByID(nodeID UniqueID) (types.IndexNode, bool) {
+func (nm *IndexNodeManager) GetClientByID(nodeID UniqueID) (types.IndexNode, bool) {
 	nm.lock.RLock()
 	defer nm.lock.RUnlock()
 
@@ -257,7 +235,7 @@ type indexNodeGetMetricsResponse struct {
 }
 
 // getMetrics get metrics information of all IndexNode.
-func (nm *NodeManager) getMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) []indexNodeGetMetricsResponse {
+func (nm *IndexNodeManager) getMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) []indexNodeGetMetricsResponse {
 	var clients []types.IndexNode
 	nm.lock.RLock()
 	for _, node := range nm.nodeClients {

@@ -49,7 +49,6 @@ func TestConnectionManager(t *testing.T) {
 	cm.AddDependency(typeutil.RootCoordRole)
 	cm.AddDependency(typeutil.QueryCoordRole)
 	cm.AddDependency(typeutil.DataCoordRole)
-	cm.AddDependency(typeutil.IndexCoordRole)
 	cm.AddDependency(typeutil.QueryNodeRole)
 	cm.AddDependency(typeutil.DataNodeRole)
 	cm.AddDependency(typeutil.IndexNodeRole)
@@ -103,23 +102,6 @@ func TestConnectionManager(t *testing.T) {
 		assert.Eventually(t, func() bool {
 			dataCoord, ok := cm.GetDataCoordClient()
 			return dataCoord != nil && ok
-		}, 10*time.Second, 100*time.Millisecond)
-	})
-
-	t.Run("indexCoord", func(t *testing.T) {
-		lis, err := net.Listen("tcp", "127.0.0.1:")
-		assert.Nil(t, err)
-		defer lis.Close()
-		indexCoord := &testIndexCoord{}
-		grpcServer := grpc.NewServer()
-		defer grpcServer.Stop()
-		indexpb.RegisterIndexCoordServer(grpcServer, indexCoord)
-		go grpcServer.Serve(lis)
-		session.Init(typeutil.IndexCoordRole, lis.Addr().String(), true, false)
-		session.Register()
-		assert.Eventually(t, func() bool {
-			indexCoord, ok := cm.GetIndexCoordClient()
-			return indexCoord != nil && ok
 		}, 10*time.Second, 100*time.Millisecond)
 	})
 
@@ -249,10 +231,6 @@ type testQueryCoord struct {
 }
 type testDataCoord struct {
 	datapb.DataCoordServer
-}
-
-type testIndexCoord struct {
-	indexpb.IndexCoordServer
 }
 
 type testQueryNode struct {

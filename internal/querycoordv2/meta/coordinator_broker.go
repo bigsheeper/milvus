@@ -27,7 +27,6 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
-	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/types"
 
@@ -50,19 +49,16 @@ type Broker interface {
 }
 
 type CoordinatorBroker struct {
-	dataCoord  types.DataCoord
-	rootCoord  types.RootCoord
-	indexCoord types.IndexCoord
+	dataCoord types.DataCoord
+	rootCoord types.RootCoord
 }
 
 func NewCoordinatorBroker(
 	dataCoord types.DataCoord,
-	rootCoord types.RootCoord,
-	indexCoord types.IndexCoord) *CoordinatorBroker {
+	rootCoord types.RootCoord) *CoordinatorBroker {
 	return &CoordinatorBroker{
 		dataCoord,
 		rootCoord,
-		indexCoord,
 	}
 }
 
@@ -76,7 +72,7 @@ func (broker *CoordinatorBroker) GetCollectionSchema(ctx context.Context, collec
 		),
 		CollectionID: collectionID,
 	}
-	resp, err := broker.rootCoord.DescribeCollection(ctx, req)
+	resp, err := broker.rootCoord.DescribeCollectionInternal(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +93,7 @@ func (broker *CoordinatorBroker) GetPartitions(ctx context.Context, collectionID
 		),
 		CollectionID: collectionID,
 	}
-	resp, err := broker.rootCoord.ShowPartitions(ctx, req)
+	resp, err := broker.rootCoord.ShowPartitionsInternal(ctx, req)
 	if err != nil {
 		log.Warn("showPartition failed", zap.Int64("collectionID", collectionID), zap.Error(err))
 		return nil, err
@@ -167,7 +163,7 @@ func (broker *CoordinatorBroker) GetIndexInfo(ctx context.Context, collectionID 
 	ctx, cancel := context.WithTimeout(ctx, brokerRPCTimeout)
 	defer cancel()
 
-	resp, err := broker.indexCoord.GetIndexInfos(ctx, &indexpb.GetIndexInfoRequest{
+	resp, err := broker.dataCoord.GetIndexInfos(ctx, &datapb.GetIndexInfoRequest{
 		CollectionID: collectionID,
 		SegmentIDs:   []int64{segmentID},
 	})

@@ -23,7 +23,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/milvus-io/milvus/internal/util/segmentutil"
+	"github.com/samber/lo"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
@@ -36,13 +38,10 @@ import (
 	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/retry"
+	"github.com/milvus-io/milvus/internal/util/segmentutil"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/samber/lo"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 // checks whether server in Healthy State
@@ -157,6 +156,7 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 			zap.Int64("import task ID", r.GetImportTaskID()))
 
 		// Load the collection info from Root Coordinator, if it is not found in server meta.
+		// Note: this request wouldn't be received if collection didn't exist.
 		_, err := s.handler.GetCollection(ctx, r.GetCollectionID())
 		if err != nil {
 			log.Warn("cannot get collection schema", zap.Error(err))
@@ -614,7 +614,7 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 		return resp, nil
 	}
 
-	dresp, err := s.rootCoordClient.DescribeCollection(s.ctx, &milvuspb.DescribeCollectionRequest{
+	dresp, err := s.rootCoordClient.DescribeCollectionInternal(s.ctx, &milvuspb.DescribeCollectionRequest{
 		Base: commonpbutil.NewMsgBase(
 			commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
 			commonpbutil.WithSourceID(paramtable.GetNodeID()),
@@ -859,7 +859,7 @@ func (s *Server) ShowConfigurations(ctx context.Context, req *internalpb.ShowCon
 func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
 	if s.isClosed() {
 		log.Warn("DataCoord.GetMetrics failed",
-			zap.Int64("node_id", paramtable.GetNodeID()),
+			zap.Int64("nodeID", paramtable.GetNodeID()),
 			zap.String("req", req.Request),
 			zap.Error(errDataCoordIsUnhealthy(paramtable.GetNodeID())))
 
@@ -876,7 +876,7 @@ func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest
 	metricType, err := metricsinfo.ParseMetricType(req.Request)
 	if err != nil {
 		log.Warn("DataCoord.GetMetrics failed to parse metric type",
-			zap.Int64("node_id", paramtable.GetNodeID()),
+			zap.Int64("nodeID", paramtable.GetNodeID()),
 			zap.String("req", req.Request),
 			zap.Error(err))
 
@@ -902,10 +902,10 @@ func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest
 			}, nil
 		}
 
-		log.Debug("DataCoord.GetMetrics",
-			zap.Int64("node_id", paramtable.GetNodeID()),
+		log.RatedDebug(60, "DataCoord.GetMetrics",
+			zap.Int64("nodeID", paramtable.GetNodeID()),
 			zap.String("req", req.Request),
-			zap.String("metric_type", metricType),
+			zap.String("metricType", metricType),
 			zap.Any("metrics", metrics), // TODO(dragondriver): necessary? may be very large
 			zap.Error(err))
 
@@ -913,9 +913,9 @@ func (s *Server) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest
 	}
 
 	log.RatedWarn(60.0, "DataCoord.GetMetrics failed, request metric type is not implemented yet",
-		zap.Int64("node_id", paramtable.GetNodeID()),
+		zap.Int64("nodeID", paramtable.GetNodeID()),
 		zap.String("req", req.Request),
-		zap.String("metric_type", metricType))
+		zap.String("metricType", metricType))
 
 	return &milvuspb.GetMetricsResponse{
 		ComponentName: metricsinfo.ConstructComponentName(typeutil.DataCoordRole, paramtable.GetNodeID()),
@@ -1242,69 +1242,6 @@ func getDiff(base, remove []int64) []int64 {
 		}
 	}
 	return diff
-}
-
-// AcquireSegmentLock acquire the reference lock of the segments.
-func (s *Server) AcquireSegmentLock(ctx context.Context, req *datapb.AcquireSegmentLockRequest) (*commonpb.Status, error) {
-	resp := &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_UnexpectedError,
-	}
-
-	if s.isClosed() {
-		log.Warn("failed to acquire segments reference lock for closed server")
-		resp.Reason = msgDataCoordIsUnhealthy(paramtable.GetNodeID())
-		return resp, nil
-	}
-
-	hasSegments, err := s.meta.HasSegments(req.SegmentIDs)
-	if !hasSegments || err != nil {
-		log.Error("AcquireSegmentLock failed", zap.Error(err))
-		resp.Reason = err.Error()
-		return resp, nil
-	}
-
-	err = s.segReferManager.AddSegmentsLock(req.TaskID, req.SegmentIDs, req.NodeID)
-	if err != nil {
-		log.Warn("Add reference lock on segments failed", zap.Int64s("segIDs", req.SegmentIDs), zap.Error(err))
-		resp.Reason = err.Error()
-		return resp, nil
-	}
-	hasSegments, err = s.meta.HasSegments(req.SegmentIDs)
-	if !hasSegments || err != nil {
-		log.Error("AcquireSegmentLock failed, try to release reference lock", zap.Error(err))
-		if err2 := retry.Do(ctx, func() error {
-			return s.segReferManager.ReleaseSegmentsLock(req.TaskID, req.NodeID)
-		}, retry.Attempts(100)); err2 != nil {
-			panic(err)
-		}
-		resp.Reason = err.Error()
-		return resp, nil
-	}
-	resp.ErrorCode = commonpb.ErrorCode_Success
-	return resp, nil
-}
-
-// ReleaseSegmentLock release the reference lock of the segments.
-func (s *Server) ReleaseSegmentLock(ctx context.Context, req *datapb.ReleaseSegmentLockRequest) (*commonpb.Status, error) {
-	resp := &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_UnexpectedError,
-	}
-
-	if s.isClosed() {
-		log.Warn("failed to release segments reference lock for closed server")
-		resp.Reason = msgDataCoordIsUnhealthy(paramtable.GetNodeID())
-		return resp, nil
-	}
-
-	err := s.segReferManager.ReleaseSegmentsLock(req.TaskID, req.NodeID)
-	if err != nil {
-		log.Error("DataCoord ReleaseSegmentLock failed", zap.Int64("taskID", req.TaskID), zap.Int64("nodeID", req.NodeID),
-			zap.Error(err))
-		resp.Reason = err.Error()
-		return resp, nil
-	}
-	resp.ErrorCode = commonpb.ErrorCode_Success
-	return resp, nil
 }
 
 // SaveImportSegment saves the segment binlog paths and puts this segment to its belonging DataNode as a flushed segment.

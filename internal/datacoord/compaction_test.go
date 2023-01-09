@@ -22,21 +22,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/util/metautil"
-	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/typeutil"
-
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
-	memkv "github.com/milvus-io/milvus/internal/kv/mem"
-	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
-	"github.com/milvus-io/milvus/internal/mocks"
-	"github.com/milvus-io/milvus/internal/proto/datapb"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
+	"github.com/milvus-io/milvus/internal/mocks"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/util/metautil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 func Test_compactionPlanHandler_execCompactionPlan(t *testing.T) {
@@ -299,7 +298,7 @@ func TestCompactionPlanHandler_handleMergeCompactionResult(t *testing.T) {
 	plans := map[int64]*compactionTask{1: task}
 
 	errMeta := &meta{
-		catalog: &datacoord.Catalog{Txn: &saveFailKV{TxnKV: memkv.NewMemoryKV()}},
+		catalog: &datacoord.Catalog{MetaKv: &saveFailKV{MetaKv: NewMetaMemoryKV()}},
 		segments: &SegmentsInfo{
 			map[int64]*SegmentInfo{
 				seg1.ID: {SegmentInfo: seg1},
@@ -309,7 +308,7 @@ func TestCompactionPlanHandler_handleMergeCompactionResult(t *testing.T) {
 	}
 
 	meta := &meta{
-		catalog: &datacoord.Catalog{Txn: memkv.NewMemoryKV()},
+		catalog: &datacoord.Catalog{MetaKv: NewMetaMemoryKV()},
 		segments: &SegmentsInfo{
 			map[int64]*SegmentInfo{
 				seg1.ID: {SegmentInfo: seg1},
@@ -322,18 +321,12 @@ func TestCompactionPlanHandler_handleMergeCompactionResult(t *testing.T) {
 		plans:    plans,
 		sessions: sessions,
 		meta:     meta,
-		segRefer: &SegmentReferenceManager{
-			segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-		},
 	}
 
 	c2 := &compactionPlanHandler{
 		plans:    plans,
 		sessions: sessions,
 		meta:     errMeta,
-		segRefer: &SegmentReferenceManager{
-			segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-		},
 	}
 
 	compactionResult := &datapb.CompactionResult{
@@ -380,9 +373,6 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 	t.Run("test not exists compaction task", func(t *testing.T) {
 		c := &compactionPlanHandler{
 			plans: map[int64]*compactionTask{1: {}},
-			segRefer: &SegmentReferenceManager{
-				segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-			},
 		}
 		err := c.completeCompaction(&datapb.CompactionResult{PlanID: 2})
 		assert.Error(t, err)
@@ -390,9 +380,6 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 	t.Run("test completed compaction task", func(t *testing.T) {
 		c := &compactionPlanHandler{
 			plans: map[int64]*compactionTask{1: {state: completed}},
-			segRefer: &SegmentReferenceManager{
-				segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-			},
 		}
 		err := c.completeCompaction(&datapb.CompactionResult{PlanID: 1})
 		assert.Error(t, err)
@@ -457,7 +444,7 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 		plans := map[int64]*compactionTask{1: task}
 
 		meta := &meta{
-			catalog: &datacoord.Catalog{Txn: memkv.NewMemoryKV()},
+			catalog: &datacoord.Catalog{MetaKv: NewMetaMemoryKV()},
 			segments: &SegmentsInfo{
 				map[int64]*SegmentInfo{
 					seg1.ID: {SegmentInfo: seg1},
@@ -480,9 +467,6 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 			sessions: sessions,
 			meta:     meta,
 			flushCh:  flushCh,
-			segRefer: &SegmentReferenceManager{
-				segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-			},
 		}
 
 		err := c.completeCompaction(&compactionResult)
@@ -552,7 +536,7 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 		plans := map[int64]*compactionTask{1: task}
 
 		meta := &meta{
-			catalog: &datacoord.Catalog{Txn: memkv.NewMemoryKV()},
+			catalog: &datacoord.Catalog{MetaKv: NewMetaMemoryKV()},
 			segments: &SegmentsInfo{
 				map[int64]*SegmentInfo{
 					seg1.ID: {SegmentInfo: seg1},
@@ -581,9 +565,6 @@ func TestCompactionPlanHandler_completeCompaction(t *testing.T) {
 			sessions: sessions,
 			meta:     meta,
 			flushCh:  flushCh,
-			segRefer: &SegmentReferenceManager{
-				segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{},
-			},
 		}
 
 		err := c.completeCompaction(&compactionResult)
@@ -780,7 +761,6 @@ func Test_newCompactionPlanHandler(t *testing.T) {
 		meta      *meta
 		allocator allocator
 		flush     chan UniqueID
-		segRefer  *SegmentReferenceManager
 	}
 	tests := []struct {
 		name string
@@ -795,7 +775,6 @@ func Test_newCompactionPlanHandler(t *testing.T) {
 				&meta{},
 				newMockAllocator(),
 				nil,
-				&SegmentReferenceManager{segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{}},
 			},
 			&compactionPlanHandler{
 				plans:      map[int64]*compactionTask{},
@@ -804,14 +783,13 @@ func Test_newCompactionPlanHandler(t *testing.T) {
 				meta:       &meta{},
 				allocator:  newMockAllocator(),
 				flushCh:    nil,
-				segRefer:   &SegmentReferenceManager{segmentsLock: map[UniqueID]map[UniqueID]*datapb.SegmentReferenceLock{}},
 				parallelCh: make(map[int64]chan struct{}),
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := newCompactionPlanHandler(tt.args.sessions, tt.args.cm, tt.args.meta, tt.args.allocator, tt.args.flush, tt.args.segRefer)
+			got := newCompactionPlanHandler(tt.args.sessions, tt.args.cm, tt.args.meta, tt.args.allocator, tt.args.flush)
 			assert.EqualValues(t, tt.want, got)
 		})
 	}

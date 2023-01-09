@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package indexcoord
+package datacoord
 
 import (
 	"context"
@@ -30,22 +30,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNodeManager_PeekClient(t *testing.T) {
+func TestIndexNodeManager_AddNode(t *testing.T) {
+	nm := NewNodeManager(context.Background())
+	nodeID, client := nm.PeekClient(&model.SegmentIndex{})
+	assert.Equal(t, int64(-1), nodeID)
+	assert.Nil(t, client)
+
 	t.Run("success", func(t *testing.T) {
-		nm := NewNodeManager(context.Background())
-		nodeID, client := nm.PeekClient(&model.SegmentIndex{})
-		assert.Equal(t, int64(-1), nodeID)
-		assert.Nil(t, client)
 		err := nm.AddNode(1, "indexnode-1")
 		assert.Nil(t, err)
-		nm.pq.SetMemory(1, 100)
-		nodeID2, client2 := nm.PeekClient(&model.SegmentIndex{})
-		assert.Equal(t, int64(0), nodeID2)
-		assert.Nil(t, client2)
 	})
 
+	t.Run("fail", func(t *testing.T) {
+		err := nm.AddNode(2, "")
+		assert.Error(t, err)
+	})
+}
+
+func TestIndexNodeManager_PeekClient(t *testing.T) {
 	t.Run("multiple unavailable IndexNode", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx: context.TODO(),
 			nodeClients: map[UniqueID]types.IndexNode{
 				1: &indexnode.Mock{
@@ -145,9 +149,9 @@ func TestNodeManager_PeekClient(t *testing.T) {
 	})
 }
 
-func TestNodeManager_ClientSupportDisk(t *testing.T) {
+func TestIndexNodeManager_ClientSupportDisk(t *testing.T) {
 	t.Run("support", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx:  context.Background(),
 			lock: sync.RWMutex{},
 			nodeClients: map[UniqueID]types.IndexNode{
@@ -172,7 +176,7 @@ func TestNodeManager_ClientSupportDisk(t *testing.T) {
 	})
 
 	t.Run("not support", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx:  context.Background(),
 			lock: sync.RWMutex{},
 			nodeClients: map[UniqueID]types.IndexNode{
@@ -197,7 +201,7 @@ func TestNodeManager_ClientSupportDisk(t *testing.T) {
 	})
 
 	t.Run("no indexnode", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx:         context.Background(),
 			lock:        sync.RWMutex{},
 			nodeClients: map[UniqueID]types.IndexNode{},
@@ -208,7 +212,7 @@ func TestNodeManager_ClientSupportDisk(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx:  context.Background(),
 			lock: sync.RWMutex{},
 			nodeClients: map[UniqueID]types.IndexNode{
@@ -225,7 +229,7 @@ func TestNodeManager_ClientSupportDisk(t *testing.T) {
 	})
 
 	t.Run("fail reason", func(t *testing.T) {
-		nm := &NodeManager{
+		nm := &IndexNodeManager{
 			ctx:  context.Background(),
 			lock: sync.RWMutex{},
 			nodeClients: map[UniqueID]types.IndexNode{

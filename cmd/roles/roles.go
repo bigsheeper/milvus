@@ -26,20 +26,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/management"
-	rocksmqimpl "github.com/milvus-io/milvus/internal/mq/mqimpl/rocksmq/server"
-
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/cmd/components"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/management"
 	"github.com/milvus-io/milvus/internal/management/healthz"
 	"github.com/milvus-io/milvus/internal/metrics"
+	rocksmqimpl "github.com/milvus-io/milvus/internal/mq/mqimpl/rocksmq/server"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
+	_ "github.com/milvus-io/milvus/internal/util/symbolizer" // support symbolizer and crash dump
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/prometheus/client_golang/prometheus"
@@ -147,7 +147,7 @@ func (mr *MilvusRoles) runDataNode(ctx context.Context, localMsg bool) *componen
 }
 
 func (mr *MilvusRoles) runIndexCoord(ctx context.Context, localMsg bool) *components.IndexCoord {
-	return runComponent(ctx, localMsg, components.NewIndexCoord, metrics.RegisterIndexCoord)
+	return runComponent(ctx, localMsg, components.NewIndexCoord, func(registry *prometheus.Registry) {})
 }
 
 func (mr *MilvusRoles) runIndexNode(ctx context.Context, localMsg bool) *components.IndexNode {

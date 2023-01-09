@@ -14,19 +14,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package indexcoord
+package symbolizer
 
-import "time"
+import (
+	"runtime/debug"
 
-const (
-	// IndexAddTaskName is the name of the operation to add index task.
-	IndexAddTaskName    = "IndexAddTask"
-	CreateIndexTaskName = "CreateIndexTask"
-
-	flatIndex    = "FLAT"
-	binFlatIndex = "BIN_FLAT"
-	diskAnnIndex = "DISKANN"
-	invalidIndex = "invalid"
-
-	reqTimeoutInterval = time.Second * 10
+	_ "github.com/benesch/cgosymbolizer" // enable cpp stack
 )
+
+func init() {
+	debug.SetTraceback("crash")
+}

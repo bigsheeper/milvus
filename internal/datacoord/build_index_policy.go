@@ -14,26 +14,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package indexcoord
+package datacoord
 
-import (
-	"testing"
+import "sort"
 
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
-	"github.com/stretchr/testify/assert"
-)
+type buildIndexPolicy func(buildIDs []UniqueID)
 
-func TestPeekClientV0(t *testing.T) {
-	pq := newPriorityQueue()
-	key := PeekClientV0(10, []*commonpb.KeyValuePair{}, []*commonpb.KeyValuePair{}, pq)
-	assert.Equal(t, UniqueID(1), key)
-}
+func defaultBuildIndexPolicy(buildIDs []UniqueID) {
+	sort.Slice(buildIDs, func(i, j int) bool {
+		return buildIDs[i] < buildIDs[j]
+	})
 
-func TestPeekClientV1(t *testing.T) {
-	pq := newPriorityQueue()
-	key := PeekClientV1(10, []*commonpb.KeyValuePair{}, []*commonpb.KeyValuePair{}, pq)
-	assert.Equal(t, UniqueID(1), key)
-
-	key2 := PeekClientV1(10000, []*commonpb.KeyValuePair{}, []*commonpb.KeyValuePair{}, pq)
-	assert.Equal(t, UniqueID(0), key2)
 }

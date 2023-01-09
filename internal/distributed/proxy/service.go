@@ -40,7 +40,6 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	dcc "github.com/milvus-io/milvus/internal/distributed/datacoord/client"
-	icc "github.com/milvus-io/milvus/internal/distributed/indexcoord/client"
 	"github.com/milvus-io/milvus/internal/distributed/proxy/httpserver"
 	qcc "github.com/milvus-io/milvus/internal/distributed/querycoord/client"
 	rcc "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
@@ -87,7 +86,6 @@ type Server struct {
 	rootCoordClient  types.RootCoord
 	dataCoordClient  types.DataCoord
 	queryCoordClient types.QueryCoord
-	indexCoordClient types.IndexCoord
 
 	tracer opentracing.Tracer
 	closer io.Closer
@@ -419,35 +417,6 @@ func (s *Server) init() error {
 	s.proxy.SetDataCoordClient(s.dataCoordClient)
 	log.Debug("set DataCoord client for Proxy done")
 
-	if s.indexCoordClient == nil {
-		var err error
-		log.Debug("create IndexCoord client for Proxy")
-		s.indexCoordClient, err = icc.NewClient(s.ctx, proxy.Params.EtcdCfg.MetaRootPath.GetValue(), etcdCli)
-		if err != nil {
-			log.Warn("failed to create IndexCoord client for Proxy", zap.Error(err))
-			return err
-		}
-		log.Debug("create IndexCoord client for Proxy done")
-	}
-
-	log.Debug("init IndexCoord client for Proxy")
-	if err := s.indexCoordClient.Init(); err != nil {
-		log.Warn("failed to init IndexCoord client for Proxy", zap.Error(err))
-		return err
-	}
-	log.Debug("init IndexCoord client for Proxy done")
-
-	log.Debug("Proxy wait for IndexCoord to be healthy")
-	if err := funcutil.WaitForComponentHealthy(s.ctx, s.indexCoordClient, "IndexCoord", 1000000, time.Millisecond*200); err != nil {
-		log.Warn("Proxy failed to wait for IndexCoord to be healthy", zap.Error(err))
-		return err
-	}
-	log.Debug("Proxy wait for IndexCoord to be healthy done")
-
-	log.Debug("set IndexCoord client for Proxy")
-	s.proxy.SetIndexCoordClient(s.indexCoordClient)
-	log.Debug("set IndexCoord client for Proxy done")
-
 	if s.queryCoordClient == nil {
 		var err error
 		log.Debug("create QueryCoord client for Proxy")
@@ -685,7 +654,7 @@ func (s *Server) Delete(ctx context.Context, request *milvuspb.DeleteRequest) (*
 }
 
 func (s *Server) Upsert(ctx context.Context, request *milvuspb.UpsertRequest) (*milvuspb.MutationResult, error) {
-	panic("TODO: not implement")
+	return s.proxy.Upsert(ctx, request)
 }
 
 func (s *Server) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
@@ -708,12 +677,12 @@ func (s *Server) GetDdChannel(ctx context.Context, request *internalpb.GetDdChan
 	return s.proxy.GetDdChannel(ctx, request)
 }
 
-//GetPersistentSegmentInfo notifies Proxy to get persistent segment info.
+// GetPersistentSegmentInfo notifies Proxy to get persistent segment info.
 func (s *Server) GetPersistentSegmentInfo(ctx context.Context, request *milvuspb.GetPersistentSegmentInfoRequest) (*milvuspb.GetPersistentSegmentInfoResponse, error) {
 	return s.proxy.GetPersistentSegmentInfo(ctx, request)
 }
 
-//GetQuerySegmentInfo notifies Proxy to get query segment info.
+// GetQuerySegmentInfo notifies Proxy to get query segment info.
 func (s *Server) GetQuerySegmentInfo(ctx context.Context, request *milvuspb.GetQuerySegmentInfoRequest) (*milvuspb.GetQuerySegmentInfoResponse, error) {
 	return s.proxy.GetQuerySegmentInfo(ctx, request)
 

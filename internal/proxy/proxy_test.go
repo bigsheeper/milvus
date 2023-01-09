@@ -39,15 +39,12 @@ import (
 	grpcdatacoordclient "github.com/milvus-io/milvus/internal/distributed/datacoord"
 	grpcdatacoordclient2 "github.com/milvus-io/milvus/internal/distributed/datacoord/client"
 	grpcdatanode "github.com/milvus-io/milvus/internal/distributed/datanode"
-	grpcindexcoord "github.com/milvus-io/milvus/internal/distributed/indexcoord"
-	grpcindexcoordclient "github.com/milvus-io/milvus/internal/distributed/indexcoord/client"
 	grpcindexnode "github.com/milvus-io/milvus/internal/distributed/indexnode"
 	grpcquerycoord "github.com/milvus-io/milvus/internal/distributed/querycoord"
 	grpcquerycoordclient "github.com/milvus-io/milvus/internal/distributed/querycoord/client"
 	grpcquerynode "github.com/milvus-io/milvus/internal/distributed/querynode"
 	grpcrootcoord "github.com/milvus-io/milvus/internal/distributed/rootcoord"
 	rcc "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
-	"github.com/milvus-io/milvus/internal/indexcoord"
 	"github.com/milvus-io/milvus/internal/indexnode"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/metrics"
@@ -230,35 +227,6 @@ func runDataNode(ctx context.Context, localMsg bool, alias string) *grpcdatanode
 
 	metrics.RegisterDataNode(Registry)
 	return dn
-}
-
-func runIndexCoord(ctx context.Context, localMsg bool) *grpcindexcoord.Server {
-	var is *grpcindexcoord.Server
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		if !localMsg {
-			logutil.SetupLogger(&indexcoord.Params.Log)
-			defer log.Sync()
-		}
-
-		factory := dependency.NewDefaultFactory(localMsg)
-		var err error
-		is, err = grpcindexcoord.NewServer(ctx, factory)
-		if err != nil {
-			panic(err)
-		}
-		wg.Done()
-		err = is.Run()
-		if err != nil {
-			panic(err)
-		}
-	}()
-	wg.Wait()
-
-	metrics.RegisterIndexCoord(Registry)
-	return is
 }
 
 func runIndexNode(ctx context.Context, localMsg bool, alias string) *grpcindexnode.Server {
@@ -468,17 +436,6 @@ func TestProxy(t *testing.T) {
 		}()
 	}
 
-	ic := runIndexCoord(ctx, localMsg)
-	log.Info("running IndexCoord ...")
-
-	if ic != nil {
-		defer func() {
-			err := ic.Stop()
-			assert.NoError(t, err)
-			log.Info("stop IndexCoord")
-		}()
-	}
-
 	in := runIndexNode(ctx, localMsg, alias)
 	log.Info("running IndexNode ...")
 
@@ -546,15 +503,6 @@ func TestProxy(t *testing.T) {
 	assert.NoError(t, err)
 	proxy.SetQueryCoordClient(queryCoordClient)
 	log.Info("Proxy set query coordinator client")
-
-	indexCoordClient, err := grpcindexcoordclient.NewClient(ctx, Params.EtcdCfg.MetaRootPath.GetValue(), etcdcli)
-	assert.NoError(t, err)
-	err = indexCoordClient.Init()
-	assert.NoError(t, err)
-	err = funcutil.WaitForComponentHealthy(ctx, indexCoordClient, typeutil.IndexCoordRole, attempts, sleepDuration)
-	assert.NoError(t, err)
-	proxy.SetIndexCoordClient(indexCoordClient)
-	log.Info("Proxy set index coordinator client")
 
 	proxy.UpdateStateCode(commonpb.StateCode_Initializing)
 	err = proxy.Init()
@@ -681,6 +629,20 @@ func TestProxy(t *testing.T) {
 		fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, dim)
 		hashKeys := generateHashKeys(rowNum)
 		return &milvuspb.InsertRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: collectionName,
+			PartitionName:  partitionName,
+			FieldsData:     []*schemapb.FieldData{fVecColumn},
+			HashKeys:       hashKeys,
+			NumRows:        uint32(rowNum),
+		}
+	}
+
+	constructCollectionUpsertRequest := func() *milvuspb.UpsertRequest {
+		fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, dim)
+		hashKeys := generateHashKeys(rowNum)
+		return &milvuspb.UpsertRequest{
 			Base:           nil,
 			DbName:         dbName,
 			CollectionName: collectionName,
@@ -1085,7 +1047,7 @@ func TestProxy(t *testing.T) {
 		assert.Equal(t, int64(rowNum), resp.InsertCnt)
 	})
 
-	// TODO(dragondriver): proxy.Delete()
+	//TODO(dragondriver): proxy.Delete()
 
 	flushed := true
 	wg.Add(1)
@@ -2156,6 +2118,19 @@ func TestProxy(t *testing.T) {
 	})
 
 	wg.Add(1)
+	t.Run("upsert when autoID == true", func(t *testing.T) {
+		defer wg.Done()
+		req := constructCollectionUpsertRequest()
+
+		resp, err := proxy.Upsert(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UpsertAutoIDTrue, resp.Status.ErrorCode)
+		assert.Equal(t, 0, len(resp.SuccIndex))
+		assert.Equal(t, rowNum, len(resp.ErrIndex))
+		assert.Equal(t, int64(0), resp.UpsertCnt)
+	})
+
+	wg.Add(1)
 	t.Run("drop collection", func(t *testing.T) {
 		defer wg.Done()
 		_, err := globalMetaCache.GetCollectionID(ctx, collectionName)
@@ -2608,6 +2583,14 @@ func TestProxy(t *testing.T) {
 	})
 
 	wg.Add(1)
+	t.Run("Upsert fail, unhealthy", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.Upsert(ctx, &milvuspb.UpsertRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+	})
+
+	wg.Add(1)
 	t.Run("Search fail, unhealthy", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.Search(ctx, &milvuspb.SearchRequest{})
@@ -2985,6 +2968,14 @@ func TestProxy(t *testing.T) {
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
 	})
 
+	wg.Add(1)
+	t.Run("Upsert fail, dm queue full", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.Upsert(ctx, &milvuspb.UpsertRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+	})
+
 	proxy.sched.dmQueue.setMaxTaskNum(dmParallelism)
 
 	dqParallelism := proxy.sched.dqQueue.getMaxTaskNum()
@@ -3221,6 +3212,14 @@ func TestProxy(t *testing.T) {
 	})
 
 	wg.Add(1)
+	t.Run("Update fail, timeout", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.Upsert(shortCtx, &milvuspb.UpsertRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+	})
+
+	wg.Add(1)
 	t.Run("Search fail, timeout", func(t *testing.T) {
 		defer wg.Done()
 		resp, err := proxy.Search(shortCtx, &milvuspb.SearchRequest{})
@@ -3294,6 +3293,161 @@ func TestProxy(t *testing.T) {
 
 	testProxyRoleTimeout(shortCtx, t, proxy)
 	testProxyPrivilegeTimeout(shortCtx, t, proxy)
+
+	constructCollectionSchema = func() *schemapb.CollectionSchema {
+		pk := &schemapb.FieldSchema{
+			FieldID:      0,
+			Name:         int64Field,
+			IsPrimaryKey: true,
+			Description:  "",
+			DataType:     schemapb.DataType_Int64,
+			TypeParams:   nil,
+			IndexParams:  nil,
+			AutoID:       false,
+		}
+		fVec := &schemapb.FieldSchema{
+			FieldID:      0,
+			Name:         floatVecField,
+			IsPrimaryKey: false,
+			Description:  "",
+			DataType:     schemapb.DataType_FloatVector,
+			TypeParams: []*commonpb.KeyValuePair{
+				{
+					Key:   "dim",
+					Value: strconv.Itoa(dim),
+				},
+			},
+			IndexParams: nil,
+			AutoID:      false,
+		}
+		return &schemapb.CollectionSchema{
+			Name:        collectionName,
+			Description: "",
+			AutoID:      false,
+			Fields: []*schemapb.FieldSchema{
+				pk,
+				fVec,
+			},
+		}
+	}
+	schema = constructCollectionSchema()
+
+	constructCreateCollectionRequest = func() *milvuspb.CreateCollectionRequest {
+		bs, err := proto.Marshal(schema)
+		assert.NoError(t, err)
+		return &milvuspb.CreateCollectionRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: collectionName,
+			Schema:         bs,
+			ShardsNum:      shardsNum,
+		}
+	}
+	createCollectionReq = constructCreateCollectionRequest()
+
+	constructPartitionReqUpsertRequestValid := func() *milvuspb.UpsertRequest {
+		pkFieldData := newScalarFieldData(schema.Fields[0], int64Field, rowNum)
+		fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, dim)
+		hashKeys := generateHashKeys(rowNum)
+		return &milvuspb.UpsertRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: collectionName,
+			PartitionName:  partitionName,
+			FieldsData:     []*schemapb.FieldData{pkFieldData, fVecColumn},
+			HashKeys:       hashKeys,
+			NumRows:        uint32(rowNum),
+		}
+	}
+
+	constructCollectionUpsertRequestValid := func() *milvuspb.UpsertRequest {
+		pkFieldData := newScalarFieldData(schema.Fields[0], int64Field, rowNum)
+		fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, dim)
+		hashKeys := generateHashKeys(rowNum)
+		return &milvuspb.UpsertRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: collectionName,
+			PartitionName:  partitionName,
+			FieldsData:     []*schemapb.FieldData{pkFieldData, fVecColumn},
+			HashKeys:       hashKeys,
+			NumRows:        uint32(rowNum),
+		}
+	}
+
+	wg.Add(1)
+	t.Run("create collection upsert valid", func(t *testing.T) {
+		defer wg.Done()
+		req := createCollectionReq
+		resp, err := proxy.CreateCollection(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+
+		reqInvalidField := constructCreateCollectionRequest()
+		schema := constructCollectionSchema()
+		schema.Fields = append(schema.Fields, &schemapb.FieldSchema{
+			Name:     "StringField",
+			DataType: schemapb.DataType_String,
+		})
+		bs, err := proto.Marshal(schema)
+		assert.NoError(t, err)
+		reqInvalidField.CollectionName = "invalid_field_coll_upsert_valid"
+		reqInvalidField.Schema = bs
+
+		resp, err = proxy.CreateCollection(ctx, reqInvalidField)
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+
+	})
+
+	wg.Add(1)
+	t.Run("create partition", func(t *testing.T) {
+		defer wg.Done()
+		resp, err := proxy.CreatePartition(ctx, &milvuspb.CreatePartitionRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: collectionName,
+			PartitionName:  partitionName,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+
+		// create partition with non-exist collection -> fail
+		resp, err = proxy.CreatePartition(ctx, &milvuspb.CreatePartitionRequest{
+			Base:           nil,
+			DbName:         dbName,
+			CollectionName: otherCollectionName,
+			PartitionName:  partitionName,
+		})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.ErrorCode)
+	})
+
+	wg.Add(1)
+	t.Run("upsert partition", func(t *testing.T) {
+		defer wg.Done()
+		req := constructPartitionReqUpsertRequestValid()
+
+		resp, err := proxy.Upsert(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+		assert.Equal(t, rowNum, len(resp.SuccIndex))
+		assert.Equal(t, 0, len(resp.ErrIndex))
+		assert.Equal(t, int64(rowNum), resp.UpsertCnt)
+	})
+
+	wg.Add(1)
+	t.Run("upsert when autoID == false", func(t *testing.T) {
+		defer wg.Done()
+		req := constructCollectionUpsertRequestValid()
+
+		resp, err := proxy.Upsert(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.Status.ErrorCode)
+		assert.Equal(t, rowNum, len(resp.SuccIndex))
+		assert.Equal(t, 0, len(resp.ErrIndex))
+		assert.Equal(t, int64(rowNum), resp.UpsertCnt)
+	})
 
 	testServer.gracefulStop()
 

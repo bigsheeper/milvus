@@ -27,31 +27,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/proto/querypb"
-
-	"github.com/milvus-io/milvus/internal/proto/indexpb"
-
-	"github.com/milvus-io/milvus/internal/mocks"
-	"github.com/stretchr/testify/mock"
-
-	"github.com/milvus-io/milvus/internal/allocator"
-	"github.com/milvus-io/milvus/internal/mq/msgstream"
-
-	"github.com/milvus-io/milvus/internal/util/paramtable"
-	"github.com/milvus-io/milvus/internal/util/typeutil"
-
 	"github.com/golang/protobuf/proto"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
+	"github.com/milvus-io/milvus/internal/allocator"
 	"github.com/milvus-io/milvus/internal/common"
+	"github.com/milvus-io/milvus/internal/mocks"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
-
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/distance"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/milvus-io/milvus/internal/util/uniquegenerator"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // TODO(dragondriver): add more test cases
@@ -1698,6 +1691,94 @@ func TestTask_VarCharPrimaryKey(t *testing.T) {
 		assert.NoError(t, task.PostExecute(ctx))
 	})
 
+	t.Run("upsert", func(t *testing.T) {
+		hash := generateHashKeys(nb)
+		task := &upsertTask{
+			upsertMsg: &msgstream.UpsertMsg{
+				InsertMsg: &BaseInsertTask{
+					BaseMsg: msgstream.BaseMsg{
+						HashValues: hash,
+					},
+					InsertRequest: internalpb.InsertRequest{
+						Base: &commonpb.MsgBase{
+							MsgType:  commonpb.MsgType_Insert,
+							MsgID:    0,
+							SourceID: paramtable.GetNodeID(),
+						},
+						DbName:         dbName,
+						CollectionName: collectionName,
+						PartitionName:  partitionName,
+						NumRows:        uint64(nb),
+						Version:        internalpb.InsertDataVersion_ColumnBased,
+					},
+				},
+				DeleteMsg: &msgstream.DeleteMsg{
+					BaseMsg: msgstream.BaseMsg{
+						HashValues: hash,
+					},
+					DeleteRequest: internalpb.DeleteRequest{
+						Base: &commonpb.MsgBase{
+							MsgType:   commonpb.MsgType_Delete,
+							MsgID:     0,
+							Timestamp: 0,
+							SourceID:  paramtable.GetNodeID(),
+						},
+						DbName:         dbName,
+						CollectionName: collectionName,
+						PartitionName:  partitionName,
+					},
+				},
+			},
+
+			Condition: NewTaskCondition(ctx),
+			req: &milvuspb.UpsertRequest{
+				Base: &commonpb.MsgBase{
+					MsgType:  commonpb.MsgType_Insert,
+					MsgID:    0,
+					SourceID: paramtable.GetNodeID(),
+				},
+				DbName:         dbName,
+				CollectionName: collectionName,
+				PartitionName:  partitionName,
+				HashKeys:       hash,
+				NumRows:        uint32(nb),
+			},
+			ctx: ctx,
+			result: &milvuspb.MutationResult{
+				Status: &commonpb.Status{
+					ErrorCode: commonpb.ErrorCode_Success,
+					Reason:    "",
+				},
+				IDs:          nil,
+				SuccIndex:    nil,
+				ErrIndex:     nil,
+				Acknowledged: false,
+				InsertCnt:    0,
+				DeleteCnt:    0,
+				UpsertCnt:    0,
+				Timestamp:    0,
+			},
+			idAllocator:   idAllocator,
+			segIDAssigner: segAllocator,
+			chMgr:         chMgr,
+			chTicker:      ticker,
+			vChannels:     nil,
+			pChannels:     nil,
+			schema:        nil,
+		}
+
+		fieldID := common.StartOfUserFieldID
+		for fieldName, dataType := range fieldName2Types {
+			task.req.FieldsData = append(task.req.FieldsData, generateFieldData(dataType, fieldName, nb))
+			fieldID++
+		}
+
+		assert.NoError(t, task.OnEnqueue())
+		assert.NoError(t, task.PreExecute(ctx))
+		assert.NoError(t, task.Execute(ctx))
+		assert.NoError(t, task.PostExecute(ctx))
+	})
+
 	t.Run("delete", func(t *testing.T) {
 		task := &deleteTask{
 			Condition: NewTaskCondition(ctx),
@@ -2266,7 +2347,7 @@ func Test_dropCollectionTask_PostExecute(t *testing.T) {
 func Test_loadCollectionTask_Execute(t *testing.T) {
 	rc := newMockRootCoord()
 	qc := NewQueryCoordMock(withValidShardLeaders())
-	ic := newMockIndexCoord()
+	dc := NewDataCoordMock()
 
 	dbName := funcutil.GenRandomStr()
 	collectionName := funcutil.GenRandomStr()
@@ -2306,7 +2387,7 @@ func Test_loadCollectionTask_Execute(t *testing.T) {
 		},
 		ctx:          ctx,
 		queryCoord:   qc,
-		indexCoord:   ic,
+		datacoord:    dc,
 		result:       nil,
 		collectionID: 0,
 	}
@@ -2317,8 +2398,8 @@ func Test_loadCollectionTask_Execute(t *testing.T) {
 	})
 
 	t.Run("indexcoord describe index not success", func(t *testing.T) {
-		ic.DescribeIndexFunc = func(ctx context.Context, request *indexpb.DescribeIndexRequest) (*indexpb.DescribeIndexResponse, error) {
-			return &indexpb.DescribeIndexResponse{
+		dc.DescribeIndexFunc = func(ctx context.Context, request *datapb.DescribeIndexRequest) (*datapb.DescribeIndexResponse, error) {
+			return &datapb.DescribeIndexResponse{
 				Status: &commonpb.Status{
 					ErrorCode: commonpb.ErrorCode_UnexpectedError,
 					Reason:    "fail reason",
@@ -2331,12 +2412,12 @@ func Test_loadCollectionTask_Execute(t *testing.T) {
 	})
 
 	t.Run("no vector index", func(t *testing.T) {
-		ic.DescribeIndexFunc = func(ctx context.Context, request *indexpb.DescribeIndexRequest) (*indexpb.DescribeIndexResponse, error) {
-			return &indexpb.DescribeIndexResponse{
+		dc.DescribeIndexFunc = func(ctx context.Context, request *datapb.DescribeIndexRequest) (*datapb.DescribeIndexResponse, error) {
+			return &datapb.DescribeIndexResponse{
 				Status: &commonpb.Status{
 					ErrorCode: commonpb.ErrorCode_Success,
 				},
-				IndexInfos: []*indexpb.IndexInfo{
+				IndexInfos: []*datapb.IndexInfo{
 					{
 						CollectionID:         collectionID,
 						FieldID:              100,
@@ -2363,7 +2444,7 @@ func Test_loadCollectionTask_Execute(t *testing.T) {
 func Test_loadPartitionTask_Execute(t *testing.T) {
 	rc := newMockRootCoord()
 	qc := NewQueryCoordMock(withValidShardLeaders())
-	ic := newMockIndexCoord()
+	dc := NewDataCoordMock()
 
 	dbName := funcutil.GenRandomStr()
 	collectionName := funcutil.GenRandomStr()
@@ -2403,7 +2484,7 @@ func Test_loadPartitionTask_Execute(t *testing.T) {
 		},
 		ctx:          ctx,
 		queryCoord:   qc,
-		indexCoord:   ic,
+		datacoord:    dc,
 		result:       nil,
 		collectionID: 0,
 	}
@@ -2414,8 +2495,8 @@ func Test_loadPartitionTask_Execute(t *testing.T) {
 	})
 
 	t.Run("indexcoord describe index not success", func(t *testing.T) {
-		ic.DescribeIndexFunc = func(ctx context.Context, request *indexpb.DescribeIndexRequest) (*indexpb.DescribeIndexResponse, error) {
-			return &indexpb.DescribeIndexResponse{
+		dc.DescribeIndexFunc = func(ctx context.Context, request *datapb.DescribeIndexRequest) (*datapb.DescribeIndexResponse, error) {
+			return &datapb.DescribeIndexResponse{
 				Status: &commonpb.Status{
 					ErrorCode: commonpb.ErrorCode_UnexpectedError,
 					Reason:    "fail reason",
@@ -2428,12 +2509,12 @@ func Test_loadPartitionTask_Execute(t *testing.T) {
 	})
 
 	t.Run("no vector index", func(t *testing.T) {
-		ic.DescribeIndexFunc = func(ctx context.Context, request *indexpb.DescribeIndexRequest) (*indexpb.DescribeIndexResponse, error) {
-			return &indexpb.DescribeIndexResponse{
+		dc.DescribeIndexFunc = func(ctx context.Context, request *datapb.DescribeIndexRequest) (*datapb.DescribeIndexResponse, error) {
+			return &datapb.DescribeIndexResponse{
 				Status: &commonpb.Status{
 					ErrorCode: commonpb.ErrorCode_Success,
 				},
-				IndexInfos: []*indexpb.IndexInfo{
+				IndexInfos: []*datapb.IndexInfo{
 					{
 						CollectionID:         collectionID,
 						FieldID:              100,

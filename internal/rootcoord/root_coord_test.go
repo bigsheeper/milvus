@@ -19,7 +19,6 @@ import (
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/etcdpb"
-	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
@@ -322,6 +321,9 @@ func TestRootCoord_DescribeCollection(t *testing.T) {
 		resp, err := c.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
 
 	t.Run("failed to add task", func(t *testing.T) {
@@ -330,6 +332,9 @@ func TestRootCoord_DescribeCollection(t *testing.T) {
 
 		ctx := context.Background()
 		resp, err := c.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
@@ -342,6 +347,9 @@ func TestRootCoord_DescribeCollection(t *testing.T) {
 		resp, err := c.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
 
 	t.Run("normal case, everything is ok", func(t *testing.T) {
@@ -350,6 +358,9 @@ func TestRootCoord_DescribeCollection(t *testing.T) {
 
 		ctx := context.Background()
 		resp, err := c.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
@@ -482,6 +493,9 @@ func TestRootCoord_ShowPartitions(t *testing.T) {
 		resp, err := c.ShowPartitions(ctx, &milvuspb.ShowPartitionsRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.ShowPartitionsInternal(ctx, &milvuspb.ShowPartitionsRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
 
 	t.Run("failed to add task", func(t *testing.T) {
@@ -490,6 +504,9 @@ func TestRootCoord_ShowPartitions(t *testing.T) {
 
 		ctx := context.Background()
 		resp, err := c.ShowPartitions(ctx, &milvuspb.ShowPartitionsRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.ShowPartitionsInternal(ctx, &milvuspb.ShowPartitionsRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
@@ -501,6 +518,9 @@ func TestRootCoord_ShowPartitions(t *testing.T) {
 		resp, err := c.ShowPartitions(ctx, &milvuspb.ShowPartitionsRequest{})
 		assert.NoError(t, err)
 		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.ShowPartitionsInternal(ctx, &milvuspb.ShowPartitionsRequest{})
+		assert.NoError(t, err)
+		assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
 
 	t.Run("normal case, everything is ok", func(t *testing.T) {
@@ -508,6 +528,9 @@ func TestRootCoord_ShowPartitions(t *testing.T) {
 			withValidScheduler())
 		ctx := context.Background()
 		resp, err := c.ShowPartitions(ctx, &milvuspb.ShowPartitionsRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
+		resp, err = c.ShowPartitionsInternal(ctx, &milvuspb.ShowPartitionsRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	})
@@ -1143,8 +1166,8 @@ func TestCore_ReportImport(t *testing.T) {
 		}, nil
 	}
 
-	callDescribeIndex := func(ctx context.Context, colID UniqueID) (*indexpb.DescribeIndexResponse, error) {
-		return &indexpb.DescribeIndexResponse{
+	callDescribeIndex := func(ctx context.Context, colID UniqueID) (*datapb.DescribeIndexResponse, error) {
+		return &datapb.DescribeIndexResponse{
 			Status: &commonpb.Status{
 				ErrorCode: commonpb.ErrorCode_IndexNotExist,
 			},
@@ -1381,7 +1404,7 @@ func TestRootcoord_EnableActiveStandby(t *testing.T) {
 		},
 		CollectionName: "unexist"})
 	assert.NoError(t, err)
-	assert.Equal(t, commonpb.ErrorCode_UnexpectedError, resp.GetStatus().GetErrorCode())
+	assert.NotEqual(t, commonpb.ErrorCode_Success, resp.GetStatus().GetErrorCode())
 	err = core.Stop()
 	assert.NoError(t, err)
 }

@@ -28,30 +28,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/util/metricsinfo"
-	"github.com/milvus-io/milvus/internal/util/paramtable"
-
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
-	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/proxypb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
 	"github.com/milvus-io/milvus/internal/proxy"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	milvusmock "github.com/milvus-io/milvus/internal/util/mock"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/uniquegenerator"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func TestMain(m *testing.M) {
@@ -60,7 +58,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockBase struct {
 	mock.Mock
 	isMockGetComponentStatesOn bool
@@ -102,7 +100,7 @@ func (m *MockBase) GetStatisticsChannel(ctx context.Context) (*milvuspb.StringRe
 	return nil, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockRootCoord struct {
 	MockBase
 	initErr  error
@@ -143,6 +141,10 @@ func (m *MockRootCoord) DescribeCollection(ctx context.Context, req *milvuspb.De
 	return nil, nil
 }
 
+func (m *MockRootCoord) DescribeCollectionInternal(ctx context.Context, req *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error) {
+	return nil, nil
+}
+
 func (m *MockRootCoord) ShowCollections(ctx context.Context, req *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	return nil, nil
 }
@@ -164,6 +166,10 @@ func (m *MockRootCoord) HasPartition(ctx context.Context, req *milvuspb.HasParti
 }
 
 func (m *MockRootCoord) ShowPartitions(ctx context.Context, req *milvuspb.ShowPartitionsRequest) (*milvuspb.ShowPartitionsResponse, error) {
+	return nil, nil
+}
+
+func (m *MockRootCoord) ShowPartitionsInternal(ctx context.Context, req *milvuspb.ShowPartitionsRequest) (*milvuspb.ShowPartitionsResponse, error) {
 	return nil, nil
 }
 
@@ -282,71 +288,6 @@ func (m *MockRootCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHeal
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-type MockIndexCoord struct {
-	MockBase
-	initErr  error
-	startErr error
-	regErr   error
-	stopErr  error
-}
-
-func (m *MockIndexCoord) Init() error {
-	return m.initErr
-}
-
-func (m *MockIndexCoord) Start() error {
-	return m.startErr
-}
-
-func (m *MockIndexCoord) Stop() error {
-	return m.stopErr
-}
-
-func (m *MockIndexCoord) Register() error {
-	return m.regErr
-}
-
-func (m *MockIndexCoord) CreateIndex(ctx context.Context, req *indexpb.CreateIndexRequest) (*commonpb.Status, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) DropIndex(ctx context.Context, req *indexpb.DropIndexRequest) (*commonpb.Status, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) GetIndexState(ctx context.Context, req *indexpb.GetIndexStateRequest) (*indexpb.GetIndexStateResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) GetSegmentIndexState(ctx context.Context, req *indexpb.GetSegmentIndexStateRequest) (*indexpb.GetSegmentIndexStateResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) GetIndexInfos(ctx context.Context, req *indexpb.GetIndexInfoRequest) (*indexpb.GetIndexInfoResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) DescribeIndex(ctx context.Context, req *indexpb.DescribeIndexRequest) (*indexpb.DescribeIndexResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) GetIndexBuildProgress(ctx context.Context, req *indexpb.GetIndexBuildProgressRequest) (*indexpb.GetIndexBuildProgressResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) ShowConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) GetMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error) {
-	return nil, nil
-}
-
-func (m *MockIndexCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHealthRequest) (*milvuspb.CheckHealthResponse, error) {
-	return nil, nil
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockQueryCoord struct {
 	MockBase
 	initErr  error
@@ -461,7 +402,7 @@ func (m *MockQueryCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHea
 	}, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockDataCoord struct {
 	MockBase
 	err      error
@@ -619,6 +560,34 @@ func (m *MockDataCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHeal
 	return nil, nil
 }
 
+func (m *MockDataCoord) CreateIndex(ctx context.Context, req *datapb.CreateIndexRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) DropIndex(ctx context.Context, req *datapb.DropIndexRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) GetIndexState(ctx context.Context, req *datapb.GetIndexStateRequest) (*datapb.GetIndexStateResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) GetSegmentIndexState(ctx context.Context, req *datapb.GetSegmentIndexStateRequest) (*datapb.GetSegmentIndexStateResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) GetIndexInfos(ctx context.Context, req *datapb.GetIndexInfoRequest) (*datapb.GetIndexInfoResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) DescribeIndex(ctx context.Context, req *datapb.DescribeIndexRequest) (*datapb.DescribeIndexResponse, error) {
+	return nil, nil
+}
+
+func (m *MockDataCoord) GetIndexBuildProgress(ctx context.Context, req *datapb.GetIndexBuildProgressRequest) (*datapb.GetIndexBuildProgressResponse, error) {
+	return nil, nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockProxy struct {
 	MockBase
@@ -750,6 +719,10 @@ func (m *MockProxy) Delete(ctx context.Context, request *milvuspb.DeleteRequest)
 	return nil, nil
 }
 
+func (m *MockProxy) Upsert(ctx context.Context, request *milvuspb.UpsertRequest) (*milvuspb.MutationResult, error) {
+	return nil, nil
+}
+
 func (m *MockProxy) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
 	return nil, nil
 }
@@ -819,10 +792,6 @@ func (m *MockProxy) SetRootCoordClient(rootCoord types.RootCoord) {
 }
 
 func (m *MockProxy) SetDataCoordClient(dataCoord types.DataCoord) {
-
-}
-
-func (m *MockProxy) SetIndexCoordClient(indexCoord types.IndexCoord) {
 
 }
 
@@ -1055,7 +1024,7 @@ func runAndWaitForServerReady(server *Server) error {
 	return nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func Test_NewServer(t *testing.T) {
 	paramtable.Init()
 	ctx := context.Background()
@@ -1065,7 +1034,6 @@ func Test_NewServer(t *testing.T) {
 
 	server.proxy = &MockProxy{}
 	server.rootCoordClient = &MockRootCoord{}
-	server.indexCoordClient = &MockIndexCoord{}
 	server.queryCoordClient = &MockQueryCoord{}
 	server.dataCoordClient = &MockDataCoord{}
 
@@ -1201,6 +1169,11 @@ func Test_NewServer(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		_, err := server.Delete(ctx, nil)
+		assert.Nil(t, err)
+	})
+
+	t.Run("Upsert", func(t *testing.T) {
+		_, err := server.Upsert(ctx, nil)
 		assert.Nil(t, err)
 	})
 
@@ -1385,7 +1358,6 @@ func TestServer_Check(t *testing.T) {
 	mockProxy := &MockProxy{}
 	server.proxy = mockProxy
 	server.rootCoordClient = &MockRootCoord{}
-	server.indexCoordClient = &MockIndexCoord{}
 	server.queryCoordClient = &MockQueryCoord{}
 	server.dataCoordClient = &MockDataCoord{}
 
@@ -1441,7 +1413,6 @@ func TestServer_Watch(t *testing.T) {
 	mockProxy := &MockProxy{}
 	server.proxy = mockProxy
 	server.rootCoordClient = &MockRootCoord{}
-	server.indexCoordClient = &MockIndexCoord{}
 	server.queryCoordClient = &MockQueryCoord{}
 	server.dataCoordClient = &MockDataCoord{}
 
@@ -1506,7 +1477,6 @@ func Test_NewServer_HTTPServer_Enabled(t *testing.T) {
 
 	server.proxy = &MockProxy{}
 	server.rootCoordClient = &MockRootCoord{}
-	server.indexCoordClient = &MockIndexCoord{}
 	server.queryCoordClient = &MockQueryCoord{}
 	server.dataCoordClient = &MockDataCoord{}
 
@@ -1535,7 +1505,6 @@ func getServer(t *testing.T) *Server {
 
 	server.proxy = &MockProxy{}
 	server.rootCoordClient = &MockRootCoord{}
-	server.indexCoordClient = &MockIndexCoord{}
 	server.queryCoordClient = &MockQueryCoord{}
 	server.dataCoordClient = &MockDataCoord{}
 	return server

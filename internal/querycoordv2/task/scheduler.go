@@ -705,6 +705,8 @@ func (scheduler *taskScheduler) remove(task Task) {
 		if task.Err() != nil {
 			log.Warn("task scheduler recordSegmentTaskError", zap.Error(task.err))
 			scheduler.recordSegmentTaskError(index, task)
+		} else {
+			delete(scheduler.segmentTaskFailRecord, index)
 		}
 
 	case *ChannelTask:

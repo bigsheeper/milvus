@@ -29,20 +29,20 @@ type Manager interface {
 	Deregister(vchannel string)
 }
 
-type GlobalManager struct {
+type managerImpl struct {
 	checkersMu sync.RWMutex
 	checkers   map[string]*checker
 	factory    msgstream.Factory
 }
 
 func NewManager(factory msgstream.Factory) Manager {
-	return &GlobalManager{
+	return &managerImpl{
 		checkers: make(map[string]*checker),
 		factory:  factory,
 	}
 }
 
-func (g *GlobalManager) Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
+func (g *managerImpl) Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()
@@ -52,7 +52,7 @@ func (g *GlobalManager) Register(vchannel string, pos *internalpb.MsgPosition, s
 	return g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
 }
 
-func (g *GlobalManager) Deregister(vchannel string) {
+func (g *managerImpl) Deregister(vchannel string) {
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()

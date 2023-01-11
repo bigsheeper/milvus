@@ -520,6 +520,9 @@ func (node *QueryNode) LoadSegments(ctx context.Context, in *querypb.LoadSegment
 				ErrorCode: commonpb.ErrorCode_UnexpectedError,
 				Reason:    err.Error(),
 			}
+			if errors.Is(err, ErrInsufficientMemory) {
+				status.ErrorCode = commonpb.ErrorCode_InsufficientMemoryToLoad
+			}
 			log.Warn(err.Error())
 			return status, nil
 		}
@@ -728,7 +731,7 @@ func filterSegmentInfo(segmentInfos []*querypb.SegmentInfo, segmentIDs map[int64
 
 // Search performs replica search tasks.
 func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error) {
-	if req.GetReq().GetBase().GetTargetID() != paramtable.GetNodeID() {
+	if !node.IsStandAlone && req.GetReq().GetBase().GetTargetID() != paramtable.GetNodeID() {
 		return &internalpb.SearchResults{
 			Status: &commonpb.Status{
 				ErrorCode: commonpb.ErrorCode_NodeIDNotMatch,

@@ -643,6 +643,10 @@ func (sc *ShardCluster) LoadSegments(ctx context.Context, req *querypb.LoadSegme
 		log.Warn("failed to dispatch load segment request", zap.Error(err))
 		return err
 	}
+	if resp.GetErrorCode() == commonpb.ErrorCode_InsufficientMemoryToLoad {
+		log.Warn("insufficient memory when follower load segment", zap.String("reason", resp.GetReason()))
+		return fmt.Errorf("%w, reason:%s", ErrInsufficientMemory, resp.GetReason())
+	}
 	if resp.GetErrorCode() != commonpb.ErrorCode_Success {
 		log.Warn("follower load segment failed", zap.String("reason", resp.GetReason()))
 		return fmt.Errorf("follower %d failed to load segment, reason %s", req.DstNodeID, resp.GetReason())
@@ -973,7 +977,17 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			partialResult, nodeErr := node.client.Search(reqCtx, nodeReq)
+
+			queryNode := GetQueryNode()
+			var partialResult *internalpb.SearchResults
+			var nodeErr error
+
+			if queryNode != nil && queryNode.IsStandAlone {
+				partialResult, nodeErr = queryNode.Search(reqCtx, nodeReq)
+			} else {
+				partialResult, nodeErr = node.client.Search(reqCtx, nodeReq)
+			}
+
 			resultMut.Lock()
 			defer resultMut.Unlock()
 			if nodeErr != nil || partialResult.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {

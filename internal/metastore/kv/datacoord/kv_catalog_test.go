@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/proto/indexpb"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -893,8 +895,8 @@ func TestCatalog_ListIndexes(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		txn := &MockedTxnKV{
 			loadWithPrefix: func(key string) ([]string, []string, error) {
-				i := &datapb.FieldIndex{
-					IndexInfo: &datapb.IndexInfo{
+				i := &indexpb.FieldIndex{
+					IndexInfo: &indexpb.IndexInfo{
 						CollectionID: 0,
 						FieldID:      0,
 						IndexName:    "",
@@ -1075,7 +1077,7 @@ func TestCatalog_CreateSegmentIndex(t *testing.T) {
 
 func TestCatalog_ListSegmentIndexes(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		segIdx := &datapb.SegmentIndex{
+		segIdx := &indexpb.SegmentIndex{
 			CollectionID:  0,
 			PartitionID:   0,
 			SegmentID:     0,
@@ -1343,4 +1345,21 @@ func TestMain(m *testing.M) {
 	Params.Init()
 	code := m.Run()
 	os.Exit(code)
+}
+
+func TestCatalog_GcConfirm(t *testing.T) {
+	kc := &Catalog{}
+	txn := mocks.NewMetaKv(t)
+	kc.MetaKv = txn
+
+	txn.On("LoadWithPrefix",
+		mock.AnythingOfType("string")).
+		Return(nil, nil, errors.New("error mock LoadWithPrefix")).
+		Once()
+	assert.False(t, kc.GcConfirm(context.TODO(), 100, 10000))
+
+	txn.On("LoadWithPrefix",
+		mock.AnythingOfType("string")).
+		Return(nil, nil, nil)
+	assert.True(t, kc.GcConfirm(context.TODO(), 100, 10000))
 }

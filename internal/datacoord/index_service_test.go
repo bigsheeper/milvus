@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/proto/indexpb"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -52,7 +54,7 @@ func TestServer_CreateIndex(t *testing.T) {
 				Value: "IVF_FLAT",
 			},
 		}
-		req = &datapb.CreateIndexRequest{
+		req = &indexpb.CreateIndexRequest{
 			CollectionID:    collID,
 			FieldID:         fieldID,
 			IndexName:       indexName,
@@ -162,7 +164,7 @@ func TestServer_GetIndexState(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.GetIndexStateRequest{
+		req      = &indexpb.GetIndexStateRequest{
 			CollectionID: collID,
 			IndexName:    "",
 		}
@@ -279,7 +281,7 @@ func TestServer_GetSegmentIndexState(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.GetSegmentIndexStateRequest{
+		req      = &indexpb.GetSegmentIndexStateRequest{
 			CollectionID: collID,
 			IndexName:    "",
 			SegmentIDs:   []UniqueID{segID},
@@ -416,7 +418,7 @@ func TestServer_GetIndexBuildProgress(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.GetIndexBuildProgressRequest{
+		req      = &indexpb.GetIndexBuildProgressRequest{
 			CollectionID: collID,
 			IndexName:    "",
 		}
@@ -541,6 +543,40 @@ func TestServer_GetIndexBuildProgress(t *testing.T) {
 		assert.Equal(t, int64(10250), resp.GetTotalRows())
 		assert.Equal(t, int64(10250), resp.GetIndexedRows())
 	})
+
+	t.Run("multiple index", func(t *testing.T) {
+		s.meta.indexes[collID] = map[UniqueID]*model.Index{
+			indexID: {
+				TenantID:        "",
+				CollectionID:    collID,
+				FieldID:         fieldID,
+				IndexID:         indexID,
+				IndexName:       indexName,
+				IsDeleted:       false,
+				CreateTime:      createTS,
+				TypeParams:      typeParams,
+				IndexParams:     indexParams,
+				IsAutoIndex:     false,
+				UserIndexParams: nil,
+			},
+			indexID + 1: {
+				TenantID:        "",
+				CollectionID:    collID,
+				FieldID:         fieldID + 1,
+				IndexID:         indexID + 1,
+				IndexName:       "_default_idx_102",
+				IsDeleted:       false,
+				CreateTime:      0,
+				TypeParams:      nil,
+				IndexParams:     nil,
+				IsAutoIndex:     false,
+				UserIndexParams: nil,
+			},
+		}
+		resp, err := s.GetIndexBuildProgress(ctx, req)
+		assert.NoError(t, err)
+		assert.Equal(t, commonpb.ErrorCode_UnexpectedError, resp.GetStatus().GetErrorCode())
+	})
 }
 
 func TestServer_DescribeIndex(t *testing.T) {
@@ -566,7 +602,7 @@ func TestServer_DescribeIndex(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.DescribeIndexRequest{
+		req      = &indexpb.DescribeIndexRequest{
 			CollectionID: collID,
 			IndexName:    "",
 		}
@@ -791,7 +827,7 @@ func TestServer_DescribeIndex(t *testing.T) {
 	})
 
 	t.Run("describe after drop index", func(t *testing.T) {
-		status, err := s.DropIndex(ctx, &datapb.DropIndexRequest{
+		status, err := s.DropIndex(ctx, &indexpb.DropIndexRequest{
 			CollectionID: collID,
 			PartitionIDs: nil,
 			IndexName:    "",
@@ -828,7 +864,7 @@ func TestServer_DropIndex(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.DropIndexRequest{
+		req      = &indexpb.DropIndexRequest{
 			CollectionID: collID,
 			IndexName:    indexName,
 		}
@@ -965,7 +1001,7 @@ func TestServer_DropIndex(t *testing.T) {
 	})
 
 	t.Run("drop one without indexName", func(t *testing.T) {
-		req = &datapb.DropIndexRequest{
+		req = &indexpb.DropIndexRequest{
 			CollectionID: collID,
 			PartitionIDs: nil,
 			IndexName:    "",
@@ -977,7 +1013,7 @@ func TestServer_DropIndex(t *testing.T) {
 	})
 
 	t.Run("drop all indexes", func(t *testing.T) {
-		req = &datapb.DropIndexRequest{
+		req = &indexpb.DropIndexRequest{
 			CollectionID: collID,
 			PartitionIDs: nil,
 			IndexName:    "",
@@ -989,7 +1025,7 @@ func TestServer_DropIndex(t *testing.T) {
 	})
 
 	t.Run("drop not exist index", func(t *testing.T) {
-		req = &datapb.DropIndexRequest{
+		req = &indexpb.DropIndexRequest{
 			CollectionID: collID,
 			PartitionIDs: nil,
 			IndexName:    "",
@@ -1024,7 +1060,7 @@ func TestServer_GetIndexInfos(t *testing.T) {
 		}
 		createTS = uint64(1000)
 		ctx      = context.Background()
-		req      = &datapb.GetIndexInfoRequest{
+		req      = &indexpb.GetIndexInfoRequest{
 			CollectionID: collID,
 			SegmentIDs:   []UniqueID{segID},
 			IndexName:    indexName,

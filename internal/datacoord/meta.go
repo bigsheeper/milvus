@@ -1269,6 +1269,10 @@ func (m *meta) DropChannelCheckpoint(vChannel string) error {
 	return nil
 }
 
+func (m *meta) GcConfirm(ctx context.Context, collectionID, partitionID UniqueID) bool {
+	return m.catalog.GcConfirm(ctx, collectionID, partitionID)
+}
+
 // addNewSeg update metrics update for a new segment.
 func (s *segMetricMutation) addNewSeg(state commonpb.SegmentState, rowCount int64) {
 	s.stateChange[state.String()]++
@@ -1310,6 +1314,7 @@ func isFlushState(state commonpb.SegmentState) bool {
 // updateSegStateAndPrepareMetrics updates a segment's in-memory state and prepare for the corresponding metric update.
 func updateSegStateAndPrepareMetrics(segToUpdate *SegmentInfo, targetState commonpb.SegmentState, metricMutation *segMetricMutation) {
 	log.Debug("updating segment state and updating metrics",
+		zap.Int64("segment ID", segToUpdate.GetID()),
 		zap.String("old state", segToUpdate.GetState().String()),
 		zap.String("new state", targetState.String()),
 		zap.Int64("# of rows", segToUpdate.GetNumOfRows()))

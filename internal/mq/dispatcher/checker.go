@@ -100,6 +100,7 @@ func (c *checker) check() {
 			return
 		case <-timer.C:
 			primePos := c.primeDispatcher.getCurPosition()
+			// TODO: merge multiple soloDispatchers
 			for vchannel, sd := range c.soloDispatchers {
 				if sd.getCurPosition().GetTimestamp() == primePos.GetTimestamp() {
 					c.merge(vchannel)
@@ -115,6 +116,12 @@ func (c *checker) merge(vchannel string) {
 	log.Info("checker is merging soloDispatcher to primeDispatcher", zap.String("vchannel", vchannel))
 	c.primeDispatcher.handle(pause)
 	c.soloDispatchers[vchannel].handle(pause)
+	if c.primeDispatcher.getCurPosition().GetTimestamp() != c.soloDispatchers[vchannel].getCurPosition().GetTimestamp() {
+		// after pause, check alignment again, if not, try to merge next time
+		c.primeDispatcher.handle(resume)
+		c.soloDispatchers[vchannel].handle(resume)
+		return
+	}
 	c.primeDispatcher.addTarget(c.soloDispatchers[vchannel].getTarget())
 	c.soloDispatchers[vchannel].handle(terminate)
 	delete(c.soloDispatchers, vchannel)

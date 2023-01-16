@@ -65,8 +65,8 @@ func (node *DataNode) WatchDmChannels(ctx context.Context, in *datapb.WatchDmCha
 func (node *DataNode) GetComponentStates(ctx context.Context) (*milvuspb.ComponentStates, error) {
 	log.Debug("DataNode current state", zap.Any("State", node.stateCode.Load()))
 	nodeID := common.NotRegisteredID
-	if node.session != nil && node.session.Registered() {
-		nodeID = node.session.ServerID
+	if node.GetSession() != nil && node.session.Registered() {
+		nodeID = node.GetSession().ServerID
 	}
 	states := &milvuspb.ComponentStates{
 		State: &milvuspb.ComponentInfo{
@@ -100,14 +100,15 @@ func (node *DataNode) FlushSegments(ctx context.Context, req *datapb.FlushSegmen
 		return errStatus, nil
 	}
 
-	if req.GetBase().GetTargetID() != node.session.ServerID {
+	serverID := node.GetSession().ServerID
+	if req.GetBase().GetTargetID() != serverID {
 		log.Warn("flush segment target id not matched",
 			zap.Int64("targetID", req.GetBase().GetTargetID()),
-			zap.Int64("serverID", node.session.ServerID),
+			zap.Int64("serverID", serverID),
 		)
 		status := &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_NodeIDNotMatch,
-			Reason:    common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), node.session.ServerID),
+			Reason:    common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), serverID),
 		}
 		return status, nil
 	}
@@ -219,7 +220,7 @@ func (node *DataNode) ShowConfigurations(ctx context.Context, req *internalpb.Sh
 		}, nil
 	}
 	configList := make([]*commonpb.KeyValuePair, 0)
-	for key, value := range Params.GetComponentConfigurations(ctx, "datanode", req.Pattern) {
+	for key, value := range Params.GetComponentConfigurations("datanode", req.Pattern) {
 		configList = append(configList,
 			&commonpb.KeyValuePair{
 				Key:   key,
@@ -814,7 +815,7 @@ func saveSegmentFunc(node *DataNode, req *datapb.ImportTaskRequest, res *rootcoo
 						commonpbutil.WithMsgType(0),
 						commonpbutil.WithMsgID(0),
 						commonpbutil.WithTimeStamp(ts),
-						commonpbutil.WithSourceID(paramtable.GetNodeID()),
+						commonpbutil.WithSourceID(node.session.ServerID),
 					),
 					SegmentID:           segmentID,
 					CollectionID:        req.GetImportTask().GetCollectionId(),

@@ -28,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
+	"github.com/milvus-io/milvus/internal/querycoordv2/observers"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -219,6 +220,7 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
+	// It's safe here to call UpdateCollectionNextTargetWithPartitions, as the collection not existing
 	err = job.targetMgr.UpdateCollectionNextTargetWithPartitions(req.GetCollectionID(), partitionIDs...)
 	if err != nil {
 		msg := "failed to update next targets for collection"
@@ -255,10 +257,11 @@ func (job *LoadCollectionJob) PostExecute() {
 
 type ReleaseCollectionJob struct {
 	*BaseJob
-	req       *querypb.ReleaseCollectionRequest
-	dist      *meta.DistributionManager
-	meta      *meta.Meta
-	targetMgr *meta.TargetManager
+	req            *querypb.ReleaseCollectionRequest
+	dist           *meta.DistributionManager
+	meta           *meta.Meta
+	targetMgr      *meta.TargetManager
+	targetObserver *observers.TargetObserver
 }
 
 func NewReleaseCollectionJob(ctx context.Context,
@@ -266,13 +269,15 @@ func NewReleaseCollectionJob(ctx context.Context,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
 	targetMgr *meta.TargetManager,
+	targetObserver *observers.TargetObserver,
 ) *ReleaseCollectionJob {
 	return &ReleaseCollectionJob{
-		BaseJob:   NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
-		req:       req,
-		dist:      dist,
-		meta:      meta,
-		targetMgr: targetMgr,
+		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
+		req:            req,
+		dist:           dist,
+		meta:           meta,
+		targetMgr:      targetMgr,
+		targetObserver: targetObserver,
 	}
 }
 
@@ -300,6 +305,7 @@ func (job *ReleaseCollectionJob) Execute() error {
 	}
 
 	job.targetMgr.RemoveCollection(req.GetCollectionID())
+	job.targetObserver.ReleaseCollection(req.GetCollectionID())
 	waitCollectionReleased(job.dist, req.GetCollectionID())
 	metrics.QueryCoordNumCollections.WithLabelValues().Dec()
 	return nil
@@ -420,6 +426,7 @@ func (job *LoadPartitionJob) Execute() error {
 			zap.Int64s("nodes", replica.GetNodes()))
 	}
 
+	// It's safe here to call UpdateCollectionNextTargetWithPartitions, as the collection not existing
 	err = job.targetMgr.UpdateCollectionNextTargetWithPartitions(req.GetCollectionID(), req.GetPartitionIDs()...)
 	if err != nil {
 		msg := "failed to update next targets for collection"
@@ -460,10 +467,11 @@ func (job *LoadPartitionJob) PostExecute() {
 
 type ReleasePartitionJob struct {
 	*BaseJob
-	req       *querypb.ReleasePartitionsRequest
-	dist      *meta.DistributionManager
-	meta      *meta.Meta
-	targetMgr *meta.TargetManager
+	req            *querypb.ReleasePartitionsRequest
+	dist           *meta.DistributionManager
+	meta           *meta.Meta
+	targetMgr      *meta.TargetManager
+	targetObserver *observers.TargetObserver
 }
 
 func NewReleasePartitionJob(ctx context.Context,
@@ -471,13 +479,15 @@ func NewReleasePartitionJob(ctx context.Context,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
 	targetMgr *meta.TargetManager,
+	targetObserver *observers.TargetObserver,
 ) *ReleasePartitionJob {
 	return &ReleasePartitionJob{
-		BaseJob:   NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
-		req:       req,
-		dist:      dist,
-		meta:      meta,
-		targetMgr: targetMgr,
+		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
+		req:            req,
+		dist:           dist,
+		meta:           meta,
+		targetMgr:      targetMgr,
+		targetObserver: targetObserver,
 	}
 }
 
@@ -525,6 +535,7 @@ func (job *ReleasePartitionJob) Execute() error {
 			log.Warn("failed to remove replicas", zap.Error(err))
 		}
 		job.targetMgr.RemoveCollection(req.GetCollectionID())
+		job.targetObserver.ReleaseCollection(req.GetCollectionID())
 		waitCollectionReleased(job.dist, req.GetCollectionID())
 	} else {
 		err := job.meta.CollectionManager.RemovePartition(toRelease...)

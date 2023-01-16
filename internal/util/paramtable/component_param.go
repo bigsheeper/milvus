@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	config "github.com/milvus-io/milvus/internal/config"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/shirou/gopsutil/v3/disk"
 )
@@ -83,6 +84,8 @@ type ComponentParam struct {
 	DataNodeGrpcClientCfg   GrpcClientConfig
 	IndexCoordGrpcClientCfg GrpcClientConfig
 	IndexNodeGrpcClientCfg  GrpcClientConfig
+
+	IntegrationTestCfg integrationTestConfig
 }
 
 // InitOnce initialize once
@@ -126,24 +129,23 @@ func (p *ComponentParam) Init() {
 	p.DataCoordGrpcClientCfg.Init(typeutil.DataCoordRole, &p.BaseTable)
 	p.DataNodeGrpcClientCfg.Init(typeutil.DataNodeRole, &p.BaseTable)
 	p.IndexNodeGrpcClientCfg.Init(typeutil.IndexNodeRole, &p.BaseTable)
+
+	p.IntegrationTestCfg.init(&p.BaseTable)
 }
 
-func (p *ComponentParam) RocksmqEnable() bool {
-	return p.RocksmqCfg.Path.GetValue() != ""
+func (p *ComponentParam) GetComponentConfigurations(componentName string, sub string) map[string]string {
+	allownPrefixs := append(globalConfigPrefixs(), componentName+".")
+	return p.mgr.GetBy(config.WithSubstr(sub), config.WithOneOfPrefixs(allownPrefixs...))
 }
 
-func (p *ComponentParam) PulsarEnable() bool {
-	return p.PulsarCfg.Address.GetValue() != ""
-}
-
-func (p *ComponentParam) KafkaEnable() bool {
-	return p.KafkaCfg.Address.GetValue() != ""
+func (p *ComponentParam) GetAll() map[string]string {
+	return p.mgr.GetConfigs()
 }
 
 // /////////////////////////////////////////////////////////////////////////////
 // --- common ---
 type commonConfig struct {
-	ClusterPrefix ParamItem `refreshable:"true"`
+	ClusterPrefix ParamItem `refreshable:"false"`
 
 	// Deprecated: do not use it anymore
 	ProxySubName ParamItem `refreshable:"true"`
@@ -1731,4 +1733,18 @@ func (p *indexNodeConfig) init(base *BaseTable) {
 		FallbackKeys: []string{"common.gracefulStopTimeout"},
 	}
 	p.GracefulStopTimeout.Init(base.mgr)
+}
+
+type integrationTestConfig struct {
+	IntegrationMode ParamItem `refreshable:"false"`
+}
+
+func (p *integrationTestConfig) init(base *BaseTable) {
+	p.IntegrationMode = ParamItem{
+		Key:          "integration.test.mode",
+		Version:      "2.2.0",
+		DefaultValue: "false",
+		PanicIfEmpty: true,
+	}
+	p.IntegrationMode.Init(base.mgr)
 }

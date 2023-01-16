@@ -14,12 +14,14 @@ class MilvusConan(ConanFile):
         "aws-sdk-cpp/1.9.234",
         "benchmark/1.7.0",
         "gtest/1.8.1",
-        "protobuf/3.9.1",
+        "protobuf/3.21.9",
         "rapidxml/1.13",
         "yaml-cpp/0.7.0",
         "marisa/0.2.6",
         "zlib/1.2.13",
+        "libcurl/7.87.0",
     )
+
     generators = "cmake"
     default_options = {
         "rocksdb:shared": True,

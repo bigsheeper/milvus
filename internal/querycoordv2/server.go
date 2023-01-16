@@ -85,8 +85,9 @@ type Server struct {
 	broker    meta.Broker
 
 	// Session
-	cluster session.Cluster
-	nodeMgr *session.NodeManager
+	cluster          session.Cluster
+	nodeMgr          *session.NodeManager
+	queryNodeCreator session.QueryNodeCreator
 
 	// Schedulers
 	jobScheduler  *job.Scheduler
@@ -117,6 +118,7 @@ func NewQueryCoord(ctx context.Context) (*Server, error) {
 		cancel: cancel,
 	}
 	server.UpdateStateCode(commonpb.StateCode_Abnormal)
+	server.queryNodeCreator = session.DefaultQueryNodeCreator
 	return server, nil
 }
 
@@ -182,7 +184,7 @@ func (s *Server) Init() error {
 	// Init session
 	log.Info("init session")
 	s.nodeMgr = session.NewNodeManager()
-	s.cluster = session.NewCluster(s.nodeMgr)
+	s.cluster = session.NewCluster(s.nodeMgr, s.queryNodeCreator)
 
 	// Init schedulers
 	log.Info("init schedulers")
@@ -479,6 +481,10 @@ func (s *Server) SetDataCoord(dataCoord types.DataCoord) error {
 	return nil
 }
 
+func (s *Server) SetQueryNodeCreator(f func(ctx context.Context, addr string) (types.QueryNode, error)) {
+	s.queryNodeCreator = f
+}
+
 func (s *Server) recover() error {
 	// Recover target managers
 	group, ctx := errgroup.WithContext(s.ctx)
@@ -606,7 +612,7 @@ func (s *Server) handleNodeDown(node int64) {
 	// are missed, it will recover for a while.
 	channels := s.dist.ChannelDistManager.GetByNode(node)
 	for _, channel := range channels {
-		err := s.targetMgr.UpdateCollectionNextTarget(channel.GetCollectionID())
+		_, err := s.targetObserver.UpdateNextTarget(channel.GetCollectionID())
 		if err != nil {
 			msg := "failed to update next targets for collection"
 			log.Error(msg,

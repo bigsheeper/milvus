@@ -289,7 +289,7 @@ func (m *MockRootCoord) CheckHealth(ctx context.Context, req *milvuspb.CheckHeal
 	}, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockQueryCoord struct {
 	MockBase
 	initErr  error
@@ -586,7 +586,7 @@ func (m *MockDataCoord) GetIndexBuildProgress(ctx context.Context, req *indexpb.
 	return nil, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 type MockProxy struct {
 	MockBase
 	err      error
@@ -797,6 +797,10 @@ func (m *MockProxy) SetQueryCoordClient(queryCoord types.QueryCoord) {
 
 }
 
+func (m *MockProxy) SetQueryNodeCreator(func(ctx context.Context, addr string) (types.QueryNode, error)) {
+
+}
+
 func (m *MockProxy) GetRateLimiter() (types.Limiter, error) {
 	return nil, nil
 }
@@ -806,6 +810,10 @@ func (m *MockProxy) UpdateStateCode(stateCode commonpb.StateCode) {
 }
 
 func (m *MockProxy) SetAddress(address string) {
+}
+
+func (m *MockProxy) GetAddress() string {
+	return ""
 }
 
 func (m *MockProxy) SetEtcdClient(etcdClient *clientv3.Client) {
@@ -900,6 +908,30 @@ func (m *MockProxy) RefreshPolicyInfoCache(ctx context.Context, req *proxypb.Ref
 }
 
 func (m *MockProxy) CheckHealth(ctx context.Context, request *milvuspb.CheckHealthRequest) (*milvuspb.CheckHealthResponse, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) CreateResourceGroup(ctx context.Context, req *milvuspb.CreateResourceGroupRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) DropResourceGroup(ctx context.Context, req *milvuspb.DropResourceGroupRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) DescribeResourceGroup(ctx context.Context, req *milvuspb.DescribeResourceGroupRequest) (*milvuspb.DescribeResourceGroupResponse, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) TransferNode(ctx context.Context, req *milvuspb.TransferNodeRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) TransferReplica(ctx context.Context, req *milvuspb.TransferReplicaRequest) (*commonpb.Status, error) {
+	return nil, nil
+}
+
+func (m *MockProxy) ListResourceGroup(ctx context.Context, req *milvuspb.ListResourceGroupRequest) (*milvuspb.ListResourceGroupResponse, error) {
 	return nil, nil
 }
 

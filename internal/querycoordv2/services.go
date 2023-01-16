@@ -254,6 +254,7 @@ func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseColl
 		s.dist,
 		s.meta,
 		s.targetMgr,
+		s.targetObserver,
 	)
 	s.jobScheduler.Add(releaseJob)
 	err := releaseJob.Wait()
@@ -339,6 +340,7 @@ func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePart
 		s.dist,
 		s.meta,
 		s.targetMgr,
+		s.targetObserver,
 	)
 	s.jobScheduler.Add(releaseJob)
 	err := releaseJob.Wait()
@@ -550,7 +552,7 @@ func (s *Server) ShowConfigurations(ctx context.Context, req *internalpb.ShowCon
 		}, nil
 	}
 	configList := make([]*commonpb.KeyValuePair, 0)
-	for key, value := range Params.GetComponentConfigurations(ctx, "querycoord", req.Pattern) {
+	for key, value := range Params.GetComponentConfigurations("querycoord", req.Pattern) {
 		configList = append(configList,
 			&commonpb.KeyValuePair{
 				Key:   key,

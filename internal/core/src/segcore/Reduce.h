@@ -15,11 +15,14 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <queue>
+#include <unordered_set>
 
 #include "utils/Status.h"
 #include "common/type_c.h"
 #include "common/QueryResult.h"
 #include "query/PlanImpl.h"
+#include "ReduceStructure.h"
 
 namespace milvus::segcore {
 
@@ -95,6 +98,12 @@ class ReduceHelper {
 
     // output
     std::unique_ptr<SearchResultDataBlobs> search_result_data_blobs_;
+
+    // Used for merge results,
+    // define these here to avoid allocating them for each query
+    std::vector<SearchResultPair> pairs_;
+    std::priority_queue<SearchResultPair*, std::vector<SearchResultPair*>, SearchResultPairComparator> heap_;
+    std::unordered_set<milvus::PkType> pk_set_;
 };
 
 }  // namespace milvus::segcore

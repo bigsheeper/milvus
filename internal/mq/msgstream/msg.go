@@ -507,7 +507,6 @@ func (cc *CreateCollectionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	createCollectionMsg.EndTimestamp = createCollectionMsg.Base.Timestamp
 	createCollectionMsg.Vchannel = createCollectionMsg.CollectionName
 
-	fmt.Println("dyh, debug 3333, vchannel:", createCollectionMsg.Vchannel)
 	return createCollectionMsg, nil
 }
 

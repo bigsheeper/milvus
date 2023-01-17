@@ -17,10 +17,13 @@
 package dispatcher
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	"go.uber.org/zap"
 	"sync"
 )
 
@@ -43,11 +46,14 @@ func NewManager(factory msgstream.Factory) Manager {
 }
 
 func (g *managerImpl) Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
+	log.Info("start to register...", zap.String("vchannel", vchannel), zap.Time("pos", tsoutil.PhysicalTime(pos.GetTimestamp())))
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; !ok {
 		g.checkers[pchannel] = newChecker(pchannel, g.factory)
+		go g.checkers[pchannel].check()
+		log.Info("create and start a new controller", zap.String("pchannel", pchannel))
 	}
 	return g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
 }

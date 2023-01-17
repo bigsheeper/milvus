@@ -231,10 +231,8 @@ func (d *dmlChannels) broadcast(chanNames []string, vchannelNames []string, pack
 
 		dms.mutex.RLock()
 		if dms.refcnt > 0 {
-			fmt.Println("dyh debug xxxx", zap.Any("vchannels", vchannelNames), zap.Any("pchannels", chanNames))
 			if i < len(vchannelNames) {
 				pack.Msgs[0].SetVChannel(vchannelNames[i])
-				fmt.Println("dyh debug, setVchannel done")
 			}
 			if _, err := dms.ms.Broadcast(pack); err != nil {
 				log.Error("Broadcast failed", zap.Error(err), zap.String("chanName", chanName))
@@ -259,7 +257,6 @@ func (d *dmlChannels) broadcastMark(chanNames []string, vchannelNames []string, 
 
 		dms.mutex.RLock()
 		if dms.refcnt > 0 {
-			fmt.Println("dyh debug yyy", zap.Any("vchannels", vchannelNames), zap.Any("pchannels", chanNames))
 			if i < len(vchannelNames) {
 				if len(pack.Msgs) != 1 {
 					panic("dyh, unexpected")

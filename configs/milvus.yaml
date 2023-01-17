@@ -132,7 +132,7 @@ rootCoord:
   port: 53100
   enableActiveStandby: false  # Enable active-standby
 
-  dmlChannelNum: 256 # The number of dml channels created at system startup
+  dmlChannelNum: 2 # The number of dml channels created at system startup
   maxPartitionNum: 4096 # Maximum number of partitions in a collection
   minSegmentSizeToEnableIndex: 1024 # It's a threshold. When the segment size is less than this value, the segment will not be indexed
 

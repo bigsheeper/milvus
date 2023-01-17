@@ -28,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -66,7 +67,7 @@ func newDispatcher(factory msgstream.Factory, pchannel string, position *interna
 	}
 	if position != nil {
 		position.ChannelName = funcutil.ToPhysicalChannel(position.ChannelName)
-		stream.AsConsumer([]string{pchannel}, "aaa", mqwrapper.SubscriptionPositionUnknown) // TODO: sub-name
+		stream.AsConsumer([]string{pchannel}, fmt.Sprintf("%d", rand.Int63n(100000)), mqwrapper.SubscriptionPositionUnknown) // TODO: sub-name
 		err = stream.Seek([]*internalpb.MsgPosition{position})
 		if err != nil {
 			return nil, err
@@ -77,11 +78,12 @@ func newDispatcher(factory msgstream.Factory, pchannel string, position *interna
 
 	d := &dispatcher{
 		pchannel:  pchannel,
-		done:      make(chan struct{}),
+		done:      make(chan struct{}, 1),
 		lagChan:   lagChan,
 		vchannels: make(map[string]chan<- *msgstream.MsgPack),
 		stream:    stream,
 	}
+	log.Info("create new dispatcher", zap.String("pchannel", pchannel))
 	return d, nil
 }
 
@@ -138,8 +140,17 @@ func (d *dispatcher) work() {
 				if msg.Type() == commonpb.MsgType_CreateCollection {
 					continue // TODO: optimize it
 				}
-				if msg.VChannel() == "" {
-					panic(fmt.Errorf("msg's vchannel should not be null, msgType:%s", msg.Type().String()))
+				if msg.VChannel() == "" { // TODO: optimize it
+					switch msg.Type() {
+					case commonpb.MsgType_CreateCollection, commonpb.MsgType_DropCollection:
+						// dispatch to all
+						for k := range packs {
+							packs[k].Msgs = append(packs[k].Msgs, msg)
+						}
+						continue
+					default:
+						panic(fmt.Errorf("msg's vchannel should not be null, msgType:%s", msg.Type().String()))
+					}
 				}
 				if _, ok := packs[msg.VChannel()]; !ok {
 					continue

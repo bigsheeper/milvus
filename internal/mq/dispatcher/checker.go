@@ -17,10 +17,12 @@
 package dispatcher
 
 import (
+	"fmt"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -32,7 +34,7 @@ type checker struct {
 	pchannel string
 	lagChan  chan *msgstream.MsgPosition
 
-	// TODO: maybe need mutex
+	// TODO: add mutex
 	primeDispatcher *dispatcher
 	soloDispatchers map[string]*dispatcher
 
@@ -60,8 +62,10 @@ func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, su
 	d.addTarget(vchannel, target)
 	if c.primeDispatcher == nil {
 		c.primeDispatcher = d
+		log.Info("controller add mainDispatcher", zap.String("vchannel", vchannel))
 	} else {
 		c.soloDispatchers[vchannel] = d
+		log.Info("controller add soloDispatcher", zap.String("vchannel", vchannel))
 	}
 	d.handle(start)
 	return target, nil
@@ -93,15 +97,19 @@ func (c *checker) closeAll() {
 }
 
 func (c *checker) check() {
-	timer := time.NewTimer(1 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-c.closeChan:
+			log.Info("controller exit", zap.String("pchannel", c.pchannel))
 			return
-		case <-timer.C:
+		case <-ticker.C:
 			primePos := c.primeDispatcher.getCurPosition()
 			// TODO: merge multiple soloDispatchers
+			fmt.Println("check....", len(c.soloDispatchers))
 			for vchannel, sd := range c.soloDispatchers {
+				fmt.Println("mainPos:", tsoutil.PhysicalTime(primePos.GetTimestamp()),
+					", soloPos:", tsoutil.PhysicalTime(sd.getCurPosition().GetTimestamp()))
 				if sd.getCurPosition().GetTimestamp() == primePos.GetTimestamp() {
 					c.merge(vchannel)
 				}
@@ -125,7 +133,7 @@ func (c *checker) merge(vchannel string) {
 	c.primeDispatcher.addTarget(c.soloDispatchers[vchannel].getTarget())
 	c.soloDispatchers[vchannel].handle(terminate)
 	delete(c.soloDispatchers, vchannel)
-	c.soloDispatchers[vchannel].handle(resume)
+	c.primeDispatcher.handle(resume)
 	log.Info("checker merges soloDispatcher to primeDispatcher done", zap.String("vchannel", vchannel))
 }
 

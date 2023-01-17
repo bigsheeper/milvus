@@ -374,7 +374,7 @@ func (dt *DeleteMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 			deleteMsg.BeginTimestamp = timestamp
 		}
 	}
-	deleteMsg.Vchannel = deleteMsg.ShardName
+	deleteMsg.Vchannel = deleteRequest.ShardName
 	return deleteMsg, nil
 }
 

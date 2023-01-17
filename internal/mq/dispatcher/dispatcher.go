@@ -122,7 +122,18 @@ func (d *dispatcher) work() {
 			d.curPosMu.Unlock()
 
 			// group by vchannel
-			packs := make(map[string]*msgstream.MsgPack)
+			d.vchannelsMu.RLock()
+			packs := make(map[string]*msgstream.MsgPack, len(d.vchannels))
+			for vchannel := range d.vchannels {
+				packs[vchannel] = &msgstream.MsgPack{
+					BeginTs:        pack.BeginTs,
+					EndTs:          pack.EndTs,
+					Msgs:           make([]msgstream.TsMsg, 0),
+					StartPositions: pack.StartPositions,
+					EndPositions:   pack.EndPositions,
+				}
+			}
+			d.vchannelsMu.RUnlock()
 			for _, msg := range pack.Msgs {
 				if msg.Type() == commonpb.MsgType_CreateCollection {
 					continue // TODO: optimize it
@@ -131,13 +142,7 @@ func (d *dispatcher) work() {
 					panic(fmt.Errorf("msg's vchannel should not be null, msgType:%s", msg.Type().String()))
 				}
 				if _, ok := packs[msg.VChannel()]; !ok {
-					packs[msg.VChannel()] = &msgstream.MsgPack{
-						BeginTs:        pack.BeginTs,
-						EndTs:          pack.EndTs,
-						Msgs:           make([]msgstream.TsMsg, 0),
-						StartPositions: pack.StartPositions,
-						EndPositions:   pack.EndPositions,
-					}
+					continue
 				}
 				packs[msg.VChannel()].Msgs = append(packs[msg.VChannel()].Msgs, msg)
 				fmt.Println("=======", tsoutil.PhysicalTime(pack.EndTs), ", msg.VChannel():", msg.VChannel())

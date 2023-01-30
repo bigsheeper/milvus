@@ -864,26 +864,30 @@ func (s *Server) CheckHealth(ctx context.Context, request *milvuspb.CheckHealthR
 	return s.proxy.CheckHealth(ctx, request)
 }
 
+func (s *Server) RenameCollection(ctx context.Context, req *milvuspb.RenameCollectionRequest) (*commonpb.Status, error) {
+	return s.proxy.RenameCollection(ctx, req)
+}
+
 func (s *Server) CreateResourceGroup(ctx context.Context, req *milvuspb.CreateResourceGroupRequest) (*commonpb.Status, error) {
-	return nil, nil
+	return s.proxy.CreateResourceGroup(ctx, req)
 }
 
 func (s *Server) DropResourceGroup(ctx context.Context, req *milvuspb.DropResourceGroupRequest) (*commonpb.Status, error) {
-	return nil, nil
+	return s.proxy.DropResourceGroup(ctx, req)
 }
 
 func (s *Server) DescribeResourceGroup(ctx context.Context, req *milvuspb.DescribeResourceGroupRequest) (*milvuspb.DescribeResourceGroupResponse, error) {
-	return nil, nil
+	return s.proxy.DescribeResourceGroup(ctx, req)
 }
 
 func (s *Server) TransferNode(ctx context.Context, req *milvuspb.TransferNodeRequest) (*commonpb.Status, error) {
-	return nil, nil
+	return s.proxy.TransferNode(ctx, req)
 }
 
 func (s *Server) TransferReplica(ctx context.Context, req *milvuspb.TransferReplicaRequest) (*commonpb.Status, error) {
-	return nil, nil
+	return s.proxy.TransferReplica(ctx, req)
 }
 
-func (s *Server) ListResourceGroup(ctx context.Context, req *milvuspb.ListResourceGroupRequest) (*milvuspb.ListResourceGroupResponse, error) {
-	return nil, nil
+func (s *Server) ListResourceGroups(ctx context.Context, req *milvuspb.ListResourceGroupsRequest) (*milvuspb.ListResourceGroupsResponse, error) {
+	return s.proxy.ListResourceGroups(ctx, req)
 }

@@ -1793,14 +1793,16 @@ func (c *Core) ReportImport(ctx context.Context, ir *rootcoordpb.ImportResult) (
 		log.Info("an import task has failed, marking DataNode available and resending import task",
 			zap.Int64("task ID", ir.GetTaskId()))
 		resendTaskFunc()
-	} else if ir.GetState() != commonpb.ImportState_ImportPersisted {
-		log.Debug("unexpected import task state reported, return immediately (this should not happen)",
-			zap.Any("task ID", ir.GetTaskId()),
-			zap.Any("import state", ir.GetState()))
+	} else if ir.GetState() == commonpb.ImportState_ImportCompleted {
+		// When a DataNode completes importing, remove this DataNode from the busy node list and send out import tasks again.
+		log.Info("an import task has completed, marking DataNode available and resending import task",
+			zap.Int64("task ID", ir.GetTaskId()))
 		resendTaskFunc()
-	} else {
+	} else if ir.GetState() == commonpb.ImportState_ImportPersisted {
 		// Here ir.GetState() == commonpb.ImportState_ImportPersisted
 		// Seal these import segments, so they can be auto-flushed later.
+		log.Info("an import task turns to persisted state, flush segments to be sealed",
+			zap.Any("task ID", ir.GetTaskId()), zap.Any("segments", ir.GetSegments()))
 		if err := c.broker.Flush(ctx, ti.GetCollectionId(), ir.GetSegments()); err != nil {
 			log.Error("failed to call Flush on bulk insert segments",
 				zap.Int64("task ID", ir.GetTaskId()))
@@ -2493,6 +2495,44 @@ func (c *Core) ListPolicy(ctx context.Context, in *internalpb.ListPolicyRequest)
 		PolicyInfos: policies,
 		UserRoles:   userRoles,
 	}, nil
+}
+
+func (c *Core) RenameCollection(ctx context.Context, req *milvuspb.RenameCollectionRequest) (*commonpb.Status, error) {
+	if code, ok := c.checkHealthy(); !ok {
+		return failStatus(commonpb.ErrorCode_UnexpectedError, "StateCode="+commonpb.StateCode_name[int32(code)]), nil
+	}
+
+	log := log.Ctx(ctx).With(zap.String("oldCollectionName", req.GetOldName()), zap.String("newCollectionName", req.GetNewName()))
+	log.Info("received request to rename collection")
+
+	metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.TotalLabel).Inc()
+	tr := timerecord.NewTimeRecorder("RenameCollection")
+	t := &renameCollectionTask{
+		baseTask: baseTask{
+			ctx:  ctx,
+			core: c,
+			done: make(chan error, 1),
+		},
+		Req: req,
+	}
+
+	if err := c.scheduler.AddTask(t); err != nil {
+		log.Warn("failed to enqueue request to rename collection", zap.Error(err))
+		metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.FailLabel).Inc()
+		return failStatus(commonpb.ErrorCode_UnexpectedError, err.Error()), nil
+	}
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("failed to rename collection", zap.Uint64("ts", t.GetTs()), zap.Error(err))
+		metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.FailLabel).Inc()
+		return failStatus(commonpb.ErrorCode_UnexpectedError, err.Error()), nil
+	}
+
+	metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.SuccessLabel).Inc()
+	metrics.RootCoordDDLReqLatency.WithLabelValues("RenameCollection").Observe(float64(tr.ElapseSpan().Milliseconds()))
+
+	log.Info("done to rename collection", zap.Uint64("ts", t.GetTs()))
+	return succStatus(), nil
 }
 
 func (c *Core) CheckHealth(ctx context.Context, in *milvuspb.CheckHealthRequest) (*milvuspb.CheckHealthResponse, error) {

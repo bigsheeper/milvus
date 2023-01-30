@@ -57,6 +57,9 @@ Milvus was released under the [open-source Apache License 2.0](https://github.co
 
 ## Quick start
 
+### Start with Zilliz Cloud
+Zilliz Cloud is a fully managed service on cloud and the simplest way to deploy LF AI Milvus®, See [Zilliz Cloud Quick Start Guide](https://zilliz.com/doc/quick_start) and start your [free trial](https://cloud.zilliz.com/signup). 
+
 ### Install Milvus
 
 - [Standalone Quick Start Guide](https://milvus.io/docs/v2.0.x/install_standalone-docker.md)
@@ -266,7 +269,6 @@ Contributions to Milvus are welcome from everyone. See [Guidelines for Contribut
 <a href="https://github.com/bo-huang"><img src="https://avatars.githubusercontent.com/u/24309515?v=4" width="30px" /></a>
 <a href="https://github.com/caosiyang"><img src="https://avatars.githubusercontent.com/u/2155120?v=4" width="30px" /></a>
 <a href="https://github.com/carawaylj"><img src="https://avatars.githubusercontent.com/u/69145751?v=4" width="30px" /></a>
-<a href="https://github.com/cbuescher"><img src="https://avatars.githubusercontent.com/u/10398885?v=4" width="30px" /></a>
 <a href="https://github.com/chengpu"><img src="https://avatars.githubusercontent.com/u/2233492?v=4" width="30px" /></a>
 <a href="https://github.com/chensanle"><img src="https://avatars.githubusercontent.com/u/31087327?v=4" width="30px" /></a>
 <a href="https://github.com/chenxingqiang"><img src="https://avatars.githubusercontent.com/u/12387235?v=4" width="30px" /></a>
@@ -323,6 +325,7 @@ Contributions to Milvus are welcome from everyone. See [Guidelines for Contribut
 <a href="https://github.com/jackyu2020"><img src="https://avatars.githubusercontent.com/u/64533877?v=4" width="30px" /></a>
 <a href="https://github.com/jaelgu"><img src="https://avatars.githubusercontent.com/u/86251631?v=4" width="30px" /></a>
 <a href="https://github.com/jaime0815"><img src="https://avatars.githubusercontent.com/u/4024711?v=4" width="30px" /></a>
+<a href="https://github.com/jeffoverflow"><img src="https://avatars.githubusercontent.com/u/24581746?v=4" width="30px" /></a>
 <a href="https://github.com/jeffreye"><img src="https://avatars.githubusercontent.com/u/1737680?v=4" width="30px" /></a>
 <a href="https://github.com/jennyli-z"><img src="https://avatars.githubusercontent.com/u/93511422?v=4" width="30px" /></a>
 <a href="https://github.com/jiaoew1991"><img src="https://avatars.githubusercontent.com/u/2297455?v=4" width="30px" /></a>
@@ -459,6 +462,8 @@ The implemented SDK and its API documentation are listed below:
 - [Go SDK](https://github.com/milvus-io/milvus-sdk-go)
 - [Cpp SDK](https://github.com/milvus-io/milvus-sdk-cpp)(under development)
 - [Node SDK](https://github.com/milvus-io/milvus-sdk-node)
+- [Rust SDK](https://github.com/milvus-io/milvus-sdk-rust)(under development)
+- [CSharp SDK](https://github.com/milvus-io/milvus-sdk-csharp)(under development)
 
 ### Attu
 

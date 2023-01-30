@@ -89,12 +89,9 @@ type Segment struct {
 	lastMemSize  int64
 	lastRowCount int64
 
-	recentlyModified *atomic.Bool
-	segmentType      *atomic.Int32
-	destroyed        *atomic.Bool
-
-	idBinlogRowSizes []int64
-
+	recentlyModified  *atomic.Bool
+	segmentType       *atomic.Int32
+	destroyed         *atomic.Bool
 	indexedFieldInfos *typeutil.ConcurrentMap[UniqueID, *IndexedFieldInfo]
 
 	statLock sync.Mutex
@@ -106,14 +103,6 @@ type Segment struct {
 // ID returns the identity number.
 func (s *Segment) ID() UniqueID {
 	return s.segmentID
-}
-
-func (s *Segment) setIDBinlogRowSizes(sizes []int64) {
-	s.idBinlogRowSizes = sizes
-}
-
-func (s *Segment) getIDBinlogRowSizes() []int64 {
-	return s.idBinlogRowSizes
 }
 
 func (s *Segment) setRecentlyModified(modify bool) {
@@ -386,12 +375,12 @@ func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, erro
 
 func (s *Segment) getFieldDataPath(indexedFieldInfo *IndexedFieldInfo, offset int64) (dataPath string, offsetInBinlog int64) {
 	offsetInBinlog = offset
-	for index, idBinlogRowSize := range s.idBinlogRowSizes {
-		if offsetInBinlog < idBinlogRowSize {
-			dataPath = indexedFieldInfo.fieldBinlog.Binlogs[index].GetLogPath()
+	for _, binlog := range indexedFieldInfo.fieldBinlog.Binlogs {
+		if offsetInBinlog < binlog.EntriesNum {
+			dataPath = binlog.GetLogPath()
 			break
 		} else {
-			offsetInBinlog -= idBinlogRowSize
+			offsetInBinlog -= binlog.EntriesNum
 		}
 	}
 	return dataPath, offsetInBinlog
@@ -563,7 +552,8 @@ func (s *Segment) fillIndexedFieldsData(ctx context.Context, collectionID Unique
 	for _, fieldData := range result.FieldsData {
 		// If the vector field doesn't have indexed. Vector data is in memory for
 		// brute force search. No need to download data from remote.
-		if !s.hasLoadIndexForIndexedField(fieldData.FieldId) {
+		if fieldData.GetType() != schemapb.DataType_FloatVector && fieldData.GetType() != schemapb.DataType_BinaryVector ||
+			!s.hasLoadIndexForIndexedField(fieldData.FieldId) {
 			continue
 		}
 

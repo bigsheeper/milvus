@@ -22,7 +22,6 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -49,21 +48,18 @@ func TestImpl_GetComponentStates(t *testing.T) {
 	assert.NoError(t, err)
 
 	node.session.UpdateRegistered(true)
+	node.UpdateStateCode(commonpb.StateCode_Healthy)
 
 	rsp, err := node.GetComponentStates(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, commonpb.ErrorCode_Success, rsp.Status.ErrorCode)
+	assert.Equal(t, commonpb.StateCode_Healthy, rsp.GetState().GetStateCode())
 
 	node.UpdateStateCode(commonpb.StateCode_Abnormal)
 	rsp, err = node.GetComponentStates(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, commonpb.ErrorCode_Success, rsp.Status.ErrorCode)
-
-	node.stateCode = atomic.Value{}
-	node.stateCode.Store("invalid")
-	rsp, err = node.GetComponentStates(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, commonpb.ErrorCode_UnexpectedError, rsp.Status.ErrorCode)
+	assert.Equal(t, commonpb.StateCode_Abnormal, rsp.GetState().GetStateCode())
 }
 
 func TestImpl_GetTimeTickChannel(t *testing.T) {
@@ -227,7 +223,7 @@ func TestImpl_UnsubDmChannel(t *testing.T) {
 			Infos: []*datapb.VchannelInfo{
 				{
 					CollectionID: 1000,
-					ChannelName:  "1000-dmc0",
+					ChannelName:  Params.CommonCfg.RootCoordDml.GetValue() + "-dmc0",
 				},
 			},
 		}
@@ -245,7 +241,7 @@ func TestImpl_UnsubDmChannel(t *testing.T) {
 				},
 				NodeID:       0,
 				CollectionID: defaultCollectionID,
-				ChannelName:  "1000-dmc0",
+				ChannelName:  Params.CommonCfg.RootCoordDml.GetValue() + "-dmc0",
 			}
 			originMetaReplica := node.metaReplica
 			node.metaReplica = newMockReplicaInterface()
@@ -519,8 +515,7 @@ func TestImpl_isHealthy(t *testing.T) {
 	node, err := genSimpleQueryNode(ctx)
 	assert.NoError(t, err)
 
-	isHealthy := node.isHealthy()
-	assert.True(t, isHealthy)
+	assert.True(t, node.isHealthy(node.lifetime.GetState()))
 }
 
 func TestImpl_ShowConfigurations(t *testing.T) {

@@ -73,6 +73,8 @@ type ServiceSuite struct {
 	taskScheduler  *task.MockScheduler
 	balancer       balance.Balance
 
+	distMgr *meta.DistributionManager
+
 	// Test object
 	server *Server
 }
@@ -126,7 +128,8 @@ func (suite *ServiceSuite) SetupTest() {
 
 	suite.store = meta.NewMetaStore(suite.kv)
 	suite.dist = meta.NewDistributionManager()
-	suite.meta = meta.NewMeta(params.RandomIncrementIDAllocator(), suite.store)
+	suite.nodeMgr = session.NewNodeManager()
+	suite.meta = meta.NewMeta(params.RandomIncrementIDAllocator(), suite.store, suite.nodeMgr)
 	suite.broker = meta.NewMockBroker(suite.T())
 	suite.targetMgr = meta.NewTargetManager(suite.broker, suite.meta)
 	suite.targetObserver = observers.NewTargetObserver(
@@ -135,9 +138,10 @@ func (suite *ServiceSuite) SetupTest() {
 		suite.dist,
 		suite.broker,
 	)
-	suite.nodeMgr = session.NewNodeManager()
 	for _, node := range suite.nodes {
 		suite.nodeMgr.Add(session.NewNodeInfo(node, "localhost"))
+		err := suite.meta.ResourceManager.AssignNode(meta.DefaultResourceGroupName, node)
+		suite.NoError(err)
 	}
 	suite.cluster = session.NewMockCluster(suite.T())
 	suite.jobScheduler = job.NewScheduler()
@@ -151,6 +155,7 @@ func (suite *ServiceSuite) SetupTest() {
 		suite.targetMgr,
 	)
 	meta.GlobalFailedLoadCache = meta.NewFailedLoadCache()
+	suite.distMgr = meta.NewDistributionManager()
 
 	suite.server = &Server{
 		kv:                  suite.kv,
@@ -168,6 +173,13 @@ func (suite *ServiceSuite) SetupTest() {
 		taskScheduler:       suite.taskScheduler,
 		balancer:            suite.balancer,
 	}
+	suite.server.collectionObserver = observers.NewCollectionObserver(
+		suite.server.dist,
+		suite.server.meta,
+		suite.server.targetMgr,
+		suite.targetObserver,
+	)
+
 	suite.server.UpdateStateCode(commonpb.StateCode_Healthy)
 }
 
@@ -324,6 +336,260 @@ func (suite *ServiceSuite) TestLoadCollection() {
 	suite.Contains(resp.Reason, ErrNotHealthy.Error())
 }
 
+func (suite *ServiceSuite) TestResourceGroup() {
+	ctx := context.Background()
+	server := suite.server
+
+	createRG := &milvuspb.CreateResourceGroupRequest{
+		ResourceGroup: "rg1",
+	}
+
+	resp, err := server.CreateResourceGroup(ctx, createRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+
+	resp, err = server.CreateResourceGroup(ctx, createRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	suite.Contains(resp.Reason, ErrCreateResourceGroupFailed.Error())
+	suite.Contains(resp.Reason, meta.ErrRGAlreadyExist.Error())
+
+	listRG := &milvuspb.ListResourceGroupsRequest{}
+	resp1, err := server.ListResourceGroups(ctx, listRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp1.Status.ErrorCode)
+	suite.Len(resp1.ResourceGroups, 2)
+
+	server.nodeMgr.Add(session.NewNodeInfo(1011, "localhost"))
+	server.nodeMgr.Add(session.NewNodeInfo(1012, "localhost"))
+	server.nodeMgr.Add(session.NewNodeInfo(1013, "localhost"))
+	server.nodeMgr.Add(session.NewNodeInfo(1014, "localhost"))
+	server.meta.ResourceManager.AddResourceGroup("rg11")
+	server.meta.ResourceManager.AssignNode("rg11", 1011)
+	server.meta.ResourceManager.AssignNode("rg11", 1012)
+	server.meta.ResourceManager.AddResourceGroup("rg12")
+	server.meta.ResourceManager.AssignNode("rg12", 1013)
+	server.meta.ResourceManager.AssignNode("rg12", 1014)
+	server.meta.CollectionManager.PutCollection(utils.CreateTestCollection(1, 1))
+	server.meta.CollectionManager.PutCollection(utils.CreateTestCollection(2, 1))
+	server.meta.ReplicaManager.Put(meta.NewReplica(&querypb.Replica{
+		ID:            1,
+		CollectionID:  1,
+		Nodes:         []int64{1011, 1013},
+		ResourceGroup: "rg11"},
+		typeutil.NewUniqueSet(1011, 1013)),
+	)
+	server.meta.ReplicaManager.Put(meta.NewReplica(&querypb.Replica{
+		ID:            2,
+		CollectionID:  2,
+		Nodes:         []int64{1012, 1014},
+		ResourceGroup: "rg12"},
+		typeutil.NewUniqueSet(1012, 1014)),
+	)
+
+	describeRG := &querypb.DescribeResourceGroupRequest{
+		ResourceGroup: "rg11",
+	}
+	resp2, err := server.DescribeResourceGroup(ctx, describeRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp2.Status.ErrorCode)
+	suite.Equal("rg11", resp2.GetResourceGroup().GetName())
+	suite.Equal(int32(2), resp2.GetResourceGroup().GetCapacity())
+	suite.Equal(int32(2), resp2.GetResourceGroup().GetNumAvailableNode())
+	suite.Equal(map[int64]int32{1: 1}, resp2.GetResourceGroup().GetNumLoadedReplica())
+	suite.Equal(map[int64]int32{2: 1}, resp2.GetResourceGroup().GetNumIncomingNode())
+	suite.Equal(map[int64]int32{1: 1}, resp2.GetResourceGroup().GetNumOutgoingNode())
+
+	dropRG := &milvuspb.DropResourceGroupRequest{
+		ResourceGroup: "rg1",
+	}
+
+	resp3, err := server.DropResourceGroup(ctx, dropRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp3.ErrorCode)
+
+	resp4, err := server.ListResourceGroups(ctx, listRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp4.Status.ErrorCode)
+	suite.Len(resp4.GetResourceGroups(), 3)
+}
+
+func (suite *ServiceSuite) TestResourceGroupFailed() {
+	ctx := context.Background()
+	server := suite.server
+
+	// illegal argument
+	describeRG := &querypb.DescribeResourceGroupRequest{
+		ResourceGroup: "rfffff",
+	}
+	resp, err := server.DescribeResourceGroup(ctx, describeRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.Status.ErrorCode)
+
+	// server unhealthy
+	server.status.Store(commonpb.StateCode_Abnormal)
+
+	createRG := &milvuspb.CreateResourceGroupRequest{
+		ResourceGroup: "rg1",
+	}
+
+	resp1, err := server.CreateResourceGroup(ctx, createRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp1.ErrorCode)
+
+	listRG := &milvuspb.ListResourceGroupsRequest{}
+	resp2, err := server.ListResourceGroups(ctx, listRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp2.Status.ErrorCode)
+
+	describeRG = &querypb.DescribeResourceGroupRequest{
+		ResourceGroup: "rg1",
+	}
+	resp3, err := server.DescribeResourceGroup(ctx, describeRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp3.Status.ErrorCode)
+
+	dropRG := &milvuspb.DropResourceGroupRequest{
+		ResourceGroup: "rg1",
+	}
+	resp4, err := server.DropResourceGroup(ctx, dropRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp4.ErrorCode)
+
+	resp5, err := server.ListResourceGroups(ctx, listRG)
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp5.Status.ErrorCode)
+}
+
+func (suite *ServiceSuite) TestTransferNode() {
+	ctx := context.Background()
+	server := suite.server
+
+	err := server.meta.ResourceManager.AddResourceGroup("rg1")
+	suite.NoError(err)
+	err = server.meta.ResourceManager.AddResourceGroup("rg2")
+	suite.NoError(err)
+	// test transfer node
+	resp, err := server.TransferNode(ctx, &milvuspb.TransferNodeRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rg1",
+	})
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+	nodes, err := server.meta.ResourceManager.GetNodes("rg1")
+	suite.NoError(err)
+	suite.Len(nodes, 1)
+
+	// test transfer node meet non-exist source rg
+	resp, err = server.TransferNode(ctx, &milvuspb.TransferNodeRequest{
+		SourceResourceGroup: "rgggg",
+		TargetResourceGroup: meta.DefaultResourceGroupName,
+	})
+	suite.NoError(err)
+	suite.Contains(resp.Reason, meta.ErrRGNotExist.Error())
+	suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
+
+	// test transfer node meet non-exist target rg
+	resp, err = server.TransferNode(ctx, &milvuspb.TransferNodeRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rgggg",
+	})
+	suite.NoError(err)
+	suite.Contains(resp.Reason, meta.ErrRGNotExist.Error())
+	suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
+
+	// server unhealthy
+	server.status.Store(commonpb.StateCode_Abnormal)
+	resp, err = server.TransferNode(ctx, &milvuspb.TransferNodeRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rg1",
+	})
+	suite.NoError(err)
+	suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+}
+
+func (suite *ServiceSuite) TestTransferReplica() {
+	ctx := context.Background()
+	server := suite.server
+
+	err := server.meta.ResourceManager.AddResourceGroup("rg1")
+	suite.NoError(err)
+	err = server.meta.ResourceManager.AddResourceGroup("rg2")
+	suite.NoError(err)
+	err = server.meta.ResourceManager.AddResourceGroup("rg3")
+	suite.NoError(err)
+
+	resp, err := suite.server.TransferReplica(ctx, &querypb.TransferReplicaRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rg1",
+		CollectionID:        1,
+		NumReplica:          2,
+	})
+	suite.NoError(err)
+	suite.Contains(resp.Reason, "found [0] replicas of collection[1] in source resource group")
+
+	resp, err = suite.server.TransferReplica(ctx, &querypb.TransferReplicaRequest{
+		SourceResourceGroup: "rgg",
+		TargetResourceGroup: meta.DefaultResourceGroupName,
+		CollectionID:        1,
+		NumReplica:          2,
+	})
+	suite.NoError(err)
+	suite.Equal(resp.ErrorCode, commonpb.ErrorCode_IllegalArgument)
+
+	resp, err = suite.server.TransferReplica(ctx, &querypb.TransferReplicaRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rgg",
+		CollectionID:        1,
+		NumReplica:          2,
+	})
+	suite.NoError(err)
+	suite.Equal(resp.ErrorCode, commonpb.ErrorCode_IllegalArgument)
+
+	suite.server.meta.Put(meta.NewReplica(&querypb.Replica{
+		CollectionID:  1,
+		ID:            111,
+		ResourceGroup: meta.DefaultResourceGroupName,
+	}, typeutil.NewUniqueSet(1)))
+	suite.server.meta.Put(meta.NewReplica(&querypb.Replica{
+		CollectionID:  1,
+		ID:            222,
+		ResourceGroup: meta.DefaultResourceGroupName,
+	}, typeutil.NewUniqueSet(2)))
+
+	suite.server.nodeMgr.Add(session.NewNodeInfo(1001, "localhost"))
+	suite.server.nodeMgr.Add(session.NewNodeInfo(1002, "localhost"))
+	suite.server.nodeMgr.Add(session.NewNodeInfo(1003, "localhost"))
+	suite.server.nodeMgr.Add(session.NewNodeInfo(1004, "localhost"))
+	suite.server.meta.AssignNode("rg1", 1001)
+	suite.server.meta.AssignNode("rg2", 1002)
+	suite.server.meta.AssignNode("rg3", 1003)
+	suite.server.meta.AssignNode("rg3", 1004)
+
+	resp, err = suite.server.TransferReplica(ctx, &querypb.TransferReplicaRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rg3",
+		CollectionID:        1,
+		NumReplica:          2,
+	})
+
+	suite.NoError(err)
+	suite.Equal(resp.ErrorCode, commonpb.ErrorCode_Success)
+	suite.Len(suite.server.meta.GetByResourceGroup("rg3"), 2)
+
+	// server unhealthy
+	server.status.Store(commonpb.StateCode_Abnormal)
+	resp, err = suite.server.TransferReplica(ctx, &querypb.TransferReplicaRequest{
+		SourceResourceGroup: meta.DefaultResourceGroupName,
+		TargetResourceGroup: "rg3",
+		CollectionID:        1,
+		NumReplica:          2,
+	})
+
+	suite.NoError(err)
+	suite.Equal(resp.ErrorCode, commonpb.ErrorCode_UnexpectedError)
+}
+
 func (suite *ServiceSuite) TestLoadCollectionFailed() {
 	suite.loadAll()
 	ctx := context.Background()
@@ -354,6 +620,19 @@ func (suite *ServiceSuite) TestLoadCollectionFailed() {
 		suite.NoError(err)
 		suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
 		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
+	}
+
+	// Test load with wrong rg num
+	for _, collection := range suite.collections {
+		req := &querypb.LoadCollectionRequest{
+			CollectionID:   collection,
+			ReplicaNumber:  suite.replicaNumber[collection] + 1,
+			ResourceGroups: []string{"rg1", "rg2"},
+		}
+		resp, err := server.LoadCollection(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
+		suite.Contains(resp.Reason, ErrLoadUseWrongRG.Error())
 	}
 }
 
@@ -530,6 +809,148 @@ func (suite *ServiceSuite) TestReleasePartition() {
 	suite.Contains(resp.Reason, ErrNotHealthy.Error())
 }
 
+func (suite *ServiceSuite) TestRefreshCollection() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	defer cancel()
+	server := suite.server
+
+	suite.targetObserver.Start(context.Background())
+	suite.server.collectionObserver.Start(context.Background())
+
+	// Test refresh all collections.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshCollection(ctx, collection)
+		suite.NoError(err)
+		// Collection not loaded error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test load all collections
+	for _, collection := range suite.collections {
+		suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
+		suite.expectGetRecoverInfo(collection)
+
+		req := &querypb.LoadCollectionRequest{
+			CollectionID: collection,
+		}
+		resp, err := server.LoadCollection(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+		suite.assertLoaded(collection)
+
+		// Load and explicitly mark load percentage to 100%.
+		collObj := utils.CreateTestCollection(collection, 1)
+		collObj.LoadPercentage = 40
+		suite.True(suite.server.meta.CollectionManager.UpdateCollectionInMemory(collObj))
+	}
+
+	// Test refresh all collections again when collections are loaded. This time should fail with collection not 100% loaded.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshCollection(ctx, collection)
+		suite.NoError(err)
+		// Context canceled error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test load all collections
+	for _, collection := range suite.collections {
+		// Load and explicitly mark load percentage to 100%.
+		collObj := utils.CreateTestCollection(collection, 1)
+		collObj.LoadPercentage = 100
+		suite.True(suite.server.meta.CollectionManager.UpdateCollectionInMemory(collObj))
+	}
+
+	// Test refresh all collections again when collections are loaded. This time should fail with context canceled.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshCollection(ctx, collection)
+		suite.NoError(err)
+		// Context canceled error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test when server is not healthy
+	server.UpdateStateCode(commonpb.StateCode_Initializing)
+	resp, err := server.refreshCollection(ctx, suite.collections[0])
+	suite.NoError(err)
+	suite.Contains(resp.Reason, ErrNotHealthy.Error())
+}
+
+func (suite *ServiceSuite) TestRefreshPartitions() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	defer cancel()
+	server := suite.server
+
+	suite.targetObserver.Start(context.Background())
+	suite.server.collectionObserver.Start(context.Background())
+
+	// Test refresh all partitions.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshPartitions(ctx, collection, suite.partitions[collection])
+		suite.NoError(err)
+		// partition not loaded error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test load all partitions
+	for _, collection := range suite.collections {
+		suite.expectGetRecoverInfo(collection)
+
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: suite.partitions[collection],
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+		suite.assertLoaded(collection)
+
+		collObj := utils.CreateTestCollection(collection, 1)
+		suite.NoError(suite.server.meta.CollectionManager.PutCollection(collObj))
+
+		// Load and explicitly mark load percentage to 100%.
+		for _, partition := range suite.partitions[collection] {
+			partObj := utils.CreateTestPartition(collection, partition)
+			partObj.LoadPercentage = 40
+			suite.True(suite.server.meta.CollectionManager.UpdatePartitionInMemory(partObj))
+		}
+	}
+
+	// Test refresh all collections again. This time should fail with partitions not 100% loaded.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshPartitions(ctx, collection, suite.partitions[collection])
+		suite.NoError(err)
+		// Context canceled error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test load all partitions
+	for _, collection := range suite.collections {
+		collObj := utils.CreateTestCollection(collection, 1)
+		suite.NoError(suite.server.meta.CollectionManager.PutCollection(collObj))
+
+		// Load and explicitly mark load percentage to 100%.
+		for _, partition := range suite.partitions[collection] {
+			partObj := utils.CreateTestPartition(collection, partition)
+			partObj.LoadPercentage = 100
+			suite.True(suite.server.meta.CollectionManager.UpdatePartitionInMemory(partObj))
+		}
+	}
+
+	// Test refresh all collections again. This time should fail with context canceled.
+	for _, collection := range suite.collections {
+		resp, err := server.refreshPartitions(ctx, collection, suite.partitions[collection])
+		suite.NoError(err)
+		// Context canceled error.
+		suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
+	}
+
+	// Test when server is not healthy
+	server.UpdateStateCode(commonpb.StateCode_Initializing)
+	resp, err := server.refreshPartitions(ctx, suite.collections[0], []int64{})
+	suite.NoError(err)
+	suite.Contains(resp.Reason, ErrNotHealthy.Error())
+}
+
 func (suite *ServiceSuite) TestGetPartitionStates() {
 	suite.loadAll()
 	ctx := context.Background()
@@ -604,8 +1025,9 @@ func (suite *ServiceSuite) TestLoadBalance() {
 	// Test get balance first segment
 	for _, collection := range suite.collections {
 		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
-		srcNode := replicas[0].GetNodes()[0]
-		dstNode := replicas[0].GetNodes()[1]
+		nodes := replicas[0].GetNodes()
+		srcNode := nodes[0]
+		dstNode := nodes[1]
 		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loaded)
 		suite.updateSegmentDist(collection, srcNode)
 		segments := suite.getAllSegments(collection)
@@ -731,8 +1153,9 @@ func (suite *ServiceSuite) TestLoadBalanceFailed() {
 	// Test load balance with not fully loaded
 	for _, collection := range suite.collections {
 		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
-		srcNode := replicas[0].GetNodes()[0]
-		dstNode := replicas[0].GetNodes()[1]
+		nodes := replicas[0].GetNodes()
+		srcNode := nodes[0]
+		dstNode := nodes[1]
 		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loading)
 		segments := suite.getAllSegments(collection)
 		req := &querypb.LoadBalanceRequest{
@@ -774,8 +1197,9 @@ func (suite *ServiceSuite) TestLoadBalanceFailed() {
 	// Test balance task failed
 	for _, collection := range suite.collections {
 		replicas := suite.meta.ReplicaManager.GetByCollection(collection)
-		srcNode := replicas[0].GetNodes()[0]
-		dstNode := replicas[0].GetNodes()[1]
+		nodes := replicas[0].GetNodes()
+		srcNode := nodes[0]
+		dstNode := nodes[1]
 		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loaded)
 		suite.updateSegmentDist(collection, srcNode)
 		segments := suite.getAllSegments(collection)
@@ -1019,6 +1443,11 @@ func (suite *ServiceSuite) TestGetShardLeadersFailed() {
 		suite.Equal(commonpb.ErrorCode_NoReplicaAvailable, resp.Status.ErrorCode)
 
 		// Segment not fully loaded
+		for _, node := range suite.nodes {
+			suite.dist.SegmentDistManager.Update(node)
+			suite.dist.ChannelDistManager.Update(node)
+			suite.dist.LeaderViewManager.Update(node)
+		}
 		suite.updateChannelDistWithoutSegment(collection)
 		suite.fetchHeartbeats(time.Now())
 		resp, err = server.GetShardLeaders(ctx, req)

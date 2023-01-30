@@ -27,7 +27,7 @@ import (
 
 const (
 	// DefaultRetentionDuration defines the default duration for retention which is 1 days in seconds.
-	DefaultRetentionDuration = 3600 * 24
+	DefaultRetentionDuration = 0
 
 	// DefaultIndexSliceSize defines the default slice size of index file when serializing.
 	DefaultIndexSliceSize        = 16
@@ -88,16 +88,17 @@ type ComponentParam struct {
 	IntegrationTestCfg integrationTestConfig
 }
 
-// InitOnce initialize once
-func (p *ComponentParam) InitOnce() {
+// Init initialize once
+func (p *ComponentParam) Init() {
 	p.once.Do(func() {
-		p.Init()
+		p.init()
 	})
 }
 
-// Init initialize the global param table
-func (p *ComponentParam) Init() {
-	p.ServiceParam.Init()
+// init initialize the global param table
+
+func (p *ComponentParam) init() {
+	p.ServiceParam.init()
 
 	p.CommonCfg.init(&p.BaseTable)
 	p.QuotaConfig.init(&p.BaseTable)
@@ -578,6 +579,7 @@ type rootCoordConfig struct {
 	MinSegmentSizeToEnableIndex ParamItem `refreshable:"true"`
 	ImportTaskExpiration        ParamItem `refreshable:"true"`
 	ImportTaskRetention         ParamItem `refreshable:"true"`
+	ImportMaxPendingTaskCount   ParamItem `refreshable:"true"`
 	ImportTaskSubPath           ParamItem `refreshable:"true"`
 	EnableActiveStandby         ParamItem `refreshable:"false"`
 }
@@ -624,6 +626,13 @@ func (p *rootCoordConfig) init(base *BaseTable) {
 		DefaultValue: "importtask",
 	}
 	p.ImportTaskSubPath.Init(base.mgr)
+
+	p.ImportMaxPendingTaskCount = ParamItem{
+		Key:          "rootCoord.importMaxPendingTaskCount",
+		Version:      "2.2.2",
+		DefaultValue: strconv.Itoa(65535),
+	}
+	p.ImportMaxPendingTaskCount.Init(base.mgr)
 
 	p.EnableActiveStandby = ParamItem{
 		Key:          "rootCoord.enableActiveStandby",
@@ -879,8 +888,11 @@ type queryCoordConfig struct {
 	CheckHandoffInterval ParamItem `refreshable:"true"`
 	EnableActiveStandby  ParamItem `refreshable:"false"`
 
-	NextTargetSurviveTime    ParamItem `refreshable:"true"`
-	UpdateNextTargetInterval ParamItem `refreshable:"false"`
+	NextTargetSurviveTime      ParamItem `refreshable:"true"`
+	UpdateNextTargetInterval   ParamItem `refreshable:"false"`
+	CheckNodeInReplicaInterval ParamItem `refreshable:"false"`
+	CheckResourceGroupInterval ParamItem `refreshable:"false"`
+	EnableRGAutoRecover        ParamItem `refreshable:"true"`
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -1031,6 +1043,30 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 		PanicIfEmpty: true,
 	}
 	p.UpdateNextTargetInterval.Init(base.mgr)
+
+	p.CheckNodeInReplicaInterval = ParamItem{
+		Key:          "queryCoord.checkNodeInReplicaInterval",
+		Version:      "2.2.3",
+		DefaultValue: "60",
+		PanicIfEmpty: true,
+	}
+	p.CheckNodeInReplicaInterval.Init(base.mgr)
+
+	p.CheckResourceGroupInterval = ParamItem{
+		Key:          "queryCoord.checkResourceGroupInterval",
+		Version:      "2.2.3",
+		DefaultValue: "30",
+		PanicIfEmpty: true,
+	}
+	p.CheckResourceGroupInterval.Init(base.mgr)
+
+	p.EnableRGAutoRecover = ParamItem{
+		Key:          "queryCoord.enableRGAutoRecover",
+		Version:      "2.2.3",
+		DefaultValue: "true",
+		PanicIfEmpty: true,
+	}
+	p.EnableRGAutoRecover.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

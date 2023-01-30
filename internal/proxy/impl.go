@@ -24,10 +24,11 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/golang/protobuf/proto"
 	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
@@ -49,7 +50,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
-	"go.uber.org/zap"
 )
 
 const moduleName = "Proxy"
@@ -3452,6 +3452,10 @@ func (node *Proxy) GetReplicas(ctx context.Context, req *milvuspb.GetReplicasReq
 		commonpbutil.WithSourceID(paramtable.GetNodeID()),
 	)
 
+	if req.GetCollectionName() != "" {
+		req.CollectionID, _ = globalMetaCache.GetCollectionID(ctx, req.GetCollectionName())
+	}
+
 	resp, err := node.queryCoord.GetReplicas(ctx, req)
 	if err != nil {
 		log.Error("Failed to get replicas from Query Coordinator",
@@ -3758,7 +3762,6 @@ func (node *Proxy) UpdateCredentialCache(ctx context.Context, request *proxypb.U
 	}, nil
 }
 
-//
 func (node *Proxy) CreateCredential(ctx context.Context, req *milvuspb.CreateCredentialRequest) (*commonpb.Status, error) {
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-CreateCredential")
 	defer sp.End()
@@ -3823,7 +3826,6 @@ func (node *Proxy) CreateCredential(ctx context.Context, req *milvuspb.CreateCre
 	return result, err
 }
 
-//
 func (node *Proxy) UpdateCredential(ctx context.Context, req *milvuspb.UpdateCredentialRequest) (*commonpb.Status, error) {
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-UpdateCredential")
 	defer sp.End()
@@ -3897,7 +3899,6 @@ func (node *Proxy) UpdateCredential(ctx context.Context, req *milvuspb.UpdateCre
 	return result, err
 }
 
-//
 func (node *Proxy) DeleteCredential(ctx context.Context, req *milvuspb.DeleteCredentialRequest) (*commonpb.Status, error) {
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-DeleteCredential")
 	defer sp.End()
@@ -4407,43 +4408,433 @@ func (node *Proxy) CheckHealth(ctx context.Context, request *milvuspb.CheckHealt
 	}, nil
 }
 
+func (node *Proxy) RenameCollection(ctx context.Context, req *milvuspb.RenameCollectionRequest) (*commonpb.Status, error) {
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-RefreshPolicyInfoCache")
+	defer sp.End()
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+		zap.String("oldName", req.GetOldName()),
+		zap.String("newName", req.GetNewName()))
+
+	log.Info("received rename collection request")
+	var err error
+
+	if !node.checkHealthy() {
+		return unhealthyStatus(), nil
+	}
+
+	if err := validateCollectionName(req.GetNewName()); err != nil {
+		log.Warn("validate new collection name fail", zap.Error(err))
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_IllegalCollectionName,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	req.Base = commonpbutil.NewMsgBase(
+		commonpbutil.WithMsgType(commonpb.MsgType_RenameCollection),
+		commonpbutil.WithMsgID(0),
+		commonpbutil.WithSourceID(paramtable.GetNodeID()),
+	)
+	resp, err := node.rootCoord.RenameCollection(ctx, req)
+	if err != nil {
+		log.Warn("failed to rename collection", zap.Error(err))
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, err
+	}
+
+	return resp, nil
+}
+
 func (node *Proxy) CreateResourceGroup(ctx context.Context, request *milvuspb.CreateResourceGroupRequest) (*commonpb.Status, error) {
-	return &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_Success,
-	}, nil
+	if !node.checkHealthy() {
+		return unhealthyStatus(), nil
+	}
+
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-CreateResourceGroup")
+	defer sp.End()
+	method := "CreateResourceGroup"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &CreateResourceGroupTask{
+		ctx:                        ctx,
+		Condition:                  NewTaskCondition(ctx),
+		CreateResourceGroupRequest: request,
+		queryCoord:                 node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("CreateResourceGroup received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("CreateResourceGroup failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("CreateResourceGroup enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("CreateResourceGroup failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("CreateResourceGroup done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }
 
 func (node *Proxy) DropResourceGroup(ctx context.Context, request *milvuspb.DropResourceGroupRequest) (*commonpb.Status, error) {
-	return &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_Success,
-	}, nil
+	if !node.checkHealthy() {
+		return unhealthyStatus(), nil
+	}
+
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-DropResourceGroup")
+	defer sp.End()
+	method := "DropResourceGroup"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &DropResourceGroupTask{
+		ctx:                      ctx,
+		Condition:                NewTaskCondition(ctx),
+		DropResourceGroupRequest: request,
+		queryCoord:               node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("DropResourceGroup received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("DropResourceGroup failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("DropResourceGroup enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("DropResourceGroup failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("DropResourceGroup done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }
 
 func (node *Proxy) TransferNode(ctx context.Context, request *milvuspb.TransferNodeRequest) (*commonpb.Status, error) {
-	return &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_Success,
-	}, nil
+	if !node.checkHealthy() {
+		return unhealthyStatus(), nil
+	}
+
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-TransferNode")
+	defer sp.End()
+	method := "TransferNode"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &TransferNodeTask{
+		ctx:                 ctx,
+		Condition:           NewTaskCondition(ctx),
+		TransferNodeRequest: request,
+		queryCoord:          node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("TransferNode received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("TransferNode failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("TransferNode enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("TransferNode failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("TransferNode done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }
 
 func (node *Proxy) TransferReplica(ctx context.Context, request *milvuspb.TransferReplicaRequest) (*commonpb.Status, error) {
+	if !node.checkHealthy() {
+		return unhealthyStatus(), nil
+	}
 
-	return &commonpb.Status{
-		ErrorCode: commonpb.ErrorCode_Success,
-	}, nil
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-TransferReplica")
+	defer sp.End()
+	method := "TransferReplica"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &TransferReplicaTask{
+		ctx:                    ctx,
+		Condition:              NewTaskCondition(ctx),
+		TransferReplicaRequest: request,
+		queryCoord:             node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("TransferReplica received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("TransferReplica failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("TransferReplica enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("TransferReplica failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}, nil
+	}
+
+	log.Debug("TransferReplica done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }
 
-func (node *Proxy) ListResourceGroup(ctx context.Context, request *milvuspb.ListResourceGroupRequest) (*milvuspb.ListResourceGroupResponse, error) {
-	return &milvuspb.ListResourceGroupResponse{
-		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
-		},
-	}, nil
+func (node *Proxy) ListResourceGroups(ctx context.Context, request *milvuspb.ListResourceGroupsRequest) (*milvuspb.ListResourceGroupsResponse, error) {
+	if !node.checkHealthy() {
+		return &milvuspb.ListResourceGroupsResponse{
+			Status: unhealthyStatus(),
+		}, nil
+	}
+
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-ListResourceGroups")
+	defer sp.End()
+	method := "ListResourceGroups"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &ListResourceGroupsTask{
+		ctx:                       ctx,
+		Condition:                 NewTaskCondition(ctx),
+		ListResourceGroupsRequest: request,
+		queryCoord:                node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("ListResourceGroups received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("ListResourceGroups failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &milvuspb.ListResourceGroupsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	log.Debug("ListResourceGroups enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("ListResourceGroups failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &milvuspb.ListResourceGroupsResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	log.Debug("ListResourceGroups done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }
 
 func (node *Proxy) DescribeResourceGroup(ctx context.Context, request *milvuspb.DescribeResourceGroupRequest) (*milvuspb.DescribeResourceGroupResponse, error) {
-	return &milvuspb.DescribeResourceGroupResponse{
-		Status: &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_Success,
-		},
-	}, nil
+	if !node.checkHealthy() {
+		return &milvuspb.DescribeResourceGroupResponse{
+			Status: unhealthyStatus(),
+		}, nil
+	}
+
+	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-DescribeResourceGroup")
+	defer sp.End()
+	method := "DescribeResourceGroup"
+	tr := timerecord.NewTimeRecorder(method)
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.TotalLabel).Inc()
+	t := &DescribeResourceGroupTask{
+		ctx:                          ctx,
+		Condition:                    NewTaskCondition(ctx),
+		DescribeResourceGroupRequest: request,
+		queryCoord:                   node.queryCoord,
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.String("role", typeutil.ProxyRole),
+	)
+
+	log.Debug("DescribeResourceGroup received")
+
+	if err := node.sched.ddQueue.Enqueue(t); err != nil {
+		log.Warn("DescribeResourceGroup failed to enqueue",
+			zap.Error(err))
+
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.AbandonLabel).Inc()
+		return &milvuspb.DescribeResourceGroupResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	log.Debug("DescribeResourceGroup enqueued",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Warn("DescribeResourceGroup failed to WaitToFinish",
+			zap.Error(err),
+			zap.Uint64("BeginTS", t.BeginTs()),
+			zap.Uint64("EndTS", t.EndTs()))
+		metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+			metrics.FailLabel).Inc()
+		return &milvuspb.DescribeResourceGroupResponse{
+			Status: &commonpb.Status{
+				ErrorCode: commonpb.ErrorCode_UnexpectedError,
+				Reason:    err.Error(),
+			},
+		}, nil
+	}
+
+	log.Debug("DescribeResourceGroup done",
+		zap.Uint64("BeginTS", t.BeginTs()),
+		zap.Uint64("EndTS", t.EndTs()))
+
+	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method,
+		metrics.SuccessLabel).Inc()
+	metrics.ProxyReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), method).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	return t.result, nil
 }

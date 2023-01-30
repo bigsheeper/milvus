@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dispatcher
+package msgdispatcher
 
 import (
 	"github.com/milvus-io/milvus/internal/log"
@@ -22,7 +22,6 @@ import (
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
 	"sync"
 )
@@ -33,29 +32,36 @@ type Manager interface {
 }
 
 type managerImpl struct {
+	subPrefix  string
 	checkersMu sync.RWMutex
-	checkers   map[string]*checker
+	checkers   map[string]*checker // pchannel->checker
 	factory    msgstream.Factory
 }
 
-func NewManager(factory msgstream.Factory) Manager {
+func NewManager(factory msgstream.Factory, subPrefix string) Manager {
 	return &managerImpl{
-		checkers: make(map[string]*checker),
-		factory:  factory,
+		subPrefix: subPrefix,
+		checkers:  make(map[string]*checker),
+		factory:   factory,
 	}
 }
 
 func (g *managerImpl) Register(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
-	log.Info("start to register...", zap.String("vchannel", vchannel), zap.Time("pos", tsoutil.PhysicalTime(pos.GetTimestamp())))
+	log.Info("manager start to register...", zap.String("vchannel", vchannel))
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; !ok {
-		g.checkers[pchannel] = newChecker(pchannel, g.factory)
+		g.checkers[pchannel] = newChecker(g.subPrefix, pchannel, g.factory)
 		go g.checkers[pchannel].check()
-		log.Info("create and start a new controller", zap.String("pchannel", pchannel))
 	}
-	return g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
+	ch, err := g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
+	if err != nil {
+		log.Error("manager register failed", zap.String("vchannel", vchannel), zap.Error(err))
+		return nil, err
+	}
+	log.Info("manager register done", zap.String("vchannel", vchannel))
+	return ch, nil
 }
 
 func (g *managerImpl) Deregister(vchannel string) {
@@ -65,7 +71,9 @@ func (g *managerImpl) Deregister(vchannel string) {
 	if _, ok := g.checkers[pchannel]; ok {
 		g.checkers[pchannel].removeDispatcher(vchannel)
 		if g.checkers[pchannel].isEmpty() {
-			g.checkers[pchannel].closeAll()
+			g.checkers[pchannel].close()
+			delete(g.checkers, pchannel)
 		}
 	}
+	log.Info("manager deregister done", zap.String("vchannel", vchannel))
 }

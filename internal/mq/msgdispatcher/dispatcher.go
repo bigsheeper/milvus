@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dispatcher
+package msgdispatcher
 
 import (
 	"context"
@@ -28,7 +28,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -42,6 +41,17 @@ const (
 	terminate signal = 3
 )
 
+var signalString = map[int32]string{
+	0: "start",
+	1: "pause",
+	2: "resume",
+	3: "terminate",
+}
+
+func (s signal) string() string {
+	return signalString[int32(s)]
+}
+
 const MaxTolerantLag = 3 * time.Second
 
 type dispatcher struct {
@@ -51,8 +61,8 @@ type dispatcher struct {
 	wg      sync.WaitGroup
 	lagChan chan *msgstream.MsgPosition
 
-	vchannelsMu sync.RWMutex
-	vchannels   map[string]chan<- *msgstream.MsgPack
+	targetsMu sync.RWMutex
+	targets   map[string]chan<- *msgstream.MsgPack
 
 	curPosMu sync.RWMutex
 	curPos   *internalpb.MsgPosition
@@ -60,73 +70,82 @@ type dispatcher struct {
 	stream msgstream.MsgStream
 }
 
-func newDispatcher(factory msgstream.Factory, pchannel string, position *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition, lagChan chan *msgstream.MsgPosition) (*dispatcher, error) {
+func newDispatcher(factory msgstream.Factory, pchannel string, position *internalpb.MsgPosition, subName string, subPos mqwrapper.SubscriptionInitialPosition, lagChan chan *msgstream.MsgPosition) (*dispatcher, error) {
 	stream, err := factory.NewTtMsgStream(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	if position != nil {
 		position.ChannelName = funcutil.ToPhysicalChannel(position.ChannelName)
-		stream.AsConsumer([]string{pchannel}, fmt.Sprintf("%d", rand.Int63n(100000)), mqwrapper.SubscriptionPositionUnknown) // TODO: sub-name
+		stream.AsConsumer([]string{pchannel}, subName, mqwrapper.SubscriptionPositionUnknown)
 		err = stream.Seek([]*internalpb.MsgPosition{position})
 		if err != nil {
+			log.Error("seek failed when newDispatcher", zap.String("pchannel", pchannel), zap.Error(err))
 			return nil, err
 		}
+		log.Info("seek successfully when newDispatcher",
+			zap.String("pchannel", pchannel),
+			zap.Time("posTime", tsoutil.PhysicalTime(position.GetTimestamp())),
+			zap.Duration("tsLag", time.Since(tsoutil.PhysicalTime(position.GetTimestamp()))))
 	} else {
-		stream.AsConsumer([]string{pchannel}, "aaa", subPos) // TODO: sub-name
+		stream.AsConsumer([]string{pchannel}, subName, subPos)
+		log.Info("asConsumer successfully when newDispatcher", zap.String("pchannel", pchannel))
 	}
 
 	d := &dispatcher{
-		pchannel:  pchannel,
-		done:      make(chan struct{}, 1),
-		lagChan:   lagChan,
-		vchannels: make(map[string]chan<- *msgstream.MsgPack),
-		stream:    stream,
+		pchannel: pchannel,
+		done:     make(chan struct{}, 1),
+		lagChan:  lagChan,
+		targets:  make(map[string]chan<- *msgstream.MsgPack),
+		stream:   stream,
 	}
-	log.Info("create new dispatcher", zap.String("pchannel", pchannel))
 	return d, nil
 }
 
 func (d *dispatcher) handle(signal signal) {
+	log.Info("dispatcher get signal",
+		zap.String("pchannel", d.pchannel),
+		zap.String("signal", signal.string()))
 	switch signal {
 	case start:
 		d.wg.Add(1)
 		go d.work()
-		log.Info("dispatcher started", zap.String("pchannel", d.pchannel))
 	case pause:
 		d.done <- struct{}{}
 		d.wg.Wait()
-		log.Info("dispatcher paused", zap.String("pchannel", d.pchannel))
 	case resume:
 		d.wg.Add(1)
 		go d.work()
-		log.Info("dispatcher resumed", zap.String("pchannel", d.pchannel))
 	case terminate:
 		d.done <- struct{}{}
-		d.stream.Close()
-		// TODO: unsub
 		d.wg.Wait()
-		log.Info("dispatcher stopped", zap.String("pchannel", d.pchannel))
+		d.stream.Close()
 	default:
-		panic("invalid signal in dispatcher handler")
+		err := fmt.Errorf("invalid signal in dispatcher handler, pchannel = %s", d.pchannel)
+		log.Error(err.Error())
+		panic(err)
 	}
+	log.Info("dispatcher handled signal finished",
+		zap.String("pchannel", d.pchannel),
+		zap.String("signal", signal.string()))
 }
 
 func (d *dispatcher) work() {
+	log.Info("dispatcher begin to work", zap.String("pchannel", d.pchannel))
 	defer d.wg.Done()
 	for {
 		select {
 		case <-d.done:
+			log.Info("dispatcher stopped working", zap.String("pchannel", d.pchannel))
 			return
-		case pack := <-d.stream.Chan(): // TODO: check ok
-			d.curPosMu.Lock()
-			d.curPos = pack.EndPositions[0]
-			d.curPosMu.Unlock()
+		case pack := <-d.stream.Chan():
+			d.setCurPosition(pack.EndPositions[0])
 
-			// group by vchannel
-			d.vchannelsMu.RLock()
-			packs := make(map[string]*msgstream.MsgPack, len(d.vchannels))
-			for vchannel := range d.vchannels {
+			// init packs for all target vchannels, even though there's no msg in pack,
+			// but we still need to dispatch time ticks to the targets.
+			packs := make(map[string]*msgstream.MsgPack, len(d.targets))
+			d.targetsMu.RLock()
+			for vchannel := range d.targets {
 				packs[vchannel] = &msgstream.MsgPack{
 					BeginTs:        pack.BeginTs,
 					EndTs:          pack.EndTs,
@@ -135,11 +154,10 @@ func (d *dispatcher) work() {
 					EndPositions:   pack.EndPositions,
 				}
 			}
-			d.vchannelsMu.RUnlock()
+			d.targetsMu.RUnlock()
+
+			// group messages by vchannels
 			for _, msg := range pack.Msgs {
-				if msg.Type() == commonpb.MsgType_CreateCollection {
-					continue // TODO: optimize it
-				}
 				if msg.VChannel() == "" { // TODO: optimize it
 					switch msg.Type() {
 					case commonpb.MsgType_CreateCollection, commonpb.MsgType_DropCollection:
@@ -156,30 +174,38 @@ func (d *dispatcher) work() {
 					continue
 				}
 				packs[msg.VChannel()].Msgs = append(packs[msg.VChannel()].Msgs, msg)
-				fmt.Println("=======", tsoutil.PhysicalTime(pack.EndTs), ", msg.VChannel():", msg.VChannel())
 			}
-			// dispatch
+
+			// dispatches packs to targets
 			lagChannels := make([]string, 0)
-			d.vchannelsMu.RLock()
+			d.targetsMu.RLock()
 			for vchannel, p := range packs {
 				select {
 				case <-time.After(MaxTolerantLag):
+					log.Warn("time lag is too long for vchannel",
+						zap.String("vchannel", vchannel),
+						zap.Duration("lag", MaxTolerantLag))
 					lagChannels = append(lagChannels, vchannel)
-					log.Warn("vchannel delayed too long", zap.String("vchannel", vchannel), zap.Duration("lag", MaxTolerantLag))
-				case d.vchannels[vchannel] <- p:
+				case d.targets[vchannel] <- p:
 				}
 			}
-			d.vchannelsMu.RUnlock()
+			d.targetsMu.RUnlock()
 
-			// separate lag channels
+			// splits lag channels
 			for _, vchannel := range lagChannels {
-				pos := proto.Clone(pack.StartPositions[0]).(*internalpb.MsgPosition)
-				pos.ChannelName = vchannel
-				d.lagChan <- pos
+				pack.StartPositions[0].ChannelName = vchannel
+				d.lagChan <- pack.StartPositions[0]
 				d.removeTarget(vchannel)
 			}
+			log.Warn("dispatcher sent lag signals", zap.Any("lagVchannels", lagChannels))
 		}
 	}
+}
+
+func (d *dispatcher) setCurPosition(pos *internalpb.MsgPosition) {
+	d.curPosMu.Lock()
+	defer d.curPosMu.Unlock()
+	d.curPos = pos
 }
 
 func (d *dispatcher) getCurPosition() *internalpb.MsgPosition {
@@ -188,31 +214,43 @@ func (d *dispatcher) getCurPosition() *internalpb.MsgPosition {
 	return proto.Clone(d.curPos).(*internalpb.MsgPosition)
 }
 
-func (d *dispatcher) getTarget() (string, chan<- *msgstream.MsgPack) {
-	d.vchannelsMu.RLock()
-	defer d.vchannelsMu.RUnlock()
-	for vch, ch := range d.vchannels {
-		return vch, ch
+func (d *dispatcher) getTarget(vchannel string) (chan<- *msgstream.MsgPack, error) {
+	d.targetsMu.RLock()
+	defer d.targetsMu.RUnlock()
+	if ch, ok := d.targets[vchannel]; ok {
+		return ch, nil
+	} else {
+		return nil, fmt.Errorf("cannot find target in dispatcher, vchannel = %s", vchannel)
 	}
-	panic("should not get here")
 }
 
 func (d *dispatcher) addTarget(vchannel string, output chan<- *msgstream.MsgPack) {
-	d.vchannelsMu.Lock()
-	defer d.vchannelsMu.Unlock()
-	d.vchannels[vchannel] = output
-	log.Info("dispatcher add target", zap.String("vchannel", vchannel))
+	d.targetsMu.Lock()
+	defer d.targetsMu.Unlock()
+	d.targets[vchannel] = output
+	log.Info("dispatcher add new target", zap.String("vchannel", vchannel))
 }
 
 func (d *dispatcher) removeTarget(vchannel string) {
-	d.vchannelsMu.Lock()
-	defer d.vchannelsMu.Unlock()
-	delete(d.vchannels, vchannel)
-	log.Info("dispatcher remove target", zap.String("vchannel", vchannel))
+	d.targetsMu.Lock()
+	defer d.targetsMu.Unlock()
+	if _, ok := d.targets[vchannel]; ok {
+		delete(d.targets, vchannel)
+		log.Info("dispatcher removed target", zap.String("vchannel", vchannel))
+	}
 }
 
 func (d *dispatcher) targetNum() int {
-	d.vchannelsMu.Lock()
-	defer d.vchannelsMu.Unlock()
-	return len(d.vchannels)
+	d.targetsMu.RLock()
+	defer d.targetsMu.RUnlock()
+	return len(d.targets)
+}
+
+func (d *dispatcher) closeTarget(vchannel string) {
+	d.targetsMu.Lock()
+	defer d.targetsMu.Unlock()
+	if ch, ok := d.targets[vchannel]; ok {
+		close(ch)
+		log.Info("close dispatcher target", zap.String("vchannel", vchannel))
+	}
 }

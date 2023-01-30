@@ -81,7 +81,7 @@ func newDmInputNode(ctx context.Context, seekPos *internalpb.MsgPosition, dmNode
 
 	input, err := dispatcherManager.Register(dmNodeConfig.vChannelName, seekPos, subPos)
 	if err != nil {
-		panic(err)
+		panic(err) // TODO: dyh
 	}
 
 	name := fmt.Sprintf("dmInputNode-data-%d-%s", dmNodeConfig.collectionID, dmNodeConfig.vChannelName)

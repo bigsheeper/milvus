@@ -29,8 +29,6 @@ import (
 	"time"
 )
 
-const targetChanSize = 1024
-
 type checker struct {
 	subPrefix string
 	pchannel  string
@@ -50,7 +48,7 @@ func newChecker(pchannel string, subPrefix string, factory msgstream.Factory) *c
 	return &checker{
 		subPrefix:       subPrefix,
 		pchannel:        pchannel,
-		lagChan:         make(chan *msgstream.MsgPosition), // use unbuffered channel to make sure checker would receive lag signal as soon as possible.
+		lagChan:         make(chan *msgstream.MsgPosition, 10),
 		soloDispatchers: make(map[string]*dispatcher),
 		factory:         factory,
 		closeChan:       make(chan struct{}),
@@ -58,6 +56,7 @@ func newChecker(pchannel string, subPrefix string, factory msgstream.Factory) *c
 }
 
 func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
+	const targetChanSize = 1024
 	target := make(chan *msgstream.MsgPack, targetChanSize)
 	d, err := newDispatcher(c.factory, c.pchannel, pos, fmt.Sprintf("%s-%s", c.subPrefix, vchannel), subPos, c.lagChan)
 	if err != nil {
@@ -81,23 +80,23 @@ func (c *checker) removeDispatcher(vchannel string) {
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
 	if c.mainDispatcher != nil {
-		c.mainDispatcher.removeTarget(vchannel)
 		c.mainDispatcher.closeTarget(vchannel)
+		c.mainDispatcher.removeTarget(vchannel)
 		log.Info("checker remove target from mainDispatcher done", zap.String("vchannel", vchannel))
 	}
 	if _, ok := c.soloDispatchers[vchannel]; ok {
 		c.soloDispatchers[vchannel].handle(terminate)
-		c.soloDispatchers[vchannel].removeTarget(vchannel)
 		c.soloDispatchers[vchannel].closeTarget(vchannel)
+		c.soloDispatchers[vchannel].removeTarget(vchannel)
 		delete(c.soloDispatchers, vchannel)
 		log.Info("checker remove soloDispatcher done", zap.String("vchannel", vchannel))
 	}
 }
 
 func (c *checker) isEmpty() bool {
-	c.dispatchersMu.RUnlock()
+	c.dispatchersMu.RLock()
 	defer c.dispatchersMu.RUnlock()
-	return c.mainDispatcher.targetNum() == 0 && len(c.soloDispatchers) == 0
+	return (c.mainDispatcher == nil || c.mainDispatcher.targetNum() == 0) && len(c.soloDispatchers) == 0
 }
 
 func (c *checker) close() {
@@ -112,8 +111,8 @@ func (c *checker) close() {
 	log.Info("checker closed", zap.String("pchannel", c.pchannel))
 }
 
-func (c *checker) check() {
-	log.Info("checker start", zap.String("pchannel", c.pchannel))
+func (c *checker) run() {
+	log.Info("checker is running...", zap.String("pchannel", c.pchannel))
 	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
@@ -122,7 +121,7 @@ func (c *checker) check() {
 			return
 		case <-ticker.C:
 			candidates := make(map[string]struct{})
-			c.dispatchersMu.RUnlock()
+			c.dispatchersMu.RLock()
 			mainPos := c.mainDispatcher.getCurPosition()
 			for vchannel, sd := range c.soloDispatchers {
 				if sd.getCurPosition().GetTimestamp() == mainPos.GetTimestamp() {
@@ -181,6 +180,11 @@ func (c *checker) split(vchannel string, pos *internalpb.MsgPosition) {
 
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
+	if _, ok := c.soloDispatchers[vchannel]; ok {
+		// remove stale soloDispatcher if it existed
+		c.soloDispatchers[vchannel].handle(terminate)
+		delete(c.soloDispatchers, vchannel)
+	}
 	c.soloDispatchers[vchannel] = newSolo
 	newSolo.handle(start)
 	log.Info("checker split soloDispatcher from mainDispatcher done", zap.String("vchannel", vchannel))

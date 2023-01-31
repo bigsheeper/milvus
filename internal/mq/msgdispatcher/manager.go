@@ -53,7 +53,7 @@ func (g *managerImpl) Register(vchannel string, pos *internalpb.MsgPosition, sub
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; !ok {
 		g.checkers[pchannel] = newChecker(g.subPrefix, pchannel, g.factory)
-		go g.checkers[pchannel].check()
+		go g.checkers[pchannel].run()
 	}
 	ch, err := g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)
 	if err != nil {

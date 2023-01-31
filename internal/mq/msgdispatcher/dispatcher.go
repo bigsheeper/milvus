@@ -54,11 +54,12 @@ func (s signal) string() string {
 const MaxTolerantLag = 3 * time.Second
 
 type dispatcher struct {
-	pchannel string
+	done chan struct{}
+	wg   sync.WaitGroup
+	once sync.Once
 
-	done    chan struct{}
-	wg      sync.WaitGroup
-	lagChan chan *msgstream.MsgPosition
+	pchannel string
+	lagChan  chan *msgstream.MsgPosition
 
 	targetsMu sync.RWMutex
 	targets   map[string]chan<- *msgstream.MsgPack
@@ -118,7 +119,9 @@ func (d *dispatcher) handle(signal signal) {
 	case terminate:
 		d.done <- struct{}{}
 		d.wg.Wait()
-		d.stream.Close()
+		d.once.Do(func() {
+			d.stream.Close()
+		})
 	default:
 		err := fmt.Errorf("invalid signal in dispatcher handler, pchannel = %s", d.pchannel)
 		log.Error(err.Error())
@@ -138,6 +141,10 @@ func (d *dispatcher) work() {
 			log.Info("dispatcher stopped working", zap.String("pchannel", d.pchannel))
 			return
 		case pack := <-d.stream.Chan():
+			if pack == nil || len(pack.EndPositions) != 1 {
+				log.Error("dispatcher consumed invalid msgPack", zap.String("pchannel", d.pchannel))
+				continue
+			}
 			d.setCurPosition(pack.EndPositions[0])
 
 			// init packs for all target vchannels, even though there's no msg in pack,

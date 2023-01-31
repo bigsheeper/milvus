@@ -50,7 +50,7 @@ func newChecker(pchannel string, subPrefix string, factory msgstream.Factory) *c
 	return &checker{
 		subPrefix:       subPrefix,
 		pchannel:        pchannel,
-		lagChan:         make(chan *msgstream.MsgPosition, 10),
+		lagChan:         make(chan *msgstream.MsgPosition), // use unbuffered channel to make sure checker would receive lag signal as soon as possible.
 		soloDispatchers: make(map[string]*dispatcher),
 		factory:         factory,
 		closeChan:       make(chan struct{}),
@@ -170,7 +170,8 @@ func (c *checker) split(vchannel string, pos *internalpb.MsgPosition) {
 	var newSolo *dispatcher
 	err := retry.Do(context.Background(), func() error {
 		var err error
-		newSolo, err = newDispatcher(c.factory, c.pchannel, pos, fmt.Sprintf("%s-%s", c.subPrefix, vchannel), mqwrapper.SubscriptionPositionUnknown, c.lagChan)
+		newSolo, err = newDispatcher(c.factory, c.pchannel, pos, fmt.Sprintf("%s-%s", c.subPrefix, vchannel),
+			mqwrapper.SubscriptionPositionUnknown, c.lagChan)
 		return err
 	}, retry.Attempts(10))
 	if err != nil {

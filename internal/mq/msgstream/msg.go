@@ -505,7 +505,6 @@ func (cc *CreateCollectionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	createCollectionMsg := &CreateCollectionMsg{CreateCollectionRequest: createCollectionRequest}
 	createCollectionMsg.BeginTimestamp = createCollectionMsg.Base.Timestamp
 	createCollectionMsg.EndTimestamp = createCollectionMsg.Base.Timestamp
-	createCollectionMsg.Vchannel = createCollectionMsg.CollectionName
 
 	return createCollectionMsg, nil
 }
@@ -561,7 +560,6 @@ func (dc *DropCollectionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	dropCollectionMsg := &DropCollectionMsg{DropCollectionRequest: dropCollectionRequest}
 	dropCollectionMsg.BeginTimestamp = dropCollectionMsg.Base.Timestamp
 	dropCollectionMsg.EndTimestamp = dropCollectionMsg.Base.Timestamp
-	dropCollectionMsg.Vchannel = dropCollectionMsg.BaseMsg.Vchannel
 
 	return dropCollectionMsg, nil
 }
@@ -617,7 +615,6 @@ func (cp *CreatePartitionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	createPartitionMsg := &CreatePartitionMsg{CreatePartitionRequest: createPartitionRequest}
 	createPartitionMsg.BeginTimestamp = createPartitionMsg.Base.Timestamp
 	createPartitionMsg.EndTimestamp = createPartitionMsg.Base.Timestamp
-	createPartitionMsg.Vchannel = createPartitionMsg.BaseMsg.Vchannel
 
 	return createPartitionMsg, nil
 }
@@ -673,7 +670,6 @@ func (dp *DropPartitionMsg) Unmarshal(input MarshalType) (TsMsg, error) {
 	dropPartitionMsg := &DropPartitionMsg{DropPartitionRequest: dropPartitionRequest}
 	dropPartitionMsg.BeginTimestamp = dropPartitionMsg.Base.Timestamp
 	dropPartitionMsg.EndTimestamp = dropPartitionMsg.Base.Timestamp
-	dropPartitionMsg.Vchannel = dropPartitionMsg.BaseMsg.Vchannel
 
 	return dropPartitionMsg, nil
 }

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
@@ -158,17 +157,13 @@ func (d *dispatcher) work() {
 
 			// group messages by vchannels
 			for _, msg := range pack.Msgs {
-				if msg.VChannel() == "" { // TODO: optimize it
-					switch msg.Type() {
-					case commonpb.MsgType_CreateCollection, commonpb.MsgType_DropCollection:
-						// dispatch to all
-						for k := range packs {
-							packs[k].Msgs = append(packs[k].Msgs, msg)
-						}
-						continue
-					default:
-						panic(fmt.Errorf("msg's vchannel should not be null, msgType:%s", msg.Type().String()))
+				if msg.VChannel() == "" {
+					// for non-dml msg, such as CreateCollection, DropCollection, ...
+					// we need to dispatch it to all the vchannels.
+					for k := range packs {
+						packs[k].Msgs = append(packs[k].Msgs, msg)
 					}
+					continue
 				}
 				if _, ok := packs[msg.VChannel()]; !ok {
 					continue

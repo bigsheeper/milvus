@@ -17,33 +17,39 @@
 package msgdispatcher
 
 import (
+	"fmt"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/stretchr/testify/assert"
+	"math/rand"
 	"testing"
+	"time"
 )
 
 func TestChecker(t *testing.T) {
-	t.Run("test new and run", func(t *testing.T) {
-		c := newChecker("mock_pchannel_0", "mock_sub_prefix_0", newMockFactory())
-		assert.NotNil(t, c)
-		assert.NotPanics(t, func() {
-			c.run()
-			c.close()
-		})
-	})
-
 	t.Run("test add and remove dispatcher", func(t *testing.T) {
 		c := newChecker("mock_pchannel_0", "mock_sub_prefix_0", newMockFactory())
 		assert.NotNil(t, c)
-		assert.True(t, c.isEmpty())
-		_, err := c.addDispatcher("mock_vchannel_0", nil, mqwrapper.SubscriptionPositionUnknown)
-		assert.NoError(t, err)
-		assert.False(t, c.isEmpty())
-		c.removeDispatcher("mock_vchannel_0")
-		assert.True(t, c.isEmpty())
+		assert.Equal(t, 0, c.dispatcherNum())
+
+		var offset int
+		for i := 0; i < 100; i++ {
+			r := rand.Intn(100) + 1
+			for j := 0; j < r; j++ {
+				offset++
+				_, err := c.addDispatcher(fmt.Sprintf("mock_vchannel_%d", offset), nil, mqwrapper.SubscriptionPositionUnknown)
+				assert.NoError(t, err)
+				assert.Equal(t, offset, c.dispatcherNum())
+			}
+			for j := 0; j < rand.Intn(r); j++ {
+				c.removeDispatcher(fmt.Sprintf("mock_vchannel_%d", offset))
+				offset--
+				assert.Equal(t, offset, c.dispatcherNum())
+			}
+		}
 	})
 
-	t.Run("test merge", func(t *testing.T) {
+	t.Run("test merge and split", func(t *testing.T) {
 		c := newChecker("mock_pchannel_0", "mock_sub_prefix_0", newMockFactory())
 		assert.NotNil(t, c)
 		_, err := c.addDispatcher("mock_vchannel_0", nil, mqwrapper.SubscriptionPositionUnknown)
@@ -52,10 +58,40 @@ func TestChecker(t *testing.T) {
 		assert.NoError(t, err)
 		_, err = c.addDispatcher("mock_vchannel_2", nil, mqwrapper.SubscriptionPositionUnknown)
 		assert.NoError(t, err)
+		assert.Equal(t, 3, c.dispatcherNum())
 
 		c.merge(map[string]struct{}{
 			"mock_vchannel_1": {},
 			"mock_vchannel_2": {},
+		})
+		assert.Equal(t, 1, c.dispatcherNum())
+
+		c.split("mock_vchannel_2", nil)
+		assert.Equal(t, 2, c.dispatcherNum())
+	})
+
+	t.Run("test run and close", func(t *testing.T) {
+		c := newChecker("mock_pchannel_0", "mock_sub_prefix_0", newMockFactory())
+		assert.NotNil(t, c)
+		_, err := c.addDispatcher("mock_vchannel_0", nil, mqwrapper.SubscriptionPositionUnknown)
+		assert.NoError(t, err)
+		_, err = c.addDispatcher("mock_vchannel_1", nil, mqwrapper.SubscriptionPositionUnknown)
+		assert.NoError(t, err)
+		_, err = c.addDispatcher("mock_vchannel_2", nil, mqwrapper.SubscriptionPositionUnknown)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, c.dispatcherNum())
+
+		c.checkPeriod = 10 * time.Millisecond
+		go c.run()
+		time.Sleep(15 * time.Millisecond)
+		assert.Equal(t, 1, c.dispatcherNum()) // expected merged
+
+		c.lagChan <- &msgstream.MsgPosition{ChannelName: "mock_vchannel_2"}
+		time.Sleep(1 * time.Millisecond)
+		assert.Equal(t, 2, c.dispatcherNum()) // expected split
+
+		assert.NotPanics(t, func() {
+			c.close()
 		})
 	})
 }

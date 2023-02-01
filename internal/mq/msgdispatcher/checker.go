@@ -30,9 +30,10 @@ import (
 )
 
 type checker struct {
-	subPrefix string
-	pchannel  string
-	lagChan   chan *msgstream.MsgPosition
+	subPrefix   string
+	pchannel    string
+	lagChan     chan *msgstream.MsgPosition
+	checkPeriod time.Duration
 
 	dispatchersMu   sync.RWMutex
 	mainDispatcher  *dispatcher
@@ -49,6 +50,7 @@ func newChecker(pchannel string, subPrefix string, factory msgstream.Factory) *c
 		subPrefix:       subPrefix,
 		pchannel:        pchannel,
 		lagChan:         make(chan *msgstream.MsgPosition, 10),
+		checkPeriod:     1 * time.Second,
 		soloDispatchers: make(map[string]*dispatcher),
 		factory:         factory,
 		closeChan:       make(chan struct{}),
@@ -83,37 +85,41 @@ func (c *checker) removeDispatcher(vchannel string) {
 		c.mainDispatcher.closeTarget(vchannel)
 		c.mainDispatcher.removeTarget(vchannel)
 		log.Info("checker remove target from mainDispatcher done", zap.String("vchannel", vchannel))
+		if c.mainDispatcher.targetNum() == 0 {
+			c.mainDispatcher.handle(terminate)
+			c.mainDispatcher = nil
+			log.Info("checker terminate mainDispatcher done", zap.String("pchannel", c.pchannel))
+		}
 	}
 	if _, ok := c.soloDispatchers[vchannel]; ok {
-		c.soloDispatchers[vchannel].handle(terminate)
 		c.soloDispatchers[vchannel].closeTarget(vchannel)
 		c.soloDispatchers[vchannel].removeTarget(vchannel)
+		c.soloDispatchers[vchannel].handle(terminate)
 		delete(c.soloDispatchers, vchannel)
 		log.Info("checker remove soloDispatcher done", zap.String("vchannel", vchannel))
 	}
 }
 
-func (c *checker) isEmpty() bool {
+func (c *checker) dispatcherNum() int {
 	c.dispatchersMu.RLock()
 	defer c.dispatchersMu.RUnlock()
-	return (c.mainDispatcher == nil || c.mainDispatcher.targetNum() == 0) && len(c.soloDispatchers) == 0
+	var res int
+	if c.mainDispatcher != nil {
+		res++
+	}
+	return res + len(c.soloDispatchers)
 }
 
 func (c *checker) close() {
 	c.closeOnce.Do(func() {
 		c.closeChan <- struct{}{}
 	})
-	c.dispatchersMu.RLock()
-	defer c.dispatchersMu.RUnlock()
-	if c.mainDispatcher != nil {
-		c.mainDispatcher.handle(terminate)
-	}
 	log.Info("checker closed", zap.String("pchannel", c.pchannel))
 }
 
 func (c *checker) run() {
 	log.Info("checker is running...", zap.String("pchannel", c.pchannel))
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(c.checkPeriod)
 	for {
 		select {
 		case <-c.closeChan:
@@ -129,7 +135,9 @@ func (c *checker) run() {
 				}
 			}
 			c.dispatchersMu.RUnlock()
-			c.merge(candidates)
+			if len(candidates) > 0 {
+				c.merge(candidates)
+			}
 		case pos := <-c.lagChan:
 			c.split(pos.ChannelName, pos)
 		}

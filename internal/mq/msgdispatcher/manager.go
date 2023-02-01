@@ -70,7 +70,7 @@ func (g *managerImpl) Deregister(vchannel string) {
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; ok {
 		g.checkers[pchannel].removeDispatcher(vchannel)
-		if g.checkers[pchannel].isEmpty() {
+		if g.checkers[pchannel].dispatcherNum() == 0 {
 			g.checkers[pchannel].close()
 			delete(g.checkers, pchannel)
 		}

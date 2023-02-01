@@ -75,7 +75,7 @@ func newDispatcher(factory msgstream.Factory, pchannel string, position *interna
 	if err != nil {
 		return nil, err
 	}
-	if position != nil {
+	if position != nil && len(position.MsgID) != 0 {
 		position.ChannelName = funcutil.ToPhysicalChannel(position.ChannelName)
 		stream.AsConsumer([]string{pchannel}, subName, mqwrapper.SubscriptionPositionUnknown)
 		err = stream.Seek([]*internalpb.MsgPosition{position})

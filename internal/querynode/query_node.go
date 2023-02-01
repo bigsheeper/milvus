@@ -30,6 +30,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"os"
 	"path"
 	"runtime"
@@ -70,6 +71,8 @@ var Params *paramtable.ComponentParam = paramtable.Get()
 
 // rateCol is global rateCollector in QueryNode.
 var rateCol *rateCollector
+
+var dispatcherManager msgdispatcher.Manager
 
 // QueryNode communicates with outside services and union all
 // services in querynode package.
@@ -255,6 +258,9 @@ func (node *QueryNode) Init() error {
 			return
 		}
 		log.Info("QueryNode init rateCollector done", zap.Int64("nodeID", paramtable.GetNodeID()))
+
+		dispatcherManager = msgdispatcher.NewManager(node.factory, fmt.Sprintf("%s-%d", Params.CommonCfg.QueryNodeSubName.GetValue(), paramtable.GetNodeID()))
+		log.Info("QueryNode init dispatcherManager done", zap.Int64("nodeID", paramtable.GetNodeID()))
 
 		node.vectorStorage, err = node.factory.NewPersistentStorageChunkManager(node.queryNodeLoopCtx)
 		if err != nil {

@@ -17,9 +17,11 @@
 package msgdispatcher
 
 import (
-	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 )
 
 func TestManager(t *testing.T) {

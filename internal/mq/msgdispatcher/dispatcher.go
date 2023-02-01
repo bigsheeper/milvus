@@ -19,6 +19,11 @@ package msgdispatcher
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
@@ -26,9 +31,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
-	"go.uber.org/zap"
-	"sync"
-	"time"
 )
 
 type signal int32
@@ -221,9 +223,8 @@ func (d *dispatcher) getTarget(vchannel string) (chan<- *msgstream.MsgPack, erro
 	defer d.targetsMu.RUnlock()
 	if ch, ok := d.targets[vchannel]; ok {
 		return ch, nil
-	} else {
-		return nil, fmt.Errorf("cannot find target in dispatcher, vchannel = %s", vchannel)
 	}
+	return nil, fmt.Errorf("cannot find target in dispatcher, vchannel = %s", vchannel)
 }
 
 func (d *dispatcher) addTarget(vchannel string, output chan<- *msgstream.MsgPack) {

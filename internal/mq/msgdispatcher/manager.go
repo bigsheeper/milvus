@@ -17,13 +17,15 @@
 package msgdispatcher
 
 import (
+	"sync"
+
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
-	"go.uber.org/zap"
-	"sync"
 )
 
 type Manager interface {

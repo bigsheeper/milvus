@@ -51,7 +51,7 @@ func (dsService *dataSyncService) getFlowGraphNum() int {
 }
 
 // addFlowGraphsForDMLChannels add flowGraphs to dmlChannel2FlowGraph
-func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID UniqueID, dmlChannels []string) (map[string]*queryNodeFlowGraph, error) {
+func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID UniqueID, dmlChannels map[string]*msgstream.MsgPosition) (map[string]*queryNodeFlowGraph, error) {
 	dsService.mu.Lock()
 	defer dsService.mu.Unlock()
 
@@ -61,7 +61,7 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 	}
 
 	results := make(map[string]*queryNodeFlowGraph)
-	for _, channel := range dmlChannels {
+	for channel, position := range dmlChannels {
 		if _, ok := dsService.dmlChannel2FlowGraph[channel]; ok {
 			log.Warn("dml flow graph has been existed",
 				zap.Any("collectionID", collectionID),
@@ -74,7 +74,7 @@ func (dsService *dataSyncService) addFlowGraphsForDMLChannels(collectionID Uniqu
 			dsService.metaReplica,
 			dsService.tSafeReplica,
 			channel,
-			dsService.msFactory)
+			position)
 		if err != nil {
 			for _, fg := range results {
 				fg.flowGraph.Close()
@@ -127,8 +127,7 @@ func (dsService *dataSyncService) addFlowGraphsForDeltaChannels(collectionID Uni
 			collectionID,
 			dsService.metaReplica,
 			dsService.tSafeReplica,
-			channel,
-			dsService.msFactory)
+			channel)
 		if err != nil {
 			for channel, fg := range results {
 				fg.flowGraph.Close()
@@ -308,6 +307,7 @@ func (dsService *dataSyncService) close() {
 	// close DML flow graphs
 	for channel, nodeFG := range dsService.dmlChannel2FlowGraph {
 		if nodeFG != nil {
+			dispatcherManager.Deregister(channel)
 			nodeFG.flowGraph.Close()
 		}
 		delete(dsService.dmlChannel2FlowGraph, channel)
@@ -315,6 +315,7 @@ func (dsService *dataSyncService) close() {
 	// close delta flow graphs
 	for channel, nodeFG := range dsService.deltaChannel2FlowGraph {
 		if nodeFG != nil {
+			dispatcherManager.Deregister(channel)
 			nodeFG.flowGraph.Close()
 		}
 		delete(dsService.deltaChannel2FlowGraph, channel)

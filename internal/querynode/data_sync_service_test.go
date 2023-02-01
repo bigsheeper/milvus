@@ -21,14 +21,21 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/milvus-io/milvus/internal/util/dependency"
-	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
+	"github.com/milvus-io/milvus/internal/mq/msgstream"
+	"github.com/milvus-io/milvus/internal/util/dependency"
+	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 func init() {
 	rateCol, _ = newRateCollector()
+	Params.Init()
+	dispatcherManager = msgdispatcher.NewManager(genFactory(), typeutil.QueryNodeRole, paramtable.GetNodeID())
 }
 
 func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
@@ -46,11 +53,11 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	assert.NotNil(t, dataSyncService)
 
 	t.Run("test DMLFlowGraphs", func(t *testing.T) {
-		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
+		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, map[Channel]*msgstream.MsgPosition{defaultDMLChannel: nil})
 		assert.NoError(t, err)
 		assert.Len(t, dataSyncService.dmlChannel2FlowGraph, 1)
 
-		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
+		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, map[Channel]*msgstream.MsgPosition{defaultDMLChannel: nil})
 		assert.NoError(t, err)
 		assert.Len(t, dataSyncService.dmlChannel2FlowGraph, 1)
 
@@ -68,7 +75,7 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 		assert.Nil(t, fg)
 		assert.Error(t, err)
 
-		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
+		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, map[Channel]*msgstream.MsgPosition{defaultDMLChannel: nil})
 		assert.NoError(t, err)
 		assert.Len(t, dataSyncService.dmlChannel2FlowGraph, 1)
 
@@ -88,7 +95,7 @@ func TestDataSyncService_DMLFlowGraphs(t *testing.T) {
 	t.Run("test addFlowGraphsForDMLChannels checkReplica Failed", func(t *testing.T) {
 		err = dataSyncService.metaReplica.removeCollection(defaultCollectionID)
 		assert.NoError(t, err)
-		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, []Channel{defaultDMLChannel})
+		_, err = dataSyncService.addFlowGraphsForDMLChannels(defaultCollectionID, map[Channel]*msgstream.MsgPosition{defaultDMLChannel: nil})
 		assert.Error(t, err)
 		dataSyncService.metaReplica.addCollection(defaultCollectionID, genTestCollectionSchema())
 	})

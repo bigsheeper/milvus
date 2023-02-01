@@ -94,6 +94,9 @@ func (mtm *mockTtMsgStream) GetLatestMsgID(channel string) (msgstream.MessageID,
 
 func TestNewDmInputNode(t *testing.T) {
 	ctx := context.Background()
-	_, err := newDmInputNode(ctx, new(internalpb.MsgPosition), &nodeConfig{msFactory: &mockMsgStreamFactory{}})
+	_, err := newDmInputNode(ctx, new(internalpb.MsgPosition), &nodeConfig{
+		msFactory:    &mockMsgStreamFactory{},
+		vChannelName: "mock_vchannel_0",
+	})
 	assert.Nil(t, err)
 }

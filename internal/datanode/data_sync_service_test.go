@@ -32,6 +32,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -39,9 +40,16 @@ import (
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 var dataSyncServiceTestDir = "/tmp/milvus_test/data_sync_service"
+
+func init() {
+	Params.Init()
+	dispatcherManager = msgdispatcher.NewManager(dependency.NewDefaultFactory(true),
+		typeutil.DataNodeRole, paramtable.GetNodeID())
+}
 
 func getVchanInfo(info *testInfo) *datapb.VchannelInfo {
 	var ufs []*datapb.SegmentInfo

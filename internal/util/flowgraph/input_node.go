@@ -64,7 +64,7 @@ func (inNode *InputNode) Name() string {
 func (inNode *InputNode) Operate(in []Msg) []Msg {
 	msgPack, ok := <-inNode.input
 	if !ok {
-		log.Warn("MsgStream closed", zap.Any("input node", inNode.Name()))
+		log.Warn("input closed", zap.Any("input node", inNode.Name()))
 		if inNode.lastMsg != nil {
 			log.Info("trigger force sync", zap.Int64("collection", inNode.collectionID), zap.Any("position", inNode.lastMsg))
 			return []Msg{&MsgStreamMsg{

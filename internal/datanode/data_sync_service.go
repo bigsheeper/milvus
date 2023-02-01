@@ -156,6 +156,7 @@ func (dsService *dataSyncService) close() {
 		if dsService.fg != nil {
 			log.Info("dataSyncService closing flowgraph", zap.Int64("collectionID", dsService.collectionID),
 				zap.String("vChanName", dsService.vchannelName))
+			dispatcherManager.Deregister(dsService.vchannelName)
 			dsService.fg.Close()
 			metrics.DataNodeNumConsumers.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 			metrics.DataNodeNumProducers.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Sub(2) // timeTickChannel + deltaChannel

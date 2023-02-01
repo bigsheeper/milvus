@@ -307,6 +307,7 @@ func (dsService *dataSyncService) close() {
 	// close DML flow graphs
 	for channel, nodeFG := range dsService.dmlChannel2FlowGraph {
 		if nodeFG != nil {
+			dispatcherManager.Deregister(channel)
 			nodeFG.flowGraph.Close()
 		}
 		delete(dsService.dmlChannel2FlowGraph, channel)
@@ -314,6 +315,7 @@ func (dsService *dataSyncService) close() {
 	// close delta flow graphs
 	for channel, nodeFG := range dsService.deltaChannel2FlowGraph {
 		if nodeFG != nil {
+			dispatcherManager.Deregister(channel)
 			nodeFG.flowGraph.Close()
 		}
 		delete(dsService.deltaChannel2FlowGraph, channel)

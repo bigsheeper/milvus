@@ -54,7 +54,7 @@ func (g *managerImpl) Register(vchannel string, pos *internalpb.MsgPosition, sub
 	g.checkersMu.Lock()
 	defer g.checkersMu.Unlock()
 	if _, ok := g.checkers[pchannel]; !ok {
-		g.checkers[pchannel] = newChecker(g.subPrefix, pchannel, g.factory)
+		g.checkers[pchannel] = newChecker(pchannel, g.subPrefix, g.factory)
 		go g.checkers[pchannel].run()
 	}
 	ch, err := g.checkers[pchannel].addDispatcher(vchannel, pos, subPos)

@@ -128,8 +128,12 @@ func (c *checker) run() {
 			log.Info("checker exited", zap.String("pchannel", c.pchannel))
 			return
 		case <-ticker.C:
-			candidates := make(map[string]struct{})
 			c.dispatchersMu.RLock()
+			if c.mainDispatcher == nil {
+				c.dispatchersMu.RUnlock()
+				continue
+			}
+			candidates := make(map[string]struct{})
 			mainPos := c.mainDispatcher.getCurPosition()
 			for vchannel, sd := range c.soloDispatchers {
 				if sd.getCurPosition().GetTimestamp() == mainPos.GetTimestamp() {

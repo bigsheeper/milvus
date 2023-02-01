@@ -24,13 +24,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/milvus-io/milvus/internal/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 )
 
 func init() {
 	rateCol, _ = newRateCollector()
+	Params.Init()
+	dispatcherManager = msgdispatcher.NewManager(genFactory(), fmt.Sprintf("%s-%d", Params.CommonCfg.QueryNodeSubName.GetValue(), paramtable.GetNodeID()))
 }
 
 func TestDataSyncService_DMLFlowGraphs(t *testing.T) {

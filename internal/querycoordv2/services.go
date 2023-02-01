@@ -92,6 +92,11 @@ func (s *Server) ShowCollections(ctx context.Context, req *querypb.ShowCollectio
 		log := log.With(zap.Int64("collectionID", collectionID))
 
 		percentage := s.meta.CollectionManager.GetLoadPercentage(collectionID)
+		log.Info("dyh debug ShowCollections 1",
+			zap.Any("percentage", percentage),
+			zap.Any("isGetAll", isGetAll),
+			zap.String("status", meta.GlobalFailedLoadCache.Get(collectionID).GetErrorCode().String()),
+		)
 		if percentage < 0 {
 			if isGetAll {
 				// The collection is released during this,

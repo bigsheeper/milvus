@@ -96,8 +96,15 @@ func (ob *CollectionObserver) Observe() {
 }
 
 func (ob *CollectionObserver) observeTimeout() {
+	log.Info("dyh debug observeTimeout 1",
+		zap.Duration("timeout", Params.QueryCoordCfg.LoadTimeoutSeconds.GetAsDuration(time.Second)))
 	collections := ob.meta.CollectionManager.GetAllCollections()
 	for _, collection := range collections {
+		log.Info("dyh debug observeTimeout 2",
+			zap.Duration("timeout", Params.QueryCoordCfg.LoadTimeoutSeconds.GetAsDuration(time.Second)),
+			zap.Time("collectionUpdateTime", collection.UpdatedAt),
+			zap.String("collectionStatus", collection.GetStatus().String()),
+		)
 		if collection.GetStatus() != querypb.LoadStatus_Loading ||
 			time.Now().Before(collection.UpdatedAt.Add(Params.QueryCoordCfg.LoadTimeoutSeconds.GetAsDuration(time.Second))) {
 			continue

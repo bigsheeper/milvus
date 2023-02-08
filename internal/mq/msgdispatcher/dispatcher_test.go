@@ -29,7 +29,7 @@ import (
 
 func TestDispatcher(t *testing.T) {
 	t.Run("test new and handle", func(t *testing.T) {
-		d, err := newDispatcher(newMockFactory(), "mock_pchannel_0", nil,
+		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
 			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
 		assert.NoError(t, err)
 		assert.NotPanics(t, func() {
@@ -40,8 +40,8 @@ func TestDispatcher(t *testing.T) {
 		})
 	})
 
-	t.Run("test set-get position", func(t *testing.T) {
-		d, err := newDispatcher(newMockFactory(), "mock_pchannel_0", nil,
+	t.Run("test set-get curTs", func(t *testing.T) {
+		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
 			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
 		assert.NoError(t, err)
 		pos := &msgstream.MsgPosition{
@@ -49,15 +49,13 @@ func TestDispatcher(t *testing.T) {
 			MsgGroup:    "mock_msg_group",
 			Timestamp:   100,
 		}
-		d.setCurPosition(pos)
-		curPos := d.getCurPosition()
-		assert.Equal(t, pos.ChannelName, curPos.ChannelName)
-		assert.Equal(t, pos.MsgGroup, curPos.MsgGroup)
-		assert.Equal(t, pos.Timestamp, curPos.Timestamp)
+		d.curTs.Store(pos.GetTimestamp())
+		curTs := d.getCurTs()
+		assert.Equal(t, pos.Timestamp, curTs)
 	})
 
 	t.Run("test target", func(t *testing.T) {
-		d, err := newDispatcher(newMockFactory(), "mock_pchannel_0", nil,
+		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
 			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
 		assert.NoError(t, err)
 		output := make(chan *msgstream.MsgPack, 1024)
@@ -84,14 +82,13 @@ func TestDispatcher(t *testing.T) {
 		d.closeTarget("mock_vchannel_0")
 		wg.Wait()
 
-		d.removeTarget("mock_vchannel_0")
 		num = d.targetNum()
 		assert.Equal(t, 1, num)
 	})
 }
 
 func BenchmarkDispatcher_handle(b *testing.B) {
-	d, err := newDispatcher(newMockFactory(), "mock_pchannel_0", nil,
+	d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
 		"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
 	assert.NoError(b, err)
 

@@ -74,7 +74,12 @@ func TestChecker(t *testing.T) {
 		})
 		assert.Equal(t, 1, c.dispatcherNum())
 
-		c.split("mock_vchannel_2", nil)
+		info := &lagInfo{
+			vchannel: "mock_vchannel_2",
+			pos:      nil,
+			target:   nil,
+		}
+		c.split(info)
 		assert.Equal(t, 2, c.dispatcherNum())
 	})
 

@@ -87,10 +87,10 @@ func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, su
 	d.addTarget(vchannel, target)
 	if isMain {
 		c.mainDispatcher = d
-		log.Info("checker addDispatcher as mainDispatcher")
+		log.Info("addDispatcher as mainDispatcher")
 	} else {
 		c.soloDispatchers[vchannel] = d
-		log.Info("checker addDispatcher as a new soloDispatcher")
+		log.Info("addDispatcher as a new soloDispatcher")
 	}
 	d.handle(start)
 	return target, nil
@@ -102,18 +102,18 @@ func (c *checker) removeDispatcher(vchannel string) {
 	defer c.dispatchersMu.Unlock()
 	if c.mainDispatcher != nil {
 		c.mainDispatcher.closeTarget(vchannel)
-		log.Info("checker remove target from mainDispatcher done")
+		log.Info("close target from mainDispatcher done")
 		if c.mainDispatcher.targetNum() == 0 {
 			c.mainDispatcher.handle(terminate)
 			c.mainDispatcher = nil
-			log.Info("checker terminate mainDispatcher done")
+			log.Info("remove mainDispatcher done")
 		}
 	}
 	if _, ok := c.soloDispatchers[vchannel]; ok {
 		c.soloDispatchers[vchannel].closeTarget(vchannel)
 		c.soloDispatchers[vchannel].handle(terminate)
 		delete(c.soloDispatchers, vchannel)
-		log.Info("checker remove soloDispatcher done")
+		log.Info("remove soloDispatcher done")
 	}
 }
 
@@ -170,7 +170,7 @@ func (c *checker) run() {
 
 func (c *checker) merge(vchannels map[string]struct{}) {
 	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID))
-	log.Info("checker is merging soloDispatchers to mainDispatcher...", zap.Any("vchannel", vchannels))
+	log.Info("merging soloDispatchers to mainDispatcher...", zap.Any("vchannel", vchannels))
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
 	c.mainDispatcher.handle(pause)
@@ -185,7 +185,7 @@ func (c *checker) merge(vchannels map[string]struct{}) {
 	for vchannel := range vchannels {
 		ch, err := c.soloDispatchers[vchannel].getTarget(vchannel)
 		if err != nil {
-			log.Warn("get invalid target from soloDispatcher, ignore it because it has been removed", zap.Error(err))
+			log.Warn("get invalid target, ignore it because it has been removed", zap.Error(err))
 		} else {
 			c.mainDispatcher.addTarget(vchannel, ch)
 		}
@@ -193,13 +193,21 @@ func (c *checker) merge(vchannels map[string]struct{}) {
 		delete(c.soloDispatchers, vchannel)
 	}
 	c.mainDispatcher.handle(resume)
-	log.Info("checker merges soloDispatchers to mainDispatcher done",
+	log.Info("merge soloDispatchers to mainDispatcher done",
 		zap.Int("vchannelNum", len(vchannels)), zap.Any("vchannel", vchannels))
 }
 
 func (c *checker) split(info *lagInfo) {
 	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID), zap.String("vchannel", info.vchannel))
-	log.Info("checker is splitting soloDispatcher from mainDispatcher")
+	log.Info("splitting soloDispatcher from mainDispatcher...")
+
+	c.dispatchersMu.Lock()
+	if _, ok := c.soloDispatchers[info.vchannel]; ok {
+		// remove stale soloDispatcher if it existed
+		c.soloDispatchers[info.vchannel].handle(terminate)
+		delete(c.soloDispatchers, info.vchannel)
+	}
+	c.dispatchersMu.Unlock()
 
 	var newSolo *dispatcher
 	err := retry.Do(context.Background(), func() error {
@@ -209,19 +217,14 @@ func (c *checker) split(info *lagInfo) {
 		return err
 	}, retry.Attempts(10))
 	if err != nil {
-		log.Error("checker split soloDispatcher from mainDispatcher failed", zap.Error(err))
+		log.Error("split soloDispatcher from mainDispatcher failed", zap.Error(err))
 		panic(err)
 	}
 	newSolo.addTarget(info.vchannel, info.target)
 
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
-	if _, ok := c.soloDispatchers[info.vchannel]; ok {
-		// remove stale soloDispatcher if it existed
-		c.soloDispatchers[info.vchannel].handle(terminate)
-		delete(c.soloDispatchers, info.vchannel)
-	}
 	c.soloDispatchers[info.vchannel] = newSolo
 	newSolo.handle(start)
-	log.Info("checker split soloDispatcher from mainDispatcher done")
+	log.Info("split soloDispatcher from mainDispatcher done")
 }

@@ -73,7 +73,7 @@ type dispatcher struct {
 }
 
 func newDispatcher(factory msgstream.Factory, isMain bool, pchannel string, position *internalpb.MsgPosition, subName string, subPos mqwrapper.SubscriptionInitialPosition, lagChan chan *lagInfo) (*dispatcher, error) {
-	log.With(zap.String("pchannel", pchannel),
+	log := log.With(zap.String("pchannel", pchannel),
 		zap.String("subName", subName),
 		zap.Bool("isMainDispatcher", isMain))
 	stream, err := factory.NewTtMsgStream(context.Background())
@@ -107,7 +107,7 @@ func newDispatcher(factory msgstream.Factory, isMain bool, pchannel string, posi
 }
 
 func (d *dispatcher) handle(signal signal) {
-	log.With(zap.String("pchannel", d.pchannel),
+	log := log.With(zap.String("pchannel", d.pchannel),
 		zap.String("signal", signal.String()), zap.Bool("isMainDispatcher", d.isMain))
 	log.Info("dispatcher get signal")
 	switch signal {
@@ -135,7 +135,7 @@ func (d *dispatcher) handle(signal signal) {
 }
 
 func (d *dispatcher) work() {
-	log.With(zap.String("pchannel", d.pchannel), zap.Bool("isMainDispatcher", d.isMain))
+	log := log.With(zap.String("pchannel", d.pchannel), zap.Bool("isMainDispatcher", d.isMain))
 	log.Info("dispatcher begin to work")
 	defer d.wg.Done()
 	for {
@@ -181,9 +181,13 @@ func (d *dispatcher) work() {
 				packs[msg.VChannel()].Msgs = append(packs[msg.VChannel()].Msgs, msg)
 			}
 
-			// splits lag channels
-			d.targetsMu.RLock()
+			// dispatch messages, split target if block
 			for vchannel, p := range packs {
+				target, err := d.getTarget(vchannel)
+				if err != nil {
+					log.Warn("cannot find target, ignore it because it has been removed", zap.Error(err))
+					continue
+				}
 				select {
 				case <-time.After(MaxTolerantLag):
 					d.lagChan <- &lagInfo{
@@ -194,10 +198,9 @@ func (d *dispatcher) work() {
 					d.removeTarget(vchannel)
 					log.Warn("time lag is too long for vchannel, sent lagInfo",
 						zap.String("vchannel", vchannel), zap.Duration("lag", MaxTolerantLag))
-				case d.targets[vchannel] <- p:
+				case target <- p:
 				}
 			}
-			d.targetsMu.RUnlock()
 		}
 	}
 }
@@ -229,7 +232,7 @@ func (d *dispatcher) targetNum() int {
 }
 
 func (d *dispatcher) removeTarget(vchannel string) {
-	log.With(zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
+	log := log.With(zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
 	d.targetsMu.Lock()
 	defer d.targetsMu.Unlock()
 	if _, ok := d.targets[vchannel]; ok {
@@ -241,7 +244,7 @@ func (d *dispatcher) removeTarget(vchannel string) {
 }
 
 func (d *dispatcher) closeTarget(vchannel string) {
-	log.With(zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
+	log := log.With(zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
 	d.targetsMu.Lock()
 	defer d.targetsMu.Unlock()
 	if ch, ok := d.targets[vchannel]; ok {

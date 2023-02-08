@@ -145,7 +145,6 @@ func (suite *SimulationSuite) SetupTest() {
 	suite.checker = newChecker(suite.pchannel, typeutil.DataNodeRole, 0, suite.factory)
 	suite.checker.checkPeriod = 10 * time.Millisecond
 	go suite.checker.run()
-
 }
 
 func (suite *SimulationSuite) produceMsg(wg *sync.WaitGroup) {
@@ -202,11 +201,13 @@ func (suite *SimulationSuite) produceMsg(wg *sync.WaitGroup) {
 	suite.T().Logf("[%s] produce %d msgPack for %s done", time.Now(), timeTickCount, suite.pchannel)
 }
 
-func (suite *SimulationSuite) consumeMsg(wg *sync.WaitGroup, vchannel string) {
+func (suite *SimulationSuite) consumeMsg(ctx context.Context, wg *sync.WaitGroup, vchannel string) {
 	defer wg.Done()
 	var lastTs typeutil.Timestamp
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-time.After(1000 * time.Millisecond): // no message to consume
 			return
 		case pack := <-suite.vchannels[vchannel].output:
@@ -261,7 +262,7 @@ func (suite *SimulationSuite) TestDispatchToVchannels() {
 	go suite.produceMsg(wg)
 	for vchannel := range suite.vchannels {
 		wg.Add(1)
-		go suite.consumeMsg(wg, vchannel)
+		go suite.consumeMsg(context.Background(), wg, vchannel)
 	}
 	wg.Wait()
 	for _, helper := range suite.vchannels {
@@ -274,7 +275,6 @@ func (suite *SimulationSuite) TestDispatchToVchannels() {
 
 func (suite *SimulationSuite) TestMerge() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go suite.produceTimeTickOnly(ctx)
 
 	const vchannelNum = 100
@@ -292,18 +292,20 @@ func (suite *SimulationSuite) TestMerge() {
 	wg := &sync.WaitGroup{}
 	for vchannel := range suite.vchannels {
 		wg.Add(1)
-		go suite.consumeMsg(wg, vchannel)
+		go suite.consumeMsg(ctx, wg, vchannel)
 	}
 
 	suite.Eventually(func() bool {
 		suite.T().Logf("checker.dispatcherNum = %d", suite.checker.dispatcherNum())
 		return suite.checker.dispatcherNum() == 1 // expected all merged, only mainDispatcher existed
 	}, 3*time.Second, 1000*time.Millisecond)
+
+	cancel()
+	wg.Wait()
 }
 
 func (suite *SimulationSuite) TestSplit() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go suite.produceTimeTickOnly(ctx)
 
 	const vchannelNum = 100
@@ -326,7 +328,7 @@ func (suite *SimulationSuite) TestSplit() {
 	counter := 0
 	for vchannel := range suite.vchannels {
 		wg.Add(1)
-		go suite.consumeMsg(wg, vchannel)
+		go suite.consumeMsg(ctx, wg, vchannel)
 		counter++
 		if counter >= len(suite.vchannels)-splitNum {
 			break
@@ -336,10 +338,16 @@ func (suite *SimulationSuite) TestSplit() {
 	suite.Eventually(func() bool {
 		suite.T().Logf("checker.dispatcherNum = %d, splitNum+1 = %d", suite.checker.dispatcherNum(), splitNum+1)
 		return suite.checker.dispatcherNum() == splitNum+1 // expected 1 mainDispatcher and `splitNum` soloDispatchers
-	}, 12*time.Second, 1000*time.Millisecond)
+	}, 10*time.Second, 200*time.Millisecond)
+
+	cancel()
+	wg.Wait()
 }
 
 func (suite *SimulationSuite) TearDownTest() {
+	for vchannel := range suite.vchannels {
+		suite.checker.removeDispatcher(vchannel)
+	}
 	suite.checker.close()
 }
 

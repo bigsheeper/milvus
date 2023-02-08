@@ -54,8 +54,6 @@ func (s signal) String() string {
 	return signalString[int32(s)]
 }
 
-const MaxTolerantLag = 3 * time.Second // TODO: move to config
-
 type dispatcher struct {
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -63,16 +61,20 @@ type dispatcher struct {
 
 	isMain   bool // indicates if it's a main dispatcher
 	pchannel string
-	lagChan  chan *lagInfo
 	curTs    atomic.Uint64
 
+	lagNotifyChan chan struct{}
+	lagTargets    *typeutil.ConcurrentSet[*target]
+
 	targetsMu sync.RWMutex
-	targets   map[string]chan<- *msgstream.MsgPack
+	targets   map[string]*target
 
 	stream msgstream.MsgStream
 }
 
-func newDispatcher(factory msgstream.Factory, isMain bool, pchannel string, position *internalpb.MsgPosition, subName string, subPos mqwrapper.SubscriptionInitialPosition, lagChan chan *lagInfo) (*dispatcher, error) {
+func newDispatcher(factory msgstream.Factory, isMain bool, pchannel string, position *internalpb.MsgPosition,
+	subName string, subPos mqwrapper.SubscriptionInitialPosition,
+	lagNotifyChan chan struct{}, lagTargets *typeutil.ConcurrentSet[*target]) (*dispatcher, error) {
 	log := log.With(zap.String("pchannel", pchannel),
 		zap.String("subName", subName),
 		zap.Bool("isMainDispatcher", isMain))
@@ -96,12 +98,13 @@ func newDispatcher(factory msgstream.Factory, isMain bool, pchannel string, posi
 	}
 
 	d := &dispatcher{
-		isMain:   isMain,
-		pchannel: pchannel,
-		done:     make(chan struct{}, 1),
-		lagChan:  lagChan,
-		targets:  make(map[string]chan<- *msgstream.MsgPack),
-		stream:   stream,
+		isMain:        isMain,
+		pchannel:      pchannel,
+		done:          make(chan struct{}, 1),
+		lagNotifyChan: lagNotifyChan,
+		lagTargets:    lagTargets,
+		targets:       make(map[string]*target),
+		stream:        stream,
 	}
 	return d, nil
 }
@@ -183,25 +186,31 @@ func (d *dispatcher) work() {
 
 			// dispatch messages, split target if block
 			for vchannel, p := range packs {
-				target, err := d.getTarget(vchannel)
+				t, err := d.getTarget(vchannel)
 				if err != nil {
 					log.Warn("cannot find target, ignore it because it has been removed", zap.Error(err))
 					continue
 				}
-				select {
-				case <-time.After(MaxTolerantLag):
-					d.lagChan <- &lagInfo{
-						vchannel: vchannel,
-						pos:      pack.StartPositions[0],
-						target:   d.targets[vchannel],
+				err = t.send(p, MaxTolerantLag)
+				if err != nil {
+					t.pos = pack.StartPositions[0]
+					if !d.lagTargets.Contain(t) {
+						d.lagTargets.Insert(t)
 					}
+					d.nonBlockingNotify()
 					d.removeTarget(vchannel)
 					log.Warn("time lag is too long for vchannel, sent lagInfo",
 						zap.String("vchannel", vchannel), zap.Duration("lag", MaxTolerantLag))
-				case target <- p:
 				}
 			}
 		}
+	}
+}
+
+func (d *dispatcher) nonBlockingNotify() {
+	select {
+	case d.lagNotifyChan <- struct{}{}:
+	default:
 	}
 }
 
@@ -209,18 +218,18 @@ func (d *dispatcher) getCurTs() typeutil.Timestamp {
 	return d.curTs.Load()
 }
 
-func (d *dispatcher) addTarget(vchannel string, output chan<- *msgstream.MsgPack) {
+func (d *dispatcher) addTarget(t *target) {
 	d.targetsMu.Lock()
 	defer d.targetsMu.Unlock()
-	d.targets[vchannel] = output
-	log.Info("dispatcher add new target", zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
+	d.targets[t.vchannel] = t
+	log.Info("dispatcher add new target", zap.String("vchannel", t.vchannel), zap.Bool("isMainDispatcher", d.isMain))
 }
 
-func (d *dispatcher) getTarget(vchannel string) (chan<- *msgstream.MsgPack, error) {
+func (d *dispatcher) getTarget(vchannel string) (*target, error) {
 	d.targetsMu.RLock()
 	defer d.targetsMu.RUnlock()
-	if ch, ok := d.targets[vchannel]; ok {
-		return ch, nil
+	if t, ok := d.targets[vchannel]; ok {
+		return t, nil
 	}
 	return nil, fmt.Errorf("cannot find target in dispatcher, vchannel = %s, isMainDispatcher = %t", vchannel, d.isMain)
 }
@@ -247,8 +256,8 @@ func (d *dispatcher) closeTarget(vchannel string) {
 	log := log.With(zap.String("vchannel", vchannel), zap.Bool("isMainDispatcher", d.isMain))
 	d.targetsMu.Lock()
 	defer d.targetsMu.Unlock()
-	if ch, ok := d.targets[vchannel]; ok {
-		close(ch)
+	if t, ok := d.targets[vchannel]; ok {
+		t.close()
 		delete(d.targets, vchannel)
 		log.Info("dispatcher closed target")
 	} else {

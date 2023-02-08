@@ -29,22 +29,20 @@ import (
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/retry"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-type lagInfo struct {
-	vchannel string
-	pos      *msgstream.MsgPosition
-	target   chan<- *msgstream.MsgPack
-}
+var (
+	CheckPeriod = 1 * time.Second // TODO: move to config
+)
 
 type checker struct {
 	role     string
 	nodeID   int64
 	pchannel string
-	lagChan  chan *lagInfo
 
-	checkPeriod    time.Duration
-	targetChanSize int
+	lagNotifyChan chan struct{}
+	lagTargets    *typeutil.ConcurrentSet[*target]
 
 	dispatchersMu   sync.RWMutex
 	mainDispatcher  *dispatcher
@@ -56,16 +54,15 @@ type checker struct {
 }
 
 func newChecker(pchannel string, role string, nodeID int64, factory msgstream.Factory) *checker {
-	const defaultTargetChanSize = 1024
+
 	log.Info("create new checker", zap.String("role", role),
 		zap.Int64("nodeID", nodeID), zap.String("pchannel", pchannel))
 	return &checker{
 		role:            role,
 		nodeID:          nodeID,
 		pchannel:        pchannel,
-		lagChan:         make(chan *lagInfo, 100), // TODO: move to config
-		checkPeriod:     1 * time.Second,          // TODO: move to config
-		targetChanSize:  defaultTargetChanSize,
+		lagNotifyChan:   make(chan struct{}, 1),
+		lagTargets:      typeutil.NewConcurrentSet[*target](),
 		soloDispatchers: make(map[string]*dispatcher),
 		factory:         factory,
 		closeChan:       make(chan struct{}),
@@ -74,17 +71,17 @@ func newChecker(pchannel string, role string, nodeID int64, factory msgstream.Fa
 
 func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, subPos mqwrapper.SubscriptionInitialPosition) (<-chan *msgstream.MsgPack, error) {
 	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID), zap.String("vchannel", vchannel))
-	target := make(chan *msgstream.MsgPack, c.targetChanSize)
+	t := newTarget(vchannel, pos)
 	subName := fmt.Sprintf("%s-%d-%s", c.role, c.nodeID, vchannel) // TODO: dyh, maybe should not use vchannel in subName
 
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
 	isMain := c.mainDispatcher == nil
-	d, err := newDispatcher(c.factory, isMain, c.pchannel, pos, subName, subPos, c.lagChan)
+	d, err := newDispatcher(c.factory, isMain, c.pchannel, pos, subName, subPos, c.lagNotifyChan, c.lagTargets)
 	if err != nil {
 		return nil, err
 	}
-	d.addTarget(vchannel, target)
+	d.addTarget(t)
 	if isMain {
 		c.mainDispatcher = d
 		log.Info("addDispatcher as mainDispatcher")
@@ -93,7 +90,7 @@ func (c *checker) addDispatcher(vchannel string, pos *internalpb.MsgPosition, su
 		log.Info("addDispatcher as a new soloDispatcher")
 	}
 	d.handle(start)
-	return target, nil
+	return t.ch, nil
 }
 
 func (c *checker) removeDispatcher(vchannel string) {
@@ -138,7 +135,7 @@ func (c *checker) close() {
 func (c *checker) run() {
 	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID), zap.String("pchannel", c.pchannel))
 	log.Info("checker is running...")
-	ticker := time.NewTicker(c.checkPeriod)
+	ticker := time.NewTicker(CheckPeriod)
 	defer ticker.Stop()
 	for {
 		select {
@@ -162,8 +159,11 @@ func (c *checker) run() {
 			if len(candidates) > 0 {
 				c.merge(candidates)
 			}
-		case info := <-c.lagChan:
-			c.split(info)
+		case <-c.lagNotifyChan:
+			for _, t := range c.lagTargets.Collect() {
+				c.split(t)
+				c.lagTargets.Remove(t)
+			}
 		}
 	}
 }
@@ -183,11 +183,11 @@ func (c *checker) merge(vchannels map[string]struct{}) {
 		}
 	}
 	for vchannel := range vchannels {
-		ch, err := c.soloDispatchers[vchannel].getTarget(vchannel)
+		t, err := c.soloDispatchers[vchannel].getTarget(vchannel)
 		if err != nil {
 			log.Warn("get invalid target, ignore it because it has been removed", zap.Error(err))
 		} else {
-			c.mainDispatcher.addTarget(vchannel, ch)
+			c.mainDispatcher.addTarget(t)
 		}
 		c.soloDispatchers[vchannel].handle(terminate)
 		delete(c.soloDispatchers, vchannel)
@@ -197,34 +197,34 @@ func (c *checker) merge(vchannels map[string]struct{}) {
 		zap.Int("vchannelNum", len(vchannels)), zap.Any("vchannel", vchannels))
 }
 
-func (c *checker) split(info *lagInfo) {
-	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID), zap.String("vchannel", info.vchannel))
+func (c *checker) split(t *target) {
+	log := log.With(zap.String("role", c.role), zap.Int64("nodeID", c.nodeID), zap.String("vchannel", t.vchannel))
 	log.Info("splitting soloDispatcher from mainDispatcher...")
 
 	c.dispatchersMu.Lock()
-	if _, ok := c.soloDispatchers[info.vchannel]; ok {
+	if _, ok := c.soloDispatchers[t.vchannel]; ok {
 		// remove stale soloDispatcher if it existed
-		c.soloDispatchers[info.vchannel].handle(terminate)
-		delete(c.soloDispatchers, info.vchannel)
+		c.soloDispatchers[t.vchannel].handle(terminate)
+		delete(c.soloDispatchers, t.vchannel)
 	}
 	c.dispatchersMu.Unlock()
 
 	var newSolo *dispatcher
 	err := retry.Do(context.Background(), func() error {
 		var err error
-		subName := fmt.Sprintf("%s-%d-%s", c.role, c.nodeID, info.vchannel) // TODO: dyh, maybe should not use vchannel in subName
-		newSolo, err = newDispatcher(c.factory, false, c.pchannel, info.pos, subName, mqwrapper.SubscriptionPositionUnknown, c.lagChan)
+		subName := fmt.Sprintf("%s-%d-%s", c.role, c.nodeID, t.vchannel) // TODO: dyh, maybe should not use vchannel in subName
+		newSolo, err = newDispatcher(c.factory, false, c.pchannel, t.pos, subName, mqwrapper.SubscriptionPositionUnknown, c.lagNotifyChan, c.lagTargets)
 		return err
 	}, retry.Attempts(10))
 	if err != nil {
 		log.Error("split soloDispatcher from mainDispatcher failed", zap.Error(err))
 		panic(err)
 	}
-	newSolo.addTarget(info.vchannel, info.target)
+	newSolo.addTarget(t)
 
 	c.dispatchersMu.Lock()
 	defer c.dispatchersMu.Unlock()
-	c.soloDispatchers[info.vchannel] = newSolo
+	c.soloDispatchers[t.vchannel] = newSolo
 	newSolo.handle(start)
 	log.Info("split soloDispatcher from mainDispatcher done")
 }

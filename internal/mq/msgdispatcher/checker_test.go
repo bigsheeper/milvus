@@ -74,10 +74,10 @@ func TestChecker(t *testing.T) {
 		})
 		assert.Equal(t, 1, c.dispatcherNum())
 
-		info := &lagInfo{
+		info := &target{
 			vchannel: "mock_vchannel_2",
 			pos:      nil,
-			target:   nil,
+			ch:       nil,
 		}
 		c.split(info)
 		assert.Equal(t, 2, c.dispatcherNum())
@@ -94,7 +94,7 @@ func TestChecker(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 3, c.dispatcherNum())
 
-		c.checkPeriod = 10 * time.Millisecond
+		CheckPeriod = 10 * time.Millisecond
 		go c.run()
 		time.Sleep(15 * time.Millisecond)
 		assert.Equal(t, 1, c.dispatcherNum()) // expected merged
@@ -143,7 +143,7 @@ func (suite *SimulationSuite) SetupTest() {
 	suite.producer = producer
 
 	suite.checker = newChecker(suite.pchannel, typeutil.DataNodeRole, 0, suite.factory)
-	suite.checker.checkPeriod = 10 * time.Millisecond
+	CheckPeriod = 10 * time.Millisecond
 	go suite.checker.run()
 }
 
@@ -310,7 +310,8 @@ func (suite *SimulationSuite) TestSplit() {
 
 	const vchannelNum = 100
 	suite.vchannels = make(map[string]*vchannelHelper, vchannelNum)
-	suite.checker.targetChanSize = 10
+	DefaultTargetChanSize = 10
+	MaxTolerantLag = 500 * time.Millisecond
 	for i := 0; i < vchannelNum; i++ {
 		vchannel := fmt.Sprintf("%s_vchannelv%d", suite.pchannel, i)
 		output, err := suite.checker.addDispatcher(vchannel, nil, mqwrapper.SubscriptionPositionEarliest)
@@ -321,7 +322,7 @@ func (suite *SimulationSuite) TestSplit() {
 	suite.Eventually(func() bool {
 		suite.T().Logf("checker.dispatcherNum = %d", suite.checker.dispatcherNum())
 		return suite.checker.dispatcherNum() == 1 // expected all merged, only mainDispatcher existed
-	}, 2*time.Second, 100*time.Millisecond)
+	}, 3*time.Second, 100*time.Millisecond)
 
 	const splitNum = 3
 	wg := &sync.WaitGroup{}
@@ -338,7 +339,7 @@ func (suite *SimulationSuite) TestSplit() {
 	suite.Eventually(func() bool {
 		suite.T().Logf("checker.dispatcherNum = %d, splitNum+1 = %d", suite.checker.dispatcherNum(), splitNum+1)
 		return suite.checker.dispatcherNum() == splitNum+1 // expected 1 mainDispatcher and `splitNum` soloDispatchers
-	}, 10*time.Second, 200*time.Millisecond)
+	}, 3*time.Second, 50*time.Millisecond)
 
 	cancel()
 	wg.Wait()

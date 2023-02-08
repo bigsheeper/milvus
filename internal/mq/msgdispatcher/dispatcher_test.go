@@ -30,7 +30,7 @@ import (
 func TestDispatcher(t *testing.T) {
 	t.Run("test new and handle", func(t *testing.T) {
 		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
-			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
+			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil, nil)
 		assert.NoError(t, err)
 		assert.NotPanics(t, func() {
 			d.handle(start)
@@ -42,7 +42,7 @@ func TestDispatcher(t *testing.T) {
 
 	t.Run("test set-get curTs", func(t *testing.T) {
 		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
-			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
+			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil, nil)
 		assert.NoError(t, err)
 		pos := &msgstream.MsgPosition{
 			ChannelName: "mock_vchannel_0",
@@ -56,17 +56,22 @@ func TestDispatcher(t *testing.T) {
 
 	t.Run("test target", func(t *testing.T) {
 		d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
-			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
+			"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil, nil)
 		assert.NoError(t, err)
 		output := make(chan *msgstream.MsgPack, 1024)
-		d.addTarget("mock_vchannel_0", output)
-		d.addTarget("mock_vchannel_1", nil)
+		target := &target{
+			vchannel: "mock_vchannel_0",
+			pos:      nil,
+			ch:       output,
+		}
+		d.addTarget(target)
+		d.addTarget(nil)
 		num := d.targetNum()
 		assert.Equal(t, 2, num)
 
 		out, err := d.getTarget("mock_vchannel_0")
 		assert.NoError(t, err)
-		assert.Equal(t, cap(output), cap(out))
+		assert.Equal(t, cap(output), cap(out.ch))
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
@@ -89,7 +94,7 @@ func TestDispatcher(t *testing.T) {
 
 func BenchmarkDispatcher_handle(b *testing.B) {
 	d, err := newDispatcher(newMockFactory(), true, "mock_pchannel_0", nil,
-		"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil)
+		"mock_subName_0", mqwrapper.SubscriptionPositionEarliest, nil, nil)
 	assert.NoError(b, err)
 
 	for i := 0; i < b.N; i++ {

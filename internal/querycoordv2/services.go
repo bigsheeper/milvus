@@ -525,6 +525,31 @@ func (s *Server) GetSegmentInfo(ctx context.Context, req *querypb.GetSegmentInfo
 	}, nil
 }
 
+func (s *Server) SyncNewCreatedPartition(ctx context.Context, req *querypb.SyncNewCreatedPartitionRequest) (*commonpb.Status, error) {
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", req.GetCollectionID()),
+		zap.Int64("partitionID", req.GetPartitionID()),
+	)
+
+	log.Info("received sync new created partition request")
+
+	failedMsg := "failed to sync new created partition"
+	if s.status.Load() != commonpb.StateCode_Healthy {
+		log.Warn(failedMsg, zap.Error(ErrNotHealthy))
+		return utils.WrapStatus(commonpb.ErrorCode_UnexpectedError, failedMsg, ErrNotHealthy), nil
+	}
+
+	syncJob := job.NewSyncNewCreatedPartitionJob(ctx, req, s.meta)
+	s.jobScheduler.Add(syncJob)
+	err := syncJob.Wait()
+	if err != nil {
+		log.Warn(failedMsg, zap.Error(err))
+		return utils.WrapStatus(errCode(err), failedMsg, err), nil
+	}
+
+	return successStatus, nil
+}
+
 // refreshCollection must be called after loading a collection. It looks for new segments that are not loaded yet and
 // tries to load them up. It returns when all segments of the given collection are loaded, or when error happens.
 // Note that a collection's loading progress always stays at 100% after a successful load and will not get updated

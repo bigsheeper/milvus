@@ -566,6 +566,10 @@ func (node *QueryNode) ReleaseCollection(ctx context.Context, in *querypb.Releas
 	return status, nil
 }
 
+func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
+	panic("TODO: dyh, impl")
+}
+
 // ReleasePartitions clears all data related to this partition on the querynode
 func (node *QueryNode) ReleasePartitions(ctx context.Context, in *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
 	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {

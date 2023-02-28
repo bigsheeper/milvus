@@ -19,6 +19,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"time"
 
 	"github.com/samber/lo"
@@ -150,26 +151,22 @@ func (job *LoadCollectionJob) PreExecute() error {
 		req.ReplicaNumber = 1
 	}
 
-	if job.meta.Exist(req.GetCollectionID()) {
-		old := job.meta.GetCollection(req.GetCollectionID())
-		if old == nil {
-			msg := "load the partition after load collection is not supported"
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		} else if old.GetReplicaNumber() != req.GetReplicaNumber() {
-			msg := fmt.Sprintf("collection with different replica number %d existed, release this collection first before changing its replica number",
-				job.meta.GetReplicaNumber(req.GetCollectionID()),
-			)
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		} else if !typeutil.MapEqual(old.GetFieldIndexID(), req.GetFieldIndexID()) {
-			msg := fmt.Sprintf("collection with different index %v existed, release this collection first before changing its index",
-				old.GetFieldIndexID())
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		}
+	collection := job.meta.GetCollection(req.GetCollectionID())
+	if collection == nil {
+		return nil
+	}
 
-		return ErrCollectionLoaded
+	if collection.GetReplicaNumber() != req.GetReplicaNumber() {
+		msg := fmt.Sprintf("collection with different replica number %d existed, release this collection first before changing its replica number",
+			job.meta.GetReplicaNumber(req.GetCollectionID()),
+		)
+		log.Warn(msg)
+		return utils.WrapError(msg, ErrLoadParameterMismatched)
+	} else if !typeutil.MapEqual(collection.GetFieldIndexID(), req.GetFieldIndexID()) {
+		msg := fmt.Sprintf("collection with different index %v existed, release this collection first before changing its index",
+			collection.GetFieldIndexID())
+		log.Warn(msg)
+		return utils.WrapError(msg, ErrLoadParameterMismatched)
 	}
 
 	return nil
@@ -350,35 +347,19 @@ func (job *LoadPartitionJob) PreExecute() error {
 		req.ReplicaNumber = 1
 	}
 
-	if job.meta.Exist(req.GetCollectionID()) {
-		old := job.meta.GetCollection(req.GetCollectionID())
-		if old != nil {
-			msg := "load the partition after load collection is not supported"
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		} else if job.meta.GetReplicaNumber(req.GetCollectionID()) != req.GetReplicaNumber() {
-			msg := "collection with different replica number existed, release this collection first before changing its replica number"
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		} else if !typeutil.MapEqual(job.meta.GetFieldIndex(req.GetCollectionID()), req.GetFieldIndexID()) {
-			msg := fmt.Sprintf("collection with different index %v existed, release this collection first before changing its index",
-				job.meta.GetFieldIndex(req.GetCollectionID()))
-			log.Warn(msg)
-			return utils.WrapError(msg, ErrLoadParameterMismatched)
-		}
-
-		// Check whether one of the given partitions not loaded
-		for _, partitionID := range req.GetPartitionIDs() {
-			partition := job.meta.GetPartition(partitionID)
-			if partition == nil {
-				msg := fmt.Sprintf("some partitions %v of collection %v has been loaded into QueryNode, please release partitions firstly",
-					req.GetPartitionIDs(),
-					req.GetCollectionID())
-				log.Warn(msg)
-				return utils.WrapError(msg, ErrLoadParameterMismatched)
-			}
-		}
-		return ErrCollectionLoaded
+	collection := job.meta.GetCollection(req.GetCollectionID())
+	if collection == nil {
+		return nil
+	}
+	if collection.GetReplicaNumber() != req.GetReplicaNumber() {
+		msg := "collection with different replica number existed, release this collection first before changing its replica number"
+		log.Warn(msg)
+		return utils.WrapError(msg, ErrLoadParameterMismatched)
+	} else if !typeutil.MapEqual(collection.GetFieldIndexID(), req.GetFieldIndexID()) {
+		msg := fmt.Sprintf("collection with different index %v existed, release this collection first before changing its index",
+			job.meta.GetFieldIndex(req.GetCollectionID()))
+		log.Warn(msg)
+		return utils.WrapError(msg, ErrLoadParameterMismatched)
 	}
 
 	return nil
@@ -462,6 +443,7 @@ type ReleasePartitionJob struct {
 	req            *querypb.ReleasePartitionsRequest
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
+	cluster        session.Cluster
 	targetMgr      *meta.TargetManager
 	targetObserver *observers.TargetObserver
 }
@@ -470,6 +452,7 @@ func NewReleasePartitionJob(ctx context.Context,
 	req *querypb.ReleasePartitionsRequest,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
+	cluster session.Cluster,
 	targetMgr *meta.TargetManager,
 	targetObserver *observers.TargetObserver,
 ) *ReleasePartitionJob {
@@ -478,27 +461,17 @@ func NewReleasePartitionJob(ctx context.Context,
 		req:            req,
 		dist:           dist,
 		meta:           meta,
+		cluster:        cluster,
 		targetMgr:      targetMgr,
 		targetObserver: targetObserver,
 	}
-}
-
-func (job *ReleasePartitionJob) PreExecute() error {
-	log := log.Ctx(job.ctx).With(
-		zap.Int64("collectionID", job.req.GetCollectionID()),
-	)
-	if job.meta.CollectionManager.GetLoadType(job.req.GetCollectionID()) == querypb.LoadType_LoadCollection {
-		msg := "releasing some partitions after load collection is not supported"
-		log.Warn(msg)
-		return utils.WrapError(msg, ErrLoadParameterMismatched)
-	}
-	return nil
 }
 
 func (job *ReleasePartitionJob) Execute() error {
 	req := job.req
 	log := log.Ctx(job.ctx).With(
 		zap.Int64("collectionID", req.GetCollectionID()),
+		zap.Int64s("partitionIDs", req.GetPartitionIDs()),
 	)
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
 		log.Info("release collection end, the collection has not been loaded into QueryNode")
@@ -537,6 +510,17 @@ func (job *ReleasePartitionJob) Execute() error {
 			return utils.WrapError(msg, err)
 		}
 		job.targetMgr.RemovePartition(req.GetCollectionID(), toRelease...)
+		replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
+		for _, replica := range replicas {
+			for _, node := range replica.GetNodes() {
+				status, err := job.cluster.ReleasePartitions(job.ctx, node, job.req)
+				if err != nil || status.GetErrorCode() != commonpb.ErrorCode_Success {
+					// try release all
+					log.Error("sync releasePartition to QueryNode failed",
+						zap.Error(err), zap.String("reason", status.GetReason()))
+				}
+			}
+		}
 		waitCollectionReleased(job.dist, req.GetCollectionID(), toRelease...)
 	}
 	metrics.QueryCoordNumCollections.WithLabelValues().Dec()

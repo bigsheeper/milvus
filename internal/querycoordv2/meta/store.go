@@ -211,9 +211,13 @@ func (s metaStore) GetResourceGroups() ([]*querypb.ResourceGroup, error) {
 	return ret, nil
 }
 
-func (s metaStore) ReleaseCollection(id int64) error {
+func (s metaStore) ReleaseCollection(id int64, partitions ...int64) error {
 	k := encodeCollectionLoadInfoKey(id)
-	return s.cli.Remove(k)
+	keys := lo.Map(partitions, func(partition int64, _ int) string {
+		return encodePartitionLoadInfoKey(id, partition)
+	})
+	keys = append(keys, k)
+	return s.cli.MultiRemove(keys)
 }
 
 func (s metaStore) ReleasePartition(collection int64, partitions ...int64) error {

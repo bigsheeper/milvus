@@ -869,32 +869,6 @@ func (dpt *dropPartitionTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 
-	collID, err := globalMetaCache.GetCollectionID(ctx, dpt.GetCollectionName())
-	if err != nil {
-		return err
-	}
-	partID, err := globalMetaCache.GetPartitionID(ctx, dpt.GetCollectionName(), dpt.GetPartitionName())
-	if err != nil {
-		if err.Error() == ErrPartitionNotExist(dpt.GetPartitionName()).Error() {
-			return nil
-		}
-		return err
-	}
-
-	collLoaded, err := isCollectionLoaded(ctx, dpt.queryCoord, collID)
-	if err != nil {
-		return err
-	}
-	if collLoaded {
-		loaded, err := isPartitionLoaded(ctx, dpt.queryCoord, collID, []int64{partID})
-		if err != nil {
-			return err
-		}
-		if loaded {
-			return errors.New("partition cannot be dropped, partition is loaded, please release it first")
-		}
-	}
-
 	return nil
 }
 

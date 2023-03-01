@@ -398,6 +398,7 @@ func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePart
 		req,
 		s.dist,
 		s.meta,
+		s.cluster,
 		s.targetMgr,
 		s.targetObserver,
 	)
@@ -539,7 +540,7 @@ func (s *Server) SyncNewCreatedPartition(ctx context.Context, req *querypb.SyncN
 		return utils.WrapStatus(commonpb.ErrorCode_UnexpectedError, failedMsg, ErrNotHealthy), nil
 	}
 
-	syncJob := job.NewSyncNewCreatedPartitionJob(ctx, req, s.meta)
+	syncJob := job.NewSyncNewCreatedPartitionJob(ctx, req, s.meta, s.cluster)
 	s.jobScheduler.Add(syncJob)
 	err := syncJob.Wait()
 	if err != nil {

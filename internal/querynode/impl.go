@@ -567,50 +567,34 @@ func (node *QueryNode) ReleaseCollection(ctx context.Context, in *querypb.Releas
 }
 
 func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
-	panic("TODO: dyh, impl")
+	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
+	log.Info("loading partitions")
+	// TODO: dyh, check health
+	for _, part := range req.GetPartitionIDs() {
+		err := node.metaReplica.addPartition(req.GetCollectionID(), part)
+		if err != nil {
+			log.Warn(err.Error())
+		}
+	}
+	log.Info("load partitions done")
+	status := &commonpb.Status{
+		ErrorCode: commonpb.ErrorCode_Success,
+	}
+	return status, nil
 }
 
 // ReleasePartitions clears all data related to this partition on the querynode
-func (node *QueryNode) ReleasePartitions(ctx context.Context, in *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
-	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {
-		err := fmt.Errorf("query node %d is not ready", node.GetSession().ServerID)
-		status := &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_UnexpectedError,
-			Reason:    err.Error(),
-		}
-		return status, nil
-	}
-	defer node.lifetime.Done()
-
-	dct := &releasePartitionsTask{
-		baseTask: baseTask{
-			ctx:  ctx,
-			done: make(chan error),
-		},
-		req:  in,
-		node: node,
-	}
-
-	err := node.scheduler.queue.Enqueue(dct)
-	if err != nil {
-		status := &commonpb.Status{
-			ErrorCode: commonpb.ErrorCode_UnexpectedError,
-			Reason:    err.Error(),
-		}
-		log.Warn(err.Error())
-		return status, nil
-	}
-	log.Info("releasePartitionsTask Enqueue done", zap.Int64("collectionID", in.CollectionID), zap.Int64s("partitionIDs", in.PartitionIDs))
-
-	func() {
-		err = dct.WaitToFinish()
+func (node *QueryNode) ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
+	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
+	log.Info("releasing partitions")
+	// TODO: dyh, check health
+	for _, part := range req.GetPartitionIDs() {
+		err := node.metaReplica.removePartition(part)
 		if err != nil {
 			log.Warn(err.Error())
-			return
 		}
-		log.Info("releasePartitionsTask WaitToFinish done", zap.Int64("collectionID", in.CollectionID), zap.Int64s("partitionIDs", in.PartitionIDs))
-	}()
-
+	}
+	log.Info("release partitions done")
 	status := &commonpb.Status{
 		ErrorCode: commonpb.ErrorCode_Success,
 	}

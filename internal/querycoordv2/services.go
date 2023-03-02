@@ -512,7 +512,7 @@ func (s *Server) SyncNewCreatedPartition(ctx context.Context, req *querypb.SyncN
 	syncJob := job.NewSyncNewCreatedPartitionJob(ctx, req, s.meta, s.cluster)
 	s.jobScheduler.Add(syncJob)
 	err := syncJob.Wait()
-	if err != nil {
+	if err != nil && !errors.Is(err, job.ErrPartitionNotInTarget) {
 		log.Warn(failedMsg, zap.Error(err))
 		return utils.WrapStatus(errCode(err), failedMsg, err), nil
 	}

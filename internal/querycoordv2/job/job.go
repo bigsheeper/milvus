@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/samber/lo"
 	"time"
 
@@ -261,7 +260,8 @@ func (job *LoadCollectionJob) Execute() error {
 				PartitionID:  partID,
 				Status:       querypb.LoadStatus_Loading,
 			},
-			CreatedAt: time.Now(),
+			LoadPercentage: 0,
+			CreatedAt:      time.Now(),
 		}, true
 	})
 
@@ -272,36 +272,20 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
-	// TODO: roll back if failed
 	partitionIDs = lo.Map(partitions, func(partition *meta.Partition, _ int) int64 {
 		return partition.GetPartitionID()
 	})
-	loadPartReq := &querypb.LoadPartitionsRequest{
-		Base: &commonpb.MsgBase{
-			MsgType: commonpb.MsgType_LoadPartitions,
-		},
-		CollectionID: req.GetCollectionID(),
-		PartitionIDs: partitionIDs,
-	}
-	for _, replica := range replicas {
-		for _, node := range replica.GetNodes() {
-			status, err := job.cluster.LoadPartitions(job.ctx, node, loadPartReq)
-			if err != nil {
-				log.Error("QueryNode failed to loadPartition", zap.Int64("nodeID", node), zap.Error(err))
-				return err
-			}
-			if status.GetErrorCode() != commonpb.ErrorCode_Success {
-				log.Error("QueryNode failed to loadPartition",
-					zap.Int64("nodeID", node), zap.String("reason", status.GetReason()))
-				return fmt.Errorf("%s", status.GetReason())
-			}
-		}
+	err = loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
+	if err != nil {
+		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
+		return err
 	}
 
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
+// TODO: dyh, handle roll back
 func (job *LoadCollectionJob) PostExecute() {
 	if job.Error() != nil {
 		job.meta.CollectionManager.RemoveCollection(job.CollectionID())
@@ -501,20 +485,19 @@ func (job *LoadPartitionJob) Execute() error {
 		}
 	}
 
-	partitions := make([]*meta.Partition, 0, len(req.GetPartitionIDs()))
-	for _, partID := range req.GetPartitionIDs() {
+	partitions := lo.FilterMap(req.GetPartitionIDs(), func(partID int64, _ int) (*meta.Partition, bool) {
 		if part := job.meta.CollectionManager.GetPartition(partID); part != nil {
-			continue
+			return nil, false
 		}
-		partitions = append(partitions, &meta.Partition{
+		return &meta.Partition{
 			PartitionLoadInfo: &querypb.PartitionLoadInfo{
 				CollectionID: req.GetCollectionID(),
 				PartitionID:  partID,
 				Status:       querypb.LoadStatus_Loading,
 			},
 			CreatedAt: time.Now(),
-		})
-	}
+		}, true
+	})
 
 	err = job.meta.CollectionManager.PutPartition(partitions...)
 	if err != nil {
@@ -523,26 +506,20 @@ func (job *LoadPartitionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
-	// TODO: roll back if failed
-	for _, replica := range replicas {
-		for _, node := range replica.GetNodes() {
-			status, err := job.cluster.LoadPartitions(job.ctx, node, job.req)
-			if err != nil {
-				log.Error("QueryNode failed to loadPartition", zap.Int64("nodeID", node), zap.Error(err))
-				return err
-			}
-			if status.GetErrorCode() != commonpb.ErrorCode_Success {
-				log.Error("QueryNode failed to loadPartition",
-					zap.Int64("nodeID", node), zap.String("reason", status.GetReason()))
-				return fmt.Errorf("%s", status.GetReason())
-			}
-		}
+	partitionIDs := lo.Map(partitions, func(partition *meta.Partition, _ int) int64 {
+		return partition.GetPartitionID()
+	})
+	err = loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
+	if err != nil {
+		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
+		return err
 	}
 
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
+// TODO: dyh, handle roll back
 func (job *LoadPartitionJob) PostExecute() {
 	if job.Error() != nil {
 		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionIDs()...)
@@ -623,17 +600,7 @@ func (job *ReleasePartitionJob) Execute() error {
 			return utils.WrapError(msg, err)
 		}
 		job.targetMgr.RemovePartition(req.GetCollectionID(), toRelease...)
-		replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
-		for _, replica := range replicas {
-			for _, node := range replica.GetNodes() {
-				status, err := job.cluster.ReleasePartitions(job.ctx, node, job.req)
-				if err != nil || status.GetErrorCode() != commonpb.ErrorCode_Success {
-					// try release all
-					log.Error("QueryNode failed to releasePartition", zap.Int64("nodeID", node),
-						zap.Error(err), zap.String("reason", status.GetReason()))
-				}
-			}
-		}
+		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), req.GetPartitionIDs()...)
 		waitCollectionReleased(job.dist, req.GetCollectionID(), toRelease...)
 	}
 	metrics.QueryCoordNumCollections.WithLabelValues().Dec()

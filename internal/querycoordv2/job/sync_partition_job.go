@@ -18,8 +18,7 @@ package job
 
 import (
 	"context"
-	"fmt"
-	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/cockroachdb/errors"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
@@ -50,23 +49,26 @@ func NewSyncNewCreatedPartitionJob(
 	}
 }
 
+func (job *SyncNewCreatedPartitionJob) PreExecute() error {
+	// check if collection not load or loadType is loadPartition
+	collection := job.meta.GetCollection(job.req.GetCollectionID())
+	if collection == nil || collection.GetLoadType() == querypb.LoadType_LoadPartition {
+		return ErrPartitionNotInTarget
+	}
+
+	// check if partition already existed
+	if partition := job.meta.GetPartition(job.req.GetPartitionID()); partition != nil {
+		return ErrPartitionNotInTarget
+	}
+	return nil
+}
+
 func (job *SyncNewCreatedPartitionJob) Execute() error {
 	req := job.req
 	log := log.Ctx(job.ctx).With(
 		zap.Int64("collectionID", req.GetCollectionID()),
 		zap.Int64("partitionID", req.GetPartitionID()),
 	)
-
-	// check if collection not load or loadType is loadPartition
-	collection := job.meta.GetCollection(req.GetCollectionID())
-	if collection == nil || collection.GetLoadType() == querypb.LoadType_LoadPartition {
-		return nil
-	}
-
-	// check if partition already existed
-	if partition := job.meta.GetPartition(req.GetPartitionID()); partition != nil {
-		return nil
-	}
 
 	partition := &meta.Partition{
 		PartitionLoadInfo: &querypb.PartitionLoadInfo{
@@ -84,44 +86,12 @@ func (job *SyncNewCreatedPartitionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
-	replicas := job.meta.ReplicaManager.GetByCollection(req.CollectionID)
-	loadReq := &querypb.LoadPartitionsRequest{
-		Base: &commonpb.MsgBase{
-			MsgType: commonpb.MsgType_LoadPartitions,
-		},
-		CollectionID: req.GetCollectionID(),
-		PartitionIDs: []int64{req.GetPartitionID()},
-	}
-	for _, replica := range replicas {
-		for _, node := range replica.GetNodes() {
-			status, err := job.cluster.LoadPartitions(job.ctx, node, loadReq)
-			if err != nil {
-				return err
-			}
-			if status.GetErrorCode() != commonpb.ErrorCode_Success {
-				return fmt.Errorf("failed to loadPartitions on QueryNode, nodeID=%d, err=%s", node, status.GetReason())
-			}
-		}
-	}
-
-	return nil
+	return loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), req.GetPartitionID())
 }
 
 func (job *SyncNewCreatedPartitionJob) PostExecute() {
-	if job.Error() != nil {
+	if job.Error() != nil && !errors.Is(job.Error(), ErrPartitionNotInTarget) {
 		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionID())
-		replicas := job.meta.ReplicaManager.GetByCollection(job.req.CollectionID)
-		releaseReq := &querypb.ReleasePartitionsRequest{
-			Base: &commonpb.MsgBase{
-				MsgType: commonpb.MsgType_ReleasePartitions,
-			},
-			CollectionID: job.req.GetCollectionID(),
-			PartitionIDs: []int64{job.req.GetPartitionID()},
-		}
-		for _, replica := range replicas {
-			for _, node := range replica.GetNodes() {
-				job.cluster.ReleasePartitions(job.ctx, node, releaseReq)
-			}
-		}
+		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, job.req.GetCollectionID(), job.req.GetPartitionID())
 	}
 }

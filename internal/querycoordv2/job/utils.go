@@ -17,6 +17,11 @@
 package job
 
 import (
+	"context"
+	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"time"
 
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
@@ -47,5 +52,44 @@ func waitCollectionReleased(dist *meta.DistributionManager, collection int64, pa
 		}
 
 		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func loadPartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluster session.Cluster, collection int64, partitions ...int64) error {
+	replicas := meta.ReplicaManager.GetByCollection(collection)
+	loadReq := &querypb.LoadPartitionsRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_LoadPartitions,
+		},
+		CollectionID: collection,
+		PartitionIDs: partitions,
+	}
+	for _, replica := range replicas {
+		for _, node := range replica.GetNodes() {
+			status, err := cluster.LoadPartitions(ctx, node, loadReq)
+			if err != nil {
+				return err
+			}
+			if status.GetErrorCode() != commonpb.ErrorCode_Success {
+				return fmt.Errorf("QueryNode failed to loadPartition, nodeID=%d, err=%s", node, status.GetReason())
+			}
+		}
+	}
+	return nil
+}
+
+func releasePartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluster session.Cluster, collection int64, partitions ...int64) {
+	replicas := meta.ReplicaManager.GetByCollection(collection)
+	releaseReq := &querypb.ReleasePartitionsRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_ReleasePartitions,
+		},
+		CollectionID: collection,
+		PartitionIDs: partitions,
+	}
+	for _, replica := range replicas {
+		for _, node := range replica.GetNodes() {
+			cluster.ReleasePartitions(ctx, node, releaseReq)
+		}
 	}
 }

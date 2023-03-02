@@ -17,6 +17,8 @@
 package meta
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 
@@ -150,23 +152,48 @@ func (m *CollectionManager) GetReplicaNumber(collectionID UniqueID) int32 {
 	return -1
 }
 
-func (m *CollectionManager) GetLoadPercentage(collectionID UniqueID) int32 {
+// GetCurrentLoadPercentage checks if collection is currently fully loaded.
+func (m *CollectionManager) GetCurrentLoadPercentage(collectionID UniqueID) int32 {
 	m.rwmutex.RLock()
 	defer m.rwmutex.RUnlock()
 
 	collection, ok := m.collections[collectionID]
 	if ok {
+		partitions := m.getPartitionsByCollection(collectionID)
+		if len(partitions) > 0 {
+			return lo.SumBy(partitions, func(partition *Partition) int32 {
+				return partition.LoadPercentage
+			}) / int32(len(partitions))
+		}
 		if collection.GetLoadType() == querypb.LoadType_LoadCollection {
-			return collection.LoadPercentage
+			// no partition exists
+			return 100
 		}
-		if collection.GetLoadType() == querypb.LoadType_LoadPartition {
-			partitions := m.getPartitionsByCollection(collectionID)
-			if len(partitions) > 0 {
-				return lo.SumBy(partitions, func(partition *Partition) int32 {
-					return partition.LoadPercentage
-				}) / int32(len(partitions))
-			}
-		}
+	}
+	return -1
+}
+
+// GetCollectionLoadPercentage returns collection load percentage.
+// Note: collection.LoadPercentage == 100 only means that it used to be fully loaded,
+// to check if it is fully loaded now, use GetCurrentLoadPercentage instead.
+func (m *CollectionManager) GetCollectionLoadPercentage(collectionID UniqueID) int32 {
+	m.rwmutex.RLock()
+	defer m.rwmutex.RUnlock()
+
+	collection, ok := m.collections[collectionID]
+	if ok {
+		return collection.LoadPercentage
+	}
+	return -1
+}
+
+func (m *CollectionManager) GetPartitionLoadPercentage(partitionID UniqueID) int32 {
+	m.rwmutex.RLock()
+	defer m.rwmutex.RUnlock()
+
+	partition, ok := m.partitions[partitionID]
+	if ok {
+		return partition.LoadPercentage
 	}
 	return -1
 }
@@ -175,22 +202,18 @@ func (m *CollectionManager) GetStatus(collectionID UniqueID) querypb.LoadStatus 
 	m.rwmutex.RLock()
 	defer m.rwmutex.RUnlock()
 
-	collection, ok := m.collections[collectionID]
-	if ok {
-		if collection.GetLoadType() == querypb.LoadType_LoadCollection {
-			return collection.GetStatus()
+	_, ok := m.collections[collectionID]
+	if !ok {
+		return querypb.LoadStatus_Invalid
+	}
+	partitions := m.getPartitionsByCollection(collectionID)
+	for _, partition := range partitions {
+		if partition.GetStatus() == querypb.LoadStatus_Loading {
+			return querypb.LoadStatus_Loading
 		}
-		if collection.GetLoadType() == querypb.LoadType_LoadPartition {
-			partitions := m.getPartitionsByCollection(collectionID)
-			for _, partition := range partitions {
-				if partition.GetStatus() == querypb.LoadStatus_Loading {
-					return querypb.LoadStatus_Loading
-				}
-			}
-			if len(partitions) > 0 {
-				return querypb.LoadStatus_Loaded
-			}
-		}
+	}
+	if len(partitions) > 0 {
+		return querypb.LoadStatus_Loaded
 	}
 	return querypb.LoadStatus_Invalid
 }
@@ -317,6 +340,7 @@ func (m *CollectionManager) putCollection(collection *Collection, withSave bool)
 		if err != nil {
 			return err
 		}
+		log.Info("save collection done", zap.Any("colID", collection.CollectionID))
 	}
 	collection.UpdatedAt = time.Now()
 	m.collections[collection.CollectionID] = collection

@@ -71,9 +71,11 @@ func (job *SyncNewCreatedPartitionJob) Execute() error {
 	partition := &meta.Partition{
 		PartitionLoadInfo: &querypb.PartitionLoadInfo{
 			CollectionID: req.GetCollectionID(),
+			PartitionID:  req.GetPartitionID(),
 			Status:       querypb.LoadStatus_Loaded,
 		},
-		CreatedAt: time.Now(),
+		LoadPercentage: 100,
+		CreatedAt:      time.Now(),
 	}
 	err := job.meta.CollectionManager.PutPartition(partition)
 	if err != nil {
@@ -84,6 +86,9 @@ func (job *SyncNewCreatedPartitionJob) Execute() error {
 
 	replicas := job.meta.ReplicaManager.GetByCollection(req.CollectionID)
 	loadReq := &querypb.LoadPartitionsRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_LoadPartitions,
+		},
 		CollectionID: req.GetCollectionID(),
 		PartitionIDs: []int64{req.GetPartitionID()},
 	}
@@ -107,6 +112,9 @@ func (job *SyncNewCreatedPartitionJob) PostExecute() {
 		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionID())
 		replicas := job.meta.ReplicaManager.GetByCollection(job.req.CollectionID)
 		releaseReq := &querypb.ReleasePartitionsRequest{
+			Base: &commonpb.MsgBase{
+				MsgType: commonpb.MsgType_ReleasePartitions,
+			},
 			CollectionID: job.req.GetCollectionID(),
 			PartitionIDs: []int64{job.req.GetPartitionID()},
 		}

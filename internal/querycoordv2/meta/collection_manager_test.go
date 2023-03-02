@@ -94,7 +94,7 @@ func (suite *CollectionManagerSuite) TestGetProperty() {
 	for i, collection := range suite.collections {
 		loadType := mgr.GetLoadType(collection)
 		replicaNumber := mgr.GetReplicaNumber(collection)
-		percentage := mgr.GetLoadPercentage(collection)
+		percentage := mgr.GetCurrentLoadPercentage(collection)
 		exist := mgr.Exist(collection)
 		suite.Equal(suite.loadTypes[i], loadType)
 		suite.Equal(suite.replicaNumber[i], replicaNumber)
@@ -105,7 +105,7 @@ func (suite *CollectionManagerSuite) TestGetProperty() {
 	invalidCollection := -1
 	loadType := mgr.GetLoadType(int64(invalidCollection))
 	replicaNumber := mgr.GetReplicaNumber(int64(invalidCollection))
-	percentage := mgr.GetLoadPercentage(int64(invalidCollection))
+	percentage := mgr.GetCurrentLoadPercentage(int64(invalidCollection))
 	exist := mgr.Exist(int64(invalidCollection))
 	suite.Equal(querypb.LoadType_UnKnownType, loadType)
 	suite.EqualValues(-1, replicaNumber)

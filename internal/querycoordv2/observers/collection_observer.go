@@ -93,6 +93,7 @@ func (ob *CollectionObserver) Observe() {
 	ob.observeLoadStatus()
 }
 
+// TODO: dyh, handle timeout
 func (ob *CollectionObserver) observeTimeout() {
 	collections := ob.meta.CollectionManager.GetAllCollections()
 	for _, collection := range collections {
@@ -127,10 +128,8 @@ func (ob *CollectionObserver) observeTimeout() {
 			log.Info("load partition timeout, cancel all partitions",
 				zap.Int64("partitionID", partition.GetPartitionID()),
 				zap.Duration("loadTime", time.Since(partition.CreatedAt)))
-			// TODO(yah01): Now, releasing part of partitions is not allowed
-			ob.meta.CollectionManager.RemoveCollection(partition.GetCollectionID())
-			ob.meta.ReplicaManager.RemoveCollection(partition.GetCollectionID())
-			ob.targetMgr.RemoveCollection(partition.GetCollectionID())
+			ob.meta.CollectionManager.RemovePartition(partition.GetPartitionID())
+			ob.targetMgr.RemovePartition(partition.GetCollectionID(), partition.GetPartitionID())
 			break
 		}
 	}
@@ -153,59 +152,21 @@ func (ob *CollectionObserver) observeLoadStatus() {
 		if partition.LoadPercentage == 100 {
 			continue
 		}
-		ob.observePartitionLoadStatus(partition)
+		replicaNum := ob.meta.GetReplicaNumber(partition.GetCollectionID())
+		ob.observePartitionLoadStatus(partition, replicaNum)
 	}
 }
 
 func (ob *CollectionObserver) observeCollectionLoadStatus(collection *meta.Collection) {
 	log := log.With(zap.Int64("collectionID", collection.GetCollectionID()))
 
-	segmentTargets := ob.targetMgr.GetHistoricalSegmentsByCollection(collection.GetCollectionID(), meta.NextTarget)
-	channelTargets := ob.targetMgr.GetDmChannelsByCollection(collection.GetCollectionID(), meta.NextTarget)
-	targetNum := len(segmentTargets) + len(channelTargets)
-	log.Info("collection targets",
-		zap.Int("segmentTargetNum", len(segmentTargets)),
-		zap.Int("channelTargetNum", len(channelTargets)),
-		zap.Int("totalTargetNum", targetNum),
-		zap.Int32("replicaNum", collection.GetReplicaNumber()),
-	)
-
 	updated := collection.Clone()
-	loadedCount := 0
-	if targetNum == 0 {
-		log.Info("No segment/channel in target need to be loaded!")
-		updated.LoadPercentage = 100
-	} else {
-		for _, channel := range channelTargets {
-			group := utils.GroupNodesByReplica(ob.meta.ReplicaManager,
-				collection.GetCollectionID(),
-				ob.dist.LeaderViewManager.GetChannelDist(channel.GetChannelName()))
-			loadedCount += len(group)
-		}
-		subChannelCount := loadedCount
-		for _, segment := range segmentTargets {
-			group := utils.GroupNodesByReplica(ob.meta.ReplicaManager,
-				collection.GetCollectionID(),
-				ob.dist.LeaderViewManager.GetSealedSegmentDist(segment.GetID()))
-			loadedCount += len(group)
-		}
-		if loadedCount > 0 {
-			log.Info("collection load progress",
-				zap.Int("subChannelCount", subChannelCount),
-				zap.Int("loadSegmentCount", loadedCount-subChannelCount),
-			)
-		}
-
-		updated.LoadPercentage = int32(loadedCount * 100 / (targetNum * int(collection.GetReplicaNumber())))
-	}
-
-	if loadedCount <= ob.collectionLoadedCount[collection.GetCollectionID()] &&
-		updated.LoadPercentage != 100 {
-		ob.collectionLoadedCount[collection.GetCollectionID()] = loadedCount
+	percentage := ob.meta.CollectionManager.GetCurrentLoadPercentage(collection.GetCollectionID())
+	if percentage <= updated.LoadPercentage {
 		return
 	}
 
-	ob.collectionLoadedCount[collection.GetCollectionID()] = loadedCount
+	updated.LoadPercentage = percentage
 	if updated.LoadPercentage == 100 && ob.targetObserver.Check(updated.GetCollectionID()) {
 		delete(ob.collectionLoadedCount, collection.GetCollectionID())
 		updated.Status = querypb.LoadStatus_Loaded
@@ -221,7 +182,7 @@ func (ob *CollectionObserver) observeCollectionLoadStatus(collection *meta.Colle
 		zap.Int32("collectionStatus", int32(updated.GetStatus())))
 }
 
-func (ob *CollectionObserver) observePartitionLoadStatus(partition *meta.Partition) {
+func (ob *CollectionObserver) observePartitionLoadStatus(partition *meta.Partition, replicaNum int32) {
 	log := log.With(
 		zap.Int64("collectionID", partition.GetCollectionID()),
 		zap.Int64("partitionID", partition.GetPartitionID()),
@@ -234,7 +195,7 @@ func (ob *CollectionObserver) observePartitionLoadStatus(partition *meta.Partiti
 		zap.Int("segmentTargetNum", len(segmentTargets)),
 		zap.Int("channelTargetNum", len(channelTargets)),
 		zap.Int("totalTargetNum", targetNum),
-		zap.Int32("replicaNum", partition.GetReplicaNumber()),
+		zap.Int32("replicaNum", replicaNum),
 	)
 
 	loadedCount := 0
@@ -261,7 +222,7 @@ func (ob *CollectionObserver) observePartitionLoadStatus(partition *meta.Partiti
 				zap.Int("subChannelCount", subChannelCount),
 				zap.Int("loadSegmentCount", loadedCount-subChannelCount))
 		}
-		updated.LoadPercentage = int32(loadedCount * 100 / (targetNum * int(partition.GetReplicaNumber())))
+		updated.LoadPercentage = int32(loadedCount * 100 / (targetNum * int(replicaNum)))
 	}
 
 	if loadedCount <= ob.partitionLoadedCount[partition.GetPartitionID()] &&

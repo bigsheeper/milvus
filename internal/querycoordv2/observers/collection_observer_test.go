@@ -284,7 +284,7 @@ func (suite *CollectionObserverSuite) TestObserve() {
 
 func (suite *CollectionObserverSuite) isCollectionLoaded(collection int64) bool {
 	exist := suite.meta.Exist(collection)
-	percentage := suite.meta.GetLoadPercentage(collection)
+	percentage := suite.meta.GetCurrentLoadPercentage(collection)
 	status := suite.meta.GetStatus(collection)
 	replicas := suite.meta.ReplicaManager.GetByCollection(collection)
 	channels := suite.targetMgr.GetDmChannelsByCollection(collection, meta.CurrentTarget)

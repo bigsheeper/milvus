@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	"github.com/samber/lo"
 	"time"
 
-	"github.com/samber/lo"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -112,11 +112,13 @@ type LoadCollectionJob struct {
 	*BaseJob
 	req *querypb.LoadCollectionRequest
 
-	dist      *meta.DistributionManager
-	meta      *meta.Meta
-	targetMgr *meta.TargetManager
-	broker    meta.Broker
-	nodeMgr   *session.NodeManager
+	dist           *meta.DistributionManager
+	meta           *meta.Meta
+	cluster        session.Cluster
+	targetMgr      *meta.TargetManager
+	targetObserver *observers.TargetObserver
+	broker         meta.Broker
+	nodeMgr        *session.NodeManager
 }
 
 func NewLoadCollectionJob(
@@ -124,18 +126,22 @@ func NewLoadCollectionJob(
 	req *querypb.LoadCollectionRequest,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
+	cluster session.Cluster,
 	targetMgr *meta.TargetManager,
+	targetObserver *observers.TargetObserver,
 	broker meta.Broker,
 	nodeMgr *session.NodeManager,
 ) *LoadCollectionJob {
 	return &LoadCollectionJob{
-		BaseJob:   NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
-		req:       req,
-		dist:      dist,
-		meta:      meta,
-		targetMgr: targetMgr,
-		broker:    broker,
-		nodeMgr:   nodeMgr,
+		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
+		req:            req,
+		dist:           dist,
+		meta:           meta,
+		cluster:        cluster,
+		targetMgr:      targetMgr,
+		targetObserver: targetObserver,
+		broker:         broker,
+		nodeMgr:        nodeMgr,
 	}
 }
 
@@ -213,12 +219,18 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
-	// It's safe here to call UpdateCollectionNextTargetWithPartitions, as the collection not existing
-	err = job.targetMgr.UpdateCollectionNextTargetWithPartitions(req.GetCollectionID(), partitionIDs...)
+	readyCh, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
 	if err != nil {
-		msg := "failed to update next targets for collection"
+		msg := "failed to update next target"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
+	}
+	select {
+	case <-job.ctx.Done():
+		msg := "failed to update next target as context canceled"
+		log.Error(msg)
+		return utils.WrapError(msg, nil)
+	case <-readyCh:
 	}
 
 	err = job.meta.CollectionManager.PutCollection(&meta.Collection{
@@ -227,9 +239,11 @@ func (job *LoadCollectionJob) Execute() error {
 			ReplicaNumber: req.GetReplicaNumber(),
 			Status:        querypb.LoadStatus_Loading,
 			FieldIndexID:  req.GetFieldIndexID(),
+			LoadType:      querypb.LoadType_LoadCollection,
 		},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		LoadPercentage: 0,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	})
 	if err != nil {
 		msg := "failed to store collection"
@@ -237,12 +251,60 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
+	partitions := lo.FilterMap(partitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
+		if part := job.meta.CollectionManager.GetPartition(partID); part != nil {
+			return nil, false
+		}
+		return &meta.Partition{
+			PartitionLoadInfo: &querypb.PartitionLoadInfo{
+				CollectionID: req.GetCollectionID(),
+				PartitionID:  partID,
+				Status:       querypb.LoadStatus_Loading,
+			},
+			CreatedAt: time.Now(),
+		}, true
+	})
+
+	err = job.meta.CollectionManager.PutPartition(partitions...)
+	if err != nil {
+		msg := "failed to store partitions"
+		log.Error(msg, zap.Error(err))
+		return utils.WrapError(msg, err)
+	}
+
+	// TODO: roll back if failed
+	partitionIDs = lo.Map(partitions, func(partition *meta.Partition, _ int) int64 {
+		return partition.GetPartitionID()
+	})
+	loadPartReq := &querypb.LoadPartitionsRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_LoadPartitions,
+		},
+		CollectionID: req.GetCollectionID(),
+		PartitionIDs: partitionIDs,
+	}
+	for _, replica := range replicas {
+		for _, node := range replica.GetNodes() {
+			status, err := job.cluster.LoadPartitions(job.ctx, node, loadPartReq)
+			if err != nil {
+				log.Error("QueryNode failed to loadPartition", zap.Int64("nodeID", node), zap.Error(err))
+				return err
+			}
+			if status.GetErrorCode() != commonpb.ErrorCode_Success {
+				log.Error("QueryNode failed to loadPartition",
+					zap.Int64("nodeID", node), zap.String("reason", status.GetReason()))
+				return fmt.Errorf("%s", status.GetReason())
+			}
+		}
+	}
+
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
 func (job *LoadCollectionJob) PostExecute() {
-	if job.Error() != nil && !job.meta.Exist(job.CollectionID()) {
+	if job.Error() != nil {
+		job.meta.CollectionManager.RemoveCollection(job.CollectionID())
 		job.meta.ReplicaManager.RemoveCollection(job.CollectionID())
 		job.targetMgr.RemoveCollection(job.req.GetCollectionID())
 	}
@@ -308,11 +370,13 @@ type LoadPartitionJob struct {
 	*BaseJob
 	req *querypb.LoadPartitionsRequest
 
-	dist      *meta.DistributionManager
-	meta      *meta.Meta
-	targetMgr *meta.TargetManager
-	broker    meta.Broker
-	nodeMgr   *session.NodeManager
+	dist           *meta.DistributionManager
+	meta           *meta.Meta
+	cluster        session.Cluster
+	targetMgr      *meta.TargetManager
+	targetObserver *observers.TargetObserver
+	broker         meta.Broker
+	nodeMgr        *session.NodeManager
 }
 
 func NewLoadPartitionJob(
@@ -320,18 +384,22 @@ func NewLoadPartitionJob(
 	req *querypb.LoadPartitionsRequest,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
+	cluster session.Cluster,
 	targetMgr *meta.TargetManager,
+	targetObserver *observers.TargetObserver,
 	broker meta.Broker,
 	nodeMgr *session.NodeManager,
 ) *LoadPartitionJob {
 	return &LoadPartitionJob{
-		BaseJob:   NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
-		req:       req,
-		dist:      dist,
-		meta:      meta,
-		targetMgr: targetMgr,
-		broker:    broker,
-		nodeMgr:   nodeMgr,
+		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
+		req:            req,
+		dist:           dist,
+		meta:           meta,
+		cluster:        cluster,
+		targetMgr:      targetMgr,
+		targetObserver: targetObserver,
+		broker:         broker,
+		nodeMgr:        nodeMgr,
 	}
 }
 
@@ -399,27 +467,55 @@ func (job *LoadPartitionJob) Execute() error {
 			zap.String("resourceGroup", replica.GetResourceGroup()))
 	}
 
-	// It's safe here to call UpdateCollectionNextTargetWithPartitions, as the collection not existing
-	err = job.targetMgr.UpdateCollectionNextTargetWithPartitions(req.GetCollectionID(), req.GetPartitionIDs()...)
+	readyCh, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), req.GetPartitionIDs()...)
 	if err != nil {
-		msg := "failed to update next targets for collection"
-		log.Error(msg,
-			zap.Int64s("partitionIDs", req.GetPartitionIDs()),
-			zap.Error(err))
+		msg := "failed to update next target"
+		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
-	partitions := lo.Map(req.GetPartitionIDs(), func(partition int64, _ int) *meta.Partition {
-		return &meta.Partition{
-			PartitionLoadInfo: &querypb.PartitionLoadInfo{
+	select {
+	case <-job.ctx.Done():
+		msg := "failed to update next target as context canceled"
+		log.Error(msg)
+		return utils.WrapError(msg, nil)
+	case <-readyCh:
+	}
+
+	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
+		err = job.meta.CollectionManager.PutCollection(&meta.Collection{
+			CollectionLoadInfo: &querypb.CollectionLoadInfo{
 				CollectionID:  req.GetCollectionID(),
-				PartitionID:   partition,
 				ReplicaNumber: req.GetReplicaNumber(),
 				Status:        querypb.LoadStatus_Loading,
 				FieldIndexID:  req.GetFieldIndexID(),
+				LoadType:      querypb.LoadType_LoadPartition,
+			},
+			LoadPercentage: 0,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		})
+		if err != nil {
+			msg := "failed to store collection"
+			log.Error(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
+		}
+	}
+
+	partitions := make([]*meta.Partition, 0, len(req.GetPartitionIDs()))
+	for _, partID := range req.GetPartitionIDs() {
+		if part := job.meta.CollectionManager.GetPartition(partID); part != nil {
+			continue
+		}
+		partitions = append(partitions, &meta.Partition{
+			PartitionLoadInfo: &querypb.PartitionLoadInfo{
+				CollectionID: req.GetCollectionID(),
+				PartitionID:  partID,
+				Status:       querypb.LoadStatus_Loading,
 			},
 			CreatedAt: time.Now(),
-		}
-	})
+		})
+	}
+
 	err = job.meta.CollectionManager.PutPartition(partitions...)
 	if err != nil {
 		msg := "failed to store partitions"
@@ -427,14 +523,31 @@ func (job *LoadPartitionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
+	// TODO: roll back if failed
+	for _, replica := range replicas {
+		for _, node := range replica.GetNodes() {
+			status, err := job.cluster.LoadPartitions(job.ctx, node, job.req)
+			if err != nil {
+				log.Error("QueryNode failed to loadPartition", zap.Int64("nodeID", node), zap.Error(err))
+				return err
+			}
+			if status.GetErrorCode() != commonpb.ErrorCode_Success {
+				log.Error("QueryNode failed to loadPartition",
+					zap.Int64("nodeID", node), zap.String("reason", status.GetReason()))
+				return fmt.Errorf("%s", status.GetReason())
+			}
+		}
+	}
+
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
 func (job *LoadPartitionJob) PostExecute() {
-	if job.Error() != nil && !job.meta.Exist(job.CollectionID()) {
-		job.meta.ReplicaManager.RemoveCollection(job.CollectionID())
-		job.targetMgr.RemoveCollection(job.req.GetCollectionID())
+	if job.Error() != nil {
+		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionIDs()...)
+		job.targetMgr.RemovePartition(job.req.GetCollectionID(), job.req.GetPartitionIDs()...)
+		// TODO: dyh, clear collection if partition not load before
 	}
 }
 
@@ -516,7 +629,7 @@ func (job *ReleasePartitionJob) Execute() error {
 				status, err := job.cluster.ReleasePartitions(job.ctx, node, job.req)
 				if err != nil || status.GetErrorCode() != commonpb.ErrorCode_Success {
 					// try release all
-					log.Error("sync releasePartition to QueryNode failed",
+					log.Error("QueryNode failed to releasePartition", zap.Int64("nodeID", node),
 						zap.Error(err), zap.String("reason", status.GetReason()))
 				}
 			}

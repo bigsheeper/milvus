@@ -512,9 +512,6 @@ func (mt *MetaTable) AddPartition(ctx context.Context, partition *model.Partitio
 	if !ok || !coll.Available() {
 		return fmt.Errorf("collection not exists: %d", partition.CollectionID)
 	}
-	if partition.State != pb.PartitionState_PartitionCreated {
-		return fmt.Errorf("partition state is not created, collection: %d, partition: %d, state: %s", partition.CollectionID, partition.PartitionID, partition.State)
-	}
 	if err := mt.catalog.CreatePartition(ctx, partition, partition.PartitionCreatedTimestamp); err != nil {
 		return err
 	}

@@ -55,7 +55,8 @@ func waitCollectionReleased(dist *meta.DistributionManager, collection int64, pa
 	}
 }
 
-func loadPartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluster session.Cluster, collection int64, partitions ...int64) error {
+func loadPartitions(ctx context.Context, meta *meta.Meta, cluster session.Cluster,
+	collection int64, partitions ...int64) error {
 	replicas := meta.ReplicaManager.GetByCollection(collection)
 	loadReq := &querypb.LoadPartitionsRequest{
 		Base: &commonpb.MsgBase{
@@ -78,7 +79,8 @@ func loadPartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluster s
 	return nil
 }
 
-func releasePartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluster session.Cluster, collection int64, partitions ...int64) {
+func releasePartitions(ctx context.Context, meta *meta.Meta, cluster session.Cluster,
+	ignoreErr bool, collection int64, partitions ...int64) error {
 	replicas := meta.ReplicaManager.GetByCollection(collection)
 	releaseReq := &querypb.ReleasePartitionsRequest{
 		Base: &commonpb.MsgBase{
@@ -89,7 +91,17 @@ func releasePartitionsForQueryNodes(ctx context.Context, meta *meta.Meta, cluste
 	}
 	for _, replica := range replicas {
 		for _, node := range replica.GetNodes() {
-			cluster.ReleasePartitions(ctx, node, releaseReq)
+			status, err := cluster.ReleasePartitions(ctx, node, releaseReq)
+			if ignoreErr {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if status.GetErrorCode() != commonpb.ErrorCode_Success {
+				return fmt.Errorf("QueryNode failed to releasePartitions, nodeID=%d, err=%s", node, status.GetReason())
+			}
 		}
 	}
+	return nil
 }

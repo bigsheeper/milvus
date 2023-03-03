@@ -61,13 +61,23 @@ func NewMetaStore(cli kv.MetaKv) metaStore {
 	}
 }
 
-func (s metaStore) SaveCollection(info *querypb.CollectionLoadInfo) error {
-	k := encodeCollectionLoadInfoKey(info.GetCollectionID())
-	v, err := proto.Marshal(info)
+func (s metaStore) SaveCollection(collection *querypb.CollectionLoadInfo, partitions ...*querypb.PartitionLoadInfo) error {
+	k := encodeCollectionLoadInfoKey(collection.GetCollectionID())
+	v, err := proto.Marshal(collection)
 	if err != nil {
 		return err
 	}
-	return s.cli.Save(k, string(v))
+	kvs := make(map[string]string)
+	for _, partition := range partitions {
+		key := encodePartitionLoadInfoKey(partition.GetCollectionID(), partition.GetPartitionID())
+		value, err := proto.Marshal(partition)
+		if err != nil {
+			return err
+		}
+		kvs[key] = string(value)
+	}
+	kvs[k] = string(v)
+	return s.cli.MultiSave(kvs)
 }
 
 func (s metaStore) SavePartition(info ...*querypb.PartitionLoadInfo) error {

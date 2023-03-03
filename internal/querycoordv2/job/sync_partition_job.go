@@ -70,6 +70,11 @@ func (job *SyncNewCreatedPartitionJob) Execute() error {
 		zap.Int64("partitionID", req.GetPartitionID()),
 	)
 
+	err := loadPartitions(job.ctx, job.meta, job.cluster, req.GetCollectionID(), req.GetPartitionID())
+	if err != nil {
+		return err
+	}
+
 	partition := &meta.Partition{
 		PartitionLoadInfo: &querypb.PartitionLoadInfo{
 			CollectionID: req.GetCollectionID(),
@@ -79,19 +84,18 @@ func (job *SyncNewCreatedPartitionJob) Execute() error {
 		LoadPercentage: 100,
 		CreatedAt:      time.Now(),
 	}
-	err := job.meta.CollectionManager.PutPartition(partition)
+	err = job.meta.CollectionManager.PutPartition(partition)
 	if err != nil {
 		msg := "failed to store partitions"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
 
-	return loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), req.GetPartitionID())
+	return nil
 }
 
 func (job *SyncNewCreatedPartitionJob) PostExecute() {
 	if job.Error() != nil && !errors.Is(job.Error(), ErrPartitionNotInTarget) {
-		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionID())
-		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, job.req.GetCollectionID(), job.req.GetPartitionID())
+		releasePartitions(job.ctx, job.meta, job.cluster, true, job.req.GetCollectionID(), job.req.GetPartitionID())
 	}
 }

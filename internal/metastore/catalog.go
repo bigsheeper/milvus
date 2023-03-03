@@ -149,7 +149,7 @@ type IndexCoordCatalog interface {
 }
 
 type QueryCoordCatalog interface {
-	SaveCollection(info *querypb.CollectionLoadInfo) error
+	SaveCollection(collection *querypb.CollectionLoadInfo, partitions ...*querypb.PartitionLoadInfo) error
 	SavePartition(info ...*querypb.PartitionLoadInfo) error
 	SaveReplica(replica *querypb.Replica) error
 	GetCollections() ([]*querypb.CollectionLoadInfo, error)

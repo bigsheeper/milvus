@@ -17,8 +17,6 @@
 package meta
 
 import (
-	"github.com/milvus-io/milvus/internal/log"
-	"go.uber.org/zap"
 	"sync"
 	"time"
 
@@ -317,11 +315,11 @@ func (m *CollectionManager) getPartitionsByCollection(collectionID UniqueID) []*
 	return partitions
 }
 
-func (m *CollectionManager) PutCollection(collection *Collection) error {
+func (m *CollectionManager) PutCollection(collection *Collection, partitions ...*Partition) error {
 	m.rwmutex.Lock()
 	defer m.rwmutex.Unlock()
 
-	return m.putCollection(collection, true)
+	return m.putCollection(true, collection, partitions...)
 }
 
 func (m *CollectionManager) UpdateCollection(collection *Collection) error {
@@ -333,7 +331,7 @@ func (m *CollectionManager) UpdateCollection(collection *Collection) error {
 		return ErrCollectionNotFound
 	}
 
-	return m.putCollection(collection, true)
+	return m.putCollection(true, collection)
 }
 
 func (m *CollectionManager) UpdateCollectionInMemory(collection *Collection) bool {
@@ -345,17 +343,19 @@ func (m *CollectionManager) UpdateCollectionInMemory(collection *Collection) boo
 		return false
 	}
 
-	m.putCollection(collection, false)
+	m.putCollection(false, collection)
 	return true
 }
 
-func (m *CollectionManager) putCollection(collection *Collection, withSave bool) error {
+func (m *CollectionManager) putCollection(withSave bool, collection *Collection, partitions ...*Partition) error {
 	if withSave {
-		err := m.store.SaveCollection(collection.CollectionLoadInfo)
+		partitionInfos := lo.Map(partitions, func(partition *Partition, _ int) *querypb.PartitionLoadInfo {
+			return partition.PartitionLoadInfo
+		})
+		err := m.store.SaveCollection(collection.CollectionLoadInfo, partitionInfos...)
 		if err != nil {
 			return err
 		}
-		log.Info("save collection done", zap.Any("colID", collection.CollectionID))
 	}
 	collection.UpdatedAt = time.Now()
 	m.collections[collection.CollectionID] = collection

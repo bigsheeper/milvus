@@ -106,22 +106,10 @@ func (mgr *TargetManager) UpdateCollectionNextTarget(collectionID int64) error {
 	mgr.rwMutex.Lock()
 	defer mgr.rwMutex.Unlock()
 
-	partitionIDs := make([]int64, 0)
-	collection := mgr.meta.GetCollection(collectionID)
-	if collection != nil {
-		var err error
-		partitionIDs, err = mgr.broker.GetPartitions(context.Background(), collectionID)
-		if err != nil {
-			return err
-		}
-	} else {
-		partitions := mgr.meta.GetPartitionsByCollection(collectionID)
-		if partitions != nil {
-			partitionIDs = lo.Map(partitions, func(partition *Partition, i int) int64 {
-				return partition.PartitionID
-			})
-		}
-	}
+	partitions := mgr.meta.GetPartitionsByCollection(collectionID)
+	partitionIDs := lo.Map(partitions, func(partition *Partition, i int) int64 {
+		return partition.PartitionID
+	})
 
 	return mgr.updateCollectionNextTarget(collectionID, partitionIDs...)
 }

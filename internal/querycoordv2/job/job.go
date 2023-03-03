@@ -109,7 +109,8 @@ func (job *BaseJob) PostExecute() {}
 
 type LoadCollectionJob struct {
 	*BaseJob
-	req *querypb.LoadCollectionRequest
+	req  *querypb.LoadCollectionRequest
+	undo *UndoList
 
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
@@ -134,6 +135,7 @@ func NewLoadCollectionJob(
 	return &LoadCollectionJob{
 		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
 		req:            req,
+		undo:           NewUndoList(ctx, meta, cluster, targetMgr, targetObserver),
 		dist:           dist,
 		meta:           meta,
 		cluster:        cluster,
@@ -182,33 +184,7 @@ func (job *LoadCollectionJob) Execute() error {
 	log := log.Ctx(job.ctx).With(
 		zap.Int64("collectionID", req.GetCollectionID()),
 	)
-
 	meta.GlobalFailedLoadCache.Remove(req.GetCollectionID())
-
-	// Clear stale replicas
-	err := job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
-	if err != nil {
-		log.Warn("failed to clear stale replicas", zap.Error(err))
-		return err
-	}
-
-	// Create replicas
-	replicas, err := utils.SpawnReplicasWithRG(job.meta,
-		req.GetCollectionID(),
-		req.GetResourceGroups(),
-		req.GetReplicaNumber(),
-	)
-	if err != nil {
-		msg := "failed to spawn replica for collection"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
-	}
-	for _, replica := range replicas {
-		log.Info("replica created",
-			zap.Int64("replicaID", replica.GetID()),
-			zap.Int64s("nodes", replica.GetNodes()),
-			zap.String("resourceGroup", replica.GetResourceGroup()))
-	}
 
 	// Fetch partitions from RootCoord
 	partitionIDs, err := job.broker.GetPartitions(job.ctx, req.GetCollectionID())
@@ -217,36 +193,58 @@ func (job *LoadCollectionJob) Execute() error {
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
+	lackPartitionIDs := lo.FilterMap(partitionIDs, func(partID int64, _ int) (int64, bool) {
+		part := job.meta.CollectionManager.GetPartition(partID)
+		return partID, part == nil
+	})
+	job.undo.CollectionID = req.GetCollectionID()
+	job.undo.LackPartitions = lackPartitionIDs
 
-	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
+	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
 		msg := "failed to update next target"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
+	job.undo.TargetUpdated = true
 
-	err = job.meta.CollectionManager.PutCollection(&meta.Collection{
-		CollectionLoadInfo: &querypb.CollectionLoadInfo{
-			CollectionID:  req.GetCollectionID(),
-			ReplicaNumber: req.GetReplicaNumber(),
-			Status:        querypb.LoadStatus_Loading,
-			FieldIndexID:  req.GetFieldIndexID(),
-			LoadType:      querypb.LoadType_LoadCollection,
-		},
-		LoadPercentage: 0,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	})
+	err = loadPartitions(job.ctx, job.meta, job.cluster, req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
-		msg := "failed to store collection"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
+		return err
+	}
+	job.undo.PartitionsLoaded = true
+
+	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
+		job.undo.NeverLoad = true
+		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
+		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
+		if err != nil {
+			msg := "failed to clear stale replicas"
+			log.Warn(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
+		}
 	}
 
-	partitions := lo.FilterMap(partitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
-		if part := job.meta.CollectionManager.GetPartition(partID); part != nil {
-			return nil, false
+	replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
+	if len(replicas) == 0 { // replicas not exist, create replicas
+		replicas, err = utils.SpawnReplicasWithRG(job.meta,
+			req.GetCollectionID(),
+			req.GetResourceGroups(),
+			req.GetReplicaNumber(),
+		)
+		if err != nil {
+			msg := "failed to spawn replica for collection"
+			log.Error(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
 		}
+		for _, replica := range replicas {
+			log.Info("replica created", zap.Int64("replicaID", replica.GetID()),
+				zap.Int64s("nodes", replica.GetNodes()), zap.String("resourceGroup", replica.GetResourceGroup()))
+		}
+		job.undo.ReplicaCreated = true
+	}
+
+	partitions := lo.FilterMap(lackPartitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
 		return &meta.Partition{
 			PartitionLoadInfo: &querypb.PartitionLoadInfo{
 				CollectionID: req.GetCollectionID(),
@@ -257,34 +255,32 @@ func (job *LoadCollectionJob) Execute() error {
 			CreatedAt:      time.Now(),
 		}, true
 	})
-
-	err = job.meta.CollectionManager.PutPartition(partitions...)
+	collection := &meta.Collection{
+		CollectionLoadInfo: &querypb.CollectionLoadInfo{
+			CollectionID:  req.GetCollectionID(),
+			ReplicaNumber: req.GetReplicaNumber(),
+			Status:        querypb.LoadStatus_Loading,
+			FieldIndexID:  req.GetFieldIndexID(),
+			LoadType:      querypb.LoadType_LoadCollection,
+		},
+		LoadPercentage: 0,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+	err = job.meta.CollectionManager.PutCollection(collection, partitions...)
 	if err != nil {
-		msg := "failed to store partitions"
+		msg := "failed to store collection and partitions"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
-	}
-
-	partitionIDs = lo.Map(partitions, func(partition *meta.Partition, _ int) int64 {
-		return partition.GetPartitionID()
-	})
-	err = loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
-	if err != nil {
-		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
-		return err
 	}
 
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
-// TODO: dyh, handle roll back
 func (job *LoadCollectionJob) PostExecute() {
 	if job.Error() != nil {
-		job.meta.CollectionManager.RemoveCollection(job.CollectionID())
-		job.meta.ReplicaManager.RemoveCollection(job.CollectionID())
-		//job.targetMgr.RemoveCollection(job.req.GetCollectionID())
-		job.targetObserver.ReleaseCollection(job.req.GetCollectionID())
+		job.undo.RollBack()
 	}
 }
 
@@ -346,7 +342,8 @@ func (job *ReleaseCollectionJob) Execute() error {
 
 type LoadPartitionJob struct {
 	*BaseJob
-	req *querypb.LoadPartitionsRequest
+	req  *querypb.LoadPartitionsRequest
+	undo *UndoList
 
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
@@ -371,6 +368,7 @@ func NewLoadPartitionJob(
 	return &LoadPartitionJob{
 		BaseJob:        NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
 		req:            req,
+		undo:           NewUndoList(ctx, meta, cluster, targetMgr, targetObserver),
 		dist:           dist,
 		meta:           meta,
 		cluster:        cluster,
@@ -420,40 +418,71 @@ func (job *LoadPartitionJob) Execute() error {
 
 	meta.GlobalFailedLoadCache.Remove(req.GetCollectionID())
 
-	// Clear stale replicas
-	err := job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
-	if err != nil {
-		log.Warn("failed to clear stale replicas", zap.Error(err))
-		return err
-	}
+	lackPartitionIDs := lo.FilterMap(req.GetPartitionIDs(), func(partID int64, _ int) (int64, bool) {
+		part := job.meta.CollectionManager.GetPartition(partID)
+		return partID, part == nil
+	})
+	job.undo.CollectionID = req.GetCollectionID()
+	job.undo.LackPartitions = lackPartitionIDs
 
-	// Create replicas
-	replicas, err := utils.SpawnReplicasWithRG(job.meta,
-		req.GetCollectionID(),
-		req.GetResourceGroups(),
-		req.GetReplicaNumber(),
-	)
-	if err != nil {
-		msg := "failed to spawn replica for collection"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
-	}
-	for _, replica := range replicas {
-		log.Info("replica created",
-			zap.Int64("replicaID", replica.GetID()),
-			zap.Int64s("nodes", replica.GetNodes()),
-			zap.String("resourceGroup", replica.GetResourceGroup()))
-	}
-
-	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), req.GetPartitionIDs()...)
+	_, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
 		msg := "failed to update next target"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
+	job.undo.TargetUpdated = true
+
+	err = loadPartitions(job.ctx, job.meta, job.cluster, req.GetCollectionID(), lackPartitionIDs...)
+	if err != nil {
+		return err
+	}
+	job.undo.PartitionsLoaded = true
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
-		err = job.meta.CollectionManager.PutCollection(&meta.Collection{
+		job.undo.NeverLoad = true
+		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
+		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
+		if err != nil {
+			msg := "failed to clear stale replicas"
+			log.Warn(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
+		}
+	}
+
+	replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
+	if len(replicas) == 0 { // replicas not exist, create replicas
+		replicas, err = utils.SpawnReplicasWithRG(job.meta,
+			req.GetCollectionID(),
+			req.GetResourceGroups(),
+			req.GetReplicaNumber(),
+		)
+		if err != nil {
+			msg := "failed to spawn replica for collection"
+			log.Error(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
+		}
+		for _, replica := range replicas {
+			log.Info("replica created", zap.Int64("replicaID", replica.GetID()),
+				zap.Int64s("nodes", replica.GetNodes()), zap.String("resourceGroup", replica.GetResourceGroup()))
+		}
+		job.undo.ReplicaCreated = true
+	}
+
+	partitions := lo.FilterMap(lackPartitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
+		return &meta.Partition{
+			PartitionLoadInfo: &querypb.PartitionLoadInfo{
+				CollectionID: req.GetCollectionID(),
+				PartitionID:  partID,
+				Status:       querypb.LoadStatus_Loading,
+			},
+			CreatedAt:      time.Now(),
+			LoadPercentage: 0,
+		}, true
+	})
+
+	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
+		collection := &meta.Collection{
 			CollectionLoadInfo: &querypb.CollectionLoadInfo{
 				CollectionID:  req.GetCollectionID(),
 				ReplicaNumber: req.GetReplicaNumber(),
@@ -464,54 +493,29 @@ func (job *LoadPartitionJob) Execute() error {
 			LoadPercentage: 0,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
-		})
+		}
+		err = job.meta.CollectionManager.PutCollection(collection, partitions...)
 		if err != nil {
-			msg := "failed to store collection"
+			msg := "failed to store collection and partitions"
 			log.Error(msg, zap.Error(err))
 			return utils.WrapError(msg, err)
 		}
-	}
-
-	partitions := lo.FilterMap(req.GetPartitionIDs(), func(partID int64, _ int) (*meta.Partition, bool) {
-		if part := job.meta.CollectionManager.GetPartition(partID); part != nil {
-			return nil, false
+	} else { // collection exists, put partitions only
+		err = job.meta.CollectionManager.PutPartition(partitions...)
+		if err != nil {
+			msg := "failed to store partitions"
+			log.Error(msg, zap.Error(err))
+			return utils.WrapError(msg, err)
 		}
-		return &meta.Partition{
-			PartitionLoadInfo: &querypb.PartitionLoadInfo{
-				CollectionID: req.GetCollectionID(),
-				PartitionID:  partID,
-				Status:       querypb.LoadStatus_Loading,
-			},
-			CreatedAt: time.Now(),
-		}, true
-	})
-
-	err = job.meta.CollectionManager.PutPartition(partitions...)
-	if err != nil {
-		msg := "failed to store partitions"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
-	}
-
-	partitionIDs := lo.Map(partitions, func(partition *meta.Partition, _ int) int64 {
-		return partition.GetPartitionID()
-	})
-	err = loadPartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
-	if err != nil {
-		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), partitionIDs...)
-		return err
 	}
 
 	metrics.QueryCoordNumCollections.WithLabelValues().Inc()
 	return nil
 }
 
-// TODO: dyh, handle roll back
 func (job *LoadPartitionJob) PostExecute() {
 	if job.Error() != nil {
-		job.meta.CollectionManager.RemovePartition(job.req.GetPartitionIDs()...)
-		job.targetMgr.RemovePartition(job.req.GetCollectionID(), job.req.GetPartitionIDs()...)
-		// TODO: dyh, clear collection if partition not load before
+		job.undo.RollBack()
 	}
 }
 
@@ -582,14 +586,17 @@ func (job *ReleasePartitionJob) Execute() error {
 		job.targetObserver.ReleaseCollection(req.GetCollectionID())
 		waitCollectionReleased(job.dist, req.GetCollectionID())
 	} else {
-		err := job.meta.CollectionManager.RemovePartition(toRelease...)
+		err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), req.GetPartitionIDs()...)
+		if err != nil {
+			return err
+		}
+		err = job.meta.CollectionManager.RemovePartition(toRelease...)
 		if err != nil {
 			msg := "failed to release partitions from store"
 			log.Warn(msg, zap.Error(err))
 			return utils.WrapError(msg, err)
 		}
 		job.targetMgr.RemovePartition(req.GetCollectionID(), toRelease...)
-		releasePartitionsForQueryNodes(job.ctx, job.meta, job.cluster, req.GetCollectionID(), req.GetPartitionIDs()...)
 		waitCollectionReleased(job.dist, req.GetCollectionID(), toRelease...)
 	}
 	metrics.QueryCoordNumCollections.WithLabelValues().Dec()

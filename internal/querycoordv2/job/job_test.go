@@ -56,6 +56,7 @@ type JobSuite struct {
 	store          meta.Store
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
+	cluster        session.Cluster
 	targetMgr      *meta.TargetManager
 	targetObserver *observers.TargetObserver
 	broker         *meta.MockBroker
@@ -134,6 +135,7 @@ func (suite *JobSuite) SetupTest() {
 	suite.dist = meta.NewDistributionManager()
 	suite.nodeMgr = session.NewNodeManager()
 	suite.meta = meta.NewMeta(RandomIncrementIDAllocator(), suite.store, suite.nodeMgr)
+	suite.cluster = session.NewCluster(suite.nodeMgr, session.DefaultQueryNodeCreator)
 	suite.targetMgr = meta.NewTargetManager(suite.broker, suite.meta)
 	suite.targetObserver = observers.NewTargetObserver(suite.meta,
 		suite.targetMgr,
@@ -195,7 +197,9 @@ func (suite *JobSuite) TestLoadCollection() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -220,7 +224,9 @@ func (suite *JobSuite) TestLoadCollection() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -243,7 +249,9 @@ func (suite *JobSuite) TestLoadCollection() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -268,7 +276,9 @@ func (suite *JobSuite) TestLoadCollection() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -292,7 +302,9 @@ func (suite *JobSuite) TestLoadCollection() {
 		req,
 		suite.dist,
 		suite.meta,
+		suite.cluster,
 		suite.targetMgr,
+		suite.targetObserver,
 		suite.broker,
 		suite.nodeMgr,
 	)
@@ -311,7 +323,9 @@ func (suite *JobSuite) TestLoadCollection() {
 		req,
 		suite.dist,
 		suite.meta,
+		suite.cluster,
 		suite.targetMgr,
+		suite.targetObserver,
 		suite.broker,
 		suite.nodeMgr,
 	)
@@ -338,7 +352,9 @@ func (suite *JobSuite) TestLoadCollectionWithReplicas() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -368,7 +384,9 @@ func (suite *JobSuite) TestLoadCollectionWithDiffIndex() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -396,7 +414,9 @@ func (suite *JobSuite) TestLoadCollectionWithDiffIndex() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -425,7 +445,9 @@ func (suite *JobSuite) TestLoadPartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -453,7 +475,9 @@ func (suite *JobSuite) TestLoadPartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -478,7 +502,9 @@ func (suite *JobSuite) TestLoadPartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -503,7 +529,9 @@ func (suite *JobSuite) TestLoadPartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -527,7 +555,9 @@ func (suite *JobSuite) TestLoadPartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -552,7 +582,9 @@ func (suite *JobSuite) TestLoadPartition() {
 		req,
 		suite.dist,
 		suite.meta,
+		suite.cluster,
 		suite.targetMgr,
+		suite.targetObserver,
 		suite.broker,
 		suite.nodeMgr,
 	)
@@ -572,7 +604,9 @@ func (suite *JobSuite) TestLoadPartition() {
 		req,
 		suite.dist,
 		suite.meta,
+		suite.cluster,
 		suite.targetMgr,
+		suite.targetObserver,
 		suite.broker,
 		suite.nodeMgr,
 	)
@@ -600,7 +634,9 @@ func (suite *JobSuite) TestLoadPartitionWithReplicas() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -631,7 +667,9 @@ func (suite *JobSuite) TestLoadPartitionWithDiffIndex() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -661,7 +699,9 @@ func (suite *JobSuite) TestLoadPartitionWithDiffIndex() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -731,6 +771,7 @@ func (suite *JobSuite) TestReleasePartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
 			suite.targetObserver,
 		)
@@ -756,6 +797,7 @@ func (suite *JobSuite) TestReleasePartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
 			suite.targetObserver,
 		)
@@ -783,6 +825,7 @@ func (suite *JobSuite) TestReleasePartition() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
 			suite.targetObserver,
 		)
@@ -836,7 +879,9 @@ func (suite *JobSuite) TestLoadCollectionStoreFailed() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -878,7 +923,9 @@ func (suite *JobSuite) TestLoadPartitionStoreFailed() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -900,7 +947,9 @@ func (suite *JobSuite) TestLoadCreateReplicaFailed() {
 			req,
 			suite.dist,
 			suite.meta,
+			suite.cluster,
 			suite.targetMgr,
+			suite.targetObserver,
 			suite.broker,
 			suite.nodeMgr,
 		)
@@ -922,7 +971,9 @@ func (suite *JobSuite) loadAll() {
 				req,
 				suite.dist,
 				suite.meta,
+				suite.cluster,
 				suite.targetMgr,
+				suite.targetObserver,
 				suite.broker,
 				suite.nodeMgr,
 			)
@@ -943,7 +994,9 @@ func (suite *JobSuite) loadAll() {
 				req,
 				suite.dist,
 				suite.meta,
+				suite.cluster,
 				suite.targetMgr,
+				suite.targetObserver,
 				suite.broker,
 				suite.nodeMgr,
 			)

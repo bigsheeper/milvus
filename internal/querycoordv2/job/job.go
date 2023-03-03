@@ -19,9 +19,9 @@ package job
 import (
 	"context"
 	"fmt"
-	"github.com/samber/lo"
 	"time"
 
+	"github.com/samber/lo"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"

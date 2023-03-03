@@ -1637,7 +1637,9 @@ func (suite *ServiceSuite) loadAll() {
 				req,
 				suite.dist,
 				suite.meta,
+				suite.cluster,
 				suite.targetMgr,
+				suite.targetObserver,
 				suite.broker,
 				suite.nodeMgr,
 			)
@@ -1659,7 +1661,9 @@ func (suite *ServiceSuite) loadAll() {
 				req,
 				suite.dist,
 				suite.meta,
+				suite.cluster,
 				suite.targetMgr,
+				suite.targetObserver,
 				suite.broker,
 				suite.nodeMgr,
 			)

@@ -94,6 +94,10 @@ func (m *MockQueryNode) ReleaseCollection(ctx context.Context, req *querypb.Rele
 	return m.status, m.err
 }
 
+func (m *MockQueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
+	return m.status, m.err
+}
+
 func (m *MockQueryNode) ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
 	return m.status, m.err
 }

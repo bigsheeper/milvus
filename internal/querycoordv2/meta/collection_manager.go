@@ -357,6 +357,10 @@ func (m *CollectionManager) putCollection(withSave bool, collection *Collection,
 			return err
 		}
 	}
+	for _, partition := range partitions {
+		partition.UpdatedAt = time.Now()
+		m.partitions[partition.GetPartitionID()] = partition
+	}
 	collection.UpdatedAt = time.Now()
 	m.collections[collection.CollectionID] = collection
 

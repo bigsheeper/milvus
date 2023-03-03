@@ -33,12 +33,11 @@ import (
 type CollectionObserver struct {
 	stopCh chan struct{}
 
-	dist                  *meta.DistributionManager
-	meta                  *meta.Meta
-	targetMgr             *meta.TargetManager
-	targetObserver        *TargetObserver
-	collectionLoadedCount map[int64]int
-	partitionLoadedCount  map[int64]int
+	dist                 *meta.DistributionManager
+	meta                 *meta.Meta
+	targetMgr            *meta.TargetManager
+	targetObserver       *TargetObserver
+	partitionLoadedCount map[int64]int
 
 	stopOnce sync.Once
 }
@@ -50,13 +49,12 @@ func NewCollectionObserver(
 	targetObserver *TargetObserver,
 ) *CollectionObserver {
 	return &CollectionObserver{
-		stopCh:                make(chan struct{}),
-		dist:                  dist,
-		meta:                  meta,
-		targetMgr:             targetMgr,
-		targetObserver:        targetObserver,
-		collectionLoadedCount: make(map[int64]int),
-		partitionLoadedCount:  make(map[int64]int),
+		stopCh:               make(chan struct{}),
+		dist:                 dist,
+		meta:                 meta,
+		targetMgr:            targetMgr,
+		targetObserver:       targetObserver,
+		partitionLoadedCount: make(map[int64]int),
 	}
 }
 
@@ -168,7 +166,6 @@ func (ob *CollectionObserver) observeCollectionLoadStatus(collection *meta.Colle
 
 	updated.LoadPercentage = percentage
 	if updated.LoadPercentage == 100 && ob.targetObserver.Check(updated.GetCollectionID()) {
-		delete(ob.collectionLoadedCount, collection.GetCollectionID())
 		updated.Status = querypb.LoadStatus_Loaded
 		ob.meta.CollectionManager.UpdateCollection(updated)
 

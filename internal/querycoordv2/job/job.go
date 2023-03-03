@@ -199,6 +199,7 @@ func (job *LoadCollectionJob) Execute() error {
 	})
 	job.undo.CollectionID = req.GetCollectionID()
 	job.undo.LackPartitions = lackPartitionIDs
+	log.Info("found partitions to load", zap.Int64s("partitions", lackPartitionIDs))
 
 	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
@@ -244,7 +245,7 @@ func (job *LoadCollectionJob) Execute() error {
 		job.undo.ReplicaCreated = true
 	}
 
-	partitions := lo.FilterMap(lackPartitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
+	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {
 		return &meta.Partition{
 			PartitionLoadInfo: &querypb.PartitionLoadInfo{
 				CollectionID: req.GetCollectionID(),
@@ -253,7 +254,7 @@ func (job *LoadCollectionJob) Execute() error {
 			},
 			LoadPercentage: 0,
 			CreatedAt:      time.Now(),
-		}, true
+		}
 	})
 	collection := &meta.Collection{
 		CollectionLoadInfo: &querypb.CollectionLoadInfo{
@@ -424,6 +425,7 @@ func (job *LoadPartitionJob) Execute() error {
 	})
 	job.undo.CollectionID = req.GetCollectionID()
 	job.undo.LackPartitions = lackPartitionIDs
+	log.Info("found partitions to load", zap.Int64s("partitions", lackPartitionIDs))
 
 	_, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
@@ -469,7 +471,7 @@ func (job *LoadPartitionJob) Execute() error {
 		job.undo.ReplicaCreated = true
 	}
 
-	partitions := lo.FilterMap(lackPartitionIDs, func(partID int64, _ int) (*meta.Partition, bool) {
+	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {
 		return &meta.Partition{
 			PartitionLoadInfo: &querypb.PartitionLoadInfo{
 				CollectionID: req.GetCollectionID(),
@@ -478,7 +480,7 @@ func (job *LoadPartitionJob) Execute() error {
 			},
 			CreatedAt:      time.Now(),
 			LoadPercentage: 0,
-		}, true
+		}
 	})
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {

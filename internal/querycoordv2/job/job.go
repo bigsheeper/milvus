@@ -210,7 +210,7 @@ func (job *LoadCollectionJob) Execute() error {
 			zap.String("resourceGroup", replica.GetResourceGroup()))
 	}
 
-	// Fetch channels and segments from DataCoord
+	// Fetch partitions from RootCoord
 	partitionIDs, err := job.broker.GetPartitions(job.ctx, req.GetCollectionID())
 	if err != nil {
 		msg := "failed to get partitions from RootCoord"
@@ -218,18 +218,11 @@ func (job *LoadCollectionJob) Execute() error {
 		return utils.WrapError(msg, err)
 	}
 
-	readyCh, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
+	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
 	if err != nil {
 		msg := "failed to update next target"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
-	}
-	select {
-	case <-job.ctx.Done():
-		msg := "failed to update next target as context canceled"
-		log.Error(msg)
-		return utils.WrapError(msg, nil)
-	case <-readyCh:
 	}
 
 	err = job.meta.CollectionManager.PutCollection(&meta.Collection{
@@ -290,7 +283,8 @@ func (job *LoadCollectionJob) PostExecute() {
 	if job.Error() != nil {
 		job.meta.CollectionManager.RemoveCollection(job.CollectionID())
 		job.meta.ReplicaManager.RemoveCollection(job.CollectionID())
-		job.targetMgr.RemoveCollection(job.req.GetCollectionID())
+		//job.targetMgr.RemoveCollection(job.req.GetCollectionID())
+		job.targetObserver.ReleaseCollection(job.req.GetCollectionID())
 	}
 }
 
@@ -451,18 +445,11 @@ func (job *LoadPartitionJob) Execute() error {
 			zap.String("resourceGroup", replica.GetResourceGroup()))
 	}
 
-	readyCh, err := job.targetObserver.UpdateNextTarget(req.GetCollectionID(), req.GetPartitionIDs()...)
+	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), req.GetPartitionIDs()...)
 	if err != nil {
 		msg := "failed to update next target"
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
-	}
-	select {
-	case <-job.ctx.Done():
-		msg := "failed to update next target as context canceled"
-		log.Error(msg)
-		return utils.WrapError(msg, nil)
-	case <-readyCh:
 	}
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
@@ -577,7 +564,9 @@ func (job *ReleasePartitionJob) Execute() error {
 		}
 	}
 
-	if len(toRelease) == len(loadedPartitions) { // All partitions are released, clear all
+	// If all partitions are released and LoadType is LoadPartition, clear all
+	if len(toRelease) == len(loadedPartitions) &&
+		job.meta.GetLoadType(req.GetCollectionID()) == querypb.LoadType_LoadPartition {
 		log.Info("release partitions covers all partitions, will remove the whole collection")
 		err := job.meta.CollectionManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {

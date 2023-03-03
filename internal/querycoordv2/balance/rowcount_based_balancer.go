@@ -17,10 +17,10 @@
 package balance
 
 import (
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"sort"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
@@ -88,7 +88,16 @@ func (b *RowCountBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignP
 
 	// loading collection should skip balance
 	loadedCollections := lo.Filter(ids, func(cid int64, _ int) bool {
-		return b.meta.GetStatus(cid) == querypb.LoadStatus_Loaded
+		if b.meta.GetStatus(cid) != querypb.LoadStatus_Loaded {
+			return false
+		}
+		partitions := b.meta.GetPartitionsByCollection(cid)
+		for _, partition := range partitions {
+			if partition.GetStatus() != querypb.LoadStatus_Loaded {
+				return false
+			}
+		}
+		return true
 	})
 
 	segmentPlans, channelPlans := make([]SegmentAssignPlan, 0), make([]ChannelAssignPlan, 0)

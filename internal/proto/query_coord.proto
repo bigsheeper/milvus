@@ -494,7 +494,6 @@ message CollectionLoadInfo {
   LoadStatus status = 4;
   map<int64, int64> field_indexID = 5;
   LoadType load_type = 6;
-  int64 version = 7;
 }
 
 message PartitionLoadInfo {

@@ -71,7 +71,6 @@ func NewCollectionManager(store Store) *CollectionManager {
 	}
 }
 
-// TODO: dyh, handle compatibility
 // Recover recovers collections from kv store,
 // panics if failed
 func (m *CollectionManager) Recover() error {
@@ -107,6 +106,22 @@ func (m *CollectionManager) Recover() error {
 				break
 			}
 
+			// for compatibility <= 2.2.x
+			if _, ok := m.collections[collection]; !ok {
+				col := &Collection{
+					CollectionLoadInfo: &querypb.CollectionLoadInfo{
+						CollectionID:  collection,
+						ReplicaNumber: partition.GetReplicaNumber(),
+						Status:        partition.GetStatus(),
+						FieldIndexID:  partition.GetFieldIndexID(),
+						LoadType:      querypb.LoadType_LoadPartition,
+					},
+				}
+				err = m.PutCollection(col)
+				if err != nil {
+					return err
+				}
+			}
 			m.partitions[partition.PartitionID] = &Partition{
 				PartitionLoadInfo: partition,
 			}
@@ -410,16 +425,19 @@ func (m *CollectionManager) RemoveCollection(collectionID UniqueID) error {
 
 	_, ok := m.collections[collectionID]
 	if ok {
-		partitions := lo.Map(m.getPartitionsByCollection(collectionID),
+		partitionIDs := lo.Map(m.getPartitionsByCollection(collectionID),
 			func(partition *Partition, _ int) int64 {
 				return partition.GetPartitionID()
 			})
 
-		err := m.store.ReleaseCollection(collectionID, partitions...)
+		err := m.store.ReleaseCollection(collectionID, partitionIDs...)
 		if err != nil {
 			return err
 		}
 		delete(m.collections, collectionID)
+		for _, partID := range partitionIDs {
+			delete(m.partitions, partID)
+		}
 	}
 	return nil
 }

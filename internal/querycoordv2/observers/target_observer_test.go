@@ -87,6 +87,8 @@ func (suite *TargetObserverSuite) SetupTest() {
 
 	err = suite.meta.CollectionManager.PutCollection(utils.CreateTestCollection(suite.collectionID, 1))
 	suite.NoError(err)
+	err = suite.meta.CollectionManager.PutPartition(utils.CreateTestPartition(suite.collectionID, suite.partitionID))
+	suite.NoError(err)
 	replicas, err := suite.meta.ReplicaManager.Spawn(suite.collectionID, 1, meta.DefaultResourceGroupName)
 	suite.NoError(err)
 	replicas[0].AddNode(2)
@@ -116,7 +118,6 @@ func (suite *TargetObserverSuite) SetupTest() {
 	}
 
 	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, mock.Anything, mock.Anything).Return(suite.nextTargetChannels, suite.nextTargetSegments, nil)
-	suite.broker.EXPECT().GetPartitions(mock.Anything, mock.Anything).Return([]int64{suite.partitionID}, nil)
 }
 
 func (suite *TargetObserverSuite) TestTriggerUpdateTarget() {
@@ -161,9 +162,6 @@ func (suite *TargetObserverSuite) TestTriggerUpdateTarget() {
 	suite.broker.EXPECT().
 		GetRecoveryInfo(mock.Anything, mock.Anything, mock.Anything).
 		Return(suite.nextTargetChannels, suite.nextTargetSegments, nil)
-	suite.broker.EXPECT().
-		GetPartitions(mock.Anything, mock.Anything).
-		Return([]int64{suite.partitionID}, nil)
 	suite.Eventually(func() bool {
 		return len(suite.targetMgr.GetHistoricalSegmentsByCollection(suite.collectionID, meta.NextTarget)) == 3 &&
 			len(suite.targetMgr.GetDmChannelsByCollection(suite.collectionID, meta.NextTarget)) == 2

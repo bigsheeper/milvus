@@ -141,6 +141,7 @@ func (suite *ServiceSuite) SetupTest() {
 		suite.dist,
 		suite.broker,
 	)
+	suite.targetObserver.Start(context.Background())
 	for _, node := range suite.nodes {
 		suite.nodeMgr.Add(session.NewNodeInfo(node, "localhost"))
 		err := suite.meta.ResourceManager.AssignNode(meta.DefaultResourceGroupName, node)
@@ -797,6 +798,39 @@ func (suite *ServiceSuite) TestLoadPartition() {
 	suite.NoError(err)
 	suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
 
+	// Test load with collection loaded
+	for _, collection := range suite.collections {
+		if suite.loadTypes[collection] != querypb.LoadType_LoadCollection {
+			continue
+		}
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: suite.partitions[collection],
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+	}
+
+	// Test load with more partitions
+	suite.cluster.EXPECT().LoadPartitions(mock.Anything, mock.Anything, mock.Anything).
+		Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
+	for _, collection := range suite.collections {
+		if suite.loadTypes[collection] != querypb.LoadType_LoadPartition {
+			continue
+		}
+		suite.broker.EXPECT().
+			GetRecoveryInfo(mock.Anything, collection, int64(999)).
+			Return(nil, nil, nil)
+		req := &querypb.LoadPartitionsRequest{
+			CollectionID: collection,
+			PartitionIDs: append(suite.partitions[collection], 999),
+		}
+		resp, err := server.LoadPartitions(ctx, req)
+		suite.NoError(err)
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
+	}
+
 	// Test when server is not healthy
 	server.UpdateStateCode(commonpb.StateCode_Initializing)
 	req = &querypb.LoadPartitionsRequest{
@@ -819,36 +853,6 @@ func (suite *ServiceSuite) TestLoadPartitionFailed() {
 			CollectionID:  collection,
 			PartitionIDs:  suite.partitions[collection],
 			ReplicaNumber: suite.replicaNumber[collection] + 1,
-		}
-		resp, err := server.LoadPartitions(ctx, req)
-		suite.NoError(err)
-		suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
-		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
-	}
-
-	// Test load with collection loaded
-	for _, collection := range suite.collections {
-		if suite.loadTypes[collection] != querypb.LoadType_LoadCollection {
-			continue
-		}
-		req := &querypb.LoadPartitionsRequest{
-			CollectionID: collection,
-			PartitionIDs: suite.partitions[collection],
-		}
-		resp, err := server.LoadPartitions(ctx, req)
-		suite.NoError(err)
-		suite.Equal(commonpb.ErrorCode_IllegalArgument, resp.ErrorCode)
-		suite.Contains(resp.Reason, job.ErrLoadParameterMismatched.Error())
-	}
-
-	// Test load with more partitions
-	for _, collection := range suite.collections {
-		if suite.loadTypes[collection] != querypb.LoadType_LoadPartition {
-			continue
-		}
-		req := &querypb.LoadPartitionsRequest{
-			CollectionID: collection,
-			PartitionIDs: append(suite.partitions[collection], 999),
 		}
 		resp, err := server.LoadPartitions(ctx, req)
 		suite.NoError(err)
@@ -899,6 +903,8 @@ func (suite *ServiceSuite) TestReleasePartition() {
 	server := suite.server
 
 	// Test release all partitions
+	suite.cluster.EXPECT().ReleasePartitions(mock.Anything, mock.Anything, mock.Anything).
+		Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 	for _, collection := range suite.collections {
 		req := &querypb.ReleasePartitionsRequest{
 			CollectionID: collection,
@@ -906,11 +912,7 @@ func (suite *ServiceSuite) TestReleasePartition() {
 		}
 		resp, err := server.ReleasePartitions(ctx, req)
 		suite.NoError(err)
-		if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-			suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
-		} else {
-			suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
-		}
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
 		suite.assertPartitionLoaded(collection, suite.partitions[collection][1:]...)
 	}
 
@@ -922,11 +924,7 @@ func (suite *ServiceSuite) TestReleasePartition() {
 		}
 		resp, err := server.ReleasePartitions(ctx, req)
 		suite.NoError(err)
-		if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-			suite.Equal(commonpb.ErrorCode_UnexpectedError, resp.ErrorCode)
-		} else {
-			suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
-		}
+		suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
 		suite.assertPartitionLoaded(collection, suite.partitions[collection][1:]...)
 	}
 
@@ -1842,7 +1840,7 @@ func (suite *ServiceSuite) updateCollectionStatus(collectionID int64, status que
 		}
 		collection.CollectionLoadInfo.Status = status
 		suite.meta.UpdateCollection(collection)
-	} else {
+
 		partitions := suite.meta.GetPartitionsByCollection(collectionID)
 		for _, partition := range partitions {
 			partition := partition.Clone()

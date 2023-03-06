@@ -18,6 +18,7 @@ package querycoordv2
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
 	"sync"
 	"testing"
 	"time"
@@ -115,6 +116,7 @@ func (suite *ServerSuite) SetupTest() {
 		ok := suite.waitNodeUp(suite.nodes[i], 5*time.Second)
 		suite.Require().True(ok)
 		suite.server.meta.ResourceManager.AssignNode(meta.DefaultResourceGroupName, suite.nodes[i].ID)
+		suite.expectLoadAndReleasePartitions(suite.nodes[i])
 	}
 
 	suite.loadAll()
@@ -384,6 +386,11 @@ func (suite *ServerSuite) expectGetRecoverInfo(collection int64) {
 	}
 }
 
+func (suite *ServerSuite) expectLoadAndReleasePartitions(querynode *mocks.MockQueryNode) {
+	querynode.EXPECT().LoadPartitions(mock.Anything, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil).Maybe()
+	querynode.EXPECT().ReleasePartitions(mock.Anything, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil).Maybe()
+}
+
 func (suite *ServerSuite) expectGetRecoverInfoByMockDataCoord(collection int64, dataCoord *coordMocks.DataCoord) {
 	var (
 		vChannels      []*datapb.VchannelInfo
@@ -431,7 +438,7 @@ func (suite *ServerSuite) updateCollectionStatus(collectionID int64, status quer
 		}
 		collection.CollectionLoadInfo.Status = status
 		suite.server.meta.UpdateCollection(collection)
-	} else {
+
 		partitions := suite.server.meta.GetPartitionsByCollection(collectionID)
 		for _, partition := range partitions {
 			partition := partition.Clone()

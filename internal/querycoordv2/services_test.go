@@ -944,7 +944,6 @@ func (suite *ServiceSuite) TestRefreshCollection() {
 	defer cancel()
 	server := suite.server
 
-	suite.targetObserver.Start(context.Background())
 	suite.server.collectionObserver.Start(context.Background())
 
 	// Test refresh all collections.
@@ -1010,7 +1009,6 @@ func (suite *ServiceSuite) TestRefreshPartitions() {
 	defer cancel()
 	server := suite.server
 
-	suite.targetObserver.Start(context.Background())
 	suite.server.collectionObserver.Start(context.Background())
 
 	// Test refresh all partitions.
@@ -1859,6 +1857,10 @@ func (suite *ServiceSuite) fetchHeartbeats(time time.Time) {
 		node := suite.nodeMgr.Get(node)
 		node.SetLastHeartbeat(time)
 	}
+}
+
+func (suite *ServiceSuite) TearDownTest() {
+	suite.targetObserver.Stop()
 }
 
 func TestService(t *testing.T) {

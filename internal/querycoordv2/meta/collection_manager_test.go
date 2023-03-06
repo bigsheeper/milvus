@@ -37,7 +37,8 @@ type CollectionManagerSuite struct {
 	partitions     map[int64][]int64 // CollectionID -> PartitionIDs
 	loadTypes      []querypb.LoadType
 	replicaNumber  []int32
-	loadPercentage []int32
+	colLoadPercent []int32
+	parLoadPercent map[int64][]int32
 
 	// Mocks
 	kv    kv.MetaKv
@@ -62,7 +63,12 @@ func (suite *CollectionManagerSuite) SetupSuite() {
 		querypb.LoadType_LoadCollection,
 	}
 	suite.replicaNumber = []int32{1, 2, 3}
-	suite.loadPercentage = []int32{0, 50, 100}
+	suite.colLoadPercent = []int32{0, 50, 100}
+	suite.parLoadPercent = map[int64][]int32{
+		100: {0},
+		101: {0, 100},
+		102: {100, 100, 100},
+	}
 }
 
 func (suite *CollectionManagerSuite) SetupTest() {
@@ -98,7 +104,7 @@ func (suite *CollectionManagerSuite) TestGetProperty() {
 		exist := mgr.Exist(collection)
 		suite.Equal(suite.loadTypes[i], loadType)
 		suite.Equal(suite.replicaNumber[i], replicaNumber)
-		suite.Equal(suite.loadPercentage[i], percentage)
+		suite.Equal(suite.colLoadPercent[i], percentage)
 		suite.True(exist)
 	}
 
@@ -246,7 +252,7 @@ func (suite *CollectionManagerSuite) TestRecover() {
 	err := mgr.Recover()
 	suite.NoError(err)
 	for i, collection := range suite.collections {
-		exist := suite.loadPercentage[i] == 100
+		exist := suite.colLoadPercent[i] == 100
 		suite.Equal(exist, mgr.Exist(collection))
 	}
 }
@@ -256,33 +262,32 @@ func (suite *CollectionManagerSuite) loadAll() {
 
 	for i, collection := range suite.collections {
 		status := querypb.LoadStatus_Loaded
-		if suite.loadPercentage[i] < 100 {
+		if suite.colLoadPercent[i] < 100 {
 			status = querypb.LoadStatus_Loading
 		}
 
-		if suite.loadTypes[i] == querypb.LoadType_LoadCollection {
-			mgr.PutCollection(&Collection{
-				CollectionLoadInfo: &querypb.CollectionLoadInfo{
+		mgr.PutCollection(&Collection{
+			CollectionLoadInfo: &querypb.CollectionLoadInfo{
+				CollectionID:  collection,
+				ReplicaNumber: suite.replicaNumber[i],
+				Status:        status,
+				LoadType:      suite.loadTypes[i],
+			},
+			LoadPercentage: suite.colLoadPercent[i],
+			CreatedAt:      time.Now(),
+		})
+
+		for j, partition := range suite.partitions[collection] {
+			mgr.PutPartition(&Partition{
+				PartitionLoadInfo: &querypb.PartitionLoadInfo{
 					CollectionID:  collection,
+					PartitionID:   partition,
 					ReplicaNumber: suite.replicaNumber[i],
 					Status:        status,
 				},
-				LoadPercentage: suite.loadPercentage[i],
+				LoadPercentage: suite.parLoadPercent[collection][j],
 				CreatedAt:      time.Now(),
 			})
-		} else {
-			for _, partition := range suite.partitions[collection] {
-				mgr.PutPartition(&Partition{
-					PartitionLoadInfo: &querypb.PartitionLoadInfo{
-						CollectionID:  collection,
-						PartitionID:   partition,
-						ReplicaNumber: suite.replicaNumber[i],
-						Status:        status,
-					},
-					LoadPercentage: suite.loadPercentage[i],
-					CreatedAt:      time.Now(),
-				})
-			}
 		}
 	}
 }

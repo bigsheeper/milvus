@@ -124,6 +124,9 @@ func (job *LoadCollectionJob) Execute() error {
 		part := job.meta.CollectionManager.GetPartition(partID)
 		return partID, part == nil
 	})
+	if len(lackPartitionIDs) == 0 {
+		return ErrCollectionLoaded
+	}
 	job.undo.CollectionID = req.GetCollectionID()
 	job.undo.LackPartitions = lackPartitionIDs
 	log.Info("found partitions to load", zap.Int64s("partitions", lackPartitionIDs))
@@ -143,7 +146,6 @@ func (job *LoadCollectionJob) Execute() error {
 	job.undo.PartitionsLoaded = true
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
-		job.undo.NeverLoad = true
 		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
 		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {
@@ -294,6 +296,9 @@ func (job *LoadPartitionJob) Execute() error {
 		part := job.meta.CollectionManager.GetPartition(partID)
 		return partID, part == nil
 	})
+	if len(lackPartitionIDs) == 0 {
+		return ErrCollectionLoaded
+	}
 	job.undo.CollectionID = req.GetCollectionID()
 	job.undo.LackPartitions = lackPartitionIDs
 	log.Info("found partitions to load", zap.Int64s("partitions", lackPartitionIDs))
@@ -313,7 +318,6 @@ func (job *LoadPartitionJob) Execute() error {
 	job.undo.PartitionsLoaded = true
 
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
-		job.undo.NeverLoad = true
 		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
 		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {

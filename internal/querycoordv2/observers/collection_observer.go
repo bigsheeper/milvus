@@ -91,7 +91,6 @@ func (ob *CollectionObserver) Observe() {
 	ob.observeLoadStatus()
 }
 
-// TODO: dyh, handle timeout
 func (ob *CollectionObserver) observeTimeout() {
 	collections := ob.meta.CollectionManager.GetAllCollections()
 	for _, collection := range collections {

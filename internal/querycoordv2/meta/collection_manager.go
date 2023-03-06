@@ -215,7 +215,7 @@ func (m *CollectionManager) GetStatus(collectionID UniqueID) querypb.LoadStatus 
 	m.rwmutex.RLock()
 	defer m.rwmutex.RUnlock()
 
-	_, ok := m.collections[collectionID]
+	collection, ok := m.collections[collectionID]
 	if !ok {
 		return querypb.LoadStatus_Invalid
 	}
@@ -226,6 +226,9 @@ func (m *CollectionManager) GetStatus(collectionID UniqueID) querypb.LoadStatus 
 		}
 	}
 	if len(partitions) > 0 {
+		return querypb.LoadStatus_Loaded
+	}
+	if collection.GetLoadType() == querypb.LoadType_LoadCollection {
 		return querypb.LoadStatus_Loaded
 	}
 	return querypb.LoadStatus_Invalid
@@ -272,7 +275,7 @@ func (m *CollectionManager) Exist(collectionID UniqueID) bool {
 	return ok
 }
 
-// GetAll returns the collection ID of all loaded collections and partitions
+// GetAll returns the collection ID of all loaded collections
 func (m *CollectionManager) GetAll() []int64 {
 	m.rwmutex.RLock()
 	defer m.rwmutex.RUnlock()

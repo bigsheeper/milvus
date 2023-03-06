@@ -29,7 +29,6 @@ type UndoList struct {
 	PartitionsLoaded bool // step loading partitions for query nodes
 	ReplicaCreated   bool // step creating replica
 
-	NeverLoad      bool // indicates if collection ever loaded
 	CollectionID   int64
 	LackPartitions []int64
 
@@ -53,14 +52,14 @@ func NewUndoList(ctx context.Context, meta *meta.Meta,
 
 func (u *UndoList) RollBack() {
 	if u.TargetUpdated {
-		if u.NeverLoad {
+		if !u.meta.CollectionManager.Exist(u.CollectionID) {
 			u.targetMgr.RemoveCollection(u.CollectionID)
 			u.targetObserver.ReleaseCollection(u.CollectionID)
 		} else {
 			u.targetMgr.RemovePartition(u.CollectionID, u.LackPartitions...)
 		}
 	}
-	if u.PartitionsLoaded && len(u.LackPartitions) > 0 {
+	if u.PartitionsLoaded {
 		releasePartitions(u.ctx, u.meta, u.cluster, true, u.CollectionID, u.LackPartitions...)
 	}
 	if u.ReplicaCreated {

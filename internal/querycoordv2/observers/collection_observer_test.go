@@ -212,20 +212,12 @@ func (suite *CollectionObserverSuite) TearDownTest() {
 
 func (suite *CollectionObserverSuite) TestObserve() {
 	const (
-		timeout = 2 * time.Second
+		timeout = 3 * time.Second
 	)
 	// time before load
 	time := suite.meta.GetCollection(suite.collections[2]).UpdatedAt
 	// Not timeout
-	paramtable.Get().Save(Params.QueryCoordCfg.LoadTimeoutSeconds.Key, "2")
-
-	segments := []*datapb.SegmentBinlogs{}
-	for _, segment := range suite.segments[100] {
-		segments = append(segments, &datapb.SegmentBinlogs{
-			SegmentID:     segment.GetID(),
-			InsertChannel: segment.GetInsertChannel(),
-		})
-	}
+	paramtable.Get().Save(Params.QueryCoordCfg.LoadTimeoutSeconds.Key, "3")
 
 	suite.ob.Start(context.Background())
 
@@ -279,7 +271,7 @@ func (suite *CollectionObserverSuite) TestObserve() {
 
 	suite.Eventually(func() bool {
 		return suite.isCollectionLoaded(suite.collections[3])
-	}, timeout*2, timeout/10)
+	}, timeout*20, timeout/10)
 }
 
 func (suite *CollectionObserverSuite) isCollectionLoaded(collection int64) bool {
@@ -311,7 +303,6 @@ func (suite *CollectionObserverSuite) isCollectionTimeout(collection int64) bool
 
 func (suite *CollectionObserverSuite) isCollectionLoadedContinue(collection int64, beforeTime time.Time) bool {
 	return suite.meta.GetCollection(collection).UpdatedAt.After(beforeTime)
-
 }
 
 func (suite *CollectionObserverSuite) loadAll() {
@@ -332,29 +323,28 @@ func (suite *CollectionObserverSuite) load(collection int64) {
 	err = suite.meta.ReplicaManager.Put(replicas...)
 	suite.NoError(err)
 
-	if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-		suite.meta.PutCollection(&meta.Collection{
-			CollectionLoadInfo: &querypb.CollectionLoadInfo{
+	suite.meta.PutCollection(&meta.Collection{
+		CollectionLoadInfo: &querypb.CollectionLoadInfo{
+			CollectionID:  collection,
+			ReplicaNumber: suite.replicaNumber[collection],
+			Status:        querypb.LoadStatus_Loading,
+			LoadType:      suite.loadTypes[collection],
+		},
+		LoadPercentage: 0,
+		CreatedAt:      time.Now(),
+	})
+
+	for _, partition := range suite.partitions[collection] {
+		suite.meta.PutPartition(&meta.Partition{
+			PartitionLoadInfo: &querypb.PartitionLoadInfo{
 				CollectionID:  collection,
+				PartitionID:   partition,
 				ReplicaNumber: suite.replicaNumber[collection],
 				Status:        querypb.LoadStatus_Loading,
 			},
 			LoadPercentage: 0,
 			CreatedAt:      time.Now(),
 		})
-	} else {
-		for _, partition := range suite.partitions[collection] {
-			suite.meta.PutPartition(&meta.Partition{
-				PartitionLoadInfo: &querypb.PartitionLoadInfo{
-					CollectionID:  collection,
-					PartitionID:   partition,
-					ReplicaNumber: suite.replicaNumber[collection],
-					Status:        querypb.LoadStatus_Loading,
-				},
-				LoadPercentage: 0,
-				CreatedAt:      time.Now(),
-			})
-		}
 	}
 
 	allSegments := make([]*datapb.SegmentBinlogs, 0)

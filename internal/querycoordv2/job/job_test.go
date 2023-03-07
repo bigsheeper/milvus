@@ -298,7 +298,7 @@ func (suite *JobSuite) TestLoadCollection() {
 
 	// Load with 3 replica on 1 rg
 	req := &querypb.LoadCollectionRequest{
-		CollectionID:   1000,
+		CollectionID:   1001,
 		ReplicaNumber:  3,
 		ResourceGroups: []string{"rg1"},
 	}
@@ -315,11 +315,11 @@ func (suite *JobSuite) TestLoadCollection() {
 	)
 	suite.scheduler.Add(job)
 	err := job.Wait()
-	suite.ErrorContains(err, ErrLoadParameterMismatched.Error())
+	suite.ErrorContains(err, meta.ErrNodeNotEnough.Error())
 
 	// Load with 3 replica on 3 rg
 	req = &querypb.LoadCollectionRequest{
-		CollectionID:   1000,
+		CollectionID:   1001,
 		ReplicaNumber:  3,
 		ResourceGroups: []string{"rg1", "rg2", "rg3"},
 	}
@@ -336,7 +336,7 @@ func (suite *JobSuite) TestLoadCollection() {
 	)
 	suite.scheduler.Add(job)
 	err = job.Wait()
-	suite.ErrorContains(err, ErrLoadParameterMismatched.Error())
+	suite.ErrorContains(err, meta.ErrNodeNotEnough.Error())
 }
 
 func (suite *JobSuite) TestLoadCollectionWithReplicas() {
@@ -580,9 +580,10 @@ func (suite *JobSuite) TestLoadPartition() {
 	suite.meta.ResourceManager.AddResourceGroup("rg3")
 
 	// test load 3 replica in 1 rg, should pass rg check
+	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, int64(100), int64(1001)).Return(nil, nil, nil)
 	req := &querypb.LoadPartitionsRequest{
-		CollectionID:   1001,
-		PartitionIDs:   []int64{100},
+		CollectionID:   100,
+		PartitionIDs:   []int64{1001},
 		ReplicaNumber:  3,
 		ResourceGroups: []string{"rg1"},
 	}
@@ -599,12 +600,13 @@ func (suite *JobSuite) TestLoadPartition() {
 	)
 	suite.scheduler.Add(job)
 	err := job.Wait()
-	suite.Contains(err.Error(), ErrLoadParameterMismatched.Error())
+	suite.Contains(err.Error(), meta.ErrNodeNotEnough.Error())
 
 	// test load 3 replica in 3 rg, should pass rg check
+	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, int64(102), int64(1001)).Return(nil, nil, nil)
 	req = &querypb.LoadPartitionsRequest{
-		CollectionID:   1001,
-		PartitionIDs:   []int64{102},
+		CollectionID:   102,
+		PartitionIDs:   []int64{1001},
 		ReplicaNumber:  3,
 		ResourceGroups: []string{"rg1", "rg2", "rg3"},
 	}
@@ -621,7 +623,7 @@ func (suite *JobSuite) TestLoadPartition() {
 	)
 	suite.scheduler.Add(job)
 	err = job.Wait()
-	suite.Contains(err.Error(), ErrLoadParameterMismatched.Error())
+	suite.Contains(err.Error(), meta.ErrNodeNotEnough.Error())
 }
 
 func (suite *JobSuite) TestLoadPartitionWithReplicas() {

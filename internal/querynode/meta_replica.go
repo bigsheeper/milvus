@@ -462,10 +462,10 @@ func (replica *metaReplica) removePartitionPrivate(partitionID UniqueID) error {
 	//for _, segmentID := range ids {
 	//	replica.removeSegmentPrivate(segmentID, segmentTypeGrowing)
 	//}
-	ids, _ := partition.getSegmentIDs(segmentTypeSealed)
-	for _, segmentID := range ids {
-		replica.removeSegmentPrivate(segmentID, segmentTypeSealed)
-	}
+	//ids, _ = partition.getSegmentIDs(segmentTypeSealed)
+	//for _, segmentID := range ids {
+	//	replica.removeSegmentPrivate(segmentID, segmentTypeSealed)
+	//}
 
 	collection.removePartitionID(partitionID)
 	delete(replica.partitions, partitionID)

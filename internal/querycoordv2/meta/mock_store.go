@@ -200,20 +200,20 @@ func (_c *MockStore_GetResourceGroups_Call) Return(_a0 []*querypb.ResourceGroup,
 	return _c
 }
 
-// ReleaseCollection provides a mock function with given fields: collectionID, partitions
-func (_m *MockStore) ReleaseCollection(collectionID int64, partitions ...int64) error {
+// ReleaseCollection provides a mock function with given fields: collection, partitions
+func (_m *MockStore) ReleaseCollection(collection int64, partitions ...int64) error {
 	_va := make([]interface{}, len(partitions))
 	for _i := range partitions {
 		_va[_i] = partitions[_i]
 	}
 	var _ca []interface{}
-	_ca = append(_ca, collectionID)
+	_ca = append(_ca, collection)
 	_ca = append(_ca, _va...)
 	ret := _m.Called(_ca...)
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(int64, ...int64) error); ok {
-		r0 = rf(collectionID, partitions...)
+		r0 = rf(collection, partitions...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -227,14 +227,14 @@ type MockStore_ReleaseCollection_Call struct {
 }
 
 // ReleaseCollection is a helper method to define mock.On call
-//  - collectionID int64
+//  - collection int64
 //  - partitions ...int64
-func (_e *MockStore_Expecter) ReleaseCollection(collectionID interface{}, partitions ...interface{}) *MockStore_ReleaseCollection_Call {
+func (_e *MockStore_Expecter) ReleaseCollection(collection interface{}, partitions ...interface{}) *MockStore_ReleaseCollection_Call {
 	return &MockStore_ReleaseCollection_Call{Call: _e.mock.On("ReleaseCollection",
-		append([]interface{}{collectionID}, partitions...)...)}
+		append([]interface{}{collection}, partitions...)...)}
 }
 
-func (_c *MockStore_ReleaseCollection_Call) Run(run func(collectionID int64, partitions ...int64)) *MockStore_ReleaseCollection_Call {
+func (_c *MockStore_ReleaseCollection_Call) Run(run func(collection int64, partitions ...int64)) *MockStore_ReleaseCollection_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]int64, len(args)-1)
 		for i, a := range args[1:] {

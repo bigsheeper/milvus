@@ -609,10 +609,7 @@ func (node *QueryNode) ReleasePartitions(ctx context.Context, req *querypb.Relea
 	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
 	log.Info("releasing partitions")
 	for _, part := range req.GetPartitionIDs() {
-		err := node.metaReplica.removePartition(part)
-		if err != nil {
-			log.Warn(err.Error())
-		}
+		node.metaReplica.removePartition(part)
 	}
 	log.Info("release partitions done")
 	status := &commonpb.Status{

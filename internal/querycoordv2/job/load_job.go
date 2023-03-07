@@ -19,6 +19,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/errors"
 	"time"
 
 	"github.com/samber/lo"
@@ -171,7 +172,7 @@ func (job *LoadCollectionJob) Execute() error {
 			log.Info("replica created", zap.Int64("replicaID", replica.GetID()),
 				zap.Int64s("nodes", replica.GetNodes()), zap.String("resourceGroup", replica.GetResourceGroup()))
 		}
-		job.undo.ReplicaCreated = true
+		job.undo.NewReplicaCreated = true
 	}
 
 	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {
@@ -209,7 +210,7 @@ func (job *LoadCollectionJob) Execute() error {
 }
 
 func (job *LoadCollectionJob) PostExecute() {
-	if job.Error() != nil {
+	if job.Error() != nil && !errors.Is(job.Error(), ErrCollectionLoaded) {
 		job.undo.RollBack()
 	}
 }
@@ -343,7 +344,7 @@ func (job *LoadPartitionJob) Execute() error {
 			log.Info("replica created", zap.Int64("replicaID", replica.GetID()),
 				zap.Int64s("nodes", replica.GetNodes()), zap.String("resourceGroup", replica.GetResourceGroup()))
 		}
-		job.undo.ReplicaCreated = true
+		job.undo.NewReplicaCreated = true
 	}
 
 	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {
@@ -391,7 +392,7 @@ func (job *LoadPartitionJob) Execute() error {
 }
 
 func (job *LoadPartitionJob) PostExecute() {
-	if job.Error() != nil {
+	if job.Error() != nil && !errors.Is(job.Error(), ErrCollectionLoaded) {
 		job.undo.RollBack()
 	}
 }

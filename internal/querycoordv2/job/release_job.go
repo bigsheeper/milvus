@@ -89,6 +89,8 @@ func (job *ReleaseCollectionJob) Execute() error {
 
 type ReleasePartitionJob struct {
 	*BaseJob
+	releasePartitionsOnly bool
+
 	req            *querypb.ReleasePartitionsRequest
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
@@ -154,12 +156,14 @@ func (job *ReleasePartitionJob) Execute() error {
 		job.targetObserver.ReleaseCollection(req.GetCollectionID())
 		waitCollectionReleased(job.dist, req.GetCollectionID())
 	} else {
-		err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), req.GetPartitionIDs()...)
+		err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), toRelease...)
 		if err != nil {
+			loadPartitions(job.ctx, job.meta, job.cluster, req.GetCollectionID(), toRelease...)
 			return err
 		}
 		err = job.meta.CollectionManager.RemovePartition(toRelease...)
 		if err != nil {
+			loadPartitions(job.ctx, job.meta, job.cluster, req.GetCollectionID(), toRelease...)
 			msg := "failed to release partitions from store"
 			log.Warn(msg, zap.Error(err))
 			return utils.WrapError(msg, err)

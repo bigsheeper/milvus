@@ -155,7 +155,7 @@ type QueryCoordCatalog interface {
 	GetCollections() ([]*querypb.CollectionLoadInfo, error)
 	GetPartitions() (map[int64][]*querypb.PartitionLoadInfo, error)
 	GetReplicas() ([]*querypb.Replica, error)
-	ReleaseCollection(collectionID int64, partitions ...int64) error
+	ReleaseCollection(collection int64, partitions ...int64) error
 	ReleasePartition(collection int64, partitions ...int64) error
 	ReleaseReplicas(collectionID int64) error
 	ReleaseReplica(collection, replica int64) error

@@ -567,9 +567,19 @@ func (node *QueryNode) ReleaseCollection(ctx context.Context, in *querypb.Releas
 }
 
 func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
+	nodeID := paramtable.GetNodeID()
+	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {
+		err := fmt.Errorf("query node %d is not ready", nodeID)
+		status := &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}
+		return status, nil
+	}
+	defer node.lifetime.Done()
+
 	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
 	log.Info("loading partitions")
-	// TODO: dyh, check health
 	for _, part := range req.GetPartitionIDs() {
 		err := node.metaReplica.addPartition(req.GetCollectionID(), part)
 		if err != nil {
@@ -585,9 +595,19 @@ func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPart
 
 // ReleasePartitions clears all data related to this partition on the querynode
 func (node *QueryNode) ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
+	nodeID := paramtable.GetNodeID()
+	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {
+		err := fmt.Errorf("query node %d is not ready", nodeID)
+		status := &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}
+		return status, nil
+	}
+	defer node.lifetime.Done()
+
 	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
 	log.Info("releasing partitions")
-	// TODO: dyh, check health
 	for _, part := range req.GetPartitionIDs() {
 		err := node.metaReplica.removePartition(part)
 		if err != nil {

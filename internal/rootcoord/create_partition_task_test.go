@@ -18,6 +18,7 @@ package rootcoord
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/proto/etcdpb"
 	"testing"
 
 	"github.com/milvus-io/milvus/internal/util/funcutil"
@@ -147,7 +148,14 @@ func Test_createPartitionTask_Execute(t *testing.T) {
 		meta.AddPartitionFunc = func(ctx context.Context, partition *model.Partition) error {
 			return nil
 		}
-		core := newTestCore(withValidIDAllocator(), withValidProxyManager(), withMeta(meta))
+		meta.ChangePartitionStateFunc = func(ctx context.Context, collectionID UniqueID, partitionID UniqueID, state etcdpb.PartitionState, ts Timestamp) error {
+			return nil
+		}
+		b := newMockBroker()
+		b.SyncNewCreatedPartitionFunc = func(ctx context.Context, collectionID UniqueID, partitionID UniqueID) error {
+			return nil
+		}
+		core := newTestCore(withValidIDAllocator(), withValidProxyManager(), withMeta(meta), withBroker(b))
 		task := &createPartitionTask{
 			baseTask: baseTask{core: core},
 			collMeta: coll,

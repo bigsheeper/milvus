@@ -19,6 +19,7 @@ package querynode
 import (
 	"context"
 	"encoding/json"
+	"github.com/milvus-io/milvus/internal/util/paramtable"
 	"math/rand"
 	"sync"
 	"testing"
@@ -368,8 +369,9 @@ func TestImpl_ReleasePartitions(t *testing.T) {
 
 	req := &queryPb.ReleasePartitionsRequest{
 		Base: &commonpb.MsgBase{
-			MsgType: commonpb.MsgType_WatchQueryChannels,
-			MsgID:   rand.Int63(),
+			MsgType:  commonpb.MsgType_WatchQueryChannels,
+			MsgID:    rand.Int63(),
+			TargetID: paramtable.GetNodeID(),
 		},
 		NodeID:       0,
 		CollectionID: defaultCollectionID,

@@ -77,9 +77,6 @@ func (s *Server) ShowCollections(ctx context.Context, req *querypb.ShowCollectio
 		for _, collection := range s.meta.GetAllCollections() {
 			collectionSet.Insert(collection.GetCollectionID())
 		}
-		for _, partition := range s.meta.GetAllPartitions() {
-			collectionSet.Insert(partition.GetCollectionID())
-		}
 		isGetAll = true
 	}
 	collections := collectionSet.Collect()

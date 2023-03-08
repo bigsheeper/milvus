@@ -113,16 +113,14 @@ func (ob *CollectionObserver) observeTimeout() {
 		log.Info("observes partitions timeout", zap.Int("partitionNum", len(partitions)))
 	}
 	for collection, partitions := range partitions {
-		log := log.With(
-			zap.Int64("collectionID", collection),
-		)
 		for _, partition := range partitions {
 			if partition.GetStatus() != querypb.LoadStatus_Loading ||
 				time.Now().Before(partition.UpdatedAt.Add(Params.QueryCoordCfg.LoadTimeoutSeconds.GetAsDuration(time.Second))) {
 				continue
 			}
 
-			log.Info("load partition timeout, cancel all partitions",
+			log.Info("load partition timeout, cancel it",
+				zap.Int64("collectionID", collection),
 				zap.Int64("partitionID", partition.GetPartitionID()),
 				zap.Duration("loadTime", time.Since(partition.CreatedAt)))
 			ob.meta.CollectionManager.RemovePartition(partition.GetPartitionID())

@@ -578,6 +578,15 @@ func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPart
 	}
 	defer node.lifetime.Done()
 
+	// check target matches
+	if req.GetBase().GetTargetID() != nodeID {
+		status := &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_NodeIDNotMatch,
+			Reason:    common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), nodeID),
+		}
+		return status, nil
+	}
+
 	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
 	log.Info("loading partitions")
 	for _, part := range req.GetPartitionIDs() {
@@ -605,6 +614,15 @@ func (node *QueryNode) ReleasePartitions(ctx context.Context, req *querypb.Relea
 		return status, nil
 	}
 	defer node.lifetime.Done()
+
+	// check target matches
+	if req.GetBase().GetTargetID() != nodeID {
+		status := &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_NodeIDNotMatch,
+			Reason:    common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), nodeID),
+		}
+		return status, nil
+	}
 
 	log.Ctx(ctx).With(zap.Int64("colID", req.GetCollectionID()), zap.Int64s("partIDs", req.GetPartitionIDs()))
 	log.Info("releasing partitions")

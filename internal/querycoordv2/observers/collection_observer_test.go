@@ -271,7 +271,7 @@ func (suite *CollectionObserverSuite) TestObserve() {
 
 	suite.Eventually(func() bool {
 		return suite.isCollectionLoaded(suite.collections[3])
-	}, timeout*20, timeout/10)
+	}, timeout*2, timeout/10)
 }
 
 func (suite *CollectionObserverSuite) isCollectionLoaded(collection int64) bool {

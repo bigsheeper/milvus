@@ -524,10 +524,6 @@ func (suite *JobSuite) TestLoadPartition() {
 			continue
 		}
 
-		suite.broker.EXPECT().
-			GetRecoveryInfo(mock.Anything, collection, int64(200)).
-			Return(nil, nil, nil)
-
 		req := &querypb.LoadPartitionsRequest{
 			CollectionID:  collection,
 			PartitionIDs:  append(suite.partitions[collection], 200),
@@ -580,6 +576,7 @@ func (suite *JobSuite) TestLoadPartition() {
 	suite.meta.ResourceManager.AddResourceGroup("rg3")
 
 	// test load 3 replica in 1 rg, should pass rg check
+	suite.broker.EXPECT().GetPartitions(mock.Anything, int64(100)).Return([]int64{1001}, nil)
 	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, int64(100), int64(1001)).Return(nil, nil, nil)
 	req := &querypb.LoadPartitionsRequest{
 		CollectionID:   100,
@@ -603,6 +600,7 @@ func (suite *JobSuite) TestLoadPartition() {
 	suite.Contains(err.Error(), meta.ErrNodeNotEnough.Error())
 
 	// test load 3 replica in 3 rg, should pass rg check
+	suite.broker.EXPECT().GetPartitions(mock.Anything, int64(102)).Return([]int64{1001}, nil)
 	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, int64(102), int64(1001)).Return(nil, nil, nil)
 	req = &querypb.LoadPartitionsRequest{
 		CollectionID:   102,

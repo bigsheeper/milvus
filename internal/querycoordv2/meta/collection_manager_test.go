@@ -41,8 +41,9 @@ type CollectionManagerSuite struct {
 	parLoadPercent map[int64][]int32
 
 	// Mocks
-	kv    kv.MetaKv
-	store Store
+	kv     kv.MetaKv
+	store  Store
+	broker Broker
 
 	// Test object
 	mgr *CollectionManager
@@ -85,6 +86,7 @@ func (suite *CollectionManagerSuite) SetupTest() {
 	suite.Require().NoError(err)
 	suite.kv = etcdkv.NewEtcdKV(cli, config.MetaRootPath.GetValue())
 	suite.store = NewMetaStore(suite.kv)
+	suite.broker = NewMockBroker(suite.T())
 
 	suite.mgr = NewCollectionManager(suite.store)
 	suite.loadAll()
@@ -183,7 +185,7 @@ func (suite *CollectionManagerSuite) TestUpdate() {
 	}
 
 	suite.clearMemory()
-	err := mgr.Recover()
+	err := mgr.Recover(suite.broker)
 	suite.NoError(err)
 	collections = mgr.GetAllCollections()
 	partitions = mgr.GetAllPartitions()
@@ -221,7 +223,7 @@ func (suite *CollectionManagerSuite) TestRemove() {
 	}
 
 	// Make sure the removes applied to meta store
-	err := mgr.Recover()
+	err := mgr.Recover(suite.broker)
 	suite.NoError(err)
 	for i, collectionID := range suite.collections {
 		if suite.loadTypes[i] == querypb.LoadType_LoadCollection {
@@ -249,7 +251,7 @@ func (suite *CollectionManagerSuite) TestRecover() {
 	mgr := suite.mgr
 
 	suite.clearMemory()
-	err := mgr.Recover()
+	err := mgr.Recover(suite.broker)
 	suite.NoError(err)
 	for i, collection := range suite.collections {
 		exist := suite.colLoadPercent[i] == 100

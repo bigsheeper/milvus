@@ -117,6 +117,7 @@ func (suite *TargetObserverSuite) SetupTest() {
 		},
 	}
 
+	suite.broker.EXPECT().GetPartitions(mock.Anything, mock.Anything).Return([]int64{suite.partitionID}, nil)
 	suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, mock.Anything, mock.Anything).Return(suite.nextTargetChannels, suite.nextTargetSegments, nil)
 }
 
@@ -159,6 +160,7 @@ func (suite *TargetObserverSuite) TestTriggerUpdateTarget() {
 	suite.targetMgr.UpdateCollectionCurrentTarget(suite.collectionID)
 
 	// Pull next again
+	suite.broker.EXPECT().GetPartitions(mock.Anything, mock.Anything).Return([]int64{suite.partitionID}, nil)
 	suite.broker.EXPECT().
 		GetRecoveryInfo(mock.Anything, mock.Anything, mock.Anything).
 		Return(suite.nextTargetChannels, suite.nextTargetSegments, nil)

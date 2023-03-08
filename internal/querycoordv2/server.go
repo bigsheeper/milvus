@@ -284,8 +284,13 @@ func (s *Server) initMeta() error {
 	s.store = meta.NewMetaStore(s.kv)
 	s.meta = meta.NewMeta(s.idAllocator, s.store, s.nodeMgr)
 
+	s.broker = meta.NewCoordinatorBroker(
+		s.dataCoord,
+		s.rootCoord,
+	)
+
 	log.Info("recover meta...")
-	err := s.meta.CollectionManager.Recover()
+	err := s.meta.CollectionManager.Recover(s.broker)
 	if err != nil {
 		log.Error("failed to recover collections")
 		return err
@@ -311,10 +316,6 @@ func (s *Server) initMeta() error {
 		ChannelDistManager: meta.NewChannelDistManager(),
 		LeaderViewManager:  meta.NewLeaderViewManager(),
 	}
-	s.broker = meta.NewCoordinatorBroker(
-		s.dataCoord,
-		s.rootCoord,
-	)
 	s.targetMgr = meta.NewTargetManager(s.broker, s.meta)
 
 	record.Record("Server initMeta")

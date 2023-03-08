@@ -159,8 +159,10 @@ func (suite *ServerSuite) TestRecoverFailed() {
 	suite.NoError(err)
 
 	broker := meta.NewMockBroker(suite.T())
-	broker.EXPECT().GetRecoveryInfo(context.TODO(), int64(1000), mock.Anything).Return(nil, nil, errors.New("CollectionNotExist"))
-	broker.EXPECT().GetRecoveryInfo(context.TODO(), int64(1001), mock.Anything).Return(nil, nil, errors.New("CollectionNotExist"))
+	for _, collection := range suite.collections {
+		broker.EXPECT().GetPartitions(mock.Anything, collection).Return([]int64{1}, nil)
+		broker.EXPECT().GetRecoveryInfo(context.TODO(), collection, mock.Anything).Return(nil, nil, errors.New("CollectionNotExist"))
+	}
 	suite.server.targetMgr = meta.NewTargetManager(broker, suite.server.meta)
 	err = suite.server.Start()
 	suite.NoError(err)
@@ -259,20 +261,17 @@ func (suite *ServerSuite) TestEnableActiveStandby() {
 		Schema: &schemapb.CollectionSchema{},
 	}, nil).Maybe()
 	for _, collection := range suite.collections {
-		if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-			req := &milvuspb.ShowPartitionsRequest{
-				Base: commonpbutil.NewMsgBase(
-					commonpbutil.WithMsgType(commonpb.MsgType_ShowPartitions),
-				),
-				CollectionID: collection,
-			}
-			mockRootCoord.EXPECT().ShowPartitionsInternal(mock.Anything, req).Return(&milvuspb.ShowPartitionsResponse{
-				Status:       successStatus,
-				PartitionIDs: suite.partitions[collection],
-			}, nil).Maybe()
+		req := &milvuspb.ShowPartitionsRequest{
+			Base: commonpbutil.NewMsgBase(
+				commonpbutil.WithMsgType(commonpb.MsgType_ShowPartitions),
+			),
+			CollectionID: collection,
 		}
+		mockRootCoord.EXPECT().ShowPartitionsInternal(mock.Anything, req).Return(&milvuspb.ShowPartitionsResponse{
+			Status:       successStatus,
+			PartitionIDs: suite.partitions[collection],
+		}, nil).Maybe()
 		suite.expectGetRecoverInfoByMockDataCoord(collection, mockDataCoord)
-
 	}
 	err = suite.server.SetRootCoord(mockRootCoord)
 	suite.NoError(err)
@@ -493,9 +492,7 @@ func (suite *ServerSuite) hackServer() {
 
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, mock.Anything).Return(&schemapb.CollectionSchema{}, nil).Maybe()
 	for _, collection := range suite.collections {
-		if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-			suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil).Maybe()
-		}
+		suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil).Maybe()
 		suite.expectGetRecoverInfo(collection)
 	}
 	log.Debug("server hacked")

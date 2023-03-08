@@ -17,6 +17,7 @@
 package meta
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -71,7 +72,7 @@ func NewCollectionManager(store Store) *CollectionManager {
 
 // Recover recovers collections from kv store,
 // panics if failed
-func (m *CollectionManager) Recover() error {
+func (m *CollectionManager) Recover(broker Broker) error {
 	collections, err := m.store.GetCollections()
 	if err != nil {
 		return err
@@ -90,6 +91,30 @@ func (m *CollectionManager) Recover() error {
 
 		m.collections[collection.CollectionID] = &Collection{
 			CollectionLoadInfo: collection,
+		}
+
+		// for compatibility <= 2.2.x
+		// it's a trick to check if it is old CollectionLoadInfo because there's no
+		// loadType in old version, maybe we should use version instead.
+		if collection.GetLoadType() == querypb.LoadType_UnKnownType {
+			partitionIDs, err := broker.GetPartitions(context.Background(), collection.GetCollectionID())
+			if err != nil {
+				return err
+			}
+			partitions := lo.Map(partitionIDs, func(partitionID int64, _ int) *Partition {
+				return &Partition{
+					PartitionLoadInfo: &querypb.PartitionLoadInfo{
+						CollectionID: collection.GetCollectionID(),
+						PartitionID:  partitionID,
+						Status:       querypb.LoadStatus_Loaded,
+					},
+					LoadPercentage: 100,
+				}
+			})
+			err = m.putPartition(partitions, true)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -114,6 +139,7 @@ func (m *CollectionManager) Recover() error {
 						FieldIndexID:  partition.GetFieldIndexID(),
 						LoadType:      querypb.LoadType_LoadPartition,
 					},
+					LoadPercentage: 100,
 				}
 				err = m.PutCollection(col)
 				if err != nil {
@@ -187,7 +213,7 @@ func (m *CollectionManager) GetCurrentLoadPercentage(collectionID UniqueID) int3
 }
 
 // GetCollectionLoadPercentage returns collection load percentage.
-// Note: collection.LoadPercentage == 100 only means that it used to be fully loaded,
+// Note: collection.LoadPercentage == 100 only means that it used to be fully loaded, and it is queryable,
 // to check if it is fully loaded now, use GetCurrentLoadPercentage instead.
 func (m *CollectionManager) GetCollectionLoadPercentage(collectionID UniqueID) int32 {
 	m.rwmutex.RLock()

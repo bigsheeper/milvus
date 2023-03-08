@@ -69,6 +69,8 @@ func (suite *RowCountBasedBalancerTestSuite) SetupTest() {
 	distManager := meta.NewDistributionManager()
 	suite.mockScheduler = task.NewMockScheduler(suite.T())
 	suite.balancer = NewRowCountBasedBalancer(suite.mockScheduler, nodeManager, distManager, testMeta, testTarget)
+
+	suite.broker.EXPECT().GetPartitions(mock.Anything, int64(1)).Return([]int64{1}, nil).Maybe()
 }
 
 func (suite *RowCountBasedBalancerTestSuite) TearDownTest() {

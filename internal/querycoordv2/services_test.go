@@ -311,7 +311,6 @@ func (suite *ServiceSuite) TestLoadCollection() {
 
 	// Test load all collections
 	for _, collection := range suite.collections {
-		suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
 		suite.expectGetRecoverInfo(collection)
 
 		req := &querypb.LoadCollectionRequest{
@@ -766,6 +765,10 @@ func (suite *ServiceSuite) TestLoadPartition() {
 
 	// Test load all partitions
 	for _, collection := range suite.collections {
+		suite.broker.EXPECT().GetPartitions(mock.Anything, collection).
+			Return(append(suite.partitions[collection], 999), nil)
+		suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, collection, int64(999)).
+			Return(nil, nil, nil)
 		suite.expectGetRecoverInfo(collection)
 
 		req := &querypb.LoadPartitionsRequest{
@@ -819,9 +822,6 @@ func (suite *ServiceSuite) TestLoadPartition() {
 		if suite.loadTypes[collection] != querypb.LoadType_LoadPartition {
 			continue
 		}
-		suite.broker.EXPECT().
-			GetRecoveryInfo(mock.Anything, collection, int64(999)).
-			Return(nil, nil, nil)
 		req := &querypb.LoadPartitionsRequest{
 			CollectionID: collection,
 			PartitionIDs: append(suite.partitions[collection], 999),
@@ -956,7 +956,6 @@ func (suite *ServiceSuite) TestRefreshCollection() {
 
 	// Test load all collections
 	for _, collection := range suite.collections {
-		suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
 		suite.expectGetRecoverInfo(collection)
 
 		req := &querypb.LoadCollectionRequest{
@@ -1622,8 +1621,6 @@ func (suite *ServiceSuite) loadAll() {
 	for _, collection := range suite.collections {
 		suite.expectGetRecoverInfo(collection)
 		if suite.loadTypes[collection] == querypb.LoadType_LoadCollection {
-			suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
-
 			req := &querypb.LoadCollectionRequest{
 				CollectionID:  collection,
 				ReplicaNumber: suite.replicaNumber[collection],
@@ -1731,6 +1728,7 @@ func (suite *ServiceSuite) assertSegments(collection int64, segments []*querypb.
 }
 
 func (suite *ServiceSuite) expectGetRecoverInfo(collection int64) {
+	suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
 	vChannels := []*datapb.VchannelInfo{}
 	for _, channel := range suite.channels[collection] {
 		vChannels = append(vChannels, &datapb.VchannelInfo{

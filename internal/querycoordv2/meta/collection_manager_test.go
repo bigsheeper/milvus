@@ -17,6 +17,8 @@
 package meta
 
 import (
+	"github.com/samber/lo"
+	"github.com/stretchr/testify/mock"
 	"sort"
 	"testing"
 	"time"
@@ -43,7 +45,7 @@ type CollectionManagerSuite struct {
 	// Mocks
 	kv     kv.MetaKv
 	store  Store
-	broker Broker
+	broker *MockBroker
 
 	// Test object
 	mgr *CollectionManager
@@ -121,33 +123,45 @@ func (suite *CollectionManagerSuite) TestGetProperty() {
 	suite.False(exist)
 }
 
-func (suite *CollectionManagerSuite) TestGet() {
-	mgr := suite.mgr
-
-	allCollections := mgr.GetAllCollections()
-	allPartitions := mgr.GetAllPartitions()
-	for i, collectionID := range suite.collections {
-		if suite.loadTypes[i] == querypb.LoadType_LoadCollection {
-			collection := mgr.GetCollection(collectionID)
-			suite.Equal(collectionID, collection.GetCollectionID())
-			suite.Contains(allCollections, collection)
-		} else {
-			partitions := mgr.GetPartitionsByCollection(collectionID)
-			suite.Len(partitions, len(suite.partitions[collectionID]))
-
-			for _, partitionID := range suite.partitions[collectionID] {
-				partition := mgr.GetPartition(partitionID)
-				suite.Equal(collectionID, partition.GetCollectionID())
-				suite.Equal(partitionID, partition.GetPartitionID())
-				suite.Contains(partitions, partition)
-				suite.Contains(allPartitions, partition)
-			}
+func (suite *CollectionManagerSuite) TestPut() {
+	suite.releaseAll()
+	// test put collection with partitions
+	for i, collection := range suite.collections {
+		status := querypb.LoadStatus_Loaded
+		if suite.colLoadPercent[i] < 100 {
+			status = querypb.LoadStatus_Loading
 		}
-	}
 
-	all := mgr.GetAll()
-	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
-	suite.Equal(suite.collections, all)
+		col := &Collection{
+			CollectionLoadInfo: &querypb.CollectionLoadInfo{
+				CollectionID:  collection,
+				ReplicaNumber: suite.replicaNumber[i],
+				Status:        status,
+				LoadType:      suite.loadTypes[i],
+			},
+			LoadPercentage: suite.colLoadPercent[i],
+			CreatedAt:      time.Now(),
+		}
+		partitions := lo.Map(suite.partitions[collection], func(partition int64, j int) *Partition {
+			return &Partition{
+				PartitionLoadInfo: &querypb.PartitionLoadInfo{
+					CollectionID:  collection,
+					PartitionID:   partition,
+					ReplicaNumber: suite.replicaNumber[i],
+					Status:        status,
+				},
+				LoadPercentage: suite.parLoadPercent[collection][j],
+				CreatedAt:      time.Now(),
+			}
+		})
+		err := suite.mgr.PutCollection(col, partitions...)
+		suite.NoError(err)
+	}
+	suite.checkLoadResult(false)
+}
+
+func (suite *CollectionManagerSuite) TestGet() {
+	suite.checkLoadResult(false)
 }
 
 func (suite *CollectionManagerSuite) TestUpdate() {
@@ -245,6 +259,20 @@ func (suite *CollectionManagerSuite) TestRemove() {
 			suite.Empty(partitions)
 		}
 	}
+
+	// remove collection would release its partitions also
+	suite.releaseAll()
+	suite.loadAll()
+	for _, collectionID := range suite.collections {
+		err := mgr.RemoveCollection(collectionID)
+		suite.NoError(err)
+		err = mgr.Recover(suite.broker)
+		suite.NoError(err)
+		collection := mgr.GetCollection(collectionID)
+		suite.Nil(collection)
+		partitions := mgr.GetPartitionsByCollection(collectionID)
+		suite.Empty(partitions)
+	}
 }
 
 func (suite *CollectionManagerSuite) TestRecover() {
@@ -257,6 +285,57 @@ func (suite *CollectionManagerSuite) TestRecover() {
 		exist := suite.colLoadPercent[i] == 100
 		suite.Equal(exist, mgr.Exist(collection))
 	}
+}
+
+func (suite *CollectionManagerSuite) TestUpgradeRecover() {
+	suite.releaseAll()
+	mgr := suite.mgr
+
+	// put old version of collections and partitions
+	for i, collection := range suite.collections {
+		status := querypb.LoadStatus_Loaded
+		if suite.colLoadPercent[i] < 100 {
+			status = querypb.LoadStatus_Loading
+		}
+		if suite.loadTypes[i] == querypb.LoadType_LoadCollection {
+			mgr.PutCollection(&Collection{
+				CollectionLoadInfo: &querypb.CollectionLoadInfo{
+					CollectionID:  collection,
+					ReplicaNumber: suite.replicaNumber[i],
+					Status:        status,
+					LoadType:      querypb.LoadType_UnKnownType, // old version's collection didn't set loadType
+				},
+				LoadPercentage: suite.colLoadPercent[i],
+				CreatedAt:      time.Now(),
+			})
+		} else {
+			for _, partition := range suite.partitions[collection] {
+				mgr.PutPartition(&Partition{
+					PartitionLoadInfo: &querypb.PartitionLoadInfo{
+						CollectionID:  collection,
+						PartitionID:   partition,
+						ReplicaNumber: suite.replicaNumber[i],
+						Status:        status,
+					},
+					LoadPercentage: suite.colLoadPercent[i],
+					CreatedAt:      time.Now(),
+				})
+			}
+		}
+	}
+
+	// set expectations
+	for i, collection := range suite.collections {
+		if suite.loadTypes[i] == querypb.LoadType_LoadCollection && suite.colLoadPercent[i] == 100 {
+			suite.broker.EXPECT().GetPartitions(mock.Anything, collection).Return(suite.partitions[collection], nil)
+		}
+	}
+
+	// do recovery
+	suite.clearMemory()
+	err := mgr.Recover(suite.broker)
+	suite.NoError(err)
+	suite.checkLoadResult(true)
 }
 
 func (suite *CollectionManagerSuite) loadAll() {
@@ -282,15 +361,56 @@ func (suite *CollectionManagerSuite) loadAll() {
 		for j, partition := range suite.partitions[collection] {
 			mgr.PutPartition(&Partition{
 				PartitionLoadInfo: &querypb.PartitionLoadInfo{
-					CollectionID:  collection,
-					PartitionID:   partition,
-					ReplicaNumber: suite.replicaNumber[i],
-					Status:        status,
+					CollectionID: collection,
+					PartitionID:  partition,
+					Status:       status,
 				},
 				LoadPercentage: suite.parLoadPercent[collection][j],
 				CreatedAt:      time.Now(),
 			})
 		}
+	}
+}
+
+func (suite *CollectionManagerSuite) checkLoadResult(ignoreUnloaded bool) {
+	mgr := suite.mgr
+
+	allCollections := mgr.GetAllCollections()
+	allPartitions := mgr.GetAllPartitions()
+	for i, collectionID := range suite.collections {
+		if ignoreUnloaded && suite.colLoadPercent[i] != 100 {
+			continue
+		}
+		collection := mgr.GetCollection(collectionID)
+		suite.Equal(collectionID, collection.GetCollectionID())
+		suite.Contains(allCollections, collection)
+
+		partitions := mgr.GetPartitionsByCollection(collectionID)
+		suite.Len(partitions, len(suite.partitions[collectionID]))
+		for j, partitionID := range suite.partitions[collectionID] {
+			if ignoreUnloaded && suite.parLoadPercent[collectionID][j] != 100 {
+				continue
+			}
+			partition := mgr.GetPartition(partitionID)
+			suite.Equal(collectionID, partition.GetCollectionID())
+			suite.Equal(partitionID, partition.GetPartitionID())
+			suite.Contains(partitions, partition)
+			suite.Contains(allPartitions, partition)
+		}
+	}
+
+	if ignoreUnloaded {
+		return
+	}
+	all := mgr.GetAll()
+	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
+	suite.Equal(suite.collections, all)
+}
+
+func (suite *CollectionManagerSuite) releaseAll() {
+	for _, collection := range suite.collections {
+		err := suite.mgr.RemoveCollection(collection)
+		suite.NoError(err)
 	}
 }
 

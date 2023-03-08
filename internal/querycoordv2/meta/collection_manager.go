@@ -18,6 +18,8 @@ package meta
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 
@@ -88,13 +90,39 @@ func (m *CollectionManager) Recover(broker Broker) error {
 			m.store.ReleaseCollection(collection.GetCollectionID())
 			continue
 		}
-
 		m.collections[collection.CollectionID] = &Collection{
 			CollectionLoadInfo: collection,
 		}
+	}
 
-		// for compatibility <= 2.2.x
-		// it's a trick to check if it is old CollectionLoadInfo because there's no
+	for collection, partitions := range partitions {
+		for _, partition := range partitions {
+			// Partitions not loaded done should be deprecated
+			if partition.GetStatus() != querypb.LoadStatus_Loaded {
+				partitionIDs := lo.Map(partitions, func(partition *querypb.PartitionLoadInfo, _ int) int64 {
+					return partition.GetPartitionID()
+				})
+				m.store.ReleasePartition(collection, partitionIDs...)
+				break
+			}
+			m.partitions[partition.PartitionID] = &Partition{
+				PartitionLoadInfo: partition,
+			}
+		}
+	}
+
+	err = m.upgradeRecover(broker)
+	if err != nil {
+		log.Error("upgrade recover failed", zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// upgradeRecover recovers from old version <= 2.2.x for compatibility.
+func (m *CollectionManager) upgradeRecover(broker Broker) error {
+	for _, collection := range m.GetAllCollections() {
+		// It's a workaround to check if it is old CollectionLoadInfo because there's no
 		// loadType in old version, maybe we should use version instead.
 		if collection.GetLoadType() == querypb.LoadType_UnKnownType {
 			partitionIDs, err := broker.GetPartitions(context.Background(), collection.GetCollectionID())
@@ -117,41 +145,25 @@ func (m *CollectionManager) Recover(broker Broker) error {
 			}
 		}
 	}
-
-	for collection, partitions := range partitions {
-		for _, partition := range partitions {
-			// Partitions not loaded done should be deprecated
-			if partition.GetStatus() != querypb.LoadStatus_Loaded {
-				partitionIDs := lo.Map(partitions, func(partition *querypb.PartitionLoadInfo, _ int) int64 {
-					return partition.GetPartitionID()
-				})
-				m.store.ReleasePartition(collection, partitionIDs...)
-				break
+	for _, partition := range m.GetAllPartitions() {
+		// In old version, collection would NOT be stored if the partition existed.
+		if _, ok := m.collections[partition.GetCollectionID()]; !ok {
+			col := &Collection{
+				CollectionLoadInfo: &querypb.CollectionLoadInfo{
+					CollectionID:  partition.GetCollectionID(),
+					ReplicaNumber: partition.GetReplicaNumber(),
+					Status:        partition.GetStatus(),
+					FieldIndexID:  partition.GetFieldIndexID(),
+					LoadType:      querypb.LoadType_LoadPartition,
+				},
+				LoadPercentage: 100,
 			}
-
-			// for compatibility <= 2.2.x
-			if _, ok := m.collections[collection]; !ok {
-				col := &Collection{
-					CollectionLoadInfo: &querypb.CollectionLoadInfo{
-						CollectionID:  collection,
-						ReplicaNumber: partition.GetReplicaNumber(),
-						Status:        partition.GetStatus(),
-						FieldIndexID:  partition.GetFieldIndexID(),
-						LoadType:      querypb.LoadType_LoadPartition,
-					},
-					LoadPercentage: 100,
-				}
-				err = m.PutCollection(col)
-				if err != nil {
-					return err
-				}
-			}
-			m.partitions[partition.PartitionID] = &Partition{
-				PartitionLoadInfo: partition,
+			err := m.PutCollection(col)
+			if err != nil {
+				return err
 			}
 		}
 	}
-
 	return nil
 }
 

@@ -18,10 +18,10 @@ package observers
 
 import (
 	"context"
-	"github.com/samber/lo"
 	"testing"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	clientv3 "go.etcd.io/etcd/client/v3"

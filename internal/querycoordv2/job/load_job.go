@@ -19,9 +19,9 @@ package job
 import (
 	"context"
 	"fmt"
-	"github.com/cockroachdb/errors"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 

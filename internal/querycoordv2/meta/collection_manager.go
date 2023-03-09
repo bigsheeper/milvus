@@ -18,17 +18,18 @@ package meta
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/log"
-	"go.uber.org/zap"
 	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/samber/lo"
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/merr"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	. "github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/samber/lo"
 )
 
 type Collection struct {

@@ -25,6 +25,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/util/merr"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	. "github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/samber/lo"
@@ -369,7 +370,7 @@ func (m *CollectionManager) UpdateCollection(collection *Collection) error {
 
 	_, ok := m.collections[collection.GetCollectionID()]
 	if !ok {
-		return ErrCollectionNotFound
+		return merr.WrapErrCollectionNotFound(collection.GetCollectionID())
 	}
 
 	return m.putCollection(true, collection)
@@ -428,7 +429,7 @@ func (m *CollectionManager) UpdatePartition(partition *Partition) error {
 
 	_, ok := m.partitions[partition.GetPartitionID()]
 	if !ok {
-		return ErrPartitionNotFound
+		return merr.WrapErrPartitionNotFound(partition.GetPartitionID())
 	}
 
 	return m.putPartition([]*Partition{partition}, true)

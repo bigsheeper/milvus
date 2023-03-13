@@ -19,13 +19,9 @@ package segments
 import (
 	"context"
 	"fmt"
-
-	"github.com/cockroachdb/errors"
-
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 )
 
@@ -51,13 +47,17 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 
 	log.Ctx(ctx).Debug("read target partitions", zap.Int64("collectionID", collectionID), zap.Int64s("partitionIDs", searchPartIDs))
 
-	// all partitions have been released
-	if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadPartition {
-		return searchPartIDs, newSegmentIDs, errors.New("partitions have been released , collectionID = " +
-			fmt.Sprintln(collectionID) + "target partitionIDs = " + fmt.Sprintln(searchPartIDs))
-	}
+	//// all partitions have been released
+	//if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadPartition {
+	//	return searchPartIDs, newSegmentIDs, errors.New("partitions have been released , collectionID = " +
+	//		fmt.Sprintln(collectionID) + "target partitionIDs = " + fmt.Sprintln(searchPartIDs))
+	//}
+	//
+	//if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadCollection {
+	//	return searchPartIDs, newSegmentIDs, nil
+	//}
 
-	if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadCollection {
+	if len(searchPartIDs) == 0 {
 		return searchPartIDs, newSegmentIDs, nil
 	}
 

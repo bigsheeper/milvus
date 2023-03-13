@@ -16,8 +16,6 @@
 
 package pipeline
 
-import "github.com/milvus-io/milvus/internal/common"
-
 //MsgFilter will return error if Msg was invalid
 type InsertMsgFilter = func(n *filterNode, c *Collection, msg *InsertMsg) error
 type DeleteMsgFilter = func(n *filterNode, c *Collection, msg *DeleteMsg) error
@@ -44,11 +42,11 @@ func InsertOutOfTarget(n *filterNode, c *Collection, msg *InsertMsg) error {
 		return WrapErrMsgNotTarget("Collection")
 	}
 
-	if c.GetLoadType() == loadTypePartition {
-		if msg.PartitionID != common.InvalidPartitionID && !c.ExistPartition(msg.PartitionID) {
-			return WrapErrMsgNotTarget("Partition")
-		}
-	}
+	//if c.GetLoadType() == loadTypePartition {
+	//	if msg.PartitionID != common.InvalidPartitionID && !c.ExistPartition(msg.PartitionID) {
+	//		return WrapErrMsgNotTarget("Partition")
+	//	}
+	//}
 	return nil
 }
 
@@ -82,10 +80,10 @@ func DeleteOutOfTarget(n *filterNode, c *Collection, msg *DeleteMsg) error {
 	if msg.GetCollectionID() != c.ID() {
 		return WrapErrMsgNotTarget("Collection")
 	}
-	if c.GetLoadType() == loadTypePartition {
-		if msg.PartitionID != common.InvalidPartitionID && !c.ExistPartition(msg.PartitionID) {
-			return WrapErrMsgNotTarget("Partition")
-		}
-	}
+	//if c.GetLoadType() == loadTypePartition {
+	//	if msg.PartitionID != common.InvalidPartitionID && !c.ExistPartition(msg.PartitionID) {
+	//		return WrapErrMsgNotTarget("Partition")
+	//	}
+	//}
 	return nil
 }

@@ -421,13 +421,62 @@ func (node *QueryNode) ReleaseCollection(ctx context.Context, in *querypb.Releas
 	return util.SuccessStatus(), nil
 }
 
-// ReleasePartitions clears all data related to this partition on the querynode
-func (node *QueryNode) ReleasePartitions(ctx context.Context, in *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
+// LoadPartitions sync loading partitions on the querynode.
+func (node *QueryNode) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", req.GetCollectionID()),
+		zap.Int64s("partitionIDs", req.GetPartitionIDs()),
+	)
+	log.Info("received load partitions request")
+
 	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {
 		msg := fmt.Sprintf("query node %d is not ready", paramtable.GetNodeID())
 		return util.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg), nil
 	}
 	defer node.lifetime.Done()
+
+	// check target matches
+	if req.GetBase().GetTargetID() != paramtable.GetNodeID() {
+		return util.WrapStatus(commonpb.ErrorCode_NodeIDNotMatch,
+			common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), paramtable.GetNodeID())), nil
+	}
+
+	collection := node.manager.Collection.Get(req.GetCollectionID())
+	if collection != nil {
+		collection.AddPartition(req.GetPartitionIDs()...)
+	}
+	log.Info("load partitions done")
+
+	return util.SuccessStatus(), nil
+}
+
+// ReleasePartitions sync releasing partitions on the querynode.
+func (node *QueryNode) ReleasePartitions(ctx context.Context, req *querypb.ReleasePartitionsRequest) (*commonpb.Status, error) {
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", req.GetCollectionID()),
+		zap.Int64s("partitionIDs", req.GetPartitionIDs()),
+	)
+	log.Info("received release partitions request")
+
+	if !node.lifetime.Add(commonpbutil.IsHealthyOrStopping) {
+		msg := fmt.Sprintf("query node %d is not ready", paramtable.GetNodeID())
+		return util.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg), nil
+	}
+	defer node.lifetime.Done()
+
+	// check target matches
+	if req.GetBase().GetTargetID() != paramtable.GetNodeID() {
+		return util.WrapStatus(commonpb.ErrorCode_NodeIDNotMatch,
+			common.WrapNodeIDNotMatchMsg(req.GetBase().GetTargetID(), paramtable.GetNodeID())), nil
+	}
+
+	collection := node.manager.Collection.Get(req.GetCollectionID())
+	if collection != nil {
+		for _, partition := range req.GetPartitionIDs() {
+			collection.RemovePartition(partition)
+		}
+	}
+	log.Info("release partitions done")
 
 	return util.SuccessStatus(), nil
 }

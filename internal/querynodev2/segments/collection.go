@@ -75,7 +75,7 @@ type Collection struct {
 	collectionPtr C.CCollection
 	id            int64
 	partitions    *typeutil.ConcurrentSet[int64]
-	loadType      querypb.LoadType
+	loadType      querypb.LoadType // TODO: dyh remove loadType
 	schema        *schemapb.CollectionSchema
 }
 

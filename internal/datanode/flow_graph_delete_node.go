@@ -137,6 +137,7 @@ func (dn *deleteNode) Operate(in []Msg) []Msg {
 				// remove delete buf
 				dn.delBufferManager.Delete(segmentToFlush)
 			}
+			dn.channel.updateSegmentMemorySize(segmentToFlush, 0)
 		}
 	}
 

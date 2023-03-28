@@ -328,7 +328,9 @@ dataNode:
 
   memory:
     forceSyncEnable: true # `true` to force sync if memory usage is too high
-    forceSyncSegmentNum: 1 # number of segments to sync, segments with top largest buffer will be synced.
+#    forceSyncSegmentNum: 1 # number of segments to sync, segments with top largest buffer will be synced.
+    forceSyncSegmentRatio: 0.3 # ratio of segments to sync, segments with top largest buffer will be synced.
+    forceSyncPeriod: 3 # period(second) to check memory sync, default 3.
     watermarkStandalone: 0.2 # memory watermark for standalone, upon reaching this watermark, segments will be synced.
     watermarkCluster: 0.5 # memory watermark for cluster, upon reaching this watermark, segments will be synced.
 

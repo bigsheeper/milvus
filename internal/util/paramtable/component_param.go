@@ -1571,9 +1571,11 @@ type dataNodeConfig struct {
 	UpdatedTime time.Time
 
 	// memory management
-	MemoryForceSyncEnable     bool
-	MemoryForceSyncSegmentNum int
-	MemoryWatermark           float64
+	MemoryForceSyncEnable bool
+	//MemoryForceSyncSegmentNum int
+	MemoryForceSyncSegmentRatio float64
+	MemoryForceSyncPeriod       time.Duration
+	MemoryWatermark             float64
 }
 
 func (p *dataNodeConfig) init(base *BaseTable) {
@@ -1592,7 +1594,9 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 	p.initChannelWatchPath()
 	p.initMemoryForceSyncEnable()
 	p.initMemoryWatermark()
-	p.initMemoryForceSyncSegmentNum()
+	//p.initMemoryForceSyncSegmentNum()
+	p.initMemoryForceSyncSegmentRatio()
+	p.initMemoryForceSyncPeriod()
 }
 
 // InitAlias init this DataNode alias
@@ -1672,21 +1676,35 @@ func (p *dataNodeConfig) initMemoryForceSyncEnable() {
 func (p *dataNodeConfig) initMemoryWatermark() {
 	if os.Getenv(metricsinfo.DeployModeEnvKey) == metricsinfo.StandaloneDeployMode {
 		p.MemoryWatermark = p.Base.ParseFloatWithDefault("datanode.memory.watermarkStandalone", 0.2)
+		log.Info("init force sync MemoryWatermark", zap.Float64("watermark", p.MemoryWatermark))
 		return
 	}
 	if os.Getenv(metricsinfo.DeployModeEnvKey) == metricsinfo.ClusterDeployMode {
 		p.MemoryWatermark = p.Base.ParseFloatWithDefault("datanode.memory.watermarkCluster", 0.5)
+		log.Info("init force sync MemoryWatermark", zap.Float64("watermark", p.MemoryWatermark))
 		return
 	}
 	log.Warn("DeployModeEnv is not set, use default", zap.Float64("default", 0.5))
 	p.MemoryWatermark = 0.5
 }
 
-func (p *dataNodeConfig) initMemoryForceSyncSegmentNum() {
-	p.MemoryForceSyncSegmentNum = p.Base.ParseIntWithDefault("datanode.memory.forceSyncSegmentNum", 1)
-	if p.MemoryForceSyncSegmentNum < 1 {
-		p.MemoryForceSyncSegmentNum = 1
-	}
+//func (p *dataNodeConfig) initMemoryForceSyncSegmentNum() {
+//	p.MemoryForceSyncSegmentNum = p.Base.ParseIntWithDefault("datanode.memory.forceSyncSegmentNum", 1)
+//	if p.MemoryForceSyncSegmentNum < 1 {
+//		p.MemoryForceSyncSegmentNum = 1
+//	}
+//	log.Info("init MemoryForceSyncSegmentNum", zap.Int("num", p.MemoryForceSyncSegmentNum))
+//}
+
+func (p *dataNodeConfig) initMemoryForceSyncSegmentRatio() {
+	p.MemoryForceSyncSegmentRatio = p.Base.ParseFloatWithDefault("datanode.memory.forceSyncSegmentRatio", 0.3)
+	log.Info("init MemoryForceSyncSegmentRatio", zap.Float64("ratio", p.MemoryForceSyncSegmentRatio))
+}
+
+func (p *dataNodeConfig) initMemoryForceSyncPeriod() {
+	duration := p.Base.ParseFloatWithDefault("datanode.memory.forceSyncPeriod", 3)
+	p.MemoryForceSyncPeriod = time.Duration(duration*1000) * time.Millisecond
+	log.Info("init MemoryForceSyncPeriod", zap.Duration("period", p.MemoryForceSyncPeriod))
 }
 
 // /////////////////////////////////////////////////////////////////////////////

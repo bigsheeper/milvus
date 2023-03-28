@@ -58,29 +58,30 @@ func TestSyncPeriodically(t *testing.T) {
 
 func TestSyncMemoryTooHigh(t *testing.T) {
 	tests := []struct {
-		testName        string
-		syncSegmentNum  int
-		needToSync      bool
-		memorySizesInMB []float64
-		shouldSyncSegs  []UniqueID
+		testName string
+		//syncSegmentNum  int
+		syncSegmentRatio float64
+		needToSync       bool
+		memorySizesInMB  []float64
+		shouldSyncSegs   []UniqueID
 	}{
-		{"test normal 1", 3, true,
+		{"test normal 1", 0.6, true,
 			[]float64{1, 2, 3, 4, 5}, []UniqueID{5, 4, 3}},
-		{"test normal 2", 2, true,
+		{"test normal 2", 0.4, true,
 			[]float64{1, 2, 3, 4, 5}, []UniqueID{5, 4}},
-		{"test normal 3", 5, true,
+		{"test normal 3", 1, true,
 			[]float64{1, 2, 3, 4, 5}, []UniqueID{5, 4, 3, 2, 1}},
-		{"test needToSync false", 3, false,
+		{"test needToSync false", 0.6, false,
 			[]float64{1, 2, 3, 4, 5}, []UniqueID{}},
-		{"test syncSegmentNum 1", 1, true,
+		{"test syncSegmentNum 1", 0.2, true,
 			[]float64{1, 2, 3, 4, 5}, []UniqueID{5}},
-		{"test with small segment", 3, true,
+		{"test with small segment", 0.6, true,
 			[]float64{0.1, 0.1, 0.1, 4, 5}, []UniqueID{5, 4}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.testName, func(t *testing.T) {
-			Params.DataNodeCfg.MemoryForceSyncSegmentNum = test.syncSegmentNum
+			Params.DataNodeCfg.MemoryForceSyncSegmentRatio = test.syncSegmentRatio
 			policy := syncMemoryTooHigh()
 			segments := make([]*Segment, len(test.memorySizesInMB))
 			for i := range segments {

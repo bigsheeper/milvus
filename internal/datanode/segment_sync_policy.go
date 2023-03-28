@@ -62,7 +62,11 @@ func syncMemoryTooHigh() segmentSyncPolicy {
 			return segments[i].memorySize > segments[j].memorySize
 		})
 		syncSegments := make([]UniqueID, 0)
-		syncSegmentsNum := math.Min(float64(Params.DataNodeCfg.MemoryForceSyncSegmentNum), float64(len(segments)))
+		syncSegmentsNum := math.Max(Params.DataNodeCfg.MemoryForceSyncSegmentRatio*float64(len(segments)), 1)
+		log.Info("sync segments, memory usage is too high",
+			zap.Float64("syncSegmentsNum", syncSegmentsNum),
+			zap.Int("len(Segments)", len(segments)),
+			zap.Float64("MemoryForceSyncSegmentRatio", Params.DataNodeCfg.MemoryForceSyncSegmentRatio))
 		for i := 0; i < int(syncSegmentsNum); i++ {
 			if segments[i].memorySize < minSyncSize { // prevent generating too many small binlogs
 				break

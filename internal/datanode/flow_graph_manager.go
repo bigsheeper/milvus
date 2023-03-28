@@ -45,7 +45,7 @@ func newFlowgraphManager() *flowgraphManager {
 }
 
 func (fm *flowgraphManager) start() {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(Params.DataNodeCfg.MemoryForceSyncPeriod)
 	defer ticker.Stop()
 	for {
 		select {
@@ -85,6 +85,12 @@ func (fm *flowgraphManager) execute(totalMemory uint64) {
 	if len(channels) == 0 {
 		return
 	}
+
+	log.Info("check memory watermark",
+		zap.Float64("totalBufferSize[MB]", float64(total)/1024.0/1024.0),
+		zap.Float64("totalMemory[MB]", float64(totalMemory)/1024.0/1024.0),
+		zap.Float64("MemoryWatermark", Params.DataNodeCfg.MemoryWatermark))
+	metrics.DataNodeTotalBufferDataSize.WithLabelValues(fmt.Sprintf("%d", Params.QueryNodeCfg.GetNodeID())).Set(float64(total))
 
 	if float64(total) < float64(totalMemory)*Params.DataNodeCfg.MemoryWatermark {
 		return

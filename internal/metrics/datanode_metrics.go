@@ -219,6 +219,16 @@ var (
 			nodeIDLabelName,
 			collectionIDLabelName,
 		})
+
+	DataNodeTotalBufferDataSize = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: milvusNamespace,
+			Subsystem: typeutil.DataNodeRole,
+			Name:      "total_buffer_size",
+			Help:      "the total buffered data size",
+		}, []string{
+			nodeIDLabelName,
+		})
 )
 
 // RegisterDataNode registers DataNode metrics
@@ -241,6 +251,7 @@ func RegisterDataNode(registry *prometheus.Registry) {
 	registry.MustRegister(DataNodeForwardDeleteMsgTimeTaken)
 	registry.MustRegister(DataNodeCompactionLatencyInQueue)
 	registry.MustRegister(DataNodeFlowGraphBufferDataSize)
+	registry.MustRegister(DataNodeTotalBufferDataSize)
 }
 
 func CleanupDataNodeCollectionMetrics(nodeID int64, collectionID int64, channel string) {

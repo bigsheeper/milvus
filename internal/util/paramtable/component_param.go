@@ -1567,6 +1567,8 @@ type dataNodeConfig struct {
 	// datanote send timetick interval per channel
 	DataNodeTimeTickInterval int
 
+	SkipBFStatsLoad bool
+
 	CreatedTime time.Time
 	UpdatedTime time.Time
 
@@ -1590,6 +1592,8 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 	p.initSyncPeriod()
 	p.initIOConcurrency()
 	p.initDataNodeTimeTickInterval()
+
+	p.initSkipBFStatsLoad()
 
 	p.initChannelWatchPath()
 	p.initMemoryForceSyncEnable()
@@ -1655,6 +1659,10 @@ func (p *dataNodeConfig) initIOConcurrency() {
 
 func (p *dataNodeConfig) initDataNodeTimeTickInterval() {
 	p.DataNodeTimeTickInterval = p.Base.ParseIntWithDefault("datanode.timetick.interval", 500)
+}
+
+func (p *dataNodeConfig) initSkipBFStatsLoad() {
+	p.SkipBFStatsLoad = p.Base.ParseBool("dataNode.skip.BFStats.Load", false)
 }
 
 func (p *dataNodeConfig) SetNodeID(id UniqueID) {

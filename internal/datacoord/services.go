@@ -724,7 +724,7 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 			segment2Binlogs[id] = append(segment2Binlogs[id], fieldBinlogs)
 		}
 
-		if newCount := segmentutil.CalcRowCountFromBinLog(segment.SegmentInfo); newCount != segment.NumOfRows {
+		if newCount := segmentutil.CalcRowCountFromBinLog(segment.SegmentInfo); newCount != segment.NumOfRows && newCount > 0 {
 			log.Warn("segment row number meta inconsistent with bin log row count and will be corrected",
 				zap.Int64("segment ID", segment.GetID()),
 				zap.Int64("segment meta row count (wrong)", segment.GetNumOfRows()),
@@ -1176,6 +1176,51 @@ func (s *Server) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStateR
 		log.Info("DataCoord receive GetFlushState request, Flushed is true", zap.Int64s("segmentIDs", req.GetSegmentIDs()), zap.Int("len", len(req.GetSegmentIDs())))
 		resp.Flushed = true
 	}
+	resp.Status.ErrorCode = commonpb.ErrorCode_Success
+	return resp, nil
+}
+
+// GetFlushAllState checks if all DML messages before `FlushAllTs` have been flushed.
+func (s *Server) GetFlushAllState(ctx context.Context, req *milvuspb.GetFlushAllStateRequest) (*milvuspb.GetFlushAllStateResponse, error) {
+	resp := &milvuspb.GetFlushAllStateResponse{Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_UnexpectedError}}
+	if s.isClosed() {
+		log.Warn("DataCoord receive GetFlushAllState request, server closed")
+		setNotServingStatus(resp.Status, s.GetStateCode())
+		return resp, nil
+	}
+
+	showColRsp, err := s.rootCoordClient.ShowCollections(ctx, &milvuspb.ShowCollectionsRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithMsgType(commonpb.MsgType_ShowCollections),
+		)})
+	if err = VerifyResponse(showColRsp, err); err != nil {
+		log.Warn("failed to ShowCollections", zap.Error(err))
+		resp.Status.Reason = err.Error()
+		return resp, nil
+	}
+
+	for _, collection := range showColRsp.GetCollectionIds() {
+		describeColRsp, err := s.rootCoordClient.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{
+			Base: commonpbutil.NewMsgBase(
+				commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
+			),
+			CollectionID: collection,
+		})
+		if err = VerifyResponse(describeColRsp, err); err != nil {
+			log.Warn("failed to DescribeCollectionInternal", zap.Error(err))
+			resp.Status.Reason = err.Error()
+			return resp, nil
+		}
+		for _, channel := range describeColRsp.GetVirtualChannelNames() {
+			channelCP := s.meta.GetChannelCheckpoint(channel)
+			if channelCP == nil || channelCP.GetTimestamp() < req.GetFlushAllTs() {
+				resp.Flushed = false
+				resp.Status.ErrorCode = commonpb.ErrorCode_Success
+				return resp, nil
+			}
+		}
+	}
+	resp.Flushed = true
 	resp.Status.ErrorCode = commonpb.ErrorCode_Success
 	return resp, nil
 }

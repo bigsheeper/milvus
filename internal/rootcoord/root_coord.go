@@ -1423,10 +1423,11 @@ func (c *Core) UpdateChannelTimeTick(ctx context.Context, in *internalpb.Channel
 		msgTypeName := commonpb.MsgType_name[int32(in.Base.GetMsgType())]
 		return failStatus(commonpb.ErrorCode_UnexpectedError, "invalid message type "+msgTypeName), nil
 	}
-	log.RatedInfo(60, "dyh, RootCoord UpdateChannelTimeTick",
+	log.RatedInfo(10, "dyh, RootCoord UpdateChannelTimeTick",
 		zap.Uint64s("timestamps", in.GetTimestamps()),
 		zap.Strings("channels", in.GetChannelNames()),
 		zap.Uint64("default_ts", in.GetDefaultTimestamp()),
+		zap.Time("default_time", tsoutil.PhysicalTime(in.GetDefaultTimestamp())),
 	)
 	err := c.chanTimeTick.updateTimeTick(in, "gRPC")
 	if err != nil {

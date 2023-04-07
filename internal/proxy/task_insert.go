@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"go.uber.org/atomic"
 	"strconv"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -35,6 +36,8 @@ type insertTask struct {
 	vChannels     []vChan
 	pChannels     []pChan
 	schema        *schemapb.CollectionSchema
+
+	finished *atomic.Bool
 }
 
 // TraceCtx returns insertTask context
@@ -72,7 +75,7 @@ func (it *insertTask) EndTs() Timestamp {
 }
 
 func (it *insertTask) getChannels() ([]pChan, error) {
-	collID, err := globalMetaCache.GetCollectionID(it.ctx, it.CollectionName)
+	collID, err := globalMetaCache.GetCollectionID(context.Background(), it.CollectionName)
 	if err != nil {
 		return nil, err
 	}

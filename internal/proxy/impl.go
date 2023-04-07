@@ -20,10 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strconv"
-	"sync"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
@@ -46,9 +42,13 @@ import (
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
+	"os"
+	"strconv"
+	"sync"
 )
 
 const moduleName = "Proxy"
@@ -2564,7 +2564,12 @@ func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) 
 		segIDAssigner: node.segAssigner,
 		chMgr:         node.chMgr,
 		chTicker:      node.chTicker,
+		finished:      atomic.NewBool(false),
 	}
+
+	defer func() {
+		it.finished.Store(true)
+	}()
 
 	if len(it.PartitionName) <= 0 {
 		it.PartitionName = Params.CommonCfg.DefaultPartitionName

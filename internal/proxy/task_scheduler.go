@@ -259,7 +259,19 @@ func (queue *dmTaskQueue) PopActiveTask(taskID UniqueID) task {
 
 		delete(queue.activeTasks, taskID)
 		log.Debug("Proxy dmTaskQueue popPChanStats", zap.Any("taskID", t.ID()))
-		queue.popPChanStats(t)
+		//if !funcutil.CheckCtxValid(t.TraceCtx()) {
+		//	if insertT, ok := t.(*insertTask); ok {
+		//		if insertT.finished.Load() {
+		//			panic("dyh 1111")
+		//		} else {
+		//			panic("dyh 2222")
+		//		}
+		//	}
+		//}
+		err := queue.popPChanStats(t)
+		if err != nil {
+			panic(fmt.Errorf("dyh popPChanStats failed, err=%w", err))
+		}
 	} else {
 		log.Warn("Proxy task not in active task list!", zap.Any("taskID", taskID))
 	}

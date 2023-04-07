@@ -78,7 +78,7 @@ func (dt *deleteTask) OnEnqueue() error {
 }
 
 func (dt *deleteTask) getChannels() ([]pChan, error) {
-	collID, err := globalMetaCache.GetCollectionID(dt.ctx, dt.CollectionName)
+	collID, err := globalMetaCache.GetCollectionID(context.Background(), dt.CollectionName)
 	if err != nil {
 		return nil, err
 	}

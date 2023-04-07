@@ -2520,6 +2520,11 @@ func (node *Proxy) GetIndexState(ctx context.Context, request *milvuspb.GetIndex
 
 // Insert insert records into collection.
 func (node *Proxy) Insert(ctx context.Context, request *milvuspb.InsertRequest) (*milvuspb.MutationResult, error) {
+	defer func() {
+		if ctx.Err() != nil {
+			panic("dyh 5555")
+		}
+	}()
 	sp, ctx := trace.StartSpanFromContextWithOperationName(ctx, "Proxy-Insert")
 	defer sp.Finish()
 	traceID, _, _ := trace.InfoFromSpan(sp)

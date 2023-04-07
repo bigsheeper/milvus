@@ -75,7 +75,15 @@ func (it *insertTask) EndTs() Timestamp {
 }
 
 func (it *insertTask) getChannels() ([]pChan, error) {
-	collID, err := globalMetaCache.GetCollectionID(context.Background(), it.CollectionName)
+	//if it.ctx.Err() != nil {
+	//	log.Warn("dyh 333")
+	//	if it.finished.Load() {
+	//		panic("dyh 1111")
+	//	} else {
+	//		panic("dyh 2222")
+	//	}
+	//}
+	collID, err := globalMetaCache.GetCollectionID(it.ctx, it.CollectionName)
 	if err != nil {
 		return nil, err
 	}

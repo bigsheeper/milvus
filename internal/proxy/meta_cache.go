@@ -493,9 +493,6 @@ func (m *MetaCache) describeCollection(ctx context.Context, collectionName strin
 		CollectionName: collectionName,
 		CollectionID:   collectionID,
 	}
-	if ctx.Err() != nil {
-		panic("dyh 4444")
-	}
 	log.Ctx(ctx).Info("sent describe col request", zap.Any("ctx", ctx.Err()))
 	coll, err := m.rootCoord.DescribeCollection(ctx, req)
 	if err != nil {

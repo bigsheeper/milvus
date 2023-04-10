@@ -138,6 +138,8 @@ type Scheduler interface {
 	RemoveByNode(node int64)
 	GetNodeSegmentDelta(nodeID int64) int
 	GetNodeChannelDelta(nodeID int64) int
+	GetChannelTaskNum() int
+	GetSegmentTaskNum() int
 }
 
 type taskScheduler struct {
@@ -433,6 +435,20 @@ func calculateNodeDelta[K comparable, T ~map[K]Task](nodeID int64, tasks T) int 
 		}
 	}
 	return delta
+}
+
+func (scheduler *taskScheduler) GetChannelTaskNum() int {
+	scheduler.rwmutex.RLock()
+	defer scheduler.rwmutex.RUnlock()
+
+	return len(scheduler.channelTasks)
+}
+
+func (scheduler *taskScheduler) GetSegmentTaskNum() int {
+	scheduler.rwmutex.RLock()
+	defer scheduler.rwmutex.RUnlock()
+
+	return len(scheduler.segmentTasks)
 }
 
 func (scheduler *taskScheduler) GetNodeSegmentCntDelta(nodeID int64) int {
@@ -752,7 +768,7 @@ func (scheduler *taskScheduler) checkSegmentTaskStale(task *SegmentTask) bool {
 		case ActionTypeGrow:
 			segment := scheduler.targetMgr.GetHistoricalSegment(task.CollectionID(), task.SegmentID(), meta.NextTarget)
 			if segment == nil {
-				log.Warn("task stale due tu the segment to load not exists in targets",
+				log.Warn("task stale due to the segment to load not exists in targets",
 					zap.Int64("segment", task.segmentID))
 				return true
 			}

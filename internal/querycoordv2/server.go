@@ -105,7 +105,8 @@ type Server struct {
 	replicaObserver    *observers.ReplicaObserver
 	resourceObserver   *observers.ResourceObserver
 
-	balancer balance.Balance
+	balancer    balance.Balance
+	balancerMap map[string]balance.Balance
 
 	// Active-standby
 	enableActiveStandBy bool
@@ -251,15 +252,21 @@ func (s *Server) initQueryCoord() error {
 		s.taskScheduler,
 	)
 
-	// Init balancer
-	log.Info("init balancer")
-	s.balancer = balance.NewRowCountBasedBalancer(
-		s.taskScheduler,
-		s.nodeMgr,
-		s.dist,
-		s.meta,
-		s.targetMgr,
-	)
+	// Init balancer map and balancer
+	log.Info("init all available balancer")
+	s.balancerMap = make(map[string]balance.Balance)
+	s.balancerMap[balance.RoundRobinBalancerName] = balance.NewRoundRobinBalancer(s.taskScheduler, s.nodeMgr)
+	s.balancerMap[balance.RowCountBasedBalancerName] = balance.NewRowCountBasedBalancer(s.taskScheduler,
+		s.nodeMgr, s.dist, s.meta, s.targetMgr)
+	s.balancerMap[balance.ScoreBasedBalancerName] = balance.NewScoreBasedBalancer(s.taskScheduler,
+		s.nodeMgr, s.dist, s.meta, s.targetMgr)
+	if balancer, ok := s.balancerMap[params.Params.QueryCoordCfg.Balancer]; ok {
+		s.balancer = balancer
+		log.Info("use config balancer", zap.String("balancer", params.Params.QueryCoordCfg.Balancer))
+	} else {
+		s.balancer = s.balancerMap[balance.RowCountBasedBalancerName]
+		log.Info("use rowCountBased auto balancer")
+	}
 
 	// Init checker controller
 	log.Info("init checker controller")
@@ -268,6 +275,7 @@ func (s *Server) initQueryCoord() error {
 		s.dist,
 		s.targetMgr,
 		s.balancer,
+		s.nodeMgr,
 		s.taskScheduler,
 	)
 
@@ -567,7 +575,7 @@ func (s *Server) recover() error {
 func (s *Server) recoverCollectionTargets(ctx context.Context, collection int64) error {
 	err := s.targetMgr.UpdateCollectionNextTarget(collection)
 	if err != nil {
-		msg := "failed to update next target for collection"
+		msg := fmt.Sprintf("failed to update next target for collection %d", collection)
 		log.Error(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
 	}
@@ -608,6 +616,7 @@ func (s *Server) watchNodes(revision int64) {
 				s.nodeMgr.Add(session.NewNodeInfo(nodeID, addr))
 				s.handleNodeUp(nodeID)
 				s.metricsCacheManager.InvalidateSystemInfoMetrics()
+				s.checkerController.Check()
 
 			case sessionutil.SessionUpdateEvent:
 				nodeID := event.Session.ServerID

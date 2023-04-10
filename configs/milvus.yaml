@@ -183,7 +183,7 @@ queryCoord:
   overloadedMemoryThresholdPercentage: 90 # The threshold percentage that memory overload
   balanceIntervalSeconds: 60
   memoryUsageMaxDifferencePercentage: 30
-  checkInterval: 1000
+  checkInterval: 10000
   channelTaskTimeout: 60000 # 1 minute
   segmentTaskTimeout: 120000 # 2 minute
   distPullInterval: 500
@@ -212,6 +212,7 @@ queryNode:
   # Segcore will divide a segment into multiple chunks to enbale small index
   segcore:
     chunkRows: 1024 # The number of vectors in a chunk.
+    knowhereThreadPoolNumRatio: 4 # Use more threads to make good use of SSD throughput
     # Note: we have disabled segment small index since @2022.05.12. So below related configurations won't work.
     # We won't create small index for growing segments and search on these segments will directly use bruteforce scan.
     smallIndex:

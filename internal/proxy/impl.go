@@ -20,6 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
@@ -46,12 +51,10 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
-	"os"
-	"strconv"
-	"sync"
 )
 
 const moduleName = "Proxy"
+const SlowReadSpan = time.Second * 5
 
 // UpdateStateCode updates the state code of Proxy.
 func (node *Proxy) UpdateStateCode(code commonpb.StateCode) {
@@ -2791,6 +2794,25 @@ func (node *Proxy) Search(ctx context.Context, request *milvuspb.SearchRequest) 
 	travelTs := request.TravelTimestamp
 	guaranteeTs := request.GuaranteeTimestamp
 
+	defer func() {
+		span := tr.ElapseSpan()
+		if span >= SlowReadSpan {
+			log.Ctx(ctx).Info(
+				rpcSlow(method),
+				zap.String("role", typeutil.ProxyRole),
+				zap.String("db", request.DbName),
+				zap.String("collection", request.CollectionName),
+				zap.Any("partitions", request.PartitionNames),
+				zap.Any("dsl", request.Dsl),
+				zap.Any("len(PlaceholderGroup)", len(request.PlaceholderGroup)),
+				zap.Any("OutputFields", request.OutputFields),
+				zap.Any("search_params", request.SearchParams),
+				zap.Uint64("travel_timestamp", travelTs),
+				zap.Uint64("guarantee_timestamp", guaranteeTs),
+				zap.Duration("duration", span))
+		}
+	}()
+
 	log.Ctx(ctx).Debug(
 		rpcReceived(method),
 		zap.String("role", typeutil.ProxyRole),
@@ -3038,6 +3060,23 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 
 	metrics.ProxyFunctionCall.WithLabelValues(strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10), method,
 		metrics.TotalLabel).Inc()
+
+	defer func() {
+		span := tr.ElapseSpan()
+		if span >= SlowReadSpan {
+			log.Ctx(ctx).Info(
+				rpcSlow(method),
+				zap.String("role", typeutil.ProxyRole),
+				zap.String("db", request.DbName),
+				zap.String("collection", request.CollectionName),
+				zap.Strings("partitions", request.PartitionNames),
+				zap.String("expr", request.Expr),
+				zap.Strings("OutputFields", request.OutputFields),
+				zap.Uint64("travel_timestamp", request.TravelTimestamp),
+				zap.Uint64("guarantee_timestamp", request.GuaranteeTimestamp),
+				zap.Duration("duration", span))
+		}
+	}()
 
 	log.Ctx(ctx).Debug(
 		rpcReceived(method),
@@ -4013,15 +4052,18 @@ func (node *Proxy) GetReplicas(ctx context.Context, req *milvuspb.GetReplicasReq
 		req.CollectionID, _ = globalMetaCache.GetCollectionID(ctx, req.GetCollectionName())
 	}
 
-	resp, err := node.queryCoord.GetReplicas(ctx, req)
+	r, err := node.queryCoord.GetReplicas(ctx, req)
 	if err != nil {
-		log.Error("Failed to get replicas from Query Coordinator", zap.Error(err))
-		resp.Status.ErrorCode = commonpb.ErrorCode_UnexpectedError
-		resp.Status.Reason = err.Error()
+		log.Warn("Failed to get replicas from Query Coordinator",
+			zap.Error(err))
+		resp.Status = &commonpb.Status{
+			ErrorCode: commonpb.ErrorCode_UnexpectedError,
+			Reason:    err.Error(),
+		}
 		return resp, nil
 	}
-	log.Info("received get replicas response", zap.Any("resp", resp), zap.Error(err))
-	return resp, nil
+	log.Debug("received get replicas response", zap.String("resp", r.String()))
+	return r, nil
 }
 
 // GetCompactionState gets the compaction state of multiple segments

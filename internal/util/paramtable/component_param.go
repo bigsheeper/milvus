@@ -760,6 +760,9 @@ type queryCoordConfig struct {
 
 	//---- Balance ---
 	AutoBalance                         bool
+	Balancer                            string
+	GlobalRowCountFactor                float64
+	ScoreUnbalanceTolerationFactor      float64
 	OverloadedMemoryThresholdPercentage float64
 	BalanceIntervalSeconds              int64
 	MemoryUsageMaxDifferencePercentage  float64
@@ -806,6 +809,9 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 	p.initNextTargetSurviveTime()
 	p.initUpdateNextTargetInterval()
 	p.initCheckNodeInReplicaInterval()
+	p.initBalancer()
+	p.initGlobalRowCountFactor()
+	p.initScoreUnbalanceTolerationFactor()
 	p.initCheckResourceGroupInterval()
 	p.initEnableRGAutoRecover()
 }
@@ -878,7 +884,7 @@ func (p *queryCoordConfig) initEnableActiveStandby() {
 }
 
 func (p *queryCoordConfig) initCheckInterval() {
-	interval := p.Base.LoadWithDefault("queryCoord.checkInterval", "1000")
+	interval := p.Base.LoadWithDefault("queryCoord.checkInterval", "10000")
 	checkInterval, err := strconv.ParseInt(interval, 10, 64)
 	if err != nil {
 		panic(err)
@@ -970,6 +976,29 @@ func (p *queryCoordConfig) initCheckNodeInReplicaInterval() {
 	p.CheckNodeInReplicaInterval = time.Duration(checkNodeInReplicaInterval) * time.Second
 }
 
+func (p *queryCoordConfig) initBalancer() {
+	balancer := p.Base.LoadWithDefault("queryCoord.balancer", "RowCountBasedBalancer")
+	p.Balancer = balancer
+}
+
+func (p *queryCoordConfig) initGlobalRowCountFactor() {
+	factorStr := p.Base.LoadWithDefault("queryCoord.globalRowCountFactor", "0.1")
+	globalRowCountFactor, err := strconv.ParseFloat(factorStr, 64)
+	if err != nil {
+		panic(err)
+	}
+	p.GlobalRowCountFactor = globalRowCountFactor
+}
+
+func (p *queryCoordConfig) initScoreUnbalanceTolerationFactor() {
+	factorStr := p.Base.LoadWithDefault("queryCoord.scoreUnbalanceTolerationFactor", "1.3")
+	scoreUnbalanceTolerationFactor, err := strconv.ParseFloat(factorStr, 64)
+	if err != nil {
+		panic(err)
+	}
+	p.ScoreUnbalanceTolerationFactor = scoreUnbalanceTolerationFactor
+}
+
 func (p *queryCoordConfig) initCheckResourceGroupInterval() {
 	interval := p.Base.LoadWithDefault("queryCoord.checkResourceGroupInterval", "10")
 	checkResourceGroupInterval, err := strconv.ParseInt(interval, 10, 64)
@@ -1002,9 +1031,10 @@ type queryNodeConfig struct {
 	SliceIndex int
 
 	// segcore
-	ChunkRows        int64
-	SmallIndexNlist  int64
-	SmallIndexNProbe int64
+	ChunkRows              int64
+	SmallIndexNlist        int64
+	SmallIndexNProbe       int64
+	KnowhereThreadPoolSize uint32
 
 	CreatedTime time.Time
 	UpdatedTime time.Time
@@ -1072,6 +1102,7 @@ func (p *queryNodeConfig) init(base *BaseTable) {
 
 	p.initGracefulStopTimeout()
 	p.initMaxTimestampLag()
+	p.initKnowhereThreadPoolSize()
 }
 
 // InitAlias initializes an alias for the QueryNode role.
@@ -1174,6 +1205,16 @@ func (p *queryNodeConfig) initMaxUnsolvedQueueSize() {
 
 func (p *queryNodeConfig) initCPURatio() {
 	p.CPURatio = p.Base.ParseFloatWithDefault("queryNode.scheduler.cpuRatio", 10.0)
+}
+
+func (p *queryNodeConfig) initKnowhereThreadPoolSize() {
+	cpuNum := uint32(runtime.GOMAXPROCS(0))
+	if p.EnableDisk {
+		threadRate := p.Base.ParseFloatWithDefault("queryNode.segcore.knowhereThreadPoolNumRatio", 1)
+		p.KnowhereThreadPoolSize = uint32(threadRate * float64(cpuNum))
+	} else {
+		p.KnowhereThreadPoolSize = cpuNum
+	}
 }
 
 func (p *queryNodeConfig) initMaxReadConcurrency() {

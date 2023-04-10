@@ -92,7 +92,7 @@ func (suite *BalanceTestSuite) TestAssignBalance() {
 					suite.mockScheduler.EXPECT().GetNodeSegmentDelta(c.nodeIDs[i]).Return(c.deltaCnts[i])
 				}
 			}
-			plans := suite.roundRobinBalancer.AssignSegment(c.assignments, c.nodeIDs)
+			plans := suite.roundRobinBalancer.AssignSegment(0, c.assignments, c.nodeIDs)
 			suite.ElementsMatch(c.expectPlans, plans)
 		})
 	}
@@ -156,20 +156,6 @@ func (suite *BalanceTestSuite) TestAssignChannel() {
 			suite.ElementsMatch(c.expectPlans, plans)
 		})
 	}
-}
-
-func (suite *BalanceTestSuite) TestWeight() {
-	suite.Run("GetWeight", func() {
-		suite.Equal(weightHigh, GetWeight(10))
-		suite.Equal(weightNormal, GetWeight(0))
-		suite.Equal(weightLow, GetWeight(-10))
-	})
-
-	suite.Run("GetTaskPriorityFromWeight", func() {
-		suite.Equal(task.TaskPriorityHigh, GetTaskPriorityFromWeight(weightHigh))
-		suite.Equal(task.TaskPriorityNormal, GetTaskPriorityFromWeight(weightNormal))
-		suite.Equal(task.TaskPriorityLow, GetTaskPriorityFromWeight(weightLow))
-	})
 }
 
 func TestBalanceSuite(t *testing.T) {

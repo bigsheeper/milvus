@@ -75,19 +75,19 @@ func (it *insertTask) EndTs() Timestamp {
 }
 
 func (it *insertTask) getChannels() ([]pChan, error) {
-	//if it.ctx.Err() != nil {
-	//	log.Warn("dyh 333")
-	//	if it.finished.Load() {
-	//		panic("dyh 1111")
-	//	} else {
-	//		panic("dyh 2222")
-	//	}
-	//}
+	if len(it.pChannels) != 0 {
+		return it.pChannels, nil
+	}
 	collID, err := globalMetaCache.GetCollectionID(it.ctx, it.CollectionName)
 	if err != nil {
 		return nil, err
 	}
-	return it.chMgr.getChannels(collID)
+	channels, err := it.chMgr.getChannels(collID)
+	if err != nil {
+		return nil, err
+	}
+	it.pChannels = channels
+	return channels, nil
 }
 
 func (it *insertTask) OnEnqueue() error {

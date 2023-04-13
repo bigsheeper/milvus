@@ -22,6 +22,7 @@
 #include "query/ScalarIndex.h"
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnSealed.h"
+#include "index/Utils.h"
 
 namespace milvus::segcore {
 
@@ -444,6 +445,37 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
     }
 }
 
+std::unique_ptr<DataArray>
+SegmentSealedImpl::get_vector(FieldId field_id,
+                              const int64_t* ids,
+                              int64_t count) const {
+    auto& filed_meta = schema_->operator[](field_id);
+    AssertInfo(filed_meta.is_vector(), "vector field is not vector type");
+
+    if (get_bit(index_ready_bitset_, field_id)) {
+        AssertInfo(vector_indexings_.is_ready(field_id),
+                   "vector index is not ready");
+        auto field_indexing = vector_indexings_.get_field_indexing(field_id);
+        auto vec_index =
+            dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
+
+        auto index_type = vec_index->GetIndexType();
+        auto metric_type = vec_index->GetMetricType();
+
+        if (index::is_in_raw_data_list(index_type, metric_type)) {
+            auto ids_ds = std::make_shared<knowhere::DataSet>();
+            ids_ds->SetRows(count);
+            ids_ds->SetDim(1);
+            ids_ds->SetIds(ids);
+            auto& vector = vec_index->GetVector(ids_ds);
+            return segcore::CreateVectorDataArrayFrom(
+                vector.data(), count, filed_meta);
+        }
+    }
+
+    return fill_with_empty(field_id, count);
+}
+
 void
 SegmentSealedImpl::DropFieldData(const FieldId field_id) {
     if (SystemProperty::Instance().IsSystem(field_id)) {
@@ -635,9 +667,11 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
             return ReverseDataFromIndex(index, seg_offsets, count, field_meta);
         }
 
-        // TODO: knowhere support reverse data from vector index
-        // Now, real data will be filled in data array using chunk manager
-        return fill_with_empty(field_id, count);
+        std::vector<int64_t> tmp;
+        for (int i = 0; i < count; i++) {
+            tmp.push_back(seg_offsets[i]);
+        }  // TODO: dyh, without this, integration test for IVF_FLAT will fail, figure it out
+        return get_vector(field_id, tmp.data(), count);
     }
 
     Assert(get_bit(field_data_ready_bitset_, field_id));

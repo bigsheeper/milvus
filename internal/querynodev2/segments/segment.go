@@ -28,6 +28,8 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/util/indexparamcheck"
 	"sort"
 	"sync"
 	"unsafe"
@@ -270,6 +272,28 @@ func (s *LocalSegment) ExistIndex(fieldID int64) bool {
 	return fieldInfo.IndexInfo != nil && fieldInfo.IndexInfo.EnableIndex
 }
 
+func (s *LocalSegment) HasRawData(fieldID int64) bool {
+	fieldInfo, ok := s.fieldIndexes.Get(fieldID)
+	if !ok {
+		return false
+	}
+	indexParams := fieldInfo.IndexInfo.IndexParams
+	indexType, err := funcutil.GetAttrByKeyFromRepeatedKV(common.IndexTypeKey, indexParams)
+	if err != nil {
+		return false
+	}
+	metricType, err := funcutil.GetAttrByKeyFromRepeatedKV(common.MetricTypeKey, indexParams)
+	if err != nil {
+		return false
+	}
+	return indexType == indexparamcheck.IndexFaissBinIDMap ||
+		indexType == indexparamcheck.IndexFaissBinIvfFlat ||
+		indexType == indexparamcheck.IndexFaissIDMap ||
+		indexType == indexparamcheck.IndexFaissIvfFlat ||
+		indexType == indexparamcheck.IndexHNSW ||
+		(indexType == indexparamcheck.IndexDISKANN && metricType == indexparamcheck.L2)
+}
+
 func (s *LocalSegment) Indexes() []*IndexedFieldInfo {
 	var result []*IndexedFieldInfo
 	s.fieldIndexes.Range(func(key int64, value *IndexedFieldInfo) bool {
@@ -442,10 +466,12 @@ func (s *LocalSegment) FillIndexedFieldsData(ctx context.Context,
 	)
 
 	for _, fieldData := range result.FieldsData {
-		// If the vector field doesn't have indexed. Vector data is in memory for
+		if !typeutil.IsVectorType(fieldData.GetType()) {
+			continue
+		}
+		// If the vector field doesn't have indexed or index doesn't have raw data. Vector data is in memory for
 		// brute force search. No need to download data from remote.
-		if fieldData.GetType() != schemapb.DataType_FloatVector && fieldData.GetType() != schemapb.DataType_BinaryVector ||
-			!s.ExistIndex(fieldData.FieldId) {
+		if !s.HasRawData(fieldData.FieldId) {
 			continue
 		}
 

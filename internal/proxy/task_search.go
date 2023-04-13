@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/samber/lo"
 	"regexp"
 	"strconv"
 
@@ -34,6 +35,12 @@ import (
 const (
 	SearchTaskName = "SearchTask"
 	SearchLevelKey = "level"
+
+	// requeryThreshold is the estimated threshold for the size of the search results.
+	// If the number of estimated search results exceeds this threshold,
+	// a second query request will be initiated to retrieve output fields data.
+	// In this case, the first search will not return any output field from QueryNodes.
+	requeryThreshold = 0.5 * 1024 * 1024
 )
 
 type searchTask struct {
@@ -41,13 +48,14 @@ type searchTask struct {
 	*internalpb.SearchRequest
 	ctx context.Context
 
-	result         *milvuspb.SearchResults
-	request        *milvuspb.SearchRequest
-	qc             types.QueryCoord
+	result  *milvuspb.SearchResults
+	request *milvuspb.SearchRequest
+
 	tr             *timerecord.TimeRecorder
 	collectionName string
 	channelNum     int32
 	schema         *schemapb.CollectionSchema
+	requery        bool
 
 	offset          int64
 	resultBuf       chan *internalpb.SearchResults
@@ -55,6 +63,9 @@ type searchTask struct {
 
 	searchShardPolicy pickShardPolicy
 	shardMgr          *shardClientMgr
+
+	qc   types.QueryCoord
+	node *Proxy
 }
 
 func getPartitionIDs(ctx context.Context, collectionName string, partitionNames []string) (partitionIDs []UniqueID, err error) {
@@ -255,6 +266,18 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.SearchRequest.IgnoreGrowing = ignoreGrowing
 
+	// Manually update nq if not set.
+	nq, err := getNq(t.request)
+	if err != nil {
+		return err
+	}
+	// Check if nq is valid:
+	// https://milvus.io/docs/limitations.md
+	if err := validateLimit(nq); err != nil {
+		return fmt.Errorf("%s [%d] is invalid, %w", NQKey, nq, err)
+	}
+	t.SearchRequest.Nq = nq
+
 	if t.request.GetDslType() == commonpb.DslType_BoolExprV1 {
 		annsField, err := funcutil.GetAttrByKeyFromRepeatedKV(AnnsFieldKey, t.request.GetSearchParams())
 		if err != nil {
@@ -289,6 +312,16 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		t.SearchRequest.Topk = queryInfo.GetTopk()
 		t.SearchRequest.MetricType = queryInfo.GetMetricType()
 		t.SearchRequest.DslType = commonpb.DslType_BoolExprV1
+
+		estimateSize, err := t.estimateResultSize(nq, t.SearchRequest.Topk)
+		if err != nil {
+			return err
+		}
+		if estimateSize >= requeryThreshold {
+			t.requery = true
+			plan.OutputFieldIds = nil
+		}
+
 		t.SearchRequest.SerializedExprPlan, err = proto.Marshal(plan)
 		if err != nil {
 			return err
@@ -319,17 +352,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 
 	t.SearchRequest.Dsl = t.request.Dsl
 	t.SearchRequest.PlaceholderGroup = t.request.PlaceholderGroup
-	// Manually update nq if not set.
-	nq, err := getNq(t.request)
-	if err != nil {
-		return err
-	}
-	// Check if nq is valid:
-	// https://milvus.io/docs/limitations.md
-	if err := validateLimit(nq); err != nil {
-		return fmt.Errorf("%s [%d] is invalid, %w", NQKey, nq, err)
-	}
-	t.SearchRequest.Nq = nq
 
 	log.Ctx(ctx).Debug("search PreExecute done.",
 		zap.Uint64("travel_ts", travelTimestamp), zap.Uint64("guarantee_ts", guaranteeTs),
@@ -430,6 +452,13 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 		return err
 	}
 
+	if t.requery {
+		err = t.Requery()
+		if err != nil {
+			return err
+		}
+	}
+
 	metrics.ProxyReduceResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
 
 	t.result.CollectionName = t.collectionName
@@ -477,6 +506,70 @@ func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.Que
 	}
 	t.resultBuf <- result
 
+	return nil
+}
+
+func (t *searchTask) estimateResultSize(nq int64, topK int64) (int64, error) {
+	var sizePerRecord int64
+	for _, field := range t.schema.GetFields() {
+		if !lo.Contains(t.request.GetOutputFields(), field.GetName()) {
+			continue
+		}
+		switch field.GetDataType() {
+		case schemapb.DataType_Bool, schemapb.DataType_Int8:
+			sizePerRecord++
+		case schemapb.DataType_Int16:
+			sizePerRecord += 2
+		case schemapb.DataType_Int32, schemapb.DataType_Float:
+			sizePerRecord += 4
+		case schemapb.DataType_Int64, schemapb.DataType_Double:
+			sizePerRecord += 8
+		case schemapb.DataType_VarChar:
+			// TODO: estimate varChar size
+		case schemapb.DataType_BinaryVector:
+			dim, err := typeutil.GetDim(field)
+			if err != nil {
+				return 0, err
+			}
+			sizePerRecord += dim
+		case schemapb.DataType_FloatVector:
+			dim, err := typeutil.GetDim(field)
+			if err != nil {
+				return 0, err
+			}
+			sizePerRecord += dim * 4
+		}
+	}
+	return sizePerRecord * nq * topK, nil
+}
+
+func (t *searchTask) Requery() error {
+	var pkField string
+	for _, field := range t.schema.GetFields() {
+		if field.IsPrimaryKey {
+			pkField = field.Name
+			break
+		}
+	}
+	ids := t.result.GetResults().GetIds()
+
+	queryReq := &milvuspb.QueryRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_Retrieve,
+		},
+		CollectionName:     t.request.GetCollectionName(),
+		Expr:               IDs2Expr(pkField, ids),
+		OutputFields:       t.request.GetOutputFields(),
+		PartitionNames:     t.request.GetPartitionNames(),
+		TravelTimestamp:    t.request.GetTravelTimestamp(),
+		GuaranteeTimestamp: t.request.GetGuaranteeTimestamp(),
+		QueryParams:        t.request.GetSearchParams(),
+	}
+	queryResult, err := t.node.Query(t.ctx, queryReq)
+	if err != nil {
+		return err
+	}
+	t.result.Results.FieldsData = queryResult.GetFieldsData()
 	return nil
 }
 

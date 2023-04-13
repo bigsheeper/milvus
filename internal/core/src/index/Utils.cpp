@@ -59,6 +59,18 @@ DISK_LIST() {
     return ret;
 }
 
+std::vector<IndexType>
+RAW_DATA_LIST() {
+    static std::vector<IndexType> ret{
+        knowhere::IndexEnum::INDEX_FAISS_BIN_IDMAP,
+        knowhere::IndexEnum::INDEX_FAISS_BIN_IVFFLAT,
+        knowhere::IndexEnum::INDEX_FAISS_IDMAP,
+        knowhere::IndexEnum::INDEX_FAISS_IVFFLAT,
+        knowhere::IndexEnum::INDEX_HNSW,
+    };
+    return ret;
+}
+
 std::vector<std::tuple<IndexType, MetricType>>
 unsupported_index_combinations() {
     static std::vector<std::tuple<IndexType, MetricType>> ret{
@@ -81,6 +93,12 @@ is_in_nm_list(const IndexType& index_type) {
 bool
 is_in_disk_list(const IndexType& index_type) {
     return is_in_list<IndexType>(index_type, DISK_LIST);
+}
+
+bool
+is_in_raw_data_list(const IndexType& index_type, const MetricType& metric_type) {
+    return is_in_list<IndexType>(index_type, RAW_DATA_LIST) ||
+        (index_type == knowhere::IndexEnum::INDEX_DISKANN && metric_type == knowhere::metric::L2);
 }
 
 bool

@@ -50,6 +50,10 @@ class VectorIndex : public IndexBase {
           const SearchInfo& search_info,
           const BitsetView& bitset) = 0;
 
+    virtual const std::vector<uint8_t>
+    GetVector(const DatasetPtr ids,
+              const Config& config = {}) const = 0;
+
     IndexType
     GetIndexType() const {
         return index_type_;

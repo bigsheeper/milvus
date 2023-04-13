@@ -272,7 +272,7 @@ func TestSearchTask_PreExecute(t *testing.T) {
 
 		// contain vector field
 		task.request.OutputFields = []string{testFloatVecField}
-		assert.Error(t, task.PreExecute(ctx))
+		assert.NoError(t, task.PreExecute(ctx))
 	})
 }
 

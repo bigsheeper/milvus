@@ -61,6 +61,9 @@ bool
 is_in_disk_list(const IndexType& index_type);
 
 bool
+is_in_raw_data_list(const IndexType& index_type, const MetricType& metric_type);
+
+bool
 is_unsupported(const IndexType& index_type, const MetricType& metric_type);
 
 bool

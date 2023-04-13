@@ -116,6 +116,13 @@ func (suite *SegmentSuite) TestDelete() {
 	suite.Equal(rowNum, suite.growing.InsertCount())
 }
 
+func (suite *SegmentSuite) TestHasRawData() {
+	has := suite.growing.HasRawData()
+	suite.True(has)
+	has = suite.sealed.HasRawData()
+	suite.True(has)
+}
+
 func TestSegment(t *testing.T) {
 	suite.Run(t, new(SegmentSuite))
 }

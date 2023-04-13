@@ -88,6 +88,9 @@ class SegmentInterface {
 
     virtual SegmentType
     type() const = 0;
+
+    virtual bool
+    HasRawData() const = 0;
 };
 
 // internal API for DSL calculation

@@ -223,6 +223,11 @@ class SegmentGrowingImpl : public SegmentGrowing {
         return true;
     }
 
+    bool
+    HasRawData() const override {
+        return true;
+    }
+
  protected:
     int64_t
     num_chunk() const override;

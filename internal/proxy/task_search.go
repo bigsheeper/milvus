@@ -3,11 +3,13 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/golang/protobuf/proto"
+	"github.com/samber/lo"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -34,6 +36,12 @@ import (
 const (
 	SearchTaskName = "SearchTask"
 	SearchLevelKey = "level"
+
+	// requeryThreshold is the estimated threshold for the size of the search results.
+	// If the number of estimated search results exceeds this threshold,
+	// a second query request will be initiated to retrieve output fields data.
+	// In this case, the first search will not return any output field from QueryNodes.
+	requeryThreshold = 0.5 * 1024 * 1024
 )
 
 type searchTask struct {
@@ -41,13 +49,14 @@ type searchTask struct {
 	*internalpb.SearchRequest
 	ctx context.Context
 
-	result         *milvuspb.SearchResults
-	request        *milvuspb.SearchRequest
-	qc             types.QueryCoord
+	result  *milvuspb.SearchResults
+	request *milvuspb.SearchRequest
+
 	tr             *timerecord.TimeRecorder
 	collectionName string
 	channelNum     int32
 	schema         *schemapb.CollectionSchema
+	requery        bool
 
 	offset          int64
 	resultBuf       chan *internalpb.SearchResults
@@ -55,6 +64,9 @@ type searchTask struct {
 
 	searchShardPolicy pickShardPolicy
 	shardMgr          *shardClientMgr
+
+	qc   types.QueryCoord
+	node *Proxy
 }
 
 func getPartitionIDs(ctx context.Context, collectionName string, partitionNames []string) (partitionIDs []UniqueID, err error) {
@@ -164,11 +176,7 @@ func getOutputFieldIDs(schema *schemapb.CollectionSchema, outputFields []string)
 		hitField := false
 		for _, field := range schema.GetFields() {
 			if field.Name == name {
-				if field.DataType == schemapb.DataType_BinaryVector || field.DataType == schemapb.DataType_FloatVector {
-					return nil, errors.New("search doesn't support vector field as output_fields")
-				}
 				outputFieldIDs = append(outputFieldIDs, field.GetFieldID())
-
 				hitField = true
 				break
 			}
@@ -255,6 +263,24 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.SearchRequest.IgnoreGrowing = ignoreGrowing
 
+	// Manually update nq if not set.
+	nq, err := getNq(t.request)
+	if err != nil {
+		return err
+	}
+	// Check if nq is valid:
+	// https://milvus.io/docs/limitations.md
+	if err := validateLimit(nq); err != nil {
+		return fmt.Errorf("%s [%d] is invalid, %w", NQKey, nq, err)
+	}
+	t.SearchRequest.Nq = nq
+
+	outputFieldIDs, err := getOutputFieldIDs(t.schema, t.request.GetOutputFields())
+	if err != nil {
+		return err
+	}
+	t.SearchRequest.OutputFieldsId = outputFieldIDs
+
 	if t.request.GetDslType() == commonpb.DslType_BoolExprV1 {
 		annsField, err := funcutil.GetAttrByKeyFromRepeatedKV(AnnsFieldKey, t.request.GetSearchParams())
 		if err != nil {
@@ -278,17 +304,21 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 			zap.String("dsl", t.request.Dsl), // may be very large if large term passed.
 			zap.String("anns field", annsField), zap.Any("query info", queryInfo))
 
-		outputFieldIDs, err := getOutputFieldIDs(t.schema, t.request.GetOutputFields())
-		if err != nil {
-			return err
-		}
-
-		t.SearchRequest.OutputFieldsId = outputFieldIDs
 		plan.OutputFieldIds = outputFieldIDs
 
 		t.SearchRequest.Topk = queryInfo.GetTopk()
 		t.SearchRequest.MetricType = queryInfo.GetMetricType()
 		t.SearchRequest.DslType = commonpb.DslType_BoolExprV1
+
+		estimateSize, err := t.estimateResultSize(nq, t.SearchRequest.Topk)
+		if err != nil {
+			return err
+		}
+		if estimateSize >= requeryThreshold {
+			t.requery = true
+			plan.OutputFieldIds = nil
+		}
+
 		t.SearchRequest.SerializedExprPlan, err = proto.Marshal(plan)
 		if err != nil {
 			return err
@@ -319,17 +349,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 
 	t.SearchRequest.Dsl = t.request.Dsl
 	t.SearchRequest.PlaceholderGroup = t.request.PlaceholderGroup
-	// Manually update nq if not set.
-	nq, err := getNq(t.request)
-	if err != nil {
-		return err
-	}
-	// Check if nq is valid:
-	// https://milvus.io/docs/limitations.md
-	if err := validateLimit(nq); err != nil {
-		return fmt.Errorf("%s [%d] is invalid, %w", NQKey, nq, err)
-	}
-	t.SearchRequest.Nq = nq
 
 	log.Ctx(ctx).Debug("search PreExecute done.",
 		zap.Uint64("travel_ts", travelTimestamp), zap.Uint64("guarantee_ts", guaranteeTs),
@@ -430,10 +449,16 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 		return err
 	}
 
+	if t.requery {
+		err = t.Requery()
+		if err != nil {
+			return err
+		}
+	}
+
 	metrics.ProxyReduceResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
 
 	t.result.CollectionName = t.collectionName
-	t.fillInFieldInfo()
 
 	log.Ctx(ctx).Debug("Search post execute done",
 		zap.Int64("collection", t.GetCollectionID()),
@@ -480,6 +505,85 @@ func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.Que
 	return nil
 }
 
+func (t *searchTask) estimateResultSize(nq int64, topK int64) (int64, error) {
+	// TODO: support get vectors from search, currently we get vectors by requery
+	return math.MaxInt64, nil
+	//
+	//outputFields := lo.Filter(t.schema.GetFields(), func(field *schemapb.FieldSchema, _ int) bool {
+	//	return lo.Contains(t.request.GetOutputFields(), field.GetName())
+	//})
+	//sizePerRecord, err := typeutil.EstimateSizePerRecord(&schemapb.CollectionSchema{Fields: outputFields})
+	//if err != nil {
+	//	return 0, err
+	//}
+	//return int64(sizePerRecord) * nq * topK, nil
+}
+
+func (t *searchTask) Requery() error {
+	pkField, err := typeutil.GetPrimaryFieldSchema(t.schema)
+	if err != nil {
+		return err
+	}
+	ids := t.result.GetResults().GetIds()
+	expr := IDs2Expr(pkField.GetName(), ids)
+
+	queryReq := &milvuspb.QueryRequest{
+		Base: &commonpb.MsgBase{
+			MsgType: commonpb.MsgType_Retrieve,
+		},
+		CollectionName:     t.request.GetCollectionName(),
+		Expr:               expr,
+		OutputFields:       t.request.GetOutputFields(),
+		PartitionNames:     t.request.GetPartitionNames(),
+		TravelTimestamp:    t.request.GetTravelTimestamp(),
+		GuaranteeTimestamp: t.request.GetGuaranteeTimestamp(),
+		QueryParams:        t.request.GetSearchParams(),
+	}
+	queryResult, err := t.node.Query(t.ctx, queryReq)
+	if err != nil {
+		return err
+	}
+	// Reorganize Results. The order of query result ids will be altered and differ from queried ids.
+	// We should reorganize query results to keep the order of original queried ids. For example:
+	// ===========================================
+	//  3  2  5  4  1  (query ids)
+	//       ||
+	//       || (query)
+	//       \/
+	//  4  3  5  1  2  (result ids)
+	// v4 v3 v5 v1 v2  (result vectors)
+	//       ||
+	//       || (reorganize)
+	//       \/
+	//  3  2  5  4  1  (result ids)
+	// v3 v2 v5 v4 v1  (result vectors)
+	// ===========================================
+	pkFieldData, err := typeutil.GetPrimaryFieldData(queryResult.GetFieldsData(), pkField)
+	if err != nil {
+		return err
+	}
+	offsets := make(map[any]int)
+	for i := 0; i < typeutil.GetDataSize(pkFieldData); i++ {
+		pk := typeutil.GetData(pkFieldData, i)
+		offsets[pk] = i
+	}
+
+	queryResult.FieldsData = lo.Filter(queryResult.FieldsData, func(fieldData *schemapb.FieldData, _ int) bool {
+		return lo.Contains(t.GetOutputFieldsId(), fieldData.GetFieldId())
+	})
+	t.result.Results.FieldsData = make([]*schemapb.FieldData, len(queryResult.GetFieldsData()))
+	for i := 0; i < typeutil.GetSizeOfIDs(ids); i++ {
+		id := typeutil.GetPK(ids, int64(i))
+		if _, ok := offsets[id]; !ok {
+			return fmt.Errorf("incomplete query result, missing id %s, len(searchIDs) = %d, len(queryIDs) = %d, collection=%d",
+				id, typeutil.GetSizeOfIDs(ids), len(offsets), t.GetCollectionID())
+		}
+		typeutil.AppendFieldData(t.result.Results.FieldsData, queryResult.GetFieldsData(), int64(offsets[id]))
+	}
+
+	return nil
+}
+
 func (t *searchTask) fillInEmptyResult(numQueries int64) {
 	t.result = &milvuspb.SearchResults{
 		Status: &commonpb.Status{
@@ -491,20 +595,6 @@ func (t *searchTask) fillInEmptyResult(numQueries int64) {
 			NumQueries: numQueries,
 			Topks:      make([]int64, numQueries),
 		},
-	}
-}
-
-func (t *searchTask) fillInFieldInfo() {
-	if len(t.request.OutputFields) != 0 && len(t.result.Results.FieldsData) != 0 {
-		for i, name := range t.request.OutputFields {
-			for _, field := range t.schema.Fields {
-				if t.result.Results.FieldsData[i] != nil && field.Name == name {
-					t.result.Results.FieldsData[i].FieldName = field.Name
-					t.result.Results.FieldsData[i].FieldId = field.FieldID
-					t.result.Results.FieldsData[i].Type = field.DataType
-				}
-			}
-		}
 	}
 }
 

@@ -17,9 +17,29 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/json"
+	"github.com/golang/protobuf/proto"
+	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
+	"github.com/milvus-io/milvus/pkg/common"
+	"github.com/milvus-io/milvus/pkg/util/distance"
+	"math/rand"
+	"strconv"
 	"time"
+)
+
+const (
+	AnnsFieldKey    = "anns_field"
+	TopKKey         = "topk"
+	NQKey           = "nq"
+	MetricTypeKey   = "metric_type"
+	SearchParamsKey = "params"
+	RoundDecimalKey = "round_decimal"
+	OffsetKey       = "offset"
+	LimitKey        = "limit"
 )
 
 func waitingForLoad(ctx context.Context, cluster *MiniCluster, collection string) {
@@ -39,5 +59,87 @@ func waitingForLoad(ctx context.Context, cluster *MiniCluster, collection string
 		default:
 			time.Sleep(500 * time.Millisecond)
 		}
+	}
+}
+
+func constructSearchRequest(
+	dbName, collectionName string,
+	expr string,
+	floatVecField string,
+	outputFields []string,
+	nq, dim, nprobe, topk, roundDecimal int,
+) *milvuspb.SearchRequest {
+	params := make(map[string]string)
+	params["nprobe"] = strconv.Itoa(nprobe)
+	b, err := json.Marshal(params)
+	if err != nil {
+		panic(err)
+	}
+	plg := constructPlaceholderGroup(nq, dim)
+	plgBs, err := proto.Marshal(plg)
+	if err != nil {
+		panic(err)
+	}
+
+	return &milvuspb.SearchRequest{
+		Base:             nil,
+		DbName:           dbName,
+		CollectionName:   collectionName,
+		PartitionNames:   nil,
+		Dsl:              expr,
+		PlaceholderGroup: plgBs,
+		DslType:          commonpb.DslType_BoolExprV1,
+		OutputFields:     outputFields,
+		SearchParams: []*commonpb.KeyValuePair{
+			{
+				Key:   common.MetricTypeKey,
+				Value: distance.L2,
+			},
+			{
+				Key:   SearchParamsKey,
+				Value: string(b),
+			},
+			{
+				Key:   AnnsFieldKey,
+				Value: floatVecField,
+			},
+			{
+				Key:   common.TopKKey,
+				Value: strconv.Itoa(topk),
+			},
+			{
+				Key:   RoundDecimalKey,
+				Value: strconv.Itoa(roundDecimal),
+			},
+		},
+		TravelTimestamp:    0,
+		GuaranteeTimestamp: 0,
+	}
+}
+
+func constructPlaceholderGroup(nq, dim int) *commonpb.PlaceholderGroup {
+	values := make([][]byte, 0, nq)
+	for i := 0; i < nq; i++ {
+		bs := make([]byte, 0, dim*4)
+		for j := 0; j < dim; j++ {
+			var buffer bytes.Buffer
+			f := rand.Float32()
+			err := binary.Write(&buffer, common.Endian, f)
+			if err != nil {
+				panic(err)
+			}
+			bs = append(bs, buffer.Bytes()...)
+		}
+		values = append(values, bs)
+	}
+
+	return &commonpb.PlaceholderGroup{
+		Placeholders: []*commonpb.PlaceholderValue{
+			{
+				Tag:    "$0",
+				Type:   commonpb.PlaceholderType_FloatVector,
+				Values: values,
+			},
+		},
 	}
 }

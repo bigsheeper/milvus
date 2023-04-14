@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	defaultDim        = 128
-	defaultMetricType = "L2"
+	defaultDim = 128
 
 	boolField     = "boolField"
 	int8Field     = "int8Field"

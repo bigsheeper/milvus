@@ -29,6 +29,13 @@ import (
 	"time"
 )
 
+type TestGetVectorCase struct {
+	nq         int
+	topK       int
+	indexType  string
+	metricType string
+}
+
 type TestGetVectorSuite struct {
 	suite.Suite
 
@@ -75,7 +82,7 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
-	suite.pk = newPkFieldData(suite.pkField, NB)
+	suite.pk = newInt64FieldData(suite.pkField, NB)
 	suite.rawData = newFloatVectorFieldData(suite.vectorField, NB, suite.dim)
 	hashKeys := generateHashKeys(NB)
 	_, err = suite.cluster.proxy.Insert(suite.ctx, &milvuspb.InsertRequest{

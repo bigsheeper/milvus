@@ -175,11 +175,7 @@ func getOutputFieldIDs(schema *schemapb.CollectionSchema, outputFields []string)
 		hitField := false
 		for _, field := range schema.GetFields() {
 			if field.Name == name {
-				if field.DataType == schemapb.DataType_BinaryVector || field.DataType == schemapb.DataType_FloatVector {
-					return nil, errors.New("search doesn't support vector field as output_fields")
-				}
 				outputFieldIDs = append(outputFieldIDs, field.GetFieldID())
-
 				hitField = true
 				break
 			}

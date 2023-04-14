@@ -228,7 +228,7 @@ func TestHelloMilvus(t *testing.T) {
 	nprobe := 10
 
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nq, dim, nprobe, topk, roundDecimal)
+		floatVecField, nil, nq, dim, nprobe, topk, roundDecimal)
 
 	searchResult, err := c.proxy.Search(ctx, searchReq)
 
@@ -256,6 +256,7 @@ func constructSearchRequest(
 	dbName, collectionName string,
 	expr string,
 	floatVecField string,
+	outputFields []string,
 	nq, dim, nprobe, topk, roundDecimal int,
 ) *milvuspb.SearchRequest {
 	params := make(map[string]string)
@@ -278,7 +279,7 @@ func constructSearchRequest(
 		Dsl:              expr,
 		PlaceholderGroup: plgBs,
 		DslType:          commonpb.DslType_BoolExprV1,
-		OutputFields:     nil,
+		OutputFields:     outputFields,
 		SearchParams: []*commonpb.KeyValuePair{
 			{
 				Key:   common.MetricTypeKey,
@@ -335,6 +336,22 @@ func constructPlaceholderGroup(
 	}
 }
 
+func newPkFieldData(fieldName string, numRows int) *schemapb.FieldData {
+	return &schemapb.FieldData{
+		Type:      schemapb.DataType_FloatVector,
+		FieldName: fieldName,
+		Field: &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_LongData{
+					LongData: &schemapb.LongArray{
+						Data: generateIntPk(numRows),
+					},
+				},
+			},
+		},
+	}
+}
+
 func newFloatVectorFieldData(fieldName string, numRows, dim int) *schemapb.FieldData {
 	return &schemapb.FieldData{
 		Type:      schemapb.DataType_FloatVector,
@@ -350,6 +367,14 @@ func newFloatVectorFieldData(fieldName string, numRows, dim int) *schemapb.Field
 			},
 		},
 	}
+}
+
+func generateIntPk(numRows int) []int64 {
+	ret := make([]int64, numRows)
+	for i := 0; i < numRows; i++ {
+		ret[i] = int64(i)
+	}
+	return ret
 }
 
 func generateFloatVectors(numRows, dim int) []float32 {

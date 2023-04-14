@@ -23,11 +23,8 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/util/distance"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/stretchr/testify/suite"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -60,48 +57,13 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	suite.Require().NoError(err)
 
 	suite.collection = "TestGetVector" + funcutil.GenRandomStr()
-	suite.pkField = "int64"
-	suite.vectorField = "fvec"
-	suite.dim = 128
-	rowNum := 3000
 
-	constructCollectionSchema := func() *schemapb.CollectionSchema {
-		pk := &schemapb.FieldSchema{
-			FieldID:      0,
-			Name:         suite.pkField,
-			IsPrimaryKey: true,
-			Description:  "",
-			DataType:     schemapb.DataType_Int64,
-			TypeParams:   nil,
-			IndexParams:  nil,
-			AutoID:       false,
-		}
-		fVec := &schemapb.FieldSchema{
-			FieldID:      0,
-			Name:         suite.vectorField,
-			IsPrimaryKey: false,
-			Description:  "",
-			DataType:     schemapb.DataType_FloatVector,
-			TypeParams: []*commonpb.KeyValuePair{
-				{
-					Key:   "dim",
-					Value: strconv.Itoa(suite.dim),
-				},
-			},
-			IndexParams: nil,
-			AutoID:      false,
-		}
-		return &schemapb.CollectionSchema{
-			Name:        suite.collection,
-			Description: "",
-			AutoID:      false,
-			Fields: []*schemapb.FieldSchema{
-				pk,
-				fVec,
-			},
-		}
-	}
-	schema := constructCollectionSchema()
+	const NB = 3000
+	suite.dim = defaultDim
+	suite.pkField = int64Field
+	suite.vectorField = floatVecField
+
+	schema := constructSchema(suite.collection, false)
 	marshaledSchema, err := proto.Marshal(schema)
 	suite.Require().NoError(err)
 
@@ -113,14 +75,14 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
-	suite.pk = newPkFieldData(suite.pkField, rowNum)
-	suite.rawData = newFloatVectorFieldData(suite.vectorField, rowNum, suite.dim)
-	hashKeys := generateHashKeys(rowNum)
+	suite.pk = newPkFieldData(suite.pkField, NB)
+	suite.rawData = newFloatVectorFieldData(suite.vectorField, NB, suite.dim)
+	hashKeys := generateHashKeys(NB)
 	_, err = suite.cluster.proxy.Insert(suite.ctx, &milvuspb.InsertRequest{
 		CollectionName: suite.collection,
 		FieldsData:     []*schemapb.FieldData{suite.pk, suite.rawData},
 		HashKeys:       hashKeys,
-		NumRows:        uint32(rowNum),
+		NumRows:        uint32(NB),
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
@@ -133,54 +95,20 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	segmentIDs, has := flushResp.GetCollSegIDs()[suite.collection]
 	ids := segmentIDs.GetData()
 	suite.Require().NotEmpty(segmentIDs)
+	suite.Require().True(has)
 
 	segments, err := suite.cluster.metaWatcher.ShowSegments()
 	suite.Require().NoError(err)
 	suite.Require().NotEmpty(segments)
 
-	if has && len(ids) > 0 {
-		flushed := func() bool {
-			resp, err := suite.cluster.proxy.GetFlushState(suite.ctx, &milvuspb.GetFlushStateRequest{
-				SegmentIDs: ids,
-			})
-			if err != nil {
-				return false
-			}
-			return resp.GetFlushed()
-		}
-		for !flushed() {
-			select {
-			case <-suite.ctx.Done():
-				panic("flush timeout")
-			default:
-				time.Sleep(500 * time.Millisecond)
-			}
-		}
-	}
+	waitingForFlush(suite.ctx, suite.cluster, ids)
 
 	// create index
 	_, err = suite.cluster.proxy.CreateIndex(suite.ctx, &milvuspb.CreateIndexRequest{
 		CollectionName: suite.collection,
 		FieldName:      suite.vectorField,
 		IndexName:      "_default",
-		ExtraParams: []*commonpb.KeyValuePair{
-			{
-				Key:   "dim",
-				Value: strconv.Itoa(suite.dim),
-			},
-			{
-				Key:   common.MetricTypeKey,
-				Value: distance.L2,
-			},
-			{
-				Key:   "index_type",
-				Value: "IVF_FLAT",
-			},
-			{
-				Key:   "nlist",
-				Value: strconv.Itoa(10),
-			},
-		},
+		ExtraParams:    constructIndexParam(suite.dim, IndexFaissIvfFlat, L2),
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
@@ -191,28 +119,12 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
-	getLoadingProgress := func() *milvuspb.GetLoadingProgressResponse {
-		loadProgress, err := suite.cluster.proxy.GetLoadingProgress(suite.ctx, &milvuspb.GetLoadingProgressRequest{
-			CollectionName: suite.collection,
-		})
-		if err != nil {
-			panic("GetLoadingProgress fail")
-		}
-		return loadProgress
-	}
-	for getLoadingProgress().GetProgress() != 100 {
-		select {
-		case <-suite.ctx.Done():
-			panic("load timeout")
-		default:
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
+	waitingForLoad(suite.ctx, suite.cluster, suite.collection)
 }
 
 func (suite *TestGetVectorSuite) TestGetVector() {
 	// search
-	expr := fmt.Sprintf("%s > 0", "int64")
+	expr := fmt.Sprintf("%s > 0", int64Field)
 	nq := 10
 	topk := 10
 	roundDecimal := -1
@@ -262,7 +174,7 @@ func (suite *TestGetVectorSuite) TearDownTest() {
 
 	suite.cancel()
 	//err = suite.cluster.Stop()
-	//suite.Require().NoError(err)
+	//suite.Require().NoError(err) // TODO: cluster.Stop hangs, fix it
 }
 
 func TestGetVector(t *testing.T) {

@@ -44,13 +44,14 @@ func TestHelloMilvus(t *testing.T) {
 	// assert.NoError(t, err)
 
 	const (
+		dim    = 128
 		dbName = ""
 		rowNum = 3000
 	)
 
 	collectionName := "TestHelloMilvus" + funcutil.GenRandomStr()
 
-	schema := constructSchema(collectionName, true)
+	schema := constructSchema(collectionName, dim, true)
 	marshaledSchema, err := proto.Marshal(schema)
 	assert.NoError(t, err)
 
@@ -72,7 +73,7 @@ func TestHelloMilvus(t *testing.T) {
 	assert.Equal(t, showCollectionsResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
 	log.Info("ShowCollections result", zap.Any("showCollectionsResp", showCollectionsResp))
 
-	fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, defaultDim)
+	fVecColumn := newFloatVectorFieldData(floatVecField, rowNum, dim)
 	hashKeys := generateHashKeys(rowNum)
 	insertResult, err := c.proxy.Insert(ctx, &milvuspb.InsertRequest{
 		DbName:         dbName,
@@ -108,7 +109,7 @@ func TestHelloMilvus(t *testing.T) {
 		CollectionName: collectionName,
 		FieldName:      floatVecField,
 		IndexName:      "_default",
-		ExtraParams:    constructIndexParam(defaultDim, IndexFaissIvfFlat, L2),
+		ExtraParams:    constructIndexParam(dim, IndexFaissIvfFlat, L2),
 	})
 	if createIndexStatus.GetErrorCode() != commonpb.ErrorCode_Success {
 		log.Warn("createIndexStatus fail reason", zap.String("reason", createIndexStatus.GetReason()))
@@ -133,10 +134,10 @@ func TestHelloMilvus(t *testing.T) {
 	nq := 10
 	topk := 10
 	roundDecimal := -1
-	nprobe := 10
 
+	params := getSearchParams(IndexFaissIvfFlat, L2)
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, nq, defaultDim, nprobe, topk, roundDecimal)
+		floatVecField, nil, nq, dim, params, topk, roundDecimal)
 
 	searchResult, err := c.proxy.Search(ctx, searchReq)
 

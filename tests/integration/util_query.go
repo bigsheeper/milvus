@@ -67,10 +67,8 @@ func constructSearchRequest(
 	expr string,
 	floatVecField string,
 	outputFields []string,
-	nq, dim, nprobe, topk, roundDecimal int,
+	nq, dim int, params map[string]string, topk, roundDecimal int,
 ) *milvuspb.SearchRequest {
-	params := make(map[string]string)
-	params["nprobe"] = strconv.Itoa(nprobe)
 	b, err := json.Marshal(params)
 	if err != nil {
 		panic(err)

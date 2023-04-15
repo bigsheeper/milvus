@@ -264,10 +264,10 @@ func TestBulkInsert(t *testing.T) {
 	nq := 10
 	topk := 10
 	roundDecimal := -1
-	nprobe := 10
 
+	params := getSearchParams(IndexHNSW, L2)
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, nq, dim, nprobe, topk, roundDecimal)
+		floatVecField, nil, nq, dim, params, topk, roundDecimal)
 
 	searchResult, err := c.proxy.Search(ctx, searchReq)
 

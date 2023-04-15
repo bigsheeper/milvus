@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/samber/lo"
+	"math"
 	"regexp"
 	"strconv"
 
@@ -274,6 +275,12 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.SearchRequest.Nq = nq
 
+	outputFieldIDs, err := getOutputFieldIDs(t.schema, t.request.GetOutputFields())
+	if err != nil {
+		return err
+	}
+	t.SearchRequest.OutputFieldsId = outputFieldIDs
+
 	if t.request.GetDslType() == commonpb.DslType_BoolExprV1 {
 		annsField, err := funcutil.GetAttrByKeyFromRepeatedKV(AnnsFieldKey, t.request.GetSearchParams())
 		if err != nil {
@@ -297,12 +304,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 			zap.String("dsl", t.request.Dsl), // may be very large if large term passed.
 			zap.String("anns field", annsField), zap.Any("query info", queryInfo))
 
-		outputFieldIDs, err := getOutputFieldIDs(t.schema, t.request.GetOutputFields())
-		if err != nil {
-			return err
-		}
-
-		t.SearchRequest.OutputFieldsId = outputFieldIDs
 		plan.OutputFieldIds = outputFieldIDs
 
 		t.SearchRequest.Topk = queryInfo.GetTopk()
@@ -523,27 +524,33 @@ func (t *searchTask) estimateResultSize(nq int64, topK int64) (int64, error) {
 		case schemapb.DataType_VarChar:
 			// TODO: estimate varChar size
 		case schemapb.DataType_BinaryVector:
-			dim, err := typeutil.GetDim(field)
-			if err != nil {
-				return 0, err
-			}
-			sizePerRecord += dim
+			// TODO: support get vectors from search, currently we get vectors by requery
+			return math.MaxInt64, nil
+			//dim, err := typeutil.GetDim(field)
+			//if err != nil {
+			//	return 0, err
+			//}
+			//sizePerRecord += dim
 		case schemapb.DataType_FloatVector:
-			dim, err := typeutil.GetDim(field)
-			if err != nil {
-				return 0, err
-			}
-			sizePerRecord += dim * 4
+			// TODO: support get vectors from search, currently we get vectors by requery
+			return math.MaxInt64, nil
+			//dim, err := typeutil.GetDim(field)
+			//if err != nil {
+			//	return 0, err
+			//}
+			//sizePerRecord += dim * 4
 		}
 	}
 	return sizePerRecord * nq * topK, nil
 }
 
 func (t *searchTask) Requery() error {
-	var pkField string
+	var pkFieldID int64
+	var pkFieldName string
 	for _, field := range t.schema.GetFields() {
 		if field.IsPrimaryKey {
-			pkField = field.Name
+			pkFieldID = field.FieldID
+			pkFieldName = field.Name
 			break
 		}
 	}
@@ -554,7 +561,7 @@ func (t *searchTask) Requery() error {
 			MsgType: commonpb.MsgType_Retrieve,
 		},
 		CollectionName:     t.request.GetCollectionName(),
-		Expr:               IDs2Expr(pkField, ids),
+		Expr:               IDs2Expr(pkFieldName, ids),
 		OutputFields:       t.request.GetOutputFields(),
 		PartitionNames:     t.request.GetPartitionNames(),
 		TravelTimestamp:    t.request.GetTravelTimestamp(),
@@ -565,7 +572,208 @@ func (t *searchTask) Requery() error {
 	if err != nil {
 		return err
 	}
-	t.result.Results.FieldsData = queryResult.GetFieldsData()
+	// reorganize results
+	var pkFieldIndex int // TODO: init with -1
+	for i, data := range queryResult.GetFieldsData() {
+		if data.GetFieldId() == pkFieldID {
+			pkFieldIndex = i
+			break
+		}
+	}
+	pkField := queryResult.GetFieldsData()[pkFieldIndex]
+	mm := make(map[interface{}][]interface{})
+	for i := 0; i < GetPKSize(pkField); i++ {
+		pk := GetData(pkField, i)
+		if _, ok := mm[pk]; !ok {
+			mm[pk] = make([]interface{}, 0)
+		}
+		for j := 0; j < len(queryResult.GetFieldsData()); j++ {
+			if j == pkFieldIndex {
+				continue
+			}
+			field := queryResult.GetFieldsData()[j]
+			mm[pk] = append(mm[pk], GetData(field, i))
+		}
+	}
+
+	t.result.Results.FieldsData = make([]*schemapb.FieldData, 0, len(queryResult.GetFieldsData()))
+	for i := 0; i < len(queryResult.GetFieldsData()); i++ {
+		if i == pkFieldIndex {
+			continue
+		}
+		fieldData := &schemapb.FieldData{
+			Type:      queryResult.GetFieldsData()[i].GetType(),
+			FieldName: queryResult.GetFieldsData()[i].GetFieldName(),
+			FieldId:   queryResult.GetFieldsData()[i].GetFieldId(),
+		}
+		InitFieldData(fieldData)
+		t.result.Results.FieldsData = append(t.result.Results.FieldsData, fieldData)
+	}
+
+	for _, id := range ids.GetIntId().GetData() { // TODO: handle string id
+		for i := 0; i < len(mm[id]); i++ {
+			AppendFieldData(t.result.Results.FieldsData[i], mm[id][i])
+		}
+	}
+
+	return nil
+}
+
+func InitFieldData(field *schemapb.FieldData) {
+	switch field.GetType() {
+	case schemapb.DataType_Bool:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_BoolData{
+					BoolData: &schemapb.BoolArray{
+						Data: []bool{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int8, schemapb.DataType_Int16, schemapb.DataType_Int32:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: []int32{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int64:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_LongData{
+					LongData: &schemapb.LongArray{
+						Data: []int64{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Float:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_FloatData{
+					FloatData: &schemapb.FloatArray{
+						Data: []float32{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Double:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_DoubleData{
+					DoubleData: &schemapb.DoubleArray{
+						Data: []float64{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_String:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{
+					StringData: &schemapb.StringArray{
+						Data: []string{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_VarChar:
+		field.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_BytesData{
+					BytesData: &schemapb.BytesArray{
+						Data: [][]byte{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_FloatVector:
+		field.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: 0, // TODO: dim?
+				Data: &schemapb.VectorField_FloatVector{
+					FloatVector: &schemapb.FloatArray{
+						Data: []float32{},
+					},
+				},
+			},
+		}
+	case schemapb.DataType_BinaryVector:
+		field.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: 0, // TODO: dim?
+				Data: &schemapb.VectorField_BinaryVector{
+					BinaryVector: []byte{},
+				},
+			},
+		}
+	}
+}
+
+func AppendFieldData(field *schemapb.FieldData, data interface{}) {
+	switch field.GetType() {
+	case schemapb.DataType_Bool:
+		field.GetScalars().GetBoolData().Data = append(field.GetScalars().GetBoolData().Data, data.(bool))
+	case schemapb.DataType_Int8, schemapb.DataType_Int16, schemapb.DataType_Int32:
+		field.GetScalars().GetIntData().Data = append(field.GetScalars().GetIntData().Data, data.(int32))
+	case schemapb.DataType_Int64:
+		field.GetScalars().GetLongData().Data = append(field.GetScalars().GetLongData().Data, data.(int64))
+	case schemapb.DataType_Float:
+		field.GetScalars().GetFloatData().Data = append(field.GetScalars().GetFloatData().Data, data.(float32))
+	case schemapb.DataType_Double:
+		field.GetScalars().GetDoubleData().Data = append(field.GetScalars().GetDoubleData().Data, data.(float64))
+	case schemapb.DataType_String:
+		field.GetScalars().GetStringData().Data = append(field.GetScalars().GetStringData().Data, data.(string))
+	case schemapb.DataType_VarChar:
+		field.GetScalars().GetBytesData().Data = append(field.GetScalars().GetBytesData().Data, data.([]byte))
+	case schemapb.DataType_FloatVector:
+		// TODO: use copy
+		field.GetVectors().GetFloatVector().Data = append(field.GetVectors().GetFloatVector().Data, data.([]float32)...)
+	case schemapb.DataType_BinaryVector:
+		// TODO: use copy
+		field.GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector =
+			append(field.GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector, data.([]byte)...)
+	}
+}
+
+func GetPKSize(field *schemapb.FieldData) int {
+	switch field.GetType() {
+	case schemapb.DataType_Int64:
+		return len(field.GetScalars().GetLongData().GetData())
+	case schemapb.DataType_String:
+		return len(field.GetScalars().GetStringData().GetData())
+	}
+	return 0
+}
+
+func GetData(field *schemapb.FieldData, idx int) interface{} {
+	switch field.GetType() {
+	case schemapb.DataType_Bool:
+		return field.GetScalars().GetBoolData().GetData()[idx]
+	case schemapb.DataType_Int8, schemapb.DataType_Int16, schemapb.DataType_Int32:
+		return field.GetScalars().GetIntData().GetData()[idx]
+	case schemapb.DataType_Int64:
+		return field.GetScalars().GetLongData().GetData()[idx]
+	case schemapb.DataType_Float:
+		return field.GetScalars().GetFloatData().GetData()[idx]
+	case schemapb.DataType_Double:
+		return field.GetScalars().GetDoubleData().GetData()[idx]
+	case schemapb.DataType_String:
+		return field.GetScalars().GetStringData().GetData()[idx]
+	case schemapb.DataType_VarChar:
+		return field.GetScalars().GetBytesData().GetData()[idx]
+	case schemapb.DataType_FloatVector:
+		dim := int(field.GetVectors().GetDim())
+		return field.GetVectors().GetFloatVector().GetData()[idx*dim : (idx+1)*dim]
+	case schemapb.DataType_BinaryVector:
+		dim := int(field.GetVectors().GetDim())
+		dataBytes := dim / 8
+		return field.GetVectors().GetBinaryVector()[idx*dataBytes : (idx+1)*dataBytes]
+	}
 	return nil
 }
 

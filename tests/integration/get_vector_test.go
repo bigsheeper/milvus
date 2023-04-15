@@ -24,17 +24,11 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/util/typeutil"
 	"github.com/stretchr/testify/suite"
 	"testing"
 	"time"
 )
-
-type TestGetVectorCase struct {
-	nq         int
-	topK       int
-	indexType  string
-	metricType string
-}
 
 type TestGetVectorSuite struct {
 	suite.Suite
@@ -43,15 +37,11 @@ type TestGetVectorSuite struct {
 	cancel  context.CancelFunc
 	cluster *MiniCluster
 
-	// schema and meta
-	dim         int
-	collection  string
-	pkField     string
-	vectorField string
-
-	// data
-	pk      *schemapb.FieldData
-	rawData *schemapb.FieldData
+	// test params
+	nq         int
+	topK       int
+	indexType  string
+	metricType string
 }
 
 func (suite *TestGetVectorSuite) SetupTest() {
@@ -62,32 +52,35 @@ func (suite *TestGetVectorSuite) SetupTest() {
 	suite.Require().NoError(err)
 	err = suite.cluster.Start()
 	suite.Require().NoError(err)
+}
 
-	suite.collection = "TestGetVector" + funcutil.GenRandomStr()
+func (suite *TestGetVectorSuite) run() {
+	collection := fmt.Sprintf("TestGetVector_%d_%d_%s_%s_%s",
+		suite.nq, suite.topK, suite.indexType, suite.metricType, funcutil.GenRandomStr())
 
-	const NB = 3000
-	suite.dim = defaultDim
-	suite.pkField = int64Field
-	suite.vectorField = floatVecField
+	const (
+		NB  = 10000
+		dim = 128
+	)
 
-	schema := constructSchema(suite.collection, false)
+	schema := constructSchema(collection, dim, false)
 	marshaledSchema, err := proto.Marshal(schema)
 	suite.Require().NoError(err)
 
 	createCollectionStatus, err := suite.cluster.proxy.CreateCollection(suite.ctx, &milvuspb.CreateCollectionRequest{
-		CollectionName: suite.collection,
+		CollectionName: collection,
 		Schema:         marshaledSchema,
 		ShardsNum:      2,
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
-	suite.pk = newInt64FieldData(suite.pkField, NB)
-	suite.rawData = newFloatVectorFieldData(suite.vectorField, NB, suite.dim)
+	pkData := newInt64FieldData(int64Field, NB)
+	vecData := newFloatVectorFieldData(floatVecField, NB, dim)
 	hashKeys := generateHashKeys(NB)
 	_, err = suite.cluster.proxy.Insert(suite.ctx, &milvuspb.InsertRequest{
-		CollectionName: suite.collection,
-		FieldsData:     []*schemapb.FieldData{suite.pk, suite.rawData},
+		CollectionName: collection,
+		FieldsData:     []*schemapb.FieldData{pkData, vecData},
 		HashKeys:       hashKeys,
 		NumRows:        uint32(NB),
 	})
@@ -96,10 +89,10 @@ func (suite *TestGetVectorSuite) SetupTest() {
 
 	// flush
 	flushResp, err := suite.cluster.proxy.Flush(suite.ctx, &milvuspb.FlushRequest{
-		CollectionNames: []string{suite.collection},
+		CollectionNames: []string{collection},
 	})
 	suite.Require().NoError(err)
-	segmentIDs, has := flushResp.GetCollSegIDs()[suite.collection]
+	segmentIDs, has := flushResp.GetCollSegIDs()[collection]
 	ids := segmentIDs.GetData()
 	suite.Require().NotEmpty(segmentIDs)
 	suite.Require().True(has)
@@ -112,73 +105,107 @@ func (suite *TestGetVectorSuite) SetupTest() {
 
 	// create index
 	_, err = suite.cluster.proxy.CreateIndex(suite.ctx, &milvuspb.CreateIndexRequest{
-		CollectionName: suite.collection,
-		FieldName:      suite.vectorField,
+		CollectionName: collection,
+		FieldName:      floatVecField,
 		IndexName:      "_default",
-		ExtraParams:    constructIndexParam(suite.dim, IndexFaissIvfFlat, L2),
+		ExtraParams:    constructIndexParam(dim, suite.indexType, suite.metricType),
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
 	// load
 	_, err = suite.cluster.proxy.LoadCollection(suite.ctx, &milvuspb.LoadCollectionRequest{
-		CollectionName: suite.collection,
+		CollectionName: collection,
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
-	waitingForLoad(suite.ctx, suite.cluster, suite.collection)
-}
+	waitingForLoad(suite.ctx, suite.cluster, collection)
 
-func (suite *TestGetVectorSuite) TestGetVector() {
 	// search
-	expr := fmt.Sprintf("%s > 0", int64Field)
-	nq := 10
-	topk := 10
-	roundDecimal := -1
-	nprobe := 10
+	nq := suite.nq
+	topk := suite.topK
 
-	outputFields := []string{suite.vectorField}
-	searchReq := constructSearchRequest("", suite.collection, expr,
-		suite.vectorField, outputFields, nq, suite.dim, nprobe, topk, roundDecimal)
+	outputFields := []string{floatVecField}
+	params := getSearchParams(suite.indexType, suite.metricType)
+	searchReq := constructSearchRequest("", collection, "",
+		floatVecField, outputFields, nq, dim, params, topk, -1)
 
 	searchResp, err := suite.cluster.proxy.Search(suite.ctx, searchReq)
 	suite.Require().NoError(err)
 	suite.Require().Equal(searchResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
 
 	result := searchResp.GetResults()
-	suite.CheckSearchResult(result, nq, topk)
 	suite.Require().Len(result.GetIds().GetIntId().GetData(), nq*topk)
 	suite.Require().Len(result.GetScores(), nq*topk)
-	suite.Require().EqualValues(nq, result.GetNumQueries())
-	suite.Require().EqualValues(topk, result.GetTopK())
-}
-
-func (suite *TestGetVectorSuite) CheckSearchResult(result *schemapb.SearchResultData, nq, topk int) {
-	suite.Require().Len(result.GetIds().GetIntId().GetData(), nq*topk)
-	suite.Require().Len(result.GetScores(), nq*topk)
-	suite.Require().Len(result.GetFieldsData(), 1)
-	suite.Require().Len(result.GetFieldsData()[0].GetVectors().GetFloatVector().GetData(), nq*topk*suite.dim)
+	suite.Require().GreaterOrEqual(len(result.GetFieldsData()), 1)
+	var vecFieldIndex = -1
+	for i, fieldData := range result.GetFieldsData() {
+		if typeutil.IsVectorType(fieldData.GetType()) {
+			vecFieldIndex = i
+			break
+		}
+	}
+	suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData(), nq*topk*dim)
 	suite.Require().EqualValues(nq, result.GetNumQueries())
 	suite.Require().EqualValues(topk, result.GetTopK())
 
 	// check output vectors
-	dim := suite.dim
-	rawData := suite.rawData.GetVectors().GetFloatVector().GetData()
-	resData := result.GetFieldsData()[0].GetVectors().GetFloatVector().GetData()
+	rawData := vecData.GetVectors().GetFloatVector().GetData()
+	resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData()
 	for i, id := range result.GetIds().GetIntId().GetData() {
 		expect := rawData[int(id)*dim : (int(id)+1)*dim]
 		actual := resData[i*dim : (i+1)*dim]
 		suite.Require().ElementsMatch(expect, actual)
 	}
-}
 
-func (suite *TestGetVectorSuite) TearDownTest() {
 	status, err := suite.cluster.proxy.DropCollection(suite.ctx, &milvuspb.DropCollectionRequest{
-		CollectionName: suite.collection,
+		CollectionName: collection,
 	})
 	suite.Require().NoError(err)
 	suite.Require().Equal(status.GetErrorCode(), commonpb.ErrorCode_Success)
+}
 
+func (suite *TestGetVectorSuite) TestGetVector_FLAT() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexFaissIDMap
+	suite.metricType = L2
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_IVF_FLAT() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexFaissIvfFlat
+	suite.metricType = L2
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_IVF_PQ() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexFaissIvfPQ
+	suite.metricType = L2
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_IVF_SQ8() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexFaissIvfSQ8
+	suite.metricType = L2
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_HNSW() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexHNSW
+	suite.metricType = L2
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TearDownTest() {
 	suite.cancel()
 	//err = suite.cluster.Stop()
 	//suite.Require().NoError(err) // TODO: cluster.Stop hangs, fix it

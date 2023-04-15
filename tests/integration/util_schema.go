@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	defaultDim = 128
-
 	boolField     = "boolField"
 	int8Field     = "int8Field"
 	int16Field    = "int16Field"
@@ -38,7 +36,7 @@ const (
 	binVecField   = "binVecField"
 )
 
-func constructSchema(collection string, autoID bool, fields ...*schemapb.FieldSchema) *schemapb.CollectionSchema {
+func constructSchema(collection string, dim int, autoID bool, fields ...*schemapb.FieldSchema) *schemapb.CollectionSchema {
 	// if fields are specified, construct it
 	if len(fields) > 0 {
 		return &schemapb.CollectionSchema{
@@ -68,7 +66,7 @@ func constructSchema(collection string, autoID bool, fields ...*schemapb.FieldSc
 		TypeParams: []*commonpb.KeyValuePair{
 			{
 				Key:   common.DimKey,
-				Value: fmt.Sprintf("%d", defaultDim),
+				Value: fmt.Sprintf("%d", dim),
 			},
 		},
 		IndexParams: nil,

@@ -273,6 +273,9 @@ func (s *LocalSegment) ExistIndex(fieldID int64) bool {
 }
 
 func (s *LocalSegment) HasRawData(fieldID int64) bool {
+	if !s.ExistIndex(fieldID) {
+		return true
+	}
 	fieldInfo, ok := s.fieldIndexes.Get(fieldID)
 	if !ok {
 		return false
@@ -471,7 +474,7 @@ func (s *LocalSegment) FillIndexedFieldsData(ctx context.Context,
 		}
 		// If the vector field doesn't have indexed or index doesn't have raw data. Vector data is in memory for
 		// brute force search. No need to download data from remote.
-		if !s.HasRawData(fieldData.FieldId) {
+		if s.HasRawData(fieldData.FieldId) {
 			continue
 		}
 

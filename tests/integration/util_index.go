@@ -40,7 +40,7 @@ const (
 	IP = indexparamcheck.IP
 
 	nlist          = "100"
-	m              = "4"
+	m              = "16"
 	nbits          = "8"
 	nprobe         = "8"
 	efConstruction = "200"
@@ -85,7 +85,7 @@ func constructIndexParam(dim int, indexType string, metricType string) []*common
 		})
 	case IndexHNSW:
 		params = append(params, &commonpb.KeyValuePair{
-			Key:   "m",
+			Key:   "M",
 			Value: m,
 		})
 		params = append(params, &commonpb.KeyValuePair{
@@ -94,6 +94,21 @@ func constructIndexParam(dim int, indexType string, metricType string) []*common
 		})
 	default:
 		panic(fmt.Sprintf("unimplemented index param for %s, please help to improve it", indexType))
+	}
+	return params
+}
+
+func getSearchParams(indexType string, metricType string) map[string]string {
+	params := make(map[string]string)
+	switch indexType {
+	case IndexFaissIDMap:
+		params["metric_type"] = metricType
+	case IndexFaissIvfFlat, IndexFaissIvfSQ8, IndexFaissIvfPQ:
+		params["nprobe"] = nprobe
+	case IndexHNSW:
+		params["ef"] = ef
+	default:
+		panic(fmt.Sprintf("unimplemented search param for %s, please help to improve it", indexType))
 	}
 	return params
 }

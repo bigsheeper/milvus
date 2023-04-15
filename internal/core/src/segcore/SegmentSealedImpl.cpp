@@ -665,7 +665,11 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
             return ReverseDataFromIndex(index, seg_offsets, count, field_meta);
         }
 
-        return get_vector(field_id, seg_offsets, count);
+        std::vector<int64_t> tmp;
+        for (int i=0; i<count; i++) {
+            tmp.push_back(seg_offsets[i]);
+        } // TODO: dyh, without this, integration test for IVF_FLAT will fail, figure it out
+        return get_vector(field_id, tmp.data(), count);
     }
 
     Assert(get_bit(field_data_ready_bitset_, field_id));

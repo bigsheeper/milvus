@@ -144,7 +144,7 @@ func TestRangeSearchIP(t *testing.T) {
 	searchReq := constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err := c.proxy.Search(ctx, searchReq)
+	searchResult, _ := c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {
@@ -157,7 +157,7 @@ func TestRangeSearchIP(t *testing.T) {
 	searchReq = constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err = c.proxy.Search(ctx, searchReq)
+	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {
@@ -171,7 +171,7 @@ func TestRangeSearchIP(t *testing.T) {
 	searchReq = constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err = c.proxy.Search(ctx, searchReq)
+	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {
@@ -295,7 +295,7 @@ func TestRangeSearchL2(t *testing.T) {
 	searchReq := constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err := c.proxy.Search(ctx, searchReq)
+	searchResult, _ := c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {
@@ -308,7 +308,7 @@ func TestRangeSearchL2(t *testing.T) {
 	searchReq = constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err = c.proxy.Search(ctx, searchReq)
+	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {
@@ -322,7 +322,7 @@ func TestRangeSearchL2(t *testing.T) {
 	searchReq = constructSearchRequest("", collectionName, expr,
 		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
-	searchResult, err = c.proxy.Search(ctx, searchReq)
+	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
 	err = merr.Error(searchResult.GetStatus())
 	if err != nil {

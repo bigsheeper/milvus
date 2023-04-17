@@ -667,7 +667,7 @@ func GetSizeOfPKFieldData(pkFieldData *schemapb.FieldData) int {
 	switch pkFieldData.GetType() {
 	case schemapb.DataType_Int64:
 		return len(pkFieldData.GetScalars().GetLongData().GetData())
-	case schemapb.DataType_String:
+	case schemapb.DataType_VarChar:
 		return len(pkFieldData.GetScalars().GetStringData().GetData())
 	}
 	return 0
@@ -709,7 +709,7 @@ func GetData(field *schemapb.FieldData, idx int) interface{} {
 	case schemapb.DataType_String:
 		return field.GetScalars().GetStringData().GetData()[idx]
 	case schemapb.DataType_VarChar:
-		return field.GetScalars().GetBytesData().GetData()[idx]
+		return field.GetScalars().GetStringData().GetData()[idx]
 	case schemapb.DataType_FloatVector:
 		dim := int(field.GetVectors().GetDim())
 		return field.GetVectors().GetFloatVector().GetData()[idx*dim : (idx+1)*dim]

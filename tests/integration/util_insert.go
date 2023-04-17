@@ -18,6 +18,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -61,6 +62,22 @@ func newInt64FieldData(fieldName string, numRows int) *schemapb.FieldData {
 	}
 }
 
+func newStringFieldData(fieldName string, numRows int) *schemapb.FieldData {
+	return &schemapb.FieldData{
+		Type:      schemapb.DataType_Int64,
+		FieldName: fieldName,
+		Field: &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{
+					StringData: &schemapb.StringArray{
+						Data: generateStringArray(numRows),
+					},
+				},
+			},
+		},
+	}
+}
+
 func newFloatVectorFieldData(fieldName string, numRows, dim int) *schemapb.FieldData {
 	return &schemapb.FieldData{
 		Type:      schemapb.DataType_FloatVector,
@@ -82,6 +99,14 @@ func generateInt64Array(numRows int) []int64 {
 	ret := make([]int64, numRows)
 	for i := 0; i < numRows; i++ {
 		ret[i] = int64(i)
+	}
+	return ret
+}
+
+func generateStringArray(numRows int) []string {
+	ret := make([]string, numRows)
+	for i := 0; i < numRows; i++ {
+		ret[i] = fmt.Sprintf("a%d", i)
 	}
 	return ret
 }

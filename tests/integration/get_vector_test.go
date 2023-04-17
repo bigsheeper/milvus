@@ -19,6 +19,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/util/distance"
 	"testing"
 	"time"
@@ -45,6 +46,7 @@ type TestGetVectorSuite struct {
 	topK       int
 	indexType  string
 	metricType string
+	pkType     schemapb.DataType
 }
 
 func (suite *TestGetVectorSuite) SetupTest() {
@@ -66,7 +68,37 @@ func (suite *TestGetVectorSuite) run() {
 		dim = 128
 	)
 
-	schema := constructSchema(collection, dim, false)
+	pkFieldName := "pkField"
+	pk := &schemapb.FieldSchema{
+		FieldID:      100,
+		Name:         pkFieldName,
+		IsPrimaryKey: true,
+		Description:  "",
+		DataType:     suite.pkType,
+		TypeParams: []*commonpb.KeyValuePair{
+			{
+				Key:   "max_length",
+				Value: "100",
+			},
+		},
+		IndexParams: nil,
+		AutoID:      false,
+	}
+	fVec := &schemapb.FieldSchema{
+		FieldID:      101,
+		Name:         floatVecField,
+		IsPrimaryKey: false,
+		Description:  "",
+		DataType:     schemapb.DataType_FloatVector,
+		TypeParams: []*commonpb.KeyValuePair{
+			{
+				Key:   common.DimKey,
+				Value: fmt.Sprintf("%d", dim),
+			},
+		},
+		IndexParams: nil,
+	}
+	schema := constructSchema(collection, dim, false, pk, fVec)
 	marshaledSchema, err := proto.Marshal(schema)
 	suite.Require().NoError(err)
 
@@ -78,12 +110,18 @@ func (suite *TestGetVectorSuite) run() {
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
-	pkData := newInt64FieldData(int64Field, NB)
+	fieldsData := make([]*schemapb.FieldData, 0)
+	if suite.pkType == schemapb.DataType_Int64 {
+		fieldsData = append(fieldsData, newInt64FieldData(pkFieldName, NB))
+	} else {
+		fieldsData = append(fieldsData, newStringFieldData(pkFieldName, NB))
+	}
 	vecData := newFloatVectorFieldData(floatVecField, NB, dim)
+	fieldsData = append(fieldsData, vecData)
 	hashKeys := generateHashKeys(NB)
 	_, err = suite.cluster.proxy.Insert(suite.ctx, &milvuspb.InsertRequest{
 		CollectionName: collection,
-		FieldsData:     []*schemapb.FieldData{pkData, vecData},
+		FieldsData:     fieldsData,
 		HashKeys:       hashKeys,
 		NumRows:        uint32(NB),
 	})
@@ -138,7 +176,11 @@ func (suite *TestGetVectorSuite) run() {
 	suite.Require().Equal(searchResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
 
 	result := searchResp.GetResults()
-	suite.Require().Len(result.GetIds().GetIntId().GetData(), nq*topk)
+	if suite.pkType == schemapb.DataType_Int64 {
+		suite.Require().Len(result.GetIds().GetIntId().GetData(), nq*topk)
+	} else {
+		suite.Require().Len(result.GetIds().GetStrId().GetData(), nq*topk)
+	}
 	suite.Require().Len(result.GetScores(), nq*topk)
 	suite.Require().GreaterOrEqual(len(result.GetFieldsData()), 1)
 	var vecFieldIndex = -1
@@ -173,6 +215,7 @@ func (suite *TestGetVectorSuite) TestGetVector_FLAT() {
 	suite.topK = 10
 	suite.indexType = IndexFaissIDMap
 	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
 	suite.run()
 }
 
@@ -181,6 +224,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_FLAT() {
 	suite.topK = 10
 	suite.indexType = IndexFaissIvfFlat
 	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
 	suite.run()
 }
 
@@ -189,6 +233,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_PQ() {
 	suite.topK = 10
 	suite.indexType = IndexFaissIvfPQ
 	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
 	suite.run()
 }
 
@@ -197,6 +242,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_SQ8() {
 	suite.topK = 10
 	suite.indexType = IndexFaissIvfSQ8
 	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
 	suite.run()
 }
 
@@ -205,14 +251,25 @@ func (suite *TestGetVectorSuite) TestGetVector_HNSW() {
 	suite.topK = 10
 	suite.indexType = IndexHNSW
 	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
 	suite.run()
 }
 
 func (suite *TestGetVectorSuite) TestGetVector_IP() {
-	suite.nq = 2
+	suite.nq = 10
 	suite.topK = 10
 	suite.indexType = IndexHNSW
 	suite.metricType = distance.IP
+	suite.pkType = schemapb.DataType_Int64
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_StringPK() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexHNSW
+	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_VarChar
 	suite.run()
 }
 

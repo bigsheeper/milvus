@@ -571,12 +571,11 @@ func (t *searchTask) Requery() error {
 	t.result.Results.FieldsData = make([]*schemapb.FieldData, len(queryResult.GetFieldsData()))
 	for i := 0; i < typeutil.GetSizeOfIDs(ids); i++ {
 		id := typeutil.GetPK(ids, int64(i))
-		if idx, ok := offsets[id]; !ok {
+		if _, ok := offsets[id]; !ok {
 			return fmt.Errorf("incomplete query result, missing id %s, len(searchIDs) = %d, len(queryIDs) = %d",
 				id, typeutil.GetSizeOfIDs(ids), len(offsets))
-		} else {
-			typeutil.AppendFieldData(t.result.Results.FieldsData, queryResult.GetFieldsData(), int64(idx))
 		}
+		typeutil.AppendFieldData(t.result.Results.FieldsData, queryResult.GetFieldsData(), int64(offsets[id]))
 	}
 
 	return nil

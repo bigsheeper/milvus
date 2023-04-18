@@ -19,7 +19,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/pkg/util/distance"
 	"strconv"
 	"testing"
 	"time"
@@ -34,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/internal/util/importutil"
 	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/distance"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 )
 
@@ -54,6 +54,7 @@ func TestBulkInsert(t *testing.T) {
 	c, err := StartMiniCluster(ctx)
 	assert.NoError(t, err)
 	err = c.Start()
+	assert.NoError(t, err)
 	defer func() {
 		//err = c.Stop()
 		//assert.NoError(t, err)

@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"math/rand"
 	"strconv"
 	"time"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
+	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"github.com/milvus-io/milvus/pkg/common"
 )
 

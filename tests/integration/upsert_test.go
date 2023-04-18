@@ -38,6 +38,7 @@ func TestUpsert(t *testing.T) {
 	c, err := StartMiniCluster(ctx)
 	assert.NoError(t, err)
 	err = c.Start()
+	assert.NoError(t, err)
 	defer func() {
 		//err = c.Stop()
 		//assert.NoError(t, err)

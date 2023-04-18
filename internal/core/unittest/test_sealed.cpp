@@ -1102,4 +1102,5 @@ TEST(Sealed, GetVector) {
             EXPECT_TRUE(vector[i * dim + j] == fakevec[id * dim + j]);
         }
     }
+    ids_ds->SetIsOwner(true);
 }

@@ -595,6 +595,7 @@ GenRandomIds(int rows, int dim, int64_t seed = 42) {
     auto ds = std::make_shared<knowhere::DataSet>();
     ds->SetRows(rows);
     ds->SetDim(dim);
+    ds->SetIsOwner(false);
     int64_t* ids = new int64_t[rows];
     for (int i = 0; i < rows; ++i) ids[i] = i;
     std::shuffle(ids, ids + rows, g);

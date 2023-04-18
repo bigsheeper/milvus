@@ -19,6 +19,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -205,21 +206,44 @@ func (suite *TestGetVectorSuite) run() {
 		suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData(), nq*topk*dim)
 		rawData := vecFieldData.GetVectors().GetFloatVector().GetData()
 		resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData()
-		for i, id := range result.GetIds().GetIntId().GetData() {
-			expect := rawData[int(id)*dim : (int(id)+1)*dim]
-			actual := resData[i*dim : (i+1)*dim]
-			suite.Require().ElementsMatch(expect, actual)
+		if suite.pkType == schemapb.DataType_Int64 {
+			for i, id := range result.GetIds().GetIntId().GetData() {
+				expect := rawData[int(id)*dim : (int(id)+1)*dim]
+				actual := resData[i*dim : (i+1)*dim]
+				suite.Require().ElementsMatch(expect, actual)
+			}
+		} else {
+			for i, idStr := range result.GetIds().GetStrId().GetData() {
+				id, err := strconv.Atoi(idStr)
+				suite.Require().NoError(err)
+				expect := rawData[id*dim : (id+1)*dim]
+				actual := resData[i*dim : (i+1)*dim]
+				suite.Require().ElementsMatch(expect, actual)
+			}
 		}
 	} else {
 		suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetBinaryVector(), nq*topk*dim/8)
 		rawData := vecFieldData.GetVectors().GetBinaryVector()
 		resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetBinaryVector()
-		for i, id := range result.GetIds().GetIntId().GetData() {
-			dataBytes := dim / 8
-			for j := 0; j < dataBytes; j++ {
-				expect := rawData[int(id)*dataBytes+j]
-				actual := resData[i*dataBytes+j]
-				suite.Require().Equal(expect, actual)
+		if suite.pkType == schemapb.DataType_Int64 {
+			for i, id := range result.GetIds().GetIntId().GetData() {
+				dataBytes := dim / 8
+				for j := 0; j < dataBytes; j++ {
+					expect := rawData[int(id)*dataBytes+j]
+					actual := resData[i*dataBytes+j]
+					suite.Require().Equal(expect, actual)
+				}
+			}
+		} else {
+			for i, idStr := range result.GetIds().GetStrId().GetData() {
+				dataBytes := dim / 8
+				id, err := strconv.Atoi(idStr)
+				suite.Require().NoError(err)
+				for j := 0; j < dataBytes; j++ {
+					expect := rawData[id*dataBytes+j]
+					actual := resData[i*dataBytes+j]
+					suite.Require().Equal(expect, actual)
+				}
 			}
 		}
 	}

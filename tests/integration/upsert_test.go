@@ -138,7 +138,7 @@ func TestUpsert(t *testing.T) {
 
 	params := getSearchParams(IndexFaissIvfFlat, "")
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ := c.proxy.Search(ctx, searchReq)
 

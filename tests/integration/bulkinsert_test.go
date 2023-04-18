@@ -185,7 +185,7 @@ func TestBulkInsert(t *testing.T) {
 
 	params := getSearchParams(IndexHNSW, distance.L2)
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
 	searchResult, err := c.proxy.Search(ctx, searchReq)
 

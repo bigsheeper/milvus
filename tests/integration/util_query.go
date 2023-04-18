@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/milvus-io/milvus-proto/go-api/schemapb"
 	"math/rand"
 	"strconv"
 	"time"
@@ -66,7 +67,8 @@ func waitingForLoad(ctx context.Context, cluster *MiniCluster, collection string
 func constructSearchRequest(
 	dbName, collectionName string,
 	expr string,
-	floatVecField string,
+	vecField string,
+	vectorType schemapb.DataType,
 	outputFields []string,
 	metricType string,
 	params map[string]any,
@@ -76,7 +78,7 @@ func constructSearchRequest(
 	if err != nil {
 		panic(err)
 	}
-	plg := constructPlaceholderGroup(nq, dim)
+	plg := constructPlaceholderGroup(nq, dim, vectorType)
 	plgBs, err := proto.Marshal(plg)
 	if err != nil {
 		panic(err)
@@ -102,7 +104,7 @@ func constructSearchRequest(
 			},
 			{
 				Key:   AnnsFieldKey,
-				Value: floatVecField,
+				Value: vecField,
 			},
 			{
 				Key:   common.TopKKey,
@@ -118,27 +120,45 @@ func constructSearchRequest(
 	}
 }
 
-func constructPlaceholderGroup(nq, dim int) *commonpb.PlaceholderGroup {
+func constructPlaceholderGroup(nq, dim int, vectorType schemapb.DataType) *commonpb.PlaceholderGroup {
 	values := make([][]byte, 0, nq)
-	for i := 0; i < nq; i++ {
-		bs := make([]byte, 0, dim*4)
-		for j := 0; j < dim; j++ {
-			var buffer bytes.Buffer
-			f := rand.Float32()
-			err := binary.Write(&buffer, common.Endian, f)
+	var placeholderType commonpb.PlaceholderType
+	switch vectorType {
+	case schemapb.DataType_FloatVector:
+		placeholderType = commonpb.PlaceholderType_FloatVector
+		for i := 0; i < nq; i++ {
+			bs := make([]byte, 0, dim*4)
+			for j := 0; j < dim; j++ {
+				var buffer bytes.Buffer
+				f := rand.Float32()
+				err := binary.Write(&buffer, common.Endian, f)
+				if err != nil {
+					panic(err)
+				}
+				bs = append(bs, buffer.Bytes()...)
+			}
+			values = append(values, bs)
+		}
+	case schemapb.DataType_BinaryVector:
+		placeholderType = commonpb.PlaceholderType_BinaryVector
+		for i := 0; i < nq; i++ {
+			total := dim / 8
+			ret := make([]byte, total)
+			_, err := rand.Read(ret)
 			if err != nil {
 				panic(err)
 			}
-			bs = append(bs, buffer.Bytes()...)
+			values = append(values, ret)
 		}
-		values = append(values, bs)
+	default:
+		panic("invalid vector data type")
 	}
 
 	return &commonpb.PlaceholderGroup{
 		Placeholders: []*commonpb.PlaceholderValue{
 			{
 				Tag:    "$0",
-				Type:   commonpb.PlaceholderType_FloatVector,
+				Type:   placeholderType,
 				Values: values,
 			},
 		},

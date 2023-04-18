@@ -95,6 +95,21 @@ func newFloatVectorFieldData(fieldName string, numRows, dim int) *schemapb.Field
 	}
 }
 
+func newBinaryVectorFieldData(fieldName string, numRows, dim int) *schemapb.FieldData {
+	return &schemapb.FieldData{
+		Type:      schemapb.DataType_BinaryVector,
+		FieldName: fieldName,
+		Field: &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: int64(dim),
+				Data: &schemapb.VectorField_BinaryVector{
+					BinaryVector: generateBinaryVectors(numRows, dim),
+				},
+			},
+		},
+	}
+}
+
 func generateInt64Array(numRows int) []int64 {
 	ret := make([]int64, numRows)
 	for i := 0; i < numRows; i++ {
@@ -106,7 +121,7 @@ func generateInt64Array(numRows int) []int64 {
 func generateStringArray(numRows int) []string {
 	ret := make([]string, numRows)
 	for i := 0; i < numRows; i++ {
-		ret[i] = fmt.Sprintf("a%d", i)
+		ret[i] = fmt.Sprintf("%d", i)
 	}
 	return ret
 }
@@ -116,6 +131,16 @@ func generateFloatVectors(numRows, dim int) []float32 {
 	ret := make([]float32, 0, total)
 	for i := 0; i < total; i++ {
 		ret = append(ret, rand.Float32())
+	}
+	return ret
+}
+
+func generateBinaryVectors(numRows, dim int) []byte {
+	total := (numRows * dim) / 8
+	ret := make([]byte, total)
+	_, err := rand.Read(ret)
+	if err != nil {
+		panic(err)
 	}
 	return ret
 }

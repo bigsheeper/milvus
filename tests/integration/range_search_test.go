@@ -142,7 +142,7 @@ func TestRangeSearchIP(t *testing.T) {
 	// only pass in radius when range search
 	params["radius"] = radius
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ := c.proxy.Search(ctx, searchReq)
 
@@ -155,7 +155,7 @@ func TestRangeSearchIP(t *testing.T) {
 	// pass in radius and range_filter when range search
 	params["range_filter"] = filter
 	searchReq = constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
@@ -169,7 +169,7 @@ func TestRangeSearchIP(t *testing.T) {
 	params["radius"] = filter
 	params["range_filter"] = radius
 	searchReq = constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.IP, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.IP, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
@@ -293,7 +293,7 @@ func TestRangeSearchL2(t *testing.T) {
 	// only pass in radius when range search
 	params["radius"] = radius
 	searchReq := constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ := c.proxy.Search(ctx, searchReq)
 
@@ -306,7 +306,7 @@ func TestRangeSearchL2(t *testing.T) {
 	// pass in radius and range_filter when range search
 	params["range_filter"] = filter
 	searchReq = constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ = c.proxy.Search(ctx, searchReq)
 
@@ -320,7 +320,7 @@ func TestRangeSearchL2(t *testing.T) {
 	params["radius"] = filter
 	params["range_filter"] = radius
 	searchReq = constructSearchRequest("", collectionName, expr,
-		floatVecField, nil, distance.L2, params, nq, dim, topk, roundDecimal)
+		floatVecField, schemapb.DataType_FloatVector, nil, distance.L2, params, nq, dim, topk, roundDecimal)
 
 	searchResult, _ = c.proxy.Search(ctx, searchReq)
 

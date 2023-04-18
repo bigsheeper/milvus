@@ -47,6 +47,7 @@ type TestGetVectorSuite struct {
 	indexType  string
 	metricType string
 	pkType     schemapb.DataType
+	vecType    schemapb.DataType
 }
 
 func (suite *TestGetVectorSuite) SetupTest() {
@@ -69,6 +70,7 @@ func (suite *TestGetVectorSuite) run() {
 	)
 
 	pkFieldName := "pkField"
+	vecFieldName := "vecField"
 	pk := &schemapb.FieldSchema{
 		FieldID:      100,
 		Name:         pkFieldName,
@@ -86,10 +88,10 @@ func (suite *TestGetVectorSuite) run() {
 	}
 	fVec := &schemapb.FieldSchema{
 		FieldID:      101,
-		Name:         floatVecField,
+		Name:         vecFieldName,
 		IsPrimaryKey: false,
 		Description:  "",
-		DataType:     schemapb.DataType_FloatVector,
+		DataType:     suite.vecType,
 		TypeParams: []*commonpb.KeyValuePair{
 			{
 				Key:   common.DimKey,
@@ -116,8 +118,13 @@ func (suite *TestGetVectorSuite) run() {
 	} else {
 		fieldsData = append(fieldsData, newStringFieldData(pkFieldName, NB))
 	}
-	vecData := newFloatVectorFieldData(floatVecField, NB, dim)
-	fieldsData = append(fieldsData, vecData)
+	var vecFieldData *schemapb.FieldData
+	if suite.vecType == schemapb.DataType_FloatVector {
+		vecFieldData = newFloatVectorFieldData(vecFieldName, NB, dim)
+	} else {
+		vecFieldData = newBinaryVectorFieldData(vecFieldName, NB, dim)
+	}
+	fieldsData = append(fieldsData, vecFieldData)
 	hashKeys := generateHashKeys(NB)
 	_, err = suite.cluster.proxy.Insert(suite.ctx, &milvuspb.InsertRequest{
 		CollectionName: collection,
@@ -147,7 +154,7 @@ func (suite *TestGetVectorSuite) run() {
 	// create index
 	_, err = suite.cluster.proxy.CreateIndex(suite.ctx, &milvuspb.CreateIndexRequest{
 		CollectionName: collection,
-		FieldName:      floatVecField,
+		FieldName:      vecFieldName,
 		IndexName:      "_default",
 		ExtraParams:    constructIndexParam(dim, suite.indexType, suite.metricType),
 	})
@@ -166,10 +173,10 @@ func (suite *TestGetVectorSuite) run() {
 	nq := suite.nq
 	topk := suite.topK
 
-	outputFields := []string{floatVecField}
+	outputFields := []string{vecFieldName}
 	params := getSearchParams(suite.indexType, suite.metricType)
 	searchReq := constructSearchRequest("", collection, "",
-		floatVecField, outputFields, suite.metricType, params, nq, dim, topk, -1)
+		vecFieldName, suite.vecType, outputFields, suite.metricType, params, nq, dim, topk, -1)
 
 	searchResp, err := suite.cluster.proxy.Search(suite.ctx, searchReq)
 	suite.Require().NoError(err)
@@ -190,17 +197,31 @@ func (suite *TestGetVectorSuite) run() {
 			break
 		}
 	}
-	suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData(), nq*topk*dim)
 	suite.Require().EqualValues(nq, result.GetNumQueries())
 	suite.Require().EqualValues(topk, result.GetTopK())
 
 	// check output vectors
-	rawData := vecData.GetVectors().GetFloatVector().GetData()
-	resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData()
-	for i, id := range result.GetIds().GetIntId().GetData() {
-		expect := rawData[int(id)*dim : (int(id)+1)*dim]
-		actual := resData[i*dim : (i+1)*dim]
-		suite.Require().ElementsMatch(expect, actual)
+	if suite.vecType == schemapb.DataType_FloatVector {
+		suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData(), nq*topk*dim)
+		rawData := vecFieldData.GetVectors().GetFloatVector().GetData()
+		resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetFloatVector().GetData()
+		for i, id := range result.GetIds().GetIntId().GetData() {
+			expect := rawData[int(id)*dim : (int(id)+1)*dim]
+			actual := resData[i*dim : (i+1)*dim]
+			suite.Require().ElementsMatch(expect, actual)
+		}
+	} else {
+		suite.Require().Len(result.GetFieldsData()[vecFieldIndex].GetVectors().GetBinaryVector(), nq*topk*dim/8)
+		rawData := vecFieldData.GetVectors().GetBinaryVector()
+		resData := result.GetFieldsData()[vecFieldIndex].GetVectors().GetBinaryVector()
+		for i, id := range result.GetIds().GetIntId().GetData() {
+			dataBytes := dim / 8
+			for j := 0; j < dataBytes; j++ {
+				expect := rawData[int(id)*dataBytes+j]
+				actual := resData[i*dataBytes+j]
+				suite.Require().Equal(expect, actual)
+			}
+		}
 	}
 
 	status, err := suite.cluster.proxy.DropCollection(suite.ctx, &milvuspb.DropCollectionRequest{
@@ -216,6 +237,7 @@ func (suite *TestGetVectorSuite) TestGetVector_FLAT() {
 	suite.indexType = IndexFaissIDMap
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -225,6 +247,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_FLAT() {
 	suite.indexType = IndexFaissIvfFlat
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -234,6 +257,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_PQ() {
 	suite.indexType = IndexFaissIvfPQ
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -243,6 +267,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IVF_SQ8() {
 	suite.indexType = IndexFaissIvfSQ8
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -252,6 +277,7 @@ func (suite *TestGetVectorSuite) TestGetVector_HNSW() {
 	suite.indexType = IndexHNSW
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -261,6 +287,7 @@ func (suite *TestGetVectorSuite) TestGetVector_IP() {
 	suite.indexType = IndexHNSW
 	suite.metricType = distance.IP
 	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
 	suite.run()
 }
 
@@ -270,6 +297,17 @@ func (suite *TestGetVectorSuite) TestGetVector_StringPK() {
 	suite.indexType = IndexHNSW
 	suite.metricType = distance.L2
 	suite.pkType = schemapb.DataType_VarChar
+	suite.vecType = schemapb.DataType_FloatVector
+	suite.run()
+}
+
+func (suite *TestGetVectorSuite) TestGetVector_BinaryVector() {
+	suite.nq = 10
+	suite.topK = 10
+	suite.indexType = IndexFaissBinIvfFlat
+	suite.metricType = distance.JACCARD
+	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_BinaryVector
 	suite.run()
 }
 

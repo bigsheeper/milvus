@@ -459,6 +459,7 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 	metrics.ProxyReduceResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
 
 	t.result.CollectionName = t.collectionName
+	t.fillInFieldInfo()
 
 	log.Ctx(ctx).Debug("Search post execute done",
 		zap.Int64("collection", t.GetCollectionID()),
@@ -589,6 +590,8 @@ func (t *searchTask) Requery() error {
 		typeutil.AppendFieldData(t.result.Results.FieldsData, queryResult.GetFieldsData(), int64(offsets[id]))
 	}
 
+	// To maintain order with query output fields.
+	t.request.OutputFields = queryReq.OutputFields
 	return nil
 }
 
@@ -603,6 +606,20 @@ func (t *searchTask) fillInEmptyResult(numQueries int64) {
 			NumQueries: numQueries,
 			Topks:      make([]int64, numQueries),
 		},
+	}
+}
+
+func (t *searchTask) fillInFieldInfo() {
+	if len(t.request.OutputFields) != 0 && len(t.result.Results.FieldsData) != 0 {
+		for i, name := range t.request.OutputFields {
+			for _, field := range t.schema.Fields {
+				if t.result.Results.FieldsData[i] != nil && field.Name == name {
+					t.result.Results.FieldsData[i].FieldName = field.Name
+					t.result.Results.FieldsData[i].FieldId = field.FieldID
+					t.result.Results.FieldsData[i].Type = field.DataType
+				}
+			}
+		}
 	}
 }
 

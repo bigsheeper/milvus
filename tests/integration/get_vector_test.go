@@ -335,6 +335,16 @@ func (suite *TestGetVectorSuite) TestGetVector_BinaryVector() {
 	suite.run()
 }
 
+func (suite *TestGetVectorSuite) TestGetVector_Big_NQ_TOPK() {
+	suite.nq = 10000
+	suite.topK = 200
+	suite.indexType = IndexHNSW
+	suite.metricType = distance.L2
+	suite.pkType = schemapb.DataType_Int64
+	suite.vecType = schemapb.DataType_FloatVector
+	suite.run()
+}
+
 //func (suite *TestGetVectorSuite) TestGetVector_DISKANN() {
 //	suite.nq = 10
 //	suite.topK = 10

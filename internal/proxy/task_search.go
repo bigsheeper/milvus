@@ -506,9 +506,17 @@ func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.Que
 }
 
 func (t *searchTask) estimateResultSize(nq int64, topK int64) (int64, error) {
-	// TODO: support get vectors from search, currently we get vectors by requery
-	return math.MaxInt64, nil
-	//
+	vectorOutputFields := lo.Filter(t.schema.GetFields(), func(field *schemapb.FieldSchema, _ int) bool {
+		return lo.Contains(t.request.GetOutputFields(), field.GetName()) && typeutil.IsVectorType(field.GetDataType())
+	})
+	// Currently, we get vectors by requery. Once we support getting vectors from search,
+	// searches with small result size could no longer need requery.
+	if len(vectorOutputFields) > 0 {
+		return math.MaxInt64, nil
+	}
+	// If no vector field as output, no need to requery.
+	return 0, nil
+
 	//outputFields := lo.Filter(t.schema.GetFields(), func(field *schemapb.FieldSchema, _ int) bool {
 	//	return lo.Contains(t.request.GetOutputFields(), field.GetName())
 	//})

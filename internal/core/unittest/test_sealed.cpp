@@ -1091,6 +1091,10 @@ TEST(Sealed, GetVector) {
     segment_sealed->LoadIndex(vec_info);
 
     auto segment = dynamic_cast<SegmentSealedImpl*>(segment_sealed.get());
+
+    auto has = segment->HasRawData();
+    EXPECT_TRUE(has);
+
     auto ids_ds = GenRandomIds(N);
     auto result = segment->get_vector(fakevec_id, ids_ds->GetIds(), N);
 

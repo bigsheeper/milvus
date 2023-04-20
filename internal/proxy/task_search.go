@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
 	"github.com/milvus-io/milvus/pkg/util/distance"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/timerecord"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
@@ -66,7 +67,7 @@ type searchTask struct {
 	shardMgr          *shardClientMgr
 
 	qc   types.QueryCoord
-	node *Proxy
+	node types.ProxyComponent
 }
 
 func getPartitionIDs(ctx context.Context, collectionName string, partitionNames []string) (partitionIDs []UniqueID, err error) {
@@ -449,17 +450,17 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 		return err
 	}
 
+	metrics.ProxyReduceResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
+
+	t.result.CollectionName = t.collectionName
+	t.fillInFieldInfo()
+
 	if t.requery {
 		err = t.Requery()
 		if err != nil {
 			return err
 		}
 	}
-
-	metrics.ProxyReduceResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.SearchLabel).Observe(float64(tr.RecordSpan().Milliseconds()))
-
-	t.result.CollectionName = t.collectionName
-	t.fillInFieldInfo()
 
 	log.Ctx(ctx).Debug("Search post execute done",
 		zap.Int64("collection", t.GetCollectionID()),
@@ -552,6 +553,9 @@ func (t *searchTask) Requery() error {
 	if err != nil {
 		return err
 	}
+	if queryResult.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {
+		return merr.Error(queryResult.GetStatus())
+	}
 	// Reorganize Results. The order of query result ids will be altered and differ from queried ids.
 	// We should reorganize query results to keep the order of original queried ids. For example:
 	// ===========================================
@@ -577,9 +581,6 @@ func (t *searchTask) Requery() error {
 		offsets[pk] = i
 	}
 
-	queryResult.FieldsData = lo.Filter(queryResult.FieldsData, func(fieldData *schemapb.FieldData, _ int) bool {
-		return lo.Contains(t.GetOutputFieldsId(), fieldData.GetFieldId())
-	})
 	t.result.Results.FieldsData = make([]*schemapb.FieldData, len(queryResult.GetFieldsData()))
 	for i := 0; i < typeutil.GetSizeOfIDs(ids); i++ {
 		id := typeutil.GetPK(ids, int64(i))

@@ -869,3 +869,28 @@ func Test_queryTask_createPlan(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestQueryTask_IDs2Expr(t *testing.T) {
+	fieldName := "pk"
+	intIDs := &schemapb.IDs{
+		IdField: &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: []int64{1, 2, 3, 4, 5},
+			},
+		},
+	}
+	stringIds := &schemapb.IDs{
+		IdField: &schemapb.IDs_StrId{
+			StrId: &schemapb.StringArray{
+				Data: []string{"a", "b", "c"},
+			},
+		},
+	}
+	idExpr := IDs2Expr(fieldName, intIDs)
+	expectIdExpr := "pk in [ 1, 2, 3, 4, 5 ]"
+	assert.Equal(t, expectIdExpr, idExpr)
+
+	strExpr := IDs2Expr(fieldName, stringIds)
+	expectStrExpr := "pk in [ \"a\", \"b\", \"c\" ]"
+	assert.Equal(t, expectStrExpr, strExpr)
+}

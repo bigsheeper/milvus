@@ -591,8 +591,6 @@ func (t *searchTask) Requery() error {
 		typeutil.AppendFieldData(t.result.Results.FieldsData, queryResult.GetFieldsData(), int64(offsets[id]))
 	}
 
-	// To maintain order with query output fields.
-	t.request.OutputFields = queryReq.OutputFields
 	return nil
 }
 

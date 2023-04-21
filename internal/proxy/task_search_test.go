@@ -2190,4 +2190,57 @@ func TestSearchTask_Requery(t *testing.T) {
 		t.Logf("err = %s", err)
 		assert.Error(t, err)
 	})
+
+	t.Run("Test postExecute with requery failed", func(t *testing.T) {
+		schema := constructCollectionSchema(pkField, vecField, dim, collection)
+		node := mocks.NewProxy(t)
+		node.EXPECT().Query(mock.Anything, mock.Anything).
+			Return(nil, fmt.Errorf("mock err 1"))
+
+		resultIDs := &schemapb.IDs{
+			IdField: &schemapb.IDs_IntId{
+				IntId: &schemapb.LongArray{
+					Data: ids,
+				},
+			},
+		}
+
+		qt := &searchTask{
+			ctx: ctx,
+			SearchRequest: &internalpb.SearchRequest{
+				Base: &commonpb.MsgBase{
+					MsgType:  commonpb.MsgType_Search,
+					SourceID: paramtable.GetNodeID(),
+				},
+			},
+			request: &milvuspb.SearchRequest{},
+			result: &milvuspb.SearchResults{
+				Results: &schemapb.SearchResultData{
+					Ids: resultIDs,
+				},
+			},
+			requery:   true,
+			schema:    schema,
+			resultBuf: make(chan *internalpb.SearchResults, 10),
+			tr:        timerecord.NewTimeRecorder("search"),
+			node:      node,
+		}
+		scores := make([]float32, rows)
+		for i := range scores {
+			scores[i] = float32(i)
+		}
+		partialResultData := &schemapb.SearchResultData{
+			Ids:    resultIDs,
+			Scores: scores,
+		}
+		bytes, err := proto.Marshal(partialResultData)
+		assert.NoError(t, err)
+		qt.resultBuf <- &internalpb.SearchResults{
+			SlicedBlob: bytes,
+		}
+
+		err = qt.PostExecute(ctx)
+		t.Logf("err = %s", err)
+		assert.Error(t, err)
+	})
 }

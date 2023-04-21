@@ -294,19 +294,13 @@ func mergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 
 		pk := typeutil.GetPK(validRetrieveResults[sel].GetIds(), cursors[sel])
 		ts := typeutil.GetTS(validRetrieveResults[sel], cursors[sel])
-		if _, ok := idTsMap[pk]; !ok {
-			typeutil.AppendPKs(ret.Ids, pk)
-			typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
-			idTsMap[pk] = ts
-		} else {
-			// primary keys duplicate
-			skipDupCnt++
-			if ts != 0 && ts > idTsMap[pk] {
-				idTsMap[pk] = ts
-				typeutil.DeleteFieldData(ret.FieldsData)
-				typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
-			}
+		if _, ok := idTsMap[pk]; ok {
+			log.Warn("mergeInternalRetrieveResult found duplicated result", zap.Any("pk", pk))
+			typeutil.PrintFieldData(validRetrieveResults[sel].GetFieldsData(), cursors[sel])
 		}
+		typeutil.AppendPKs(ret.Ids, pk)
+		typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
+		idTsMap[pk] = ts
 		cursors[sel]++
 	}
 
@@ -359,14 +353,15 @@ func mergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 		}
 
 		pk := typeutil.GetPK(validRetrieveResults[sel].GetIds(), cursors[sel])
-		if _, ok := idSet[pk]; !ok {
-			typeutil.AppendPKs(ret.Ids, pk)
-			typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
-			idSet[pk] = struct{}{}
-		} else {
+		if _, ok := idSet[pk]; ok {
 			// primary keys duplicate
+			log.Warn("mergeSegcoreRetrieveResults found duplicated result", zap.Any("pk", pk))
+			typeutil.PrintFieldData(validRetrieveResults[sel].GetFieldsData(), cursors[sel])
 			skipDupCnt++
 		}
+		typeutil.AppendPKs(ret.Ids, pk)
+		typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
+		idSet[pk] = struct{}{}
 		cursors[sel]++
 	}
 

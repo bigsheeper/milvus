@@ -387,11 +387,6 @@ func (t *queryTask) PostExecute(ctx context.Context) error {
 		return err
 	}
 	for i := 0; i < len(t.result.FieldsData); i++ {
-		if t.OutputFieldsId[i] == common.TimeStampField {
-			t.result.FieldsData = append(t.result.FieldsData[:i], t.result.FieldsData[(i+1):]...)
-			i--
-			continue
-		}
 		for _, field := range schema.Fields {
 			if field.FieldID == t.OutputFieldsId[i] {
 				// deal with the situation that offset equal to or greater than the number of entities
@@ -502,13 +497,14 @@ func reduceRetrieveResults(ctx context.Context, retrieveResults []*internalpb.Re
 		}
 
 		pk := typeutil.GetPK(validRetrieveResults[sel].GetIds(), cursors[sel])
-		if _, ok := idSet[pk]; !ok {
-			typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
-			idSet[pk] = struct{}{}
-		} else {
+		if _, ok := idSet[pk]; ok {
 			// primary keys duplicate
+			log.Warn("proxy found duplicated result", zap.Any("pk", pk))
+			typeutil.PrintFieldData(validRetrieveResults[sel].GetFieldsData(), cursors[sel])
 			skipDupCnt++
 		}
+		typeutil.AppendFieldData(ret.FieldsData, validRetrieveResults[sel].GetFieldsData(), cursors[sel])
+		idSet[pk] = struct{}{}
 		cursors[sel]++
 	}
 

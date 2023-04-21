@@ -397,6 +397,82 @@ func AppendFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData, idx i
 	}
 }
 
+func PrintFieldData(fieldsData []*schemapb.FieldData, idx int64) {
+	for _, fieldData := range fieldsData {
+		switch fieldType := fieldData.Field.(type) {
+		case *schemapb.FieldData_Scalars:
+			switch srcScalar := fieldType.Scalars.Data.(type) {
+			case *schemapb.ScalarField_BoolData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Bool("data", srcScalar.BoolData.Data[idx]))
+			case *schemapb.ScalarField_IntData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Int32("data", srcScalar.IntData.Data[idx]))
+			case *schemapb.ScalarField_LongData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Int64("data", srcScalar.LongData.Data[idx]))
+			case *schemapb.ScalarField_FloatData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Float32("data", srcScalar.FloatData.Data[idx]))
+			case *schemapb.ScalarField_DoubleData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Float64("data", srcScalar.DoubleData.Data[idx]))
+			case *schemapb.ScalarField_StringData:
+				log.Info("skip data",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.String("data", srcScalar.StringData.Data[idx]))
+			default:
+				log.Error("Not supported scalar field type", zap.String("field type", fieldData.Type.String()))
+			}
+		case *schemapb.FieldData_Vectors:
+			dim := fieldType.Vectors.Dim
+			switch srcVector := fieldType.Vectors.Data.(type) {
+			case *schemapb.VectorField_BinaryVector:
+				log.Info("skip data (vec)",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Int64("dim", dim),
+					zap.ByteString("vec", srcVector.BinaryVector[idx*(dim/8):(idx+1)*(dim/8)]))
+			case *schemapb.VectorField_FloatVector:
+				log.Info("skip data (vec)",
+					zap.Int64("fieldID", fieldData.GetFieldId()),
+					zap.String("fieldName", fieldData.GetFieldName()),
+					zap.String("fieldType", fieldData.GetType().String()),
+					zap.Int64("idx", idx),
+					zap.Int64("dim", dim),
+					zap.Float32s("vec", srcVector.FloatVector.Data[idx*dim:(idx+1)*dim]))
+			default:
+				log.Error("Not supported vec field type", zap.String("field type", fieldData.Type.String()))
+			}
+		}
+	}
+}
+
 // DeleteFieldData delete fields data appended last time
 func DeleteFieldData(dst []*schemapb.FieldData) {
 	for i, fieldData := range dst {

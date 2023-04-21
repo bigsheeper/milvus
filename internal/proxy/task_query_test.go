@@ -879,7 +879,7 @@ func TestQueryTask_IDs2Expr(t *testing.T) {
 			},
 		},
 	}
-	stringIds := &schemapb.IDs{
+	stringIDs := &schemapb.IDs{
 		IdField: &schemapb.IDs_StrId{
 			StrId: &schemapb.StringArray{
 				Data: []string{"a", "b", "c"},
@@ -887,10 +887,10 @@ func TestQueryTask_IDs2Expr(t *testing.T) {
 		},
 	}
 	idExpr := IDs2Expr(fieldName, intIDs)
-	expectIdExpr := "pk in [ 1, 2, 3, 4, 5 ]"
-	assert.Equal(t, expectIdExpr, idExpr)
+	expectIDExpr := "pk in [ 1, 2, 3, 4, 5 ]"
+	assert.Equal(t, expectIDExpr, idExpr)
 
-	strExpr := IDs2Expr(fieldName, stringIds)
+	strExpr := IDs2Expr(fieldName, stringIDs)
 	expectStrExpr := "pk in [ \"a\", \"b\", \"c\" ]"
 	assert.Equal(t, expectStrExpr, strExpr)
 }

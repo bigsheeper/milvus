@@ -62,7 +62,7 @@ class SegmentSealedImpl : public SegmentSealed {
     }
 
     bool
-    HasRawData() const override;
+    HasRawData(int64_t field_id) const override;
 
  public:
     int64_t

@@ -812,21 +812,19 @@ SegmentSealedImpl::HasFieldData(FieldId field_id) const {
 }
 
 bool
-SegmentSealedImpl::HasRawData() const {
+SegmentSealedImpl::HasRawData(int64_t field_id) const {
     std::shared_lock lck(mutex_);
-    for (const auto& field : schema_->get_fields()) {
-        const auto& field_id = field.first;
-        const auto& field_meta = field.second;
-        if (datatype_is_vector(field_meta.get_data_type())) {
-            if (get_bit(index_ready_bitset_, field_id)) {
-                AssertInfo(vector_indexings_.is_ready(field_id),
-                           "vector index is not ready");
-                auto field_indexing =
-                    vector_indexings_.get_field_indexing(field_id);
-                auto vec_index = dynamic_cast<index::VectorIndex*>(
-                    field_indexing->indexing_.get());
-                return vec_index->HasRawData();
-            }
+    auto fieldID = FieldId(field_id);
+    const auto& field_meta = schema_->operator[](fieldID);
+    if (datatype_is_vector(field_meta.get_data_type())) {
+        if (get_bit(index_ready_bitset_, fieldID)) {
+            AssertInfo(vector_indexings_.is_ready(fieldID),
+                       "vector index is not ready");
+            auto field_indexing =
+                vector_indexings_.get_field_indexing(fieldID);
+            auto vec_index = dynamic_cast<index::VectorIndex*>(
+                field_indexing->indexing_.get());
+            return vec_index->HasRawData();
         }
     }
     return true;

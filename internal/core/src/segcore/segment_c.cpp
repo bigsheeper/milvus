@@ -165,10 +165,10 @@ GetRealCount(CSegmentInterface c_segment) {
 }
 
 bool
-HasRawData(CSegmentInterface c_segment) {
+HasRawData(CSegmentInterface c_segment, int64_t field_id) {
     auto segment =
         reinterpret_cast<milvus::segcore::SegmentInterface*>(c_segment);
-    return segment->HasRawData();
+    return segment->HasRawData(field_id);
 }
 
 //////////////////////////////    interfaces for growing segment    //////////////////////////////

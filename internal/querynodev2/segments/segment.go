@@ -282,10 +282,10 @@ func (s *LocalSegment) ExistIndex(fieldID int64) bool {
 	return fieldInfo.IndexInfo != nil && fieldInfo.IndexInfo.EnableIndex
 }
 
-func (s *LocalSegment) HasRawData() bool {
+func (s *LocalSegment) HasRawData(fieldID int64) bool {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
-	ret := C.HasRawData(s.ptr)
+	ret := C.HasRawData(s.ptr, C.int64_t(fieldID))
 	return bool(ret)
 }
 
@@ -481,7 +481,7 @@ func (s *LocalSegment) FillIndexedFieldsData(ctx context.Context,
 		}
 		// If the index has raw data, vector data could be obtained from index,
 		// no need to download data from remote.
-		if s.HasRawData() {
+		if s.HasRawData(fieldData.FieldId) {
 			continue
 		}
 

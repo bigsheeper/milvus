@@ -224,7 +224,7 @@ class SegmentGrowingImpl : public SegmentGrowing {
     }
 
     bool
-    HasRawData() const override {
+    HasRawData(int64_t field_id) const override {
         return true;
     }
 

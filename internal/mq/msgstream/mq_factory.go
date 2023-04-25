@@ -51,8 +51,8 @@ type PmsFactory struct {
 
 func NewPmsFactory(config *paramtable.PulsarConfig) *PmsFactory {
 	return &PmsFactory{
-		PulsarBufSize:    1024,
-		ReceiveBufSize:   1024,
+		PulsarBufSize:    10,
+		ReceiveBufSize:   10,
 		PulsarAddress:    config.Address,
 		PulsarWebAddress: config.WebAddress,
 		PulsarAuthPlugin: config.AuthPlugin,
@@ -200,8 +200,8 @@ func (f *RmsFactory) NewMsgStreamDisposer(ctx context.Context) func([]string, st
 func NewRmsFactory(path string) *RmsFactory {
 	f := &RmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
-		ReceiveBufSize:    1024,
-		RmqBufSize:        1024,
+		ReceiveBufSize:    10,
+		RmqBufSize:        10,
 	}
 
 	err := rmqimplserver.InitRocksMQ(path)
@@ -246,7 +246,7 @@ func (f *KmsFactory) NewMsgStreamDisposer(ctx context.Context) func([]string, st
 func NewKmsFactory(config *paramtable.KafkaConfig) Factory {
 	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
-		ReceiveBufSize:    1024,
+		ReceiveBufSize:    10,
 		config:            config,
 	}
 	return f

@@ -76,6 +76,10 @@ const (
 )
 
 const (
+	TopKKey        = "topk"
+	SearchParamKey = "search_param"
+	SegmentNumKey  = "segment_num"
+
 	IndexParamsKey = "params"
 	IndexTypeKey   = "index_type"
 	MetricTypeKey  = "metric_type"
@@ -91,3 +95,8 @@ const (
 func IsSystemField(fieldID int64) bool {
 	return fieldID < StartOfUserFieldID
 }
+
+const (
+	// LatestVerision is the magic number for watch latest revision
+	LatestRevision = int64(-1)
+)

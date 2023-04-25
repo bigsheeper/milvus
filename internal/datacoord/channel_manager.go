@@ -24,6 +24,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
+	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/kv"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/mq/msgstream"
@@ -164,7 +165,8 @@ func (c *ChannelManager) Startup(ctx context.Context, nodes []int64) error {
 	checkerContext, cancel := context.WithCancel(ctx)
 	c.stopChecker = cancel
 	if c.stateChecker != nil {
-		go c.stateChecker(checkerContext)
+		// TODO get revision from reload logic
+		go c.stateChecker(checkerContext, common.LatestRevision)
 		log.Info("starting etcd states checker")
 	}
 
@@ -238,10 +240,10 @@ func (c *ChannelManager) checkOldNodes(nodes []UniqueID) error {
 
 // unwatchDroppedChannels removes drops channel that are marked to drop.
 func (c *ChannelManager) unwatchDroppedChannels() {
-	nodeChannels := c.store.GetNodesChannels()
+	nodeChannels := c.store.GetChannels()
 	for _, nodeChannel := range nodeChannels {
 		for _, ch := range nodeChannel.Channels {
-			if !c.h.CheckShouldDropChannel(ch.Name) {
+			if !c.h.CheckShouldDropChannel(ch.Name, ch.CollectionID) {
 				continue
 			}
 			err := c.remove(nodeChannel.NodeID, ch)
@@ -651,15 +653,20 @@ func (c *ChannelManager) processAck(e *ackEvent) {
 	}
 }
 
-type channelStateChecker func(context.Context)
+type channelStateChecker func(context.Context, int64)
 
-func (c *ChannelManager) watchChannelStatesLoop(ctx context.Context) {
+func (c *ChannelManager) watchChannelStatesLoop(ctx context.Context, revision int64) {
 	defer logutil.LogPanic()
 
 	// REF MEP#7 watchInfo paths are orgnized as: [prefix]/channel/{node_id}/{channel_name}
 	watchPrefix := Params.DataCoordCfg.ChannelWatchSubPath
-	// TODO, this is risky, we'd better watch etcd with revision rather simply a path
-	etcdWatcher, timeoutWatcher := c.stateTimer.getWatchers(watchPrefix)
+	var etcdWatcher clientv3.WatchChan
+	var timeoutWatcher chan *ackEvent
+	if revision == common.LatestRevision {
+		etcdWatcher, timeoutWatcher = c.stateTimer.getWatchers(watchPrefix)
+	} else {
+		etcdWatcher, timeoutWatcher = c.stateTimer.getWatchersWithRevision(watchPrefix, revision)
+	}
 
 	for {
 		select {
@@ -674,14 +681,17 @@ func (c *ChannelManager) watchChannelStatesLoop(ctx context.Context) {
 		case event, ok := <-etcdWatcher:
 			if !ok {
 				log.Warn("datacoord failed to watch channel, return")
+				// rewatch for transient network error, session handles process quiting if connect is not recoverable
+				go c.watchChannelStatesLoop(ctx, revision)
 				return
 			}
 
 			if err := event.Err(); err != nil {
 				log.Warn("datacoord watch channel hit error", zap.Error(event.Err()))
 				// https://github.com/etcd-io/etcd/issues/8980
+				// TODO add list and wathc with revision
 				if event.Err() == v3rpc.ErrCompacted {
-					go c.watchChannelStatesLoop(ctx)
+					go c.watchChannelStatesLoop(ctx, event.CompactRevision)
 					return
 				}
 				// if watch loop return due to event canceled, the datacoord is not functional anymore
@@ -689,6 +699,7 @@ func (c *ChannelManager) watchChannelStatesLoop(ctx context.Context) {
 				return
 			}
 
+			revision = event.Header.GetRevision() + 1
 			for _, evt := range event.Events {
 				if evt.Type == clientv3.EventTypeDelete {
 					continue
@@ -754,7 +765,7 @@ func (c *ChannelManager) Reassign(originNodeID UniqueID, channelName string) err
 
 	reallocates := &NodeChannelInfo{originNodeID, []*channel{ch}}
 
-	if c.isMarkedDrop(channelName) {
+	if c.isMarkedDrop(channelName, ch.CollectionID) {
 		if err := c.remove(originNodeID, ch); err != nil {
 			return fmt.Errorf("failed to remove watch info: %v,%s", ch, err.Error())
 		}
@@ -801,7 +812,7 @@ func (c *ChannelManager) CleanupAndReassign(nodeID UniqueID, channelName string)
 
 	reallocates := &NodeChannelInfo{nodeID, []*channel{chToCleanUp}}
 
-	if c.isMarkedDrop(channelName) {
+	if c.isMarkedDrop(channelName, chToCleanUp.CollectionID) {
 		if err := c.remove(nodeID, chToCleanUp); err != nil {
 			return fmt.Errorf("failed to remove watch info: %v,%s", chToCleanUp, err.Error())
 		}
@@ -859,8 +870,8 @@ func (c *ChannelManager) getNodeIDByChannelName(chName string) (bool, UniqueID) 
 	return false, 0
 }
 
-func (c *ChannelManager) isMarkedDrop(channelName string) bool {
-	return c.h.CheckShouldDropChannel(channelName)
+func (c *ChannelManager) isMarkedDrop(channelName string, collectionID UniqueID) bool {
+	return c.h.CheckShouldDropChannel(channelName, collectionID)
 }
 
 func getReleaseOp(nodeID UniqueID, ch *channel) ChannelOpSet {

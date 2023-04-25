@@ -279,6 +279,7 @@ func (node *DataNode) StartWatchChannels(ctx context.Context) {
 		case event, ok := <-evtChan:
 			if !ok {
 				log.Warn("datanode failed to watch channel, return")
+				go node.StartWatchChannels(ctx)
 				return
 			}
 
@@ -941,6 +942,7 @@ func (node *DataNode) SyncSegments(ctx context.Context, req *datapb.SyncSegments
 		partitionID:  partID,
 		segmentID:    req.GetCompactedTo(),
 		numRows:      req.GetNumOfRows(),
+		lastSyncTs:   tsoutil.GetCurrentTime(),
 	}
 
 	err = channel.InitPKstats(ctx, targetSeg, req.GetStatsLogs(), tsoutil.GetCurrentTime())

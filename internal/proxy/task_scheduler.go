@@ -527,8 +527,6 @@ func (sched *taskScheduler) queryLoop() {
 			if !sched.dqQueue.utEmpty() {
 				t := sched.scheduleDqTask()
 				go sched.processTask(t, sched.dqQueue)
-			} else {
-				log.Debug("query queue is empty ...")
 			}
 		}
 	}

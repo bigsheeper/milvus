@@ -54,7 +54,7 @@ type dataSyncService struct {
 	dataCoord    types.DataCoord // DataCoord instance to interact with
 	clearSignal  chan<- string   // signal channel to notify flowgraph close for collection/partition drop msg consumed
 
-	delBufferManager *DelBufferManager
+	delBufferManager *DeltaBufferManager
 	flushingSegCache *Cache       // a guarding cache stores currently flushing segment ids
 	flushManager     flushManager // flush manager handles flush process
 	chunkManager     storage.ChunkManager
@@ -85,10 +85,9 @@ func newDataSyncService(ctx context.Context,
 
 	ctx1, cancel := context.WithCancel(ctx)
 
-	delBufferManager := &DelBufferManager{
-		channel:       channel,
-		delMemorySize: 0,
-		delBufHeap:    &PriorityQueue{},
+	delBufferManager := &DeltaBufferManager{
+		channel:    channel,
+		delBufHeap: &PriorityQueue{},
 	}
 
 	service := &dataSyncService{
@@ -193,6 +192,9 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo, tick
 		return err
 	}
 
+	//tickler will update addSegment progress to watchInfo
+	tickler.watch()
+	defer tickler.stop()
 	futures := make([]*concurrency.Future, 0, len(unflushedSegmentInfos)+len(flushedSegmentInfos))
 
 	for _, us := range unflushedSegmentInfos {
@@ -268,10 +270,6 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo, tick
 		})
 		futures = append(futures, future)
 	}
-
-	//tickler will update addSegment progress to watchInfo
-	tickler.watch()
-	defer tickler.stop()
 
 	err = concurrency.AwaitAll(futures...)
 	if err != nil {
@@ -428,6 +426,7 @@ func (dsService *dataSyncService) getChannelLatestMsgID(ctx context.Context, cha
 	dmlStream.AsConsumer([]string{pChannelName}, subName, mqwrapper.SubscriptionPositionUnknown)
 	id, err := dmlStream.GetLatestMsgID(pChannelName)
 	if err != nil {
+		log.Error("fail to GetLatestMsgID", zap.String("pChannel", pChannelName), zap.Error(err))
 		return nil, err
 	}
 	return id.Serialize(), nil

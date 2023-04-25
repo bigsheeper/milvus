@@ -416,23 +416,11 @@ func (s *Server) initGarbageCollection(cli storage.ChunkManager) {
 		checkInterval:    Params.DataCoordCfg.GCInterval,
 		missingTolerance: Params.DataCoordCfg.GCMissingTolerance,
 		dropTolerance:    Params.DataCoordCfg.GCDropTolerance,
-		collValidator: func(collID int64) bool {
-			resp, err := s.rootCoordClient.DescribeCollectionInternal(context.Background(), &milvuspb.DescribeCollectionRequest{
-				Base: commonpbutil.NewMsgBase(
-					commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
-				),
-				CollectionID: collID,
-			})
-			if err != nil {
-				log.Warn("failed to check collection id", zap.Int64("collID", collID), zap.Error(err))
-			}
-			return resp.GetStatus().GetErrorCode() == commonpb.ErrorCode_Success
-		},
 	})
 }
 
 func (s *Server) initServiceDiscovery() error {
-	r := semver.MustParseRange(">=2.1.2")
+	r := semver.MustParseRange(">=2.2.3")
 	sessions, rev, err := s.session.GetSessionsWithVersionRange(typeutil.DataNodeRole, r)
 	if err != nil {
 		log.Warn("DataCoord failed to init service discovery", zap.Error(err))
@@ -975,6 +963,54 @@ func (s *Server) loadCollectionFromRootCoord(ctx context.Context, collectionID i
 	}
 	s.meta.AddCollection(collInfo)
 	return nil
+}
+
+// hasCollection communicates with RootCoord and check whether this collection exist from the user's perspective.
+func (s *Server) hasCollection(ctx context.Context, collectionID int64) (bool, error) {
+	resp, err := s.rootCoordClient.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
+			commonpbutil.WithSourceID(Params.DataCoordCfg.GetNodeID()),
+		),
+		DbName:       "",
+		CollectionID: collectionID,
+	})
+	if err != nil {
+		return false, err
+	}
+	if resp == nil {
+		return false, errNilResponse
+	}
+	if resp.Status.ErrorCode == commonpb.ErrorCode_Success {
+		return true, nil
+	}
+
+	if resp.Status.ErrorCode == commonpb.ErrorCode_CollectionNotExists {
+		return false, nil
+	}
+	return false, fmt.Errorf("code:%s, reason:%s", resp.Status.GetErrorCode().String(), resp.Status.GetReason())
+}
+
+// hasCollectionInternal communicates with RootCoord and check whether this collection's meta exist in rootcoord.
+func (s *Server) hasCollectionInternal(ctx context.Context, collectionID int64) (bool, error) {
+	resp, err := s.rootCoordClient.DescribeCollectionInternal(ctx, &milvuspb.DescribeCollectionRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
+			commonpbutil.WithSourceID(Params.DataCoordCfg.GetNodeID()),
+		),
+		DbName:       "",
+		CollectionID: collectionID,
+	})
+	if err != nil {
+		return false, err
+	}
+	if resp == nil {
+		return false, errNilResponse
+	}
+	if resp.Status.ErrorCode != commonpb.ErrorCode_Success {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (s *Server) reCollectSegmentStats(ctx context.Context) {

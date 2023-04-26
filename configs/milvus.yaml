@@ -321,8 +321,8 @@ dataNode:
 
   dataSync:
     flowGraph:
-      maxQueueLength: 10 # Maximum length of task queue in flowgraph
-      maxParallelism: 10 # Maximum number of tasks executed in parallel in the flowgraph
+      maxQueueLength: 1024 # Maximum length of task queue in flowgraph
+      maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
   segment:
     # Max buffer size to flush for a single segment.
     insertBufSize: 16777216 # Bytes, 16 MB
@@ -334,10 +334,10 @@ dataNode:
   memory:
     forceSyncEnable: true # `true` to force sync if memory usage is too high
 #    forceSyncSegmentNum: 1 # number of segments to sync, segments with top largest buffer will be synced.
-    forceSyncSegmentRatio: 0.3 # ratio of segments to sync, segments with top largest buffer will be synced.
-    forceSyncPeriod: 3 # period(second) to check memory sync, default 3.
-    watermarkStandalone: 0.2 # memory watermark for standalone, upon reaching this watermark, segments will be synced.
-    watermarkCluster: 0.3 # memory watermark for cluster, upon reaching this watermark, segments will be synced.
+    forceSyncSegmentRatio: 0.2 # ratio of segments to sync, segments with top largest buffer will be synced.
+    forceSyncPeriod: 1 # period(second) to check memory sync, default 3.
+    watermarkStandalone: 0.15 # memory watermark for standalone, upon reaching this watermark, segments will be synced.
+    watermarkCluster: 0.2 # memory watermark for cluster, upon reaching this watermark, segments will be synced.
 
 # Configures the system log output.
 log:

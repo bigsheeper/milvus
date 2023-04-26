@@ -18,6 +18,7 @@
 #include "exceptions/EasyAssert.h"
 #include "common/FieldMeta.h"
 #include "storage/Util.h"
+#include "log/Log.h"
 
 namespace milvus::storage {
 
@@ -80,6 +81,7 @@ PayloadWriter::finish() {
         *table, mem_pool, output_, 1024 * 1024 * 1024,
         parquet::WriterProperties::Builder().compression(arrow::Compression::ZSTD)->compression_level(3)->build());
     AssertInfo(ast.ok(), ast.ToString());
+    LOG_SEGCORE_INFO_ << "arrow memory pool size " << mem_pool->max_memory();
 }
 
 bool

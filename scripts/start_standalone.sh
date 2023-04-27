@@ -16,6 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#export MALLOC_CONF=prof:true,lg_prof_interval:25,prof_prefix:/tmp/jeprof,prof_leak:true,lg_prof_sample:0,prof_final:true
+
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	LIBJEMALLOC=$PWD/internal/core/output/lib/libjemalloc.so
 	if test -f "$LIBJEMALLOC"; then

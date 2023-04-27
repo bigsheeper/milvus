@@ -232,8 +232,6 @@ func (mr *MilvusRoles) Run(local bool, alias string) {
 		}
 	}
 
-	management.ServeHTTP()
-
 	if os.Getenv(metricsinfo.DeployModeEnvKey) == metricsinfo.StandaloneDeployMode {
 		closer := trace.InitTracing("standalone")
 		if closer != nil {
@@ -284,6 +282,7 @@ func (mr *MilvusRoles) Run(local bool, alias string) {
 
 	var dn *components.DataNode
 	if mr.EnableDataNode {
+		management.ServeHTTP()
 		dn = mr.runDataNode(ctx, local, alias)
 		if dn != nil {
 			defer dn.Stop()

@@ -16,6 +16,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#export MALLOC_CONF=prof:true,lg_prof_interval:25,prof_prefix:/tmp/jeprof,prof_leak:true,lg_prof_sample:0,prof_final:true
+
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   LIBJEMALLOC=$PWD/internal/core/output/lib/libjemalloc.so
   if test -f "$LIBJEMALLOC"; then
@@ -35,7 +37,7 @@ echo "Starting datacoord..."
 nohup ./bin/milvus run datacoord > /tmp/datacoord.log 2>&1 &
 
 echo "Starting datanode..."
-nohup ./bin/milvus run datanode > /tmp/datanode.log 2>&1 &
+#nohup heaptrack ./bin/milvus run datanode > /tmp/datanode.log 2>&1 &
 
 echo "Starting proxy..."
 nohup ./bin/milvus run proxy > /tmp/proxy.log 2>&1 &

@@ -17,6 +17,7 @@
 #include "index/VectorMemIndex.h"
 
 #include <cmath>
+#include "log/Log.h"
 #include "index/Meta.h"
 #include "index/Utils.h"
 #include "exceptions/EasyAssert.h"
@@ -167,6 +168,7 @@ VectorMemIndex::HasRawData() const {
 const std::vector<uint8_t>
 VectorMemIndex::GetVector(const DatasetPtr dataset,
                           const Config& config) const {
+    LOG_SEGCORE_INFO_ << "GetVector param: " << config.dump();
     auto res = index_.GetVectorByIds(*dataset, config);
     if (!res.has_value()) {
         PanicCodeInfo(

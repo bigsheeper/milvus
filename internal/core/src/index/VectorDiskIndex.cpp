@@ -16,6 +16,7 @@
 
 #include "index/VectorDiskIndex.h"
 
+#include "log/Log.h"
 #include "common/Utils.h"
 #include "config/ConfigKnowhere.h"
 #include "index/Meta.h"
@@ -240,6 +241,7 @@ template <typename T>
 const std::vector<uint8_t>
 VectorDiskAnnIndex<T>::GetVector(const DatasetPtr dataset,
                                  const Config& config) const {
+    LOG_SEGCORE_INFO_ << "GetVector param: " << config.dump();
     auto res = index_.GetVectorByIds(*dataset, config);
     if (!res.has_value()) {
         PanicCodeInfo(

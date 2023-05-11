@@ -162,6 +162,19 @@ func (suite *TestGetVectorSuite) run() {
 	suite.Require().NoError(err)
 	suite.Require().Equal(createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
 
+	for {
+		resp, err := suite.cluster.proxy.DescribeIndex(suite.ctx, &milvuspb.DescribeIndexRequest{
+			CollectionName: collection,
+			FieldName:      vecFieldName,
+			IndexName:      "_default",
+		})
+		suite.Require().NoError(err)
+		if resp.GetIndexDescriptions()[0].State == commonpb.IndexState_Finished {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+
 	// load
 	_, err = suite.cluster.proxy.LoadCollection(suite.ctx, &milvuspb.LoadCollectionRequest{
 		CollectionName: collection,
@@ -345,6 +358,7 @@ func (suite *TestGetVectorSuite) TestGetVector_Big_NQ_TOPK() {
 	suite.run()
 }
 
+//// Note: before run DISKANN test, please change storage type from `local` to `minio`
 //func (suite *TestGetVectorSuite) TestGetVector_DISKANN() {
 //	suite.nq = 10
 //	suite.topK = 10

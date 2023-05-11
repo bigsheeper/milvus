@@ -136,7 +136,7 @@ func getSearchParams(indexType string, metricType string) map[string]any {
 	case IndexHNSW:
 		params["ef"] = 200
 	case IndexDISKANN:
-		params["search_list"] = 5
+		params["search_list"] = 51
 	default:
 		panic(fmt.Sprintf("unimplemented search param for %s, please help to improve it", indexType))
 	}

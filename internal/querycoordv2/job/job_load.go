@@ -131,22 +131,6 @@ func (job *LoadCollectionJob) Execute() error {
 	job.undo.LackPartitions = lackPartitionIDs
 	log.Info("find partitions to load", zap.Int64s("partitions", lackPartitionIDs))
 
-	// 2. loadPartitions on QueryNodes
-	err = loadPartitions(job.ctx, job.meta, job.cluster, nil, false, req.GetCollectionID(), lackPartitionIDs...)
-	if err != nil {
-		return err
-	}
-	job.undo.PartitionsLoaded = true
-
-	// 3. update next target
-	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
-	if err != nil {
-		msg := "failed to update next target"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
-	}
-	job.undo.TargetUpdated = true
-
 	colExisted := job.meta.CollectionManager.Exist(req.GetCollectionID())
 	if !colExisted {
 		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
@@ -158,7 +142,7 @@ func (job *LoadCollectionJob) Execute() error {
 		}
 	}
 
-	// 4. create replica if not exist
+	// 2. create replica if not exist
 	replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
 	if len(replicas) == 0 {
 		replicas, err = utils.SpawnReplicasWithRG(job.meta, req.GetCollectionID(), req.GetResourceGroups(), req.GetReplicaNumber())
@@ -173,6 +157,26 @@ func (job *LoadCollectionJob) Execute() error {
 		}
 		job.undo.NewReplicaCreated = true
 	}
+
+	// 3. loadPartitions on QueryNodes
+	schema, err := job.broker.GetCollectionSchema(job.ctx, req.GetCollectionID())
+	if err != nil {
+		return err
+	}
+	err = loadPartitions(job.ctx, job.meta, job.cluster, schema, false, req.GetCollectionID(), lackPartitionIDs...)
+	if err != nil {
+		return err
+	}
+	job.undo.PartitionsLoaded = true
+
+	// 4. update next target
+	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), partitionIDs...)
+	if err != nil {
+		msg := "failed to update next target"
+		log.Error(msg, zap.Error(err))
+		return utils.WrapError(msg, err)
+	}
+	job.undo.TargetUpdated = true
 
 	// 5. put collection/partitions meta
 	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {
@@ -308,22 +312,7 @@ func (job *LoadPartitionJob) Execute() error {
 	job.undo.LackPartitions = lackPartitionIDs
 	log.Info("find partitions to load", zap.Int64s("partitions", lackPartitionIDs))
 
-	// 2. loadPartitions on QueryNodes
-	err := loadPartitions(job.ctx, job.meta, job.cluster, nil, false, req.GetCollectionID(), lackPartitionIDs...)
-	if err != nil {
-		return err
-	}
-	job.undo.PartitionsLoaded = true
-
-	// 3. update next target
-	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), append(loadedPartitionIDs, lackPartitionIDs...)...)
-	if err != nil {
-		msg := "failed to update next target"
-		log.Error(msg, zap.Error(err))
-		return utils.WrapError(msg, err)
-	}
-	job.undo.TargetUpdated = true
-
+	var err error
 	if !job.meta.CollectionManager.Exist(req.GetCollectionID()) {
 		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
 		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
@@ -334,7 +323,7 @@ func (job *LoadPartitionJob) Execute() error {
 		}
 	}
 
-	// 4. create replica if not exist
+	// 2. create replica if not exist
 	replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
 	if len(replicas) == 0 {
 		replicas, err = utils.SpawnReplicasWithRG(job.meta, req.GetCollectionID(), req.GetResourceGroups(), req.GetReplicaNumber())
@@ -349,6 +338,26 @@ func (job *LoadPartitionJob) Execute() error {
 		}
 		job.undo.NewReplicaCreated = true
 	}
+
+	// 3. loadPartitions on QueryNodes
+	schema, err := job.broker.GetCollectionSchema(job.ctx, req.GetCollectionID())
+	if err != nil {
+		return err
+	}
+	err = loadPartitions(job.ctx, job.meta, job.cluster, schema, false, req.GetCollectionID(), lackPartitionIDs...)
+	if err != nil {
+		return err
+	}
+	job.undo.PartitionsLoaded = true
+
+	// 4. update next target
+	_, err = job.targetObserver.UpdateNextTarget(req.GetCollectionID(), append(loadedPartitionIDs, lackPartitionIDs...)...)
+	if err != nil {
+		msg := "failed to update next target"
+		log.Error(msg, zap.Error(err))
+		return utils.WrapError(msg, err)
+	}
+	job.undo.TargetUpdated = true
 
 	// 5. put collection/partitions meta
 	partitions := lo.Map(lackPartitionIDs, func(partID int64, _ int) *meta.Partition {

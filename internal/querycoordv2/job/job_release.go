@@ -36,6 +36,7 @@ type ReleaseCollectionJob struct {
 	req            *querypb.ReleaseCollectionRequest
 	dist           *meta.DistributionManager
 	meta           *meta.Meta
+	cluster        session.Cluster
 	targetMgr      *meta.TargetManager
 	targetObserver *observers.TargetObserver
 }
@@ -44,6 +45,7 @@ func NewReleaseCollectionJob(ctx context.Context,
 	req *querypb.ReleaseCollectionRequest,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
+	cluster session.Cluster,
 	targetMgr *meta.TargetManager,
 	targetObserver *observers.TargetObserver,
 ) *ReleaseCollectionJob {
@@ -52,6 +54,7 @@ func NewReleaseCollectionJob(ctx context.Context,
 		req:            req,
 		dist:           dist,
 		meta:           meta,
+		cluster:        cluster,
 		targetMgr:      targetMgr,
 		targetObserver: targetObserver,
 	}
@@ -66,10 +69,20 @@ func (job *ReleaseCollectionJob) Execute() error {
 		return nil
 	}
 
-	lenPartitions := len(job.meta.CollectionManager.GetPartitionsByCollection(req.GetCollectionID()))
-
-	err := job.meta.CollectionManager.RemoveCollection(req.GetCollectionID())
+	loadedPartitions := job.meta.CollectionManager.GetPartitionsByCollection(req.GetCollectionID())
+	lenPartitions := len(loadedPartitions)
+	toRelease := lo.Map(loadedPartitions, func(partition *meta.Partition, _ int) int64 {
+		return partition.GetPartitionID()
+	})
+	err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), toRelease...)
 	if err != nil {
+		loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
+		return err
+	}
+
+	err = job.meta.CollectionManager.RemoveCollection(req.GetCollectionID())
+	if err != nil {
+		loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
 		msg := "failed to remove collection"
 		log.Warn(msg, zap.Error(err))
 		return utils.WrapError(msg, err)
@@ -77,6 +90,7 @@ func (job *ReleaseCollectionJob) Execute() error {
 
 	err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
 	if err != nil {
+		loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
 		msg := "failed to remove replicas"
 		log.Warn(msg, zap.Error(err))
 	}
@@ -142,18 +156,26 @@ func (job *ReleasePartitionJob) Execute() error {
 		return nil
 	}
 
+	err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), toRelease...)
+	if err != nil {
+		loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
+		return err
+	}
+
 	// If all partitions are released and LoadType is LoadPartition, clear all
 	if len(toRelease) == len(loadedPartitions) &&
 		job.meta.GetLoadType(req.GetCollectionID()) == querypb.LoadType_LoadPartition {
 		log.Info("release partitions covers all partitions, will remove the whole collection")
 		err := job.meta.CollectionManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {
+			loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
 			msg := "failed to release partitions from store"
 			log.Warn(msg, zap.Error(err))
 			return utils.WrapError(msg, err)
 		}
 		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {
+			loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
 			log.Warn("failed to remove replicas", zap.Error(err))
 		}
 		job.targetMgr.RemoveCollection(req.GetCollectionID())
@@ -161,11 +183,6 @@ func (job *ReleasePartitionJob) Execute() error {
 		metrics.QueryCoordNumCollections.WithLabelValues().Dec()
 		waitCollectionReleased(job.dist, req.GetCollectionID())
 	} else {
-		err := releasePartitions(job.ctx, job.meta, job.cluster, false, req.GetCollectionID(), toRelease...)
-		if err != nil {
-			loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)
-			return err
-		}
 		err = job.meta.CollectionManager.RemovePartition(toRelease...)
 		if err != nil {
 			loadPartitions(job.ctx, job.meta, job.cluster, nil, true, req.GetCollectionID(), toRelease...)

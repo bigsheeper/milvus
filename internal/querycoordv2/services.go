@@ -273,6 +273,7 @@ func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseColl
 		req,
 		s.dist,
 		s.meta,
+		s.cluster,
 		s.targetMgr,
 		s.targetObserver,
 	)

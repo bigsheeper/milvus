@@ -25,8 +25,8 @@ import (
 )
 
 type UndoList struct {
-	PartitionsLoaded  bool // indicates if partitions loaded in QueryNodes during loading
 	TargetUpdated     bool // indicates if target updated during loading
+	PartitionsLoaded  bool // indicates if partitions loaded in QueryNodes during loading
 	NewReplicaCreated bool // indicates if created new replicas during loading
 
 	CollectionID   int64
@@ -51,6 +51,9 @@ func NewUndoList(ctx context.Context, meta *meta.Meta,
 }
 
 func (u *UndoList) RollBack() {
+	if u.NewReplicaCreated {
+		u.meta.ReplicaManager.RemoveCollection(u.CollectionID)
+	}
 	if u.PartitionsLoaded {
 		releasePartitions(u.ctx, u.meta, u.cluster, true, u.CollectionID, u.LackPartitions...)
 	}
@@ -61,8 +64,5 @@ func (u *UndoList) RollBack() {
 		} else {
 			u.targetMgr.RemovePartition(u.CollectionID, u.LackPartitions...)
 		}
-	}
-	if u.NewReplicaCreated {
-		u.meta.ReplicaManager.RemoveCollection(u.CollectionID)
 	}
 }

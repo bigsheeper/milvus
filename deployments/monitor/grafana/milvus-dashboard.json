@@ -1743,7 +1743,7 @@
             "uid": "$datasource"
           },
           "exemplar": true,
-          "expr": "sum(increase(milvus_proxy_req_count{app_kubernetes_io_instance=~\"$instance\", app_kubernetes_io_name=\"$app_name\", namespace=\"$namespace\", status=\"success\"}[2m])/120) by(function_name, pod, node_id)",
+          "expr": "sum(increase(milvus_proxy_req_count{app_kubernetes_io_instance=~\"$instance\", app_kubernetes_io_name=\"$app_name\", namespace=\"$namespace\", status=\"success\"}[2m])/120) by(function_name, pod, node_id, collection_name)",
           "interval": "",
           "legendFormat": "{{function_name}}-{{pod}}-{{node_id}}",
           "queryType": "randomWalk",
@@ -1834,7 +1834,7 @@
             "uid": "$datasource"
           },
           "exemplar": true,
-          "expr": "sum(increase(milvus_proxy_req_count{app_kubernetes_io_instance=~\"$instance\", app_kubernetes_io_name=\"$app_name\", namespace=\"$namespace\", status=\"fail\"}[2m])/120) by(function_name, pod, node_id)",
+          "expr": "sum(increase(milvus_proxy_req_count{app_kubernetes_io_instance=~\"$instance\", app_kubernetes_io_name=\"$app_name\", namespace=\"$namespace\", status=\"fail\"}[2m])/120) by(function_name, pod, node_id, collection_name)",
           "interval": "",
           "legendFormat": "{{function_name}}-{{pod}}-{{node_id}}",
           "queryType": "randomWalk",

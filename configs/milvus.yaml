@@ -549,7 +549,6 @@ quotaAndLimits:
     growingSegmentsSizeProtection:
       # 1. No action will be taken if the ratio of growing segments size is less than the low water level.
       # 2. The DML rate will be reduced if the ratio of growing segments size is greater than the low water level and less than the high water level.
-      # 3. All DML requests will be rejected if the ratio of growing segments size is greater than the high water level.
       enabled: false
       lowWaterLevel: 0.2
       highWaterLevel: 0.4

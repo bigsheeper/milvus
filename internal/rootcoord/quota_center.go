@@ -609,6 +609,7 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 }
 
 func (q *QuotaCenter) getGrowingSegmentsSizeFactor() map[int64]float64 {
+	minGrowingSegmentsSizeFactor := 0.01
 	log := log.Ctx(context.Background()).WithRateGroup("rootcoord.QuotaCenter", 1.0, 60.0)
 	if !Params.QuotaConfig.GrowingSegmentsSizeProtectionEnabled {
 		return make(map[int64]float64)
@@ -638,7 +639,7 @@ func (q *QuotaCenter) getGrowingSegmentsSizeFactor() map[int64]float64 {
 				zap.Int64("segmentsSize", metric.GrowingSegmentsSize),
 				zap.Uint64("TotalMem", metric.Hms.Memory),
 				zap.Float64("highWaterLevel", high))
-			updateCollectionFactor(0, metric.Effect.CollectionIDs)
+			updateCollectionFactor(minGrowingSegmentsSizeFactor, metric.Effect.CollectionIDs)
 			continue
 		}
 		factor := (high - cur) / (high - low)

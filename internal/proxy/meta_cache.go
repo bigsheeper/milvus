@@ -217,25 +217,27 @@ func NewMetaCache(rootCoord types.RootCoord, queryCoord types.QueryCoord, shardM
 
 // GetCollectionID returns the corresponding collection id for provided collection name
 func (m *MetaCache) GetCollectionID(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.getCollectionID(ctx, collectionName)
+}
+
+func (m *MetaCache) getCollectionID(ctx context.Context, collectionName string) (typeutil.UniqueID, error) {
 	collInfo, ok := m.collInfo[collectionName]
 
 	if !ok || !collInfo.isCollectionCached() {
 		metrics.ProxyCacheStatsCounter.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "GeCollectionID", metrics.CacheMissLabel).Inc()
 		tr := timerecord.NewTimeRecorder("UpdateCache")
-		m.mu.RUnlock()
 		coll, err := m.describeCollection(ctx, collectionName, 0)
 		if err != nil {
 			return 0, err
 		}
-		m.mu.Lock()
-		defer m.mu.Unlock()
 		m.updateCollection(coll, collectionName)
 		metrics.ProxyUpdateCacheLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10)).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		collInfo = m.collInfo[collectionName]
 		return collInfo.collID, nil
 	}
-	defer m.mu.RUnlock()
 	metrics.ProxyCacheStatsCounter.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "GetCollectionID", metrics.CacheHitLabel).Inc()
 
 	return collInfo.collID, nil
@@ -403,22 +405,21 @@ func (m *MetaCache) GetPartitions(ctx context.Context, collectionName string) (m
 }
 
 func (m *MetaCache) GetPartitionInfo(ctx context.Context, collectionName string, partitionName string) (*partitionInfo, error) {
-	_, err := m.GetCollectionID(ctx, collectionName)
+	m.mu.Lock()
+	_, err := m.getCollectionID(ctx, collectionName)
 	if err != nil {
 		return nil, err
 	}
 
-	m.mu.RLock()
-
 	collInfo, ok := m.collInfo[collectionName]
 	if !ok {
-		m.mu.RUnlock()
+		m.mu.Unlock()
 		return nil, fmt.Errorf("can't find collection name:%s", collectionName)
 	}
 
 	var partInfo *partitionInfo
 	partInfo, ok = collInfo.partInfo[partitionName]
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
 	if !ok {
 		tr := timerecord.NewTimeRecorder("UpdateCache")

@@ -53,6 +53,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 			Base:         genCommonMsgBase(commonpb.MsgType_LoadSegments, 0),
 			CollectionID: defaultCollectionID,
 			Schema:       schema,
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 		return req
 	}
@@ -100,6 +103,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 					NumOfRows:    defaultMsgLength,
 				},
 			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 
 		task := loadSegmentsTask{
@@ -129,6 +135,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 					NumOfRows:    defaultMsgLength,
 				},
 			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 
 		task := loadSegmentsTask{
@@ -150,6 +159,37 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 		// expected only one segment in replica
 		num := node.metaReplica.getSegmentNum(segmentTypeSealed)
 		assert.Equal(t, 1, num)
+	})
+
+	t.Run("test empty metric type", func(t *testing.T) {
+		node.metaReplica.removeSegment(defaultSegmentID, segmentTypeSealed)
+
+		req := &querypb.LoadSegmentsRequest{
+			Base:   genCommonMsgBase(commonpb.MsgType_LoadSegments, node.session.ServerID),
+			Schema: schema,
+			Infos: []*querypb.SegmentLoadInfo{
+				{
+					SegmentID:    defaultSegmentID,
+					PartitionID:  defaultPartitionID,
+					CollectionID: defaultCollectionID,
+					BinlogPaths:  fieldBinlog,
+					Statslogs:    statsLog,
+					NumOfRows:    defaultMsgLength,
+				},
+			},
+		}
+
+		task := loadSegmentsTask{
+			baseTask: baseTask{
+				ctx: ctx,
+			},
+			req:  req,
+			node: node,
+		}
+		// execute loadSegmentsTask twice
+		err = task.PreExecute(ctx)
+		assert.Error(t, err)
+		t.Logf("err:%s", err)
 	})
 
 	t.Run("test OOM", func(t *testing.T) {
@@ -219,6 +259,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 					ChannelName: testVChannel,
 					MsgID:       rmq.SerializeRmqID(0),
 				},
+			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
 			},
 		}
 
@@ -326,6 +369,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 					Timestamp:   100,
 				},
 			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 
 		task := loadSegmentsTask{
@@ -386,6 +432,9 @@ func TestTask_loadSegmentsTask(t *testing.T) {
 					Timestamp:   100,
 				},
 			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 
 		task := loadSegmentsTask{
@@ -434,6 +483,9 @@ func TestTask_loadSegmentsTaskLoadDelta(t *testing.T) {
 					Timestamp:   100,
 				},
 			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
+			},
 		}
 
 		task := loadSegmentsTask{
@@ -469,6 +521,9 @@ func TestTask_loadSegmentsTaskLoadDelta(t *testing.T) {
 					MsgID:       rmq.SerializeRmqID(0),
 					Timestamp:   100,
 				},
+			},
+			LoadMeta: &querypb.LoadMetaInfo{
+				MetricType: defaultMetricType,
 			},
 		}
 

@@ -39,9 +39,15 @@ type loadSegmentsTask struct {
 func (l *loadSegmentsTask) PreExecute(ctx context.Context) error {
 	log.Info("LoadSegmentTask PreExecute start", zap.Int64("msgID", l.req.Base.MsgID))
 	var err error
+	// check metric type
+	if l.req.GetLoadMeta().GetMetricType() == "" {
+		return fmt.Errorf("empty metric type, collection = %d", l.req.GetCollectionID())
+	}
+
 	// init meta
 	collectionID := l.req.GetCollectionID()
-	l.node.metaReplica.addCollection(collectionID, l.req.GetSchema())
+	coll := l.node.metaReplica.addCollection(collectionID, l.req.GetSchema())
+	coll.setMetricType(l.req.GetLoadMeta().GetMetricType())
 	for _, partitionID := range l.req.GetLoadMeta().GetPartitionIDs() {
 		err = l.node.metaReplica.addPartition(collectionID, partitionID)
 		if err != nil {

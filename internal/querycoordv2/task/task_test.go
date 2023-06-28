@@ -397,6 +397,9 @@ func (suite *TaskSuite) TestLoadSegmentTask() {
 	// Expect
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, suite.collection).Return(&schemapb.CollectionSchema{
 		Name: "TestLoadSegmentTask",
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "vec", DataType: schemapb.DataType_FloatVector},
+		},
 	}, nil)
 	suite.broker.EXPECT().GetPartitions(mock.Anything, suite.collection).Return([]int64{100, 101}, nil)
 	for _, segment := range suite.loadSegments {
@@ -412,6 +415,18 @@ func (suite *TaskSuite) TestLoadSegmentTask() {
 	}
 	// suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
 	// 	Return([]*datapb.VchannelInfo{channel}, nil, nil)
+	suite.broker.EXPECT().DescribeIndex(mock.Anything, suite.collection).Return([]*indexpb.IndexInfo{
+		{
+			CollectionID: suite.collection,
+			FieldID:      100,
+			IndexParams: []*commonpb.KeyValuePair{
+				{
+					Key:   common.MetricTypeKey,
+					Value: "L2",
+				},
+			},
+		},
+	}, nil)
 	suite.cluster.EXPECT().LoadSegments(mock.Anything, targetNode, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 
 	// Test load segment task
@@ -526,6 +541,9 @@ func (suite *TaskSuite) TestLoadSegmentTaskFailed() {
 	// Expect
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, suite.collection).Return(&schemapb.CollectionSchema{
 		Name: "TestLoadSegmentTask",
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "vec", DataType: schemapb.DataType_FloatVector},
+		},
 	}, nil)
 	suite.broker.EXPECT().GetPartitions(mock.Anything, suite.collection).Return([]int64{100, 101}, nil)
 	for _, segment := range suite.loadSegments {
@@ -539,6 +557,18 @@ func (suite *TaskSuite) TestLoadSegmentTaskFailed() {
 		}, nil)
 		suite.broker.EXPECT().GetIndexInfo(mock.Anything, suite.collection, segment).Return(nil, errors.New("index not ready"))
 	}
+	suite.broker.EXPECT().DescribeIndex(mock.Anything, suite.collection).Return([]*indexpb.IndexInfo{
+		{
+			CollectionID: suite.collection,
+			FieldID:      100,
+			IndexParams: []*commonpb.KeyValuePair{
+				{
+					Key:   common.MetricTypeKey,
+					Value: "L2",
+				},
+			},
+		},
+	}, nil)
 
 	// Test load segment task
 	suite.dist.ChannelDistManager.Update(targetNode, meta.DmChannelFromVChannel(&datapb.VchannelInfo{
@@ -731,6 +761,9 @@ func (suite *TaskSuite) TestMoveSegmentTask() {
 	// Expect
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, suite.collection).Return(&schemapb.CollectionSchema{
 		Name: "TestMoveSegmentTask",
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "vec", DataType: schemapb.DataType_FloatVector},
+		},
 	}, nil)
 	suite.broker.EXPECT().GetPartitions(mock.Anything, suite.collection).Return([]int64{100, 101}, nil)
 	for _, segment := range suite.moveSegments {
@@ -746,6 +779,18 @@ func (suite *TaskSuite) TestMoveSegmentTask() {
 	}
 	// suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
 	// 	Return([]*datapb.VchannelInfo{channel}, nil, nil)
+	suite.broker.EXPECT().DescribeIndex(mock.Anything, suite.collection).Return([]*indexpb.IndexInfo{
+		{
+			CollectionID: suite.collection,
+			FieldID:      100,
+			IndexParams: []*commonpb.KeyValuePair{
+				{
+					Key:   common.MetricTypeKey,
+					Value: "L2",
+				},
+			},
+		},
+	}, nil)
 	suite.cluster.EXPECT().LoadSegments(mock.Anything, leader, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 	suite.cluster.EXPECT().ReleaseSegments(mock.Anything, leader, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 
@@ -832,6 +877,9 @@ func (suite *TaskSuite) TestTaskCanceled() {
 	// Expect
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, suite.collection).Return(&schemapb.CollectionSchema{
 		Name: "TestSubscribeChannelTask",
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "vec", DataType: schemapb.DataType_FloatVector},
+		},
 	}, nil)
 	suite.broker.EXPECT().GetPartitions(mock.Anything, suite.collection).Return([]int64{100, 101}, nil)
 	for _, segment := range suite.loadSegments {
@@ -847,6 +895,18 @@ func (suite *TaskSuite) TestTaskCanceled() {
 	}
 	// suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
 	// 	Return([]*datapb.VchannelInfo{channel}, nil, nil)
+	suite.broker.EXPECT().DescribeIndex(mock.Anything, suite.collection).Return([]*indexpb.IndexInfo{
+		{
+			CollectionID: suite.collection,
+			FieldID:      100,
+			IndexParams: []*commonpb.KeyValuePair{
+				{
+					Key:   common.MetricTypeKey,
+					Value: "L2",
+				},
+			},
+		},
+	}, nil)
 	suite.cluster.EXPECT().LoadSegments(mock.Anything, targetNode, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 
 	// Test load segment task
@@ -914,6 +974,9 @@ func (suite *TaskSuite) TestSegmentTaskStale() {
 	// Expect
 	suite.broker.EXPECT().GetCollectionSchema(mock.Anything, suite.collection).Return(&schemapb.CollectionSchema{
 		Name: "TestSegmentTaskStale",
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "vec", DataType: schemapb.DataType_FloatVector},
+		},
 	}, nil)
 	suite.broker.EXPECT().GetPartitions(mock.Anything, suite.collection).Return([]int64{100, 101}, nil)
 	for _, segment := range suite.loadSegments {
@@ -929,6 +992,18 @@ func (suite *TaskSuite) TestSegmentTaskStale() {
 	}
 	// suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, suite.collection, partition).
 	// 	Return([]*datapb.VchannelInfo{channel}, nil, nil)
+	suite.broker.EXPECT().DescribeIndex(mock.Anything, suite.collection).Return([]*indexpb.IndexInfo{
+		{
+			CollectionID: suite.collection,
+			FieldID:      100,
+			IndexParams: []*commonpb.KeyValuePair{
+				{
+					Key:   common.MetricTypeKey,
+					Value: "L2",
+				},
+			},
+		},
+	}, nil)
 	suite.cluster.EXPECT().LoadSegments(mock.Anything, targetNode, mock.Anything).Return(utils.WrapStatus(commonpb.ErrorCode_Success, ""), nil)
 
 	// Test load segment task

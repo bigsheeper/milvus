@@ -417,6 +417,15 @@ func (s *Segment) search(ctx context.Context, searchReq *searchRequest) (*Search
 	return &searchResult, nil
 }
 
+func getIndexType(indexParams []*commonpb.KeyValuePair) string {
+	for _, param := range indexParams {
+		if param.Key == "index_type" {
+			return param.Value
+		}
+	}
+	return "invalid index type"
+}
+
 func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
@@ -427,10 +436,20 @@ func (s *Segment) retrieve(plan *RetrievePlan) (*segcorepb.RetrieveResults, erro
 	var retrieveResult RetrieveResult
 	ts := C.uint64_t(plan.Timestamp)
 
+	indexes := make([]string, 0)
+	s.indexedFieldInfos.Range(func(K UniqueID, V *IndexedFieldInfo) bool {
+		indexes = append(indexes, getIndexType(V.indexInfo.IndexParams))
+		return true
+	})
+
 	tr := timerecord.NewTimeRecorder("cgoRetrieve")
 	status := C.Retrieve(s.segmentPtr, plan.cRetrievePlan, ts, &retrieveResult.cRetrieveResult)
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
 		metrics.QueryLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	log.Info("[perf get vector] cgo C.Retrieve",
+		zap.Duration("dur", tr.ElapseSpan()),
+		zap.Int64("segRows", s.getRowCount()),
+		zap.Strings("indexes", indexes))
 	log.Debug("do retrieve on segment",
 		zap.Int64("msgID", plan.msgID),
 		zap.Int64("segmentID", s.segmentID), zap.String("segmentType", s.segmentType.String()))

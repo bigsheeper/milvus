@@ -67,11 +67,17 @@ SegmentInternalInterface::Search(const query::Plan* plan,
 
 std::unique_ptr<proto::segcore::RetrieveResults>
 SegmentInternalInterface::Retrieve(const query::RetrievePlan* plan, Timestamp timestamp) const {
+    auto start = std::chrono::high_resolution_clock::now();
+
     std::shared_lock lck(mutex_);
     auto results = std::make_unique<proto::segcore::RetrieveResults>();
     query::ExecPlanNodeVisitor visitor(*this, timestamp);
     auto retrieve_results = visitor.get_retrieve_result(*plan->plan_node_);
     retrieve_results.segment_ = (void*)this;
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto d1 = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - start);
+    std::cout << "[perf get vector] visitor.retrieve, dur: " << d1.count() << " ms" << std::endl;
 
     results->mutable_offset()->Add(retrieve_results.result_offsets_.begin(), retrieve_results.result_offsets_.end());
 
@@ -80,6 +86,7 @@ SegmentInternalInterface::Retrieve(const query::RetrievePlan* plan, Timestamp ti
     auto pk_field_id = plan->schema_.get_primary_field_id();
     for (auto field_id : plan->field_ids_) {
         if (SystemProperty::Instance().IsSystem(field_id)) {
+            auto fill_sys_start = std::chrono::high_resolution_clock::now();
             auto system_type = SystemProperty::Instance().GetSystemFieldType(field_id);
 
             auto size = retrieve_results.result_offsets_.size();
@@ -95,16 +102,27 @@ SegmentInternalInterface::Retrieve(const query::RetrievePlan* plan, Timestamp ti
             auto obj = scalar_array->mutable_long_data();
             obj->mutable_data()->Add(data, data + size);
             fields_data->AddAllocated(data_array.release());
+
+            auto fill_sys_end = std::chrono::high_resolution_clock::now();
+            auto fill_sys_dur = std::chrono::duration_cast<std::chrono::milliseconds>(fill_sys_end - fill_sys_start);
+            std::cout << "[perf get vector] fill system field, dur: " << fill_sys_dur.count() << " ms, field_id: " << field_id.get() << std::endl;
             continue;
         }
 
         auto& field_meta = plan->schema_[field_id];
 
+        auto fill_fields_start = std::chrono::high_resolution_clock::now();
         auto col =
             bulk_subscript(field_id, retrieve_results.result_offsets_.data(), retrieve_results.result_offsets_.size());
         auto col_data = col.release();
         fields_data->AddAllocated(col_data);
+
+        auto fill_fields_end = std::chrono::high_resolution_clock::now();
+        auto fill_fields_dur = std::chrono::duration_cast<std::chrono::milliseconds>(fill_fields_end - fill_fields_start);
+        std::cout << "[perf get vector] fill user field, dur: " << fill_fields_dur.count() << " ms, field_name: " << field_meta.get_name().get() << std::endl;
+
         if (pk_field_id.has_value() && pk_field_id.value() == field_id) {
+            auto fill_pk_start = std::chrono::high_resolution_clock::now();
             switch (field_meta.get_data_type()) {
                 case DataType::INT64: {
                     auto int_ids = ids->mutable_int_id();
@@ -123,8 +141,15 @@ SegmentInternalInterface::Retrieve(const query::RetrievePlan* plan, Timestamp ti
                     PanicInfo("unsupported data type");
                 }
             }
+            auto fill_pk_end = std::chrono::high_resolution_clock::now();
+            auto fill_pk_dur  = std::chrono::duration_cast<std::chrono::milliseconds>(fill_pk_end - fill_pk_start);
+            std::cout << "[perf get vector] fill pk, dur: " << fill_pk_dur.count() << " ms" << std::endl;
         }
     }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    std::cout << "[perf get vector] SegmentInternalInterface.Retrieve, dur: " << duration.count() << " ms, hits: " << results->ids().int_id().data().size() << std::endl;
     return results;
 }
 

@@ -573,11 +573,21 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id, const int64_t* seg_offsets, 
         // if field has load scalar index, reverse raw data from index
         if (!datatype_is_vector(field_meta.get_data_type())) {
             AssertInfo(num_chunk() == 1, "num chunk not equal to 1 for sealed segment");
+            auto reverse_start = std::chrono::high_resolution_clock::now();
             auto index = chunk_index_impl(field_id, 0);
-            return ReverseDataFromIndex(index, seg_offsets, count, field_meta);
+            auto reverse_res = ReverseDataFromIndex(index, seg_offsets, count, field_meta);
+            auto reverse_end = std::chrono::high_resolution_clock::now();
+            auto reverse_dur  = std::chrono::duration_cast<std::chrono::milliseconds>(reverse_end - reverse_start);
+            std::cout << "[perf get vector] ReverseDataFromIndex, dur: " << reverse_dur.count() << " ms" << std::endl;
+            return reverse_res;
         }
 
-        return get_vector(field_id, seg_offsets, count);
+        auto get_vec_start = std::chrono::high_resolution_clock::now();
+        auto res = get_vector(field_id, seg_offsets, count);
+        auto get_vec_end = std::chrono::high_resolution_clock::now();
+        auto get_vec_dur  = std::chrono::duration_cast<std::chrono::milliseconds>(get_vec_end - get_vec_start);
+        std::cout << "[perf get vector] get vector, dur: " << get_vec_dur.count() << " ms" << std::endl;
+        return res;
     }
 
     Assert(get_bit(field_data_ready_bitset_, field_id));
@@ -689,7 +699,7 @@ SegmentSealedImpl::HasRawData(int64_t field_id) const {
 
 std::pair<std::unique_ptr<IdArray>, std::vector<SegOffset>>
 SegmentSealedImpl::search_ids(const IdArray& id_array, Timestamp timestamp) const {
-    AssertInfo(id_array.has_int_id(), "Id array doesn't have int_id element");
+//    AssertInfo(id_array.has_int_id(), "Id array doesn't have int_id element");
     auto field_id = schema_->get_primary_field_id().value_or(FieldId(-1));
     AssertInfo(field_id.get() != -1, "Primary key is -1");
     auto& field_meta = schema_->operator[](field_id);

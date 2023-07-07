@@ -1358,7 +1358,8 @@ ExecExprVisitor::visit(CompareExpr& expr) {
 template <typename T>
 auto
 ExecExprVisitor::ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType {
-    auto& expr = static_cast<TermExprImpl<T>&>(expr_raw);
+    typedef std::conditional_t<std::is_same_v<T, std::string_view>, std::string, T> InnerType;
+    auto& expr = static_cast<TermExprImpl<InnerType>&>(expr_raw);
     auto& schema = segment_.get_schema();
     auto primary_filed_id = schema.get_primary_field_id();
     auto field_id = expr_raw.column_.field_id;
@@ -1382,7 +1383,9 @@ ExecExprVisitor::ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType {
             case DataType::VARCHAR: {
                 auto dst_ids = id_array->mutable_str_id();
                 for (const auto& id : expr.terms_) {
+                    std::cout << "dyh add_data 1" << std::endl;
                     dst_ids->add_data((std::string&)id);
+                    std::cout << "dyh add_data 2" << std::endl;
                 }
                 break;
             }
@@ -1391,6 +1394,7 @@ ExecExprVisitor::ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType {
             }
         }
 
+        std::cout << "dyh search ids" << std::endl;
         auto [uids, seg_offsets] = segment_.search_ids(*id_array, timestamp_);
         BitsetType bitset(row_count_);
         for (const auto& offset : seg_offsets) {
@@ -1404,17 +1408,17 @@ ExecExprVisitor::ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType {
     return ExecTermVisitorImplTemplate<T>(expr_raw);
 }
 
-template <>
-auto
-ExecExprVisitor::ExecTermVisitorImpl<std::string>(TermExpr& expr_raw) -> BitsetType {
-    return ExecTermVisitorImplTemplate<std::string>(expr_raw);
-}
-
-template <>
-auto
-ExecExprVisitor::ExecTermVisitorImpl<std::string_view>(TermExpr& expr_raw) -> BitsetType {
-    return ExecTermVisitorImplTemplate<std::string_view>(expr_raw);
-}
+//template <>
+//auto
+//ExecExprVisitor::ExecTermVisitorImpl<std::string>(TermExpr& expr_raw) -> BitsetType {
+//    return ExecTermVisitorImplTemplate<std::string>(expr_raw);
+//}
+//
+//template <>
+//auto
+//ExecExprVisitor::ExecTermVisitorImpl<std::string_view>(TermExpr& expr_raw) -> BitsetType {
+//    return ExecTermVisitorImplTemplate<std::string_view>(expr_raw);
+//}
 
 template <typename T>
 auto
@@ -1422,7 +1426,8 @@ ExecExprVisitor::ExecTermVisitorImplTemplate(TermExpr& expr_raw) -> BitsetType {
     typedef std::conditional_t<std::is_same_v<T, std::string_view>, std::string, T> IndexInnerType;
     using Index = index::ScalarIndex<IndexInnerType>;
     auto& expr = static_cast<TermExprImpl<IndexInnerType>&>(expr_raw);
-    const std::vector<IndexInnerType> terms(expr.terms_.begin(), expr.terms_.end());
+//    const std::vector<IndexInnerType> terms(expr.terms_.begin(), expr.terms_.end());
+    const auto& terms = expr.terms_;
     auto n = terms.size();
     std::unordered_set<T> term_set(expr.terms_.begin(), expr.terms_.end());
 

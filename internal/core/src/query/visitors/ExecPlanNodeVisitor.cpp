@@ -113,6 +113,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
 
 void
 ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
+    auto start = std::chrono::high_resolution_clock::now();
     assert(!retrieve_result_opt_.has_value());
     auto segment = dynamic_cast<const segcore::SegmentInternalInterface*>(&segment_);
     AssertInfo(segment, "Support SegmentSmallIndex Only");
@@ -127,13 +128,28 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
 
     BitsetType bitset_holder;
     if (node.predicate_ != nullptr) {
+        auto exec_expr_start = std::chrono::high_resolution_clock::now();
         bitset_holder = ExecExprVisitor(*segment, active_count, timestamp_).call_child(*(node.predicate_));
+        auto exec_expr_end = std::chrono::high_resolution_clock::now();
+        auto exec_expr_du = std::chrono::duration_cast<std::chrono::milliseconds>(exec_expr_end - exec_expr_start);
+        std::cout << "[perf get vector] ExecPlanNodeVisitor ExecExprVisitor, dur: " << exec_expr_du.count() << " ms" << std::endl;
         bitset_holder.flip();
+        auto flip_end = std::chrono::high_resolution_clock::now();
+        auto flip_du = std::chrono::duration_cast<std::chrono::milliseconds>(flip_end - exec_expr_end);
+        std::cout << "[perf get vector] ExecPlanNodeVisitor flip, dur: " << flip_du.count() << " ms" << std::endl;
     }
 
+    auto mask_ts_start = std::chrono::high_resolution_clock::now();
     segment->mask_with_timestamps(bitset_holder, timestamp_);
+    auto mask_ts_end = std::chrono::high_resolution_clock::now();
+    auto mask_ts_du = std::chrono::duration_cast<std::chrono::milliseconds>(mask_ts_end - mask_ts_start);
+    std::cout << "[perf get vector] ExecPlanNodeVisitor mask_with_timestamps, dur: " << mask_ts_du.count() << " ms" << std::endl;
 
     segment->mask_with_delete(bitset_holder, active_count, timestamp_);
+    auto mask_del_end = std::chrono::high_resolution_clock::now();
+    auto mask_del_du = std::chrono::duration_cast<std::chrono::milliseconds>(mask_del_end - mask_ts_end);
+    std::cout << "[perf get vector] ExecPlanNodeVisitor mask_with_delete, dur: " << mask_del_du.count() << " ms" << std::endl;
+
     // if bitset_holder is all 1's, we got empty result
     if (bitset_holder.all()) {
         retrieve_result_opt_ = std::move(retrieve_result);
@@ -142,9 +158,15 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
 
     BitsetView final_view = bitset_holder;
     auto seg_offsets = segment->search_ids(final_view, timestamp_);
+    auto search_ids_end = std::chrono::high_resolution_clock::now();
+    auto search_ids_du = std::chrono::duration_cast<std::chrono::milliseconds>(search_ids_end - mask_del_end);
+    std::cout << "[perf get vector] ExecPlanNodeVisitor search_ids_du, dur: " << search_ids_du.count() << " ms" << std::endl;
     retrieve_result.result_offsets_.assign((int64_t*)seg_offsets.data(),
                                            (int64_t*)seg_offsets.data() + seg_offsets.size());
     retrieve_result_opt_ = std::move(retrieve_result);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto total_du = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    std::cout << "[perf get vector] ExecPlanNodeVisitor visit total, dur: " << total_du.count() << " ms" << std::endl;
 }
 
 void

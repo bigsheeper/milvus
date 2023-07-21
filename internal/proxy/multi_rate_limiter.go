@@ -217,7 +217,7 @@ func (rl *rateLimiter) setRates(collectionRate *proxypb.CollectionRate) error {
 		} else {
 			return fmt.Errorf("unregister rateLimiter for rateType %s", r.GetRt().String())
 		}
-		log.RatedDebug(30, "current collection rates in proxy",
+		log.Info("current collection rates in proxy",
 			zap.String("rateType", r.Rt.String()),
 			zap.String("rateLimit", ratelimitutil.Limit(r.GetR()).String()),
 		)
@@ -227,7 +227,7 @@ func (rl *rateLimiter) setRates(collectionRate *proxypb.CollectionRate) error {
 	rl.quotaStates = typeutil.NewConcurrentMap[milvuspb.QuotaState, commonpb.ErrorCode]()
 	for i := 0; i < len(collectionRate.GetStates()); i++ {
 		rl.quotaStates.Insert(collectionRate.States[i], collectionRate.Codes[i])
-		log.RatedWarn(30, "Proxy set collection quota states",
+		log.Warn("Proxy set collection quota states",
 			zap.String("state", collectionRate.GetStates()[i].String()),
 			zap.String("reason", collectionRate.GetCodes()[i].String()),
 		)

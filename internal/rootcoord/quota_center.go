@@ -129,7 +129,10 @@ func NewQuotaCenter(proxies *proxyClientManager, queryCoord types.QueryCoord, da
 
 // run starts the service of QuotaCenter.
 func (q *QuotaCenter) run() {
-	log.Info("Start QuotaCenter", zap.Float64("collectInterval/s", Params.QuotaConfig.QuotaCenterCollectInterval))
+	log.Info("Start QuotaCenter",
+		zap.Float64("collectInterval/s", Params.QuotaConfig.QuotaCenterCollectInterval),
+		zap.Any("quotaConfig", Params.QuotaConfig),
+	)
 	ticker := time.NewTicker(time.Duration(Params.QuotaConfig.QuotaCenterCollectInterval * float64(time.Second)))
 	defer ticker.Stop()
 	for {
@@ -261,11 +264,11 @@ func (q *QuotaCenter) syncMetrics() error {
 	if err != nil {
 		return err
 	}
-	//log.Debug("QuotaCenter sync metrics done",
-	//	zap.Any("dataNodeMetrics", q.dataNodeMetrics),
-	//	zap.Any("queryNodeMetrics", q.queryNodeMetrics),
-	//	zap.Any("proxyMetrics", q.proxyMetrics),
-	//	zap.Any("dataCoordMetrics", q.dataCoordMetrics))
+	log.Info("QuotaCenter sync metrics done",
+		zap.Any("dataNodeMetrics", q.dataNodeMetrics),
+		zap.Any("queryNodeMetrics", q.queryNodeMetrics),
+		zap.Any("proxyMetrics", q.proxyMetrics),
+		zap.Any("dataCoordMetrics", q.dataCoordMetrics))
 	return nil
 }
 
@@ -285,7 +288,7 @@ func (q *QuotaCenter) forceDenyWriting(errorCode commonpb.ErrorCode, collections
 		q.currentRates[collection][internalpb.RateType_DMLBulkLoad] = 0
 		q.quotaStates[collection][milvuspb.QuotaState_DenyToWrite] = errorCode
 	}
-	log.RatedWarn(10, "QuotaCenter force to deny writing",
+	log.Warn("QuotaCenter force to deny writing",
 		zap.Int64s("collectionIDs", collections),
 		zap.String("reason", errorCode.String()))
 }
@@ -334,7 +337,6 @@ func (q *QuotaCenter) guaranteeMinRate(minRate float64, rateType internalpb.Rate
 
 // calculateReadRates calculates and sets dql rates.
 func (q *QuotaCenter) calculateReadRates() {
-	log := log.Ctx(context.Background()).WithRateGroup("rootcoord.QuotaCenter", 1.0, 60.0)
 	if Params.QuotaConfig.ForceDenyReading {
 		q.forceDenyReading(commonpb.ErrorCode_ForceDeny)
 		return
@@ -393,13 +395,13 @@ func (q *QuotaCenter) calculateReadRates() {
 		for _, collection := range collections {
 			if q.currentRates[collection][internalpb.RateType_DQLSearch] != Inf && realTimeSearchRate > 0 {
 				q.currentRates[collection][internalpb.RateType_DQLSearch] = Limit(realTimeSearchRate * coolOffSpeed)
-				log.RatedWarn(10, "QuotaCenter cool read rates off done",
+				log.Warn("QuotaCenter cool read rates off done",
 					zap.Int64("collectionID", collection),
 					zap.Any("searchRate", q.currentRates[collection][internalpb.RateType_DQLSearch]))
 			}
 			if q.currentRates[collection][internalpb.RateType_DQLQuery] != Inf && realTimeQueryRate > 0 {
 				q.currentRates[collection][internalpb.RateType_DQLQuery] = Limit(realTimeQueryRate * coolOffSpeed)
-				log.RatedWarn(10, "QuotaCenter cool read rates off done",
+				log.Warn("QuotaCenter cool read rates off done",
 					zap.Int64("collectionID", collection),
 					zap.Any("queryRate", q.currentRates[collection][internalpb.RateType_DQLQuery]))
 			}
@@ -471,7 +473,6 @@ func (q *QuotaCenter) calculateWriteRates() error {
 }
 
 func (q *QuotaCenter) getTimeTickDelayFactor(ts Timestamp) map[int64]float64 {
-	log := log.Ctx(context.Background()).WithRateGroup("rootcoord.QuotaCenter", 1.0, 60.0)
 	if !Params.QuotaConfig.TtProtectionEnabled {
 		return make(map[int64]float64)
 	}
@@ -513,12 +514,12 @@ func (q *QuotaCenter) getTimeTickDelayFactor(ts Timestamp) map[int64]float64 {
 	collectionFactor := make(map[int64]float64)
 	for collectionID, curMaxDelay := range collectionsMaxDelay {
 		if curMaxDelay.Nanoseconds() >= maxDelay.Nanoseconds() {
-			log.RatedWarn(10, "QuotaCenter force deny writing due to long timeTick delay",
+			log.Warn("QuotaCenter force deny writing due to long timeTick delay",
 				zap.Int64("collectionID", collectionID),
 				zap.Time("curTs", t1),
 				zap.Duration("delay", curMaxDelay),
 				zap.Duration("MaxDelay", maxDelay))
-			log.RatedInfo(10, "DataNode and QueryNode Metrics",
+			log.Info("DataNode and QueryNode Metrics",
 				zap.Any("QueryNodeMetrics", q.queryNodeMetrics),
 				zap.Any("DataNodeMetrics", q.dataNodeMetrics))
 			collectionFactor[collectionID] = 0
@@ -526,7 +527,7 @@ func (q *QuotaCenter) getTimeTickDelayFactor(ts Timestamp) map[int64]float64 {
 		}
 		factor := float64(maxDelay.Nanoseconds()-curMaxDelay.Nanoseconds()) / float64(maxDelay.Nanoseconds())
 		if factor <= 0.9 {
-			log.RatedWarn(10, "QuotaCenter: limit writing due to long timeTick delay",
+			log.Warn("QuotaCenter: limit writing due to long timeTick delay",
 				zap.Int64("collectionID", collectionID),
 				zap.Time("curTs", t1),
 				zap.Duration("delay", curMaxDelay),
@@ -543,7 +544,6 @@ func (q *QuotaCenter) getTimeTickDelayFactor(ts Timestamp) map[int64]float64 {
 // getMemoryFactor checks whether any node has memory resource issue,
 // and return the factor according to max memory water level.
 func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
-	log := log.Ctx(context.Background()).WithRateGroup("rootcoord.QuotaCenter", 1.0, 60.0)
 	if !Params.QuotaConfig.MemProtectionEnabled {
 		return make(map[int64]float64)
 	}
@@ -568,7 +568,7 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 			continue
 		}
 		if memoryWaterLevel >= queryNodeMemoryHighWaterLevel {
-			log.RatedWarn(10, "QuotaCenter: QueryNode memory to high water level",
+			log.Warn("QuotaCenter: QueryNode memory to high water level",
 				zap.String("Node", fmt.Sprintf("%s-%d", typeutil.QueryNodeRole, nodeID)),
 				zap.Int64s("collections", metric.Effect.CollectionIDs),
 				zap.Uint64("UsedMem", metric.Hms.MemoryUsage),
@@ -580,7 +580,7 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 		}
 		factor := (queryNodeMemoryHighWaterLevel - memoryWaterLevel) / (queryNodeMemoryHighWaterLevel - queryNodeMemoryLowWaterLevel)
 		updateCollectionFactor(factor, metric.Effect.CollectionIDs)
-		log.RatedWarn(10, "QuotaCenter: QueryNode memory to low water level, limit writing rate",
+		log.Warn("QuotaCenter: QueryNode memory to low water level, limit writing rate",
 			zap.String("Node", fmt.Sprintf("%s-%d", typeutil.QueryNodeRole, nodeID)),
 			zap.Int64s("collections", metric.Effect.CollectionIDs),
 			zap.Uint64("UsedMem", metric.Hms.MemoryUsage),
@@ -594,7 +594,7 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 			continue
 		}
 		if memoryWaterLevel >= dataNodeMemoryHighWaterLevel {
-			log.RatedWarn(10, "QuotaCenter: DataNode memory to high water level",
+			log.Warn("QuotaCenter: DataNode memory to high water level",
 				zap.String("Node", fmt.Sprintf("%s-%d", typeutil.DataNodeRole, nodeID)),
 				zap.Int64s("collections", metric.Effect.CollectionIDs),
 				zap.Uint64("UsedMem", metric.Hms.MemoryUsage),
@@ -605,7 +605,7 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 			continue
 		}
 		factor := (dataNodeMemoryHighWaterLevel - memoryWaterLevel) / (dataNodeMemoryHighWaterLevel - dataNodeMemoryLowWaterLevel)
-		log.RatedWarn(10, "QuotaCenter: DataNode memory to low water level, limit writing rate",
+		log.Warn("QuotaCenter: DataNode memory to low water level, limit writing rate",
 			zap.String("Node", fmt.Sprintf("%s-%d", typeutil.DataNodeRole, nodeID)),
 			zap.Int64s("collections", metric.Effect.CollectionIDs),
 			zap.Uint64("UsedMem", metric.Hms.MemoryUsage),
@@ -618,7 +618,6 @@ func (q *QuotaCenter) getMemoryFactor() map[int64]float64 {
 }
 
 func (q *QuotaCenter) getGrowingSegmentsSizeFactor() map[int64]float64 {
-	log := log.Ctx(context.Background()).WithRateGroup("rootcoord.QuotaCenter", 1.0, 60.0)
 	if !Params.QuotaConfig.GrowingSegmentsSizeProtectionEnabled {
 		return make(map[int64]float64)
 	}
@@ -641,7 +640,7 @@ func (q *QuotaCenter) getGrowingSegmentsSizeFactor() map[int64]float64 {
 			continue
 		}
 		if cur >= high {
-			log.RatedWarn(10, "QuotaCenter: QueryNode growing segments size to high water level",
+			log.Warn("QuotaCenter: QueryNode growing segments size to high water level",
 				zap.String("Node", fmt.Sprintf("%s-%d", typeutil.QueryNodeRole, nodeID)),
 				zap.Int64s("collections", metric.Effect.CollectionIDs),
 				zap.Int64("segmentsSize", metric.GrowingSegmentsSize),
@@ -652,7 +651,7 @@ func (q *QuotaCenter) getGrowingSegmentsSizeFactor() map[int64]float64 {
 		}
 		factor := (high - cur) / (high - low)
 		updateCollectionFactor(factor, metric.Effect.CollectionIDs)
-		log.RatedWarn(10, "QuotaCenter: QueryNode growing segments size to low water level, limit writing rate",
+		log.Warn("QuotaCenter: QueryNode growing segments size to low water level, limit writing rate",
 			zap.String("Node", fmt.Sprintf("%s-%d", typeutil.QueryNodeRole, nodeID)),
 			zap.Int64s("collections", metric.Effect.CollectionIDs),
 			zap.Int64("segmentsSize", metric.GrowingSegmentsSize),
@@ -732,7 +731,7 @@ func (q *QuotaCenter) checkDiskQuota() {
 	colDiskQuota := Params.QuotaConfig.DiskQuotaPerCollection
 	for collection, binlogSize := range q.dataCoordMetrics.CollectionBinlogSize {
 		if float64(binlogSize) >= colDiskQuota {
-			log.RatedWarn(10, "collection disk quota exceeded",
+			log.Warn("collection disk quota exceeded",
 				zap.Int64("collection", collection),
 				zap.Int64("coll disk usage", binlogSize),
 				zap.Float64("coll disk quota", colDiskQuota))
@@ -744,7 +743,7 @@ func (q *QuotaCenter) checkDiskQuota() {
 	}
 	total := q.dataCoordMetrics.TotalBinlogSize
 	if float64(total) >= totalDiskQuota {
-		log.RatedWarn(10, "total disk quota exceeded",
+		log.Warn("total disk quota exceeded",
 			zap.Int64("total disk usage", total),
 			zap.Float64("total disk quota", totalDiskQuota))
 		q.forceDenyWriting(commonpb.ErrorCode_DiskQuotaExhausted)

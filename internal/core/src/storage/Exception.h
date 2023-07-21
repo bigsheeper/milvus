@@ -63,6 +63,15 @@ class LocalChunkManagerException : public std::runtime_error {
     }
 };
 
+class VectorChunkManagerException : public std::runtime_error {
+public:
+    explicit VectorChunkManagerException(const std::string& msg)
+            : std::runtime_error(msg) {
+    }
+    virtual ~VectorChunkManagerException() {
+    }
+};
+
 class InvalidPathException : public LocalChunkManagerException {
  public:
     explicit InvalidPathException(const std::string& msg)

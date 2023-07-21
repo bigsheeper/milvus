@@ -41,7 +41,8 @@ set(STORAGE_FILES
     AliyunCredentialsProvider.cpp
     MemFileManagerImpl.cpp
     LocalChunkManager.cpp
-    DiskFileManagerImpl.cpp)
+    DiskFileManagerImpl.cpp
+    VectorChunkManager.cpp)
 
 add_library(milvus_storage SHARED ${STORAGE_FILES})
 

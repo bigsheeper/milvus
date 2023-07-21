@@ -84,6 +84,27 @@ class ColumnBase {
 #endif
     }
 
+    // mmap mode ctor
+    ColumnBase(int fd, size_t size, const DataType& data_type) {
+        padding_ = data_type == DataType::JSON
+                   ? simdjson::SIMDJSON_PADDING
+                   : 0;
+
+        len_ = size;
+        size_ = size + padding_;
+        data_ = static_cast<char*>(
+                mmap(nullptr, size_, PROT_READ, mmap_flags, fd, 0));
+#ifndef MAP_POPULATE
+        // Manually access the mapping to populate it
+        const size_t page_size = getpagesize();
+        char* begin = (char*)data_;
+        char* end = begin + len_;
+        for (char* page = begin; page < end; page += page_size) {
+            char value = page[0];
+        }
+#endif
+    }
+
     virtual ~ColumnBase() {
         if (data_ != nullptr) {
             if (munmap(data_, size_)) {
@@ -167,6 +188,11 @@ class Column : public ColumnBase {
     Column(int fd, size_t size, const FieldMeta& field_meta)
         : ColumnBase(fd, size, field_meta),
           num_rows_(size / field_meta.get_sizeof()) {
+    }
+
+    Column(int fd, size_t size, size_t num_rows, DataType data_type)
+            : ColumnBase(fd, size, data_type),
+              num_rows_(num_rows) {
     }
 
     Column(Column&& column) noexcept

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
@@ -309,18 +310,18 @@ func (node *DataNode) GetCompactionState(ctx context.Context, req *datapb.Compac
 		}, nil
 	}
 	results := make([]*datapb.CompactionStateResult, 0)
-	node.compactionExecutor.executing.Range(func(k, v any) bool {
+	node.compactionExecutor.executing.Range(func(planID int64, task compactor) bool {
 		results = append(results, &datapb.CompactionStateResult{
 			State:  commonpb.CompactionState_Executing,
-			PlanID: k.(UniqueID),
+			PlanID: planID,
 		})
 		return true
 	})
-	node.compactionExecutor.completed.Range(func(k, v any) bool {
+	node.compactionExecutor.completed.Range(func(planID int64, result *datapb.CompactionResult) bool {
 		results = append(results, &datapb.CompactionStateResult{
 			State:  commonpb.CompactionState_Completed,
-			PlanID: k.(UniqueID),
-			Result: v.(*datapb.CompactionResult),
+			PlanID: planID,
+			Result: result,
 		})
 		return true
 	})
@@ -436,7 +437,7 @@ func (node *DataNode) Import(ctx context.Context, req *datapb.ImportTaskRequest)
 	importResult.Infos = append(importResult.Infos, &commonpb.KeyValuePair{Key: importutil.ProgressPercent, Value: "0"})
 
 	// Spawn a new context to ignore cancellation from parental context.
-	newCtx, cancel := context.WithTimeout(context.TODO(), ImportCallTimeout)
+	newCtx, cancel := context.WithTimeout(context.TODO(), paramtable.Get().DataNodeCfg.BulkInsertTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 
 	// function to report import state to RootCoord.

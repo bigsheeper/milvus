@@ -1177,6 +1177,7 @@ type queryCoordConfig struct {
 	EnableRGAutoRecover        ParamItem `refreshable:"true"`
 	CheckHealthInterval        ParamItem `refreshable:"false"`
 	CheckHealthRPCTimeout      ParamItem `refreshable:"true"`
+	BrokerTimeout              ParamItem `refreshable:"false"`
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -1468,6 +1469,16 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.CheckHealthRPCTimeout.Init(base.mgr)
+
+	p.BrokerTimeout = ParamItem{
+		Key:          "queryCoord.brokerTimeout",
+		Version:      "2.3.0",
+		DefaultValue: "5000",
+		PanicIfEmpty: true,
+		Doc:          "5000ms, querycoord broker rpc timeout",
+		Export:       true,
+	}
+	p.BrokerTimeout.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -1908,7 +1919,8 @@ type dataCoordConfig struct {
 	SegmentMaxSize                 ParamItem `refreshable:"false"`
 	DiskSegmentMaxSize             ParamItem `refreshable:"true"`
 	SegmentSealProportion          ParamItem `refreshable:"false"`
-	SegAssignmentExpiration        ParamItem `refreshable:"true"`
+	SegAssignmentExpiration        ParamItem `refreshable:"false"`
+	AllocLatestExpireAttempt       ParamItem `refreshable:"true"`
 	SegmentMaxLifetime             ParamItem `refreshable:"false"`
 	SegmentMaxIdleTime             ParamItem `refreshable:"false"`
 	SegmentMinSizeFromIdleToSealed ParamItem `refreshable:"false"`
@@ -1917,9 +1929,11 @@ type dataCoordConfig struct {
 	// compaction
 	EnableCompaction     ParamItem `refreshable:"false"`
 	EnableAutoCompaction ParamItem `refreshable:"true"`
+	IndexBasedCompaction ParamItem `refreshable:"true"`
 
 	CompactionRPCTimeout              ParamItem `refreshable:"true"`
 	CompactionMaxParallelTasks        ParamItem `refreshable:"true"`
+	CompactionWorkerParalleTasks      ParamItem `refreshable:"true"`
 	MinSegmentToMerge                 ParamItem `refreshable:"true"`
 	MaxSegmentToMerge                 ParamItem `refreshable:"true"`
 	SegmentSmallProportion            ParamItem `refreshable:"true"`
@@ -2012,6 +2026,15 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 	}
 	p.SegAssignmentExpiration.Init(base.mgr)
 
+	p.AllocLatestExpireAttempt = ParamItem{
+		Key:          "dataCoord.segment.allocLatestExpireAttempt",
+		Version:      "2.2.0",
+		DefaultValue: "200",
+		Doc:          "The time attempting to alloc latest lastExpire from rootCoord after restart",
+		Export:       true,
+	}
+	p.AllocLatestExpireAttempt.Init(base.mgr)
+
 	p.SegmentMaxLifetime = ParamItem{
 		Key:          "dataCoord.segment.maxLife",
 		Version:      "2.0.0",
@@ -2068,6 +2091,14 @@ the number of binlog file reaches to max value.`,
 	}
 	p.EnableAutoCompaction.Init(base.mgr)
 
+	p.IndexBasedCompaction = ParamItem{
+		Key:          "dataCoord.compaction.indexBasedCompaction",
+		Version:      "2.0.0",
+		DefaultValue: "true",
+		Export:       true,
+	}
+	p.IndexBasedCompaction.Init(base.mgr)
+
 	p.CompactionRPCTimeout = ParamItem{
 		Key:          "dataCoord.compaction.rpcTimeout",
 		Version:      "2.2.12",
@@ -2083,6 +2114,14 @@ the number of binlog file reaches to max value.`,
 		Export:       true,
 	}
 	p.CompactionMaxParallelTasks.Init(base.mgr)
+
+	p.CompactionWorkerParalleTasks = ParamItem{
+		Key:          "dataCoord.compaction.workerMaxParallelTaskNum",
+		Version:      "2.3.0",
+		DefaultValue: "2",
+		Export:       true,
+	}
+	p.CompactionWorkerParalleTasks.Init(base.mgr)
 
 	p.MinSegmentToMerge = ParamItem{
 		Key:          "dataCoord.compaction.min.segment",
@@ -2199,7 +2238,7 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 	p.GCMissingTolerance = ParamItem{
 		Key:          "dataCoord.gc.missingTolerance",
 		Version:      "2.0.0",
-		DefaultValue: "10800",
+		DefaultValue: "3600",
 		Doc:          "file meta missing tolerance duration in seconds, 60*60*3",
 		Export:       true,
 	}
@@ -2208,7 +2247,7 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 	p.GCDropTolerance = ParamItem{
 		Key:          "dataCoord.gc.dropTolerance",
 		Version:      "2.0.0",
-		DefaultValue: "3600",
+		DefaultValue: "10800",
 		Doc:          "file belongs to dropped entity tolerance duration in seconds. 3600",
 		Export:       true,
 	}
@@ -2299,6 +2338,9 @@ type dataNodeConfig struct {
 	DataNodeTimeTickByRPC ParamItem `refreshable:"false"`
 	// DataNode send timetick interval per collection
 	DataNodeTimeTickInterval ParamItem `refreshable:"false"`
+
+	// timeout for bulkinsert
+	BulkInsertTimeoutSeconds ParamItem `refreshable:"true"`
 
 	// Skip BF
 	SkipBFStatsLoad ParamItem `refreshable:"true"`
@@ -2459,6 +2501,14 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 		DefaultValue: "false",
 	}
 	p.SkipBFStatsLoad.Init(base.mgr)
+
+	p.BulkInsertTimeoutSeconds = ParamItem{
+		Key:          "datanode.bulkinsert.timeout.seconds",
+		Version:      "2.3.0",
+		PanicIfEmpty: false,
+		DefaultValue: "18000",
+	}
+	p.BulkInsertTimeoutSeconds.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

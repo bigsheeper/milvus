@@ -35,6 +35,7 @@
 #include "storage/FieldData.h"
 #include "storage/Util.h"
 #include "storage/ThreadPool.h"
+#include "storage/ChunkCacheSingleton.h"
 
 namespace milvus::segcore {
 
@@ -447,6 +448,15 @@ SegmentSealedImpl::LoadDeletedRecord(const LoadDeletedRecordInfo& info) {
     deleted_record_.push(pks, timestamps);
 }
 
+void
+SegmentSealedImpl::AddFieldDataInfo(const LoadFieldDataInfo& field_data_info) {
+    // deep copy
+    for (const auto & iter : field_data_info.field_infos) {
+        field_data_info_.field_infos.emplace(iter.first, iter.second);
+    }
+    field_data_info_.mmap_dir_path = field_data_info.mmap_dir_path;
+}
+
 // internal API: support scalar index only
 int64_t
 SegmentSealedImpl::num_chunk_index(FieldId field_id) const {
@@ -586,12 +596,31 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
     }
 }
 
+std::tuple<std::string, int64_t>
+SegmentSealedImpl::get_field_data_path(FieldId field_id, int64_t offset) const {
+    auto offset_in_binlog = offset;
+    auto data_path = std::string();
+    AssertInfo(field_data_info_.field_infos.find(field_id.get()) != field_data_info_.field_infos.end(),
+               fmt::format("cannot find binlog file for field: {}, seg: {}", field_id.get(), id_));
+    auto field_info = field_data_info_.field_infos.at(field_id.get());
+
+    for (auto i = 0; i < field_info.insert_files.size(); i++) {
+        if (offset_in_binlog < field_info.entries_nums[i]) {
+            data_path = field_info.insert_files[i];
+            break;
+        } else {
+            offset_in_binlog -= field_info.entries_nums[i];
+        }
+    }
+    return {data_path, offset_in_binlog};
+}
+
 std::unique_ptr<DataArray>
 SegmentSealedImpl::get_vector(FieldId field_id,
                               const int64_t* ids,
                               int64_t count) const {
-    auto& filed_meta = schema_->operator[](field_id);
-    AssertInfo(filed_meta.is_vector(), "vector field is not vector type");
+    auto& field_meta = schema_->operator[](field_id);
+    AssertInfo(field_meta.is_vector(), "vector field is not vector type");
 
     if (get_bit(index_ready_bitset_, field_id)) {
         AssertInfo(vector_indexings_.is_ready(field_id),
@@ -608,10 +637,25 @@ SegmentSealedImpl::get_vector(FieldId field_id,
             auto ids_ds = GenIdsDataset(count, ids);
             auto vector = vec_index->GetVector(ids_ds);
             return segcore::CreateVectorDataArrayFrom(
-                vector.data(), count, filed_meta);
+                vector.data(), count, field_meta);
         } else {
-            // group by bin log files
-
+            // TODO: group by bin log files to accelerate
+            auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkManager();
+            auto dim = field_meta.get_dim();
+            auto row_bytes = 0;
+            if (field_meta.is_vector()) {
+                row_bytes = dim * 4;
+            } else {
+                row_bytes = dim / 8;
+            }
+            auto buf = std::vector<char>(count * row_bytes);
+            for (auto i = 0; i < count; i++) {
+                const auto& [data_path, offset_in_binlog] = get_field_data_path(field_id, ids[i]);
+                const auto& column = cc->Read(data_path);
+                auto vector = &column->Data()[offset_in_binlog*row_bytes];
+                std::memcpy(buf.data()+i, vector, row_bytes);
+            }
+            return segcore::CreateVectorDataArrayFrom(buf.data(), count, field_meta);
         }
     }
 

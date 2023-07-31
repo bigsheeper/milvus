@@ -61,6 +61,8 @@ class SegmentSealedImpl : public SegmentSealed {
     LoadFieldData(FieldId field_id, FieldDataInfo& data) override;
     void
     MapFieldData(const FieldId field_id, FieldDataInfo& data) override;
+    void
+    AddFieldDataInfo(const LoadFieldDataInfo& field_data_info) override;
 
     int64_t
     get_segment_id() const override {
@@ -214,6 +216,9 @@ class SegmentSealedImpl : public SegmentSealed {
     std::vector<SegOffset>
     search_ids(const BitsetType& view, Timestamp timestamp) const override;
 
+    std::tuple<std::string, int64_t>
+    get_field_data_path(FieldId field_id, int64_t offset) const;
+
     void
     LoadVecIndex(const LoadIndexInfo& info);
 
@@ -240,6 +245,8 @@ class SegmentSealedImpl : public SegmentSealed {
 
     // deleted pks
     mutable DeletedRecord deleted_record_;
+
+    LoadFieldDataInfo field_data_info_;
 
     SchemaPtr schema_;
     int64_t id_;

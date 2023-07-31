@@ -37,6 +37,8 @@ class SegmentSealed : public SegmentInternalInterface {
     LoadFieldData(FieldId field_id, FieldDataInfo& data) = 0;
     virtual void
     MapFieldData(const FieldId field_id, FieldDataInfo& data) = 0;
+    virtual void
+    AddFieldDataInfo(const LoadFieldDataInfo& field_data_info) = 0;
 
     SegmentType
     type() const override {

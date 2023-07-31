@@ -681,7 +681,7 @@ func (s *LocalSegment) LoadMultiFieldData(rowCount int64, fields []*datapb.Field
 		}
 
 		for _, binlog := range field.Binlogs {
-			err = loadFieldDataInfo.appendLoadFieldDataPath(fieldID, binlog.GetLogPath())
+			err = loadFieldDataInfo.appendLoadFieldDataPath(fieldID, binlog)
 			if err != nil {
 				return err
 			}
@@ -732,7 +732,7 @@ func (s *LocalSegment) LoadFieldData(fieldID int64, rowCount int64, field *datap
 	}
 
 	for _, binlog := range field.Binlogs {
-		err = loadFieldDataInfo.appendLoadFieldDataPath(fieldID, binlog.GetLogPath())
+		err = loadFieldDataInfo.appendLoadFieldDataPath(fieldID, binlog)
 		if err != nil {
 			return err
 		}
@@ -753,6 +753,56 @@ func (s *LocalSegment) LoadFieldData(fieldID int64, rowCount int64, field *datap
 		zap.Int64("row count", rowCount),
 		zap.Int64("segmentID", s.ID()))
 
+	return nil
+}
+
+func (s *LocalSegment) AddFieldDataInfo(rowCount int64, fields []*datapb.FieldBinlog) error {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	if s.ptr == nil {
+		return merr.WrapErrSegmentNotLoaded(s.segmentID, "segment released")
+	}
+
+	log := log.With(
+		zap.Int64("collectionID", s.Collection()),
+		zap.Int64("partitionID", s.Partition()),
+		zap.Int64("segmentID", s.ID()),
+		zap.Int64("row count", rowCount),
+	)
+
+	loadFieldDataInfo, err := newLoadFieldDataInfo()
+	defer deleteFieldDataInfo(loadFieldDataInfo)
+	if err != nil {
+		return err
+	}
+
+	for _, field := range fields {
+		fieldID := field.FieldID
+		err = loadFieldDataInfo.appendLoadFieldInfo(fieldID, rowCount)
+		if err != nil {
+			return err
+		}
+
+		for _, binlog := range field.Binlogs {
+			err = loadFieldDataInfo.appendLoadFieldDataPath(fieldID, binlog)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	loadFieldDataInfo.appendMMapDirPath(paramtable.Get().QueryNodeCfg.MmapDirPath.GetValue())
+
+	var status C.CStatus
+	GetPool().Submit(func() (any, error) {
+		status = C.AddFieldDataInfo(s.ptr, loadFieldDataInfo.cLoadFieldDataInfo)
+		return nil, nil
+	}).Await()
+	if err := HandleCStatus(&status, "AddFieldDataInfo failed"); err != nil {
+		return err
+	}
+
+	log.Info("add field data info done")
 	return nil
 }
 

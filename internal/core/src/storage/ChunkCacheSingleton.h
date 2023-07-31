@@ -16,40 +16,49 @@
 
 #pragma once
 
-#include "mmap/Column.h"
-#include "folly/concurrency/ConcurrentHashMap.h"
-#include <tbb/concurrent_hash_map.h>
+#include <shared_mutex>
+#include "ChunkCache.h"
 
 namespace milvus::storage {
 
-class ChunkCache {
-public:
-    explicit ChunkCache(std::string path)
-    : path_prefix_(std::move(path)) {
+class ChunkCacheSingleton {
+private:
+    ChunkCacheSingleton() {
     }
 
 public:
-    ~ChunkCache() = default;
+    ChunkCacheSingleton(const ChunkCacheSingleton&) = delete;
+    ChunkCacheSingleton&
+    operator=(const ChunkCacheSingleton&) = delete;
 
-    std::shared_ptr<Column>
-    Read(const std::string& filepath);
+    static ChunkCacheSingleton&
+    GetInstance() {
+        static ChunkCacheSingleton instance;
+        return instance;
+    }
 
     void
-    Remove(const std::string& filepath);
+    Init(std::string root_path) {
+        std::unique_lock lck(mutex_);
+        if (cc_ == nullptr) {
+            cc_ = std::make_shared<ChunkCache>(root_path);
+        }
+    }
 
     void
-    Prefetch(const std::string& filepath);
+    Release() {
+        std::unique_lock lck(mutex_);
+        cc_ = nullptr;
+    }
+
+    ChunkCachePtr
+    GetChunkManager() {
+        return cc_;
+    }
 
 private:
-    std::shared_ptr<Column>
-    Mmap(const std::string& filepath, const FieldDataPtr& field_data);
-
-    private:
-        std::string path_prefix_;
-        folly::ConcurrentHashMap<std::string, std::shared_ptr<Column>> columns_;
-    };
-
-    using ChunkCachePtr =
-            std::shared_ptr<milvus::storage::ChunkCache>;
+    mutable std::shared_mutex mutex_;
+    ChunkCachePtr cc_ = nullptr;
+};
 
 }  // namespace milvus::storage

@@ -20,87 +20,87 @@
 
 namespace milvus::storage {
 
-    std::shared_ptr<Column>
-    ChunkCache::Read(const std::string& filepath) {
-        if (columns_.find(filepath) != columns_.end()) {
-            return columns_.at(filepath);
-        }
-
-        auto rcm = RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
-        auto object_data = GetObjectData(rcm.get(), std::vector<std::string>{filepath});
-        AssertInfo(object_data.size() == 1, "[ChunkCache] GetObjectData failed");
-        auto field_data = object_data[0];
-
-        auto column = Mmap(filepath, field_data);
-        columns_.insert(filepath, column);
-        return column;
+std::shared_ptr<Column>
+ChunkCache::Read(const std::string& filepath) {
+    if (columns_.find(filepath) != columns_.end()) {
+        return columns_.at(filepath);
     }
 
-    void
-    ChunkCache::Remove(const std::string& filepath) {
-        columns_.erase(filepath);
+    auto rcm = RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
+    auto object_data = GetObjectData(rcm.get(), std::vector<std::string>{filepath});
+    AssertInfo(object_data.size() == 1, "[ChunkCache] GetObjectData failed");
+    auto field_data = object_data[0];
+
+    auto column = Mmap(filepath, field_data);
+    columns_.insert(filepath, column);
+    return column;
+}
+
+void
+ChunkCache::Remove(const std::string& filepath) {
+    columns_.erase(filepath);
+}
+
+void
+ChunkCache::Prefetch(const std::string &filepath) {
+    if (columns_.find(filepath) == columns_.end()) {
+        return;
     }
+    auto column = columns_.at(filepath);
+    auto ok = madvise(reinterpret_cast<void *>(const_cast<char *>(column->Data())), column->Size(), MADV_RANDOM);
+    AssertInfo(ok == 0,
+               fmt::format("[ChunkCache] failed to madvise to the data file {}, err: {}",
+                           filepath.c_str(),
+                           strerror(errno)));
+}
 
-    void
-    ChunkCache::Prefetch(const std::string &filepath) {
-        if (columns_.find(filepath) == columns_.end()) {
-            return;
-        }
-        auto column = columns_.at(filepath);
-        auto ok = madvise(reinterpret_cast<void *>(const_cast<char *>(column->Data())), column->Size(), MADV_RANDOM);
-        AssertInfo(ok == 0,
-                   fmt::format("[ChunkCache] failed to madvise to the data file {}, err: {}",
-                               filepath.c_str(),
-                               strerror(errno)));
-    }
+std::shared_ptr<Column>
+ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
+    auto num_rows = field_data->get_num_rows();
+    auto data_type = field_data->get_data_type();
 
-    std::shared_ptr<Column>
-    ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
-        auto num_rows = field_data->get_num_rows();
-        auto data_type = field_data->get_data_type();
+    int fd =
+            open(filepath.c_str(), O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
+    AssertInfo(fd != -1,
+               fmt::format("[ChunkCache] failed to create mmap file {}", filepath.c_str()));
 
-        int fd =
-                open(filepath.c_str(), O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
-        AssertInfo(fd != -1,
-                   fmt::format("[ChunkCache] failed to create mmap file {}", filepath.c_str()));
+    // write the field data to disk
+    size_t total_written{0};
+    auto data_size = 0;
 
-        // write the field data to disk
-        size_t total_written{0};
-        auto data_size = 0;
+    data_size += field_data->Size();
+    auto written = WriteFieldData(fd, data_type, field_data);
+    AssertInfo(
+            written == data_size,
+            fmt::format(
+                    "[ChunkCache] failed to write data file {}, written {} but total {}, err: {}",
+                    filepath.c_str(),
+                    total_written,
+                    data_size,
+                    strerror(errno)));
+    auto ok = fsync(fd);
+    AssertInfo(ok == 0,
+               fmt::format("[ChunkCache] failed to fsync mmap data file {}, err: {}",
+                           filepath.c_str(),
+                           strerror(errno)));
 
-        data_size += field_data->Size();
-        auto written = WriteFieldData(fd, data_type, field_data);
-        AssertInfo(
-                written == data_size,
-                fmt::format(
-                        "[ChunkCache] failed to write data file {}, written {} but total {}, err: {}",
-                        filepath.c_str(),
-                        total_written,
-                        data_size,
-                        strerror(errno)));
-        auto ok = fsync(fd);
-        AssertInfo(ok == 0,
-                   fmt::format("[ChunkCache] failed to fsync mmap data file {}, err: {}",
-                               filepath.c_str(),
-                               strerror(errno)));
+    auto column = std::make_shared<Column>(fd, total_written, num_rows, data_type);
+    column->Append(static_cast<const char*>(field_data->Data()),
+                   field_data->Size());
 
-        auto column = std::make_shared<Column>(fd, total_written, num_rows, data_type);
-        column->Append(static_cast<const char*>(field_data->Data()),
-                       field_data->Size());
+    // unlink and close
+    ok = unlink(filepath.c_str());
+    AssertInfo(ok == 0,
+               fmt::format("[ChunkCache] failed to unlink mmap data file {}, err: {}",
+                           filepath.c_str(),
+                           strerror(errno)));
+    ok = close(fd);
+    AssertInfo(ok == 0,
+               fmt::format("[ChunkCache] failed to close data file {}, err: {}",
+                           filepath.c_str(),
+                           strerror(errno)));
 
-        // unlink and close
-        ok = unlink(filepath.c_str());
-        AssertInfo(ok == 0,
-                   fmt::format("[ChunkCache] failed to unlink mmap data file {}, err: {}",
-                               filepath.c_str(),
-                               strerror(errno)));
-        ok = close(fd);
-        AssertInfo(ok == 0,
-                   fmt::format("[ChunkCache] failed to close data file {}, err: {}",
-                               filepath.c_str(),
-                               strerror(errno)));
-
-        return column;
-    }
+    return column;
+}
 
 }  // namespace milvus::storage

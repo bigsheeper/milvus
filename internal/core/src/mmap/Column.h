@@ -126,6 +126,11 @@ class ColumnBase {
         return data_;
     }
 
+    const size_t
+    Size() const {
+        return size_;
+    }
+
     virtual SpanBase
     Span() const = 0;
 

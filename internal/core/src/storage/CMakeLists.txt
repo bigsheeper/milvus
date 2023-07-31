@@ -42,7 +42,7 @@ set(STORAGE_FILES
     MemFileManagerImpl.cpp
     LocalChunkManager.cpp
     DiskFileManagerImpl.cpp
-    VectorChunkManager.cpp)
+    ChunkCache.cpp)
 
 add_library(milvus_storage SHARED ${STORAGE_FILES})
 

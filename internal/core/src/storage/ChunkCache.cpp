@@ -22,8 +22,12 @@ namespace milvus::storage {
 
 std::shared_ptr<Column>
 ChunkCache::Read(const std::string& filepath) {
-    if (columns_.find(filepath) != columns_.end()) {
-        return columns_.at(filepath);
+//    if (columns_.find(filepath) != columns_.end()) {
+//        return columns_.at(filepath);
+//    }
+    ColumnTable::const_accessor ca;
+    if (columns_.find(ca, filepath)) {
+        return ca->second;
     }
 
     auto rcm = RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
@@ -32,7 +36,8 @@ ChunkCache::Read(const std::string& filepath) {
     auto field_data = object_data[0];
 
     auto column = Mmap(filepath, field_data);
-    columns_.insert(filepath, column);
+//    columns_.insert(filepath, column);
+    columns_.emplace(filepath, column);
     return column;
 }
 
@@ -43,10 +48,15 @@ ChunkCache::Remove(const std::string& filepath) {
 
 void
 ChunkCache::Prefetch(const std::string &filepath) {
-    if (columns_.find(filepath) == columns_.end()) {
+//    if (columns_.find(filepath) == columns_.end()) {
+//        return;
+//    }
+//    auto column = columns_.at(filepath);
+    ColumnTable::const_accessor ca;
+    if (!columns_.find(ca, filepath)) {
         return;
     }
-    auto column = columns_.at(filepath);
+    auto column = ca->second;
     auto ok = madvise(reinterpret_cast<void *>(const_cast<char *>(column->Data())), column->Size(), MADV_RANDOM);
     AssertInfo(ok == 0,
                fmt::format("[ChunkCache] failed to madvise to the data file {}, err: {}",

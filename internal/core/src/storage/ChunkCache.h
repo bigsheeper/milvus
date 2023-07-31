@@ -17,7 +17,7 @@
 #pragma once
 
 #include "mmap/Column.h"
-#include "folly/concurrency/ConcurrentHashMap.h"
+//#include "folly/concurrency/ConcurrentHashMap.h"
 #include <tbb/concurrent_hash_map.h>
 
 namespace milvus::storage {
@@ -44,12 +44,16 @@ private:
     std::shared_ptr<Column>
     Mmap(const std::string& filepath, const FieldDataPtr& field_data);
 
-    private:
-        std::string path_prefix_;
-        folly::ConcurrentHashMap<std::string, std::shared_ptr<Column>> columns_;
-    };
+private:
+    using ColumnTable = tbb::concurrent_hash_map<std::string, std::shared_ptr<Column>>;
 
-    using ChunkCachePtr =
-            std::shared_ptr<milvus::storage::ChunkCache>;
+private:
+    std::string path_prefix_;
+//        folly::ConcurrentHashMap<std::string, std::shared_ptr<Column>> columns_;
+    ColumnTable columns_;
+};
+
+using ChunkCachePtr =
+        std::shared_ptr<milvus::storage::ChunkCache>;
 
 }  // namespace milvus::storage

@@ -605,6 +605,9 @@ SegmentSealedImpl::get_vector(FieldId field_id,
             auto vector = vec_index->GetVector(ids_ds);
             return segcore::CreateVectorDataArrayFrom(
                 vector.data(), count, filed_meta);
+        } else {
+            // group by bin log files
+
         }
     }
 

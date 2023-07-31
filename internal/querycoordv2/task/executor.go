@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 	"go.uber.org/atomic"
@@ -49,7 +50,7 @@ type Executor struct {
 	// Merge load segment requests
 	merger *Merger[segmentIndex, *querypb.LoadSegmentsRequest]
 
-	executingTasks   *typeutil.ConcurrentSet[int64] // taskID
+	executingTasks   *typeutil.ConcurrentSet[string] // task index
 	executingTaskNum atomic.Int32
 }
 
@@ -69,7 +70,7 @@ func NewExecutor(meta *meta.Meta,
 		nodeMgr:   nodeMgr,
 		merger:    NewMerger[segmentIndex, *querypb.LoadSegmentsRequest](),
 
-		executingTasks: typeutil.NewConcurrentSet[int64](),
+		executingTasks: typeutil.NewConcurrentSet[string](),
 	}
 }
 
@@ -87,12 +88,12 @@ func (ex *Executor) Stop() {
 // does nothing and returns false if the action is already committed,
 // returns true otherwise.
 func (ex *Executor) Execute(task Task, step int) bool {
-	exist := !ex.executingTasks.Insert(task.ID())
+	exist := !ex.executingTasks.Insert(task.Index())
 	if exist {
 		return false
 	}
 	if ex.executingTaskNum.Inc() > Params.QueryCoordCfg.TaskExecutionCap.GetAsInt32() {
-		ex.executingTasks.Remove(task.ID())
+		ex.executingTasks.Remove(task.Index())
 		ex.executingTaskNum.Dec()
 		return false
 	}
@@ -117,10 +118,6 @@ func (ex *Executor) Execute(task Task, step int) bool {
 	}()
 
 	return true
-}
-
-func (ex *Executor) Exist(taskID int64) bool {
-	return ex.executingTasks.Contain(taskID)
 }
 
 func (ex *Executor) scheduleRequests() {
@@ -207,7 +204,7 @@ func (ex *Executor) removeTask(task Task, step int) {
 			zap.Error(task.Err()))
 	}
 
-	ex.executingTasks.Remove(task.ID())
+	ex.executingTasks.Remove(task.Index())
 	ex.executingTaskNum.Dec()
 }
 
@@ -269,8 +266,11 @@ func (ex *Executor) loadSegment(task *SegmentTask, step int) error {
 	segment := resp.GetInfos()[0]
 	indexes, err := ex.broker.GetIndexInfo(ctx, task.CollectionID(), segment.GetID())
 	if err != nil {
-		log.Warn("failed to get index of segment", zap.Error(err))
-		return err
+		if !errors.Is(err, merr.ErrIndexNotFound) {
+			log.Warn("failed to get index of segment", zap.Error(err))
+			return err
+		}
+		indexes = nil
 	}
 
 	readableVersion := int64(0)

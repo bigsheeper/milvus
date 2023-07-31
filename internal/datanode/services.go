@@ -358,19 +358,12 @@ func (node *DataNode) SyncSegments(ctx context.Context, req *datapb.SyncSegments
 		oneSegment int64
 		channel    Channel
 		err        error
-		ds         *dataSyncService
-		ok         bool
 	)
 
 	for _, fromSegment := range req.GetCompactedFrom() {
 		channel, err = node.flowgraphManager.getChannel(fromSegment)
 		if err != nil {
 			log.Ctx(ctx).Warn("fail to get the channel", zap.Int64("segment", fromSegment), zap.Error(err))
-			continue
-		}
-		ds, ok = node.flowgraphManager.getFlowgraphService(channel.getChannelName(fromSegment))
-		if !ok {
-			log.Ctx(ctx).Warn("fail to find flow graph service", zap.Int64("segment", fromSegment))
 			continue
 		}
 		oneSegment = fromSegment
@@ -396,11 +389,7 @@ func (node *DataNode) SyncSegments(ctx context.Context, req *datapb.SyncSegments
 		return merr.Status(err), nil
 	}
 
-	// block all flow graph so it's safe to remove segment
-	ds.fg.Blockall()
-	defer ds.fg.Unblock()
 	if err := channel.mergeFlushedSegments(ctx, targetSeg, req.GetPlanID(), req.GetCompactedFrom()); err != nil {
-		node.compactionExecutor.injectDone(req.GetPlanID(), false)
 		return merr.Status(err), nil
 	}
 	node.compactionExecutor.injectDone(req.GetPlanID(), true)
@@ -690,6 +679,7 @@ func assignSegmentFunc(node *DataNode, req *datapb.ImportTaskRequest) importutil
 		colID := req.GetImportTask().GetCollectionId()
 		segmentIDReq := composeAssignSegmentIDRequest(1, shardID, chNames, colID, partID)
 		targetChName := segmentIDReq.GetSegmentIDRequests()[0].GetChannelName()
+		logFields = append(logFields, zap.Int64("collection ID", colID))
 		logFields = append(logFields, zap.String("target channel name", targetChName))
 		log.Info("assign segment for the import task", logFields...)
 		resp, err := node.dataCoord.AssignSegmentID(context.Background(), segmentIDReq)
@@ -750,6 +740,7 @@ func createBinLogsFunc(node *DataNode, req *datapb.ImportTaskRequest, schema *sc
 			log.Info("fields data is empty, no need to generate binlog", logFields...)
 			return nil, nil, nil
 		}
+		logFields = append(logFields, zap.Int("row count", rowNum))
 
 		colID := req.GetImportTask().GetCollectionId()
 		fieldInsert, fieldStats, err := createBinLogs(rowNum, schema, ts, fields, node, segmentID, colID, partID)
@@ -843,12 +834,6 @@ func composeAssignSegmentIDRequest(rowNum int, shardID int, chNames []string,
 	// use the first field's row count as segment row count
 	// all the fields row count are same, checked by ImportWrapper
 	// ask DataCoord to alloc a new segment
-	log.Info("import task flush segment",
-		zap.Int("rowCount", rowNum),
-		zap.Any("channel names", chNames),
-		zap.Int64("collectionID", collID),
-		zap.Int64("partitionID", partID),
-		zap.Int("shardID", shardID))
 	segReqs := []*datapb.SegmentIDRequest{
 		{
 			ChannelName:  chNames[shardID],

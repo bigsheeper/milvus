@@ -5,6 +5,9 @@ import numpy
 import threading
 import pytest
 import pandas as pd
+pd.set_option("expand_frame_repr", False)
+import decimal
+from decimal import Decimal, getcontext
 from time import sleep
 import heapq
 
@@ -1162,17 +1165,11 @@ class TestCollectionSearchInvalid(TestcaseBase):
                                            dim=dim, is_index=False)[0:5]
         # 2. create index
         default_index = {"index_type": "BIN_FLAT", "params": {"nlist": 128}, "metric_type": metric}
-        collection_w.create_index("binary_vector", default_index)
-        collection_w.load()
-        # 3. generate search vectors
-        binary_vectors = cf.gen_binary_vectors(nq, dim)[1]
-        # 4. search and compare the distance
-        search_params = {"metric_type": metric, "params": {"nprobe": 10, "radius": 10, "range_filter": 1}}
-        collection_w.search(binary_vectors[:nq], "binary_vector",
-                            search_params, default_limit,
-                            check_task=CheckTasks.err_res,
-                            check_items={"err_code": 1,
-                                         "err_msg": f"invalid metric type"})[0]
+        collection_w.create_index("binary_vector", default_index,
+                                  check_task=CheckTasks.err_res,
+                                  check_items={"err_code": 1,
+                                               "err_msg": "metric type not found or not supported, "
+                                                          "supported: [HAMMING JACCARD]"})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_search_dynamic_compare_two_fields(self):
@@ -1232,6 +1229,8 @@ class TestCollectionSearch(TestcaseBase):
 
     @pytest.fixture(scope="function", params=["JACCARD", "HAMMING", "TANIMOTO"])
     def metrics(self, request):
+        if request.param == "TANIMOTO":
+            pytest.skip("TANIMOTO not supported now")
         yield request.param
 
     @pytest.fixture(scope="function", params=[False, True])
@@ -1244,6 +1243,10 @@ class TestCollectionSearch(TestcaseBase):
 
     @pytest.fixture(scope="function", params=["IP", "COSINE", "L2"])
     def metric_type(self, request):
+        yield request.param
+
+    @pytest.fixture(scope="function", params=[True, False])
+    def random_primary_key(self, request):
         yield request.param
 
     """
@@ -1388,6 +1391,35 @@ class TestCollectionSearch(TestcaseBase):
         for hits in search_res:
             # verify that top 1 hit is itself,so min distance is 0
             assert 1.0 - hits.distances[0] <= epsilon
+
+    @pytest.mark.tags(CaseLabel.L1)
+    def test_search_random_primary_key(self, random_primary_key):
+        """
+        target: test search for collection with random primary keys
+        method: create connection, collection, insert and search
+        expected: Search without errors and data consistency
+        """
+        # 1. initialize collection with random primary key
+
+        collection_w, _vectors, _, insert_ids, time_stamp = \
+            self.init_collection_general(prefix, True, 10, random_primary_key=random_primary_key)[0:5]
+        # 2. search
+        log.info("test_search_random_primary_key: searching collection %s" % collection_w.name)
+        vectors = [[random.random() for _ in range(default_dim)] for _ in range(default_nq)]
+        collection_w.search(vectors[:default_nq], default_search_field,
+                            default_search_params, default_limit,
+                            default_search_exp,
+                            output_fields=[default_int64_field_name,
+                                           default_float_field_name,
+                                           default_json_field_name],
+                            check_task=CheckTasks.check_search_results,
+                            check_items={"nq": default_nq,
+                                         "ids": insert_ids,
+                                         "limit": 10,
+                                         "original_entities": _vectors,
+                                         "output_fields": [default_int64_field_name,
+                                                           default_float_field_name,
+                                                           default_json_field_name]})
 
     @pytest.mark.tags(CaseLabel.L1)
     @pytest.mark.parametrize("dup_times", [1, 2, 3])
@@ -6007,6 +6039,8 @@ class TestCollectionRangeSearch(TestcaseBase):
 
     @pytest.fixture(scope="function", params=["JACCARD", "HAMMING", "TANIMOTO"])
     def metrics(self, request):
+        if request.param == "TANIMOTO":
+            pytest.skip("TANIMOTO not supported now")
         yield request.param
 
     @pytest.fixture(scope="function", params=[False, True])
@@ -8364,8 +8398,9 @@ class TestCollectionLoadOperation(TestcaseBase):
         partition_w2.release()
         # search on collection
         collection_w.search(vectors[:1], field_name, default_search_params, 200,
-                            check_task=CheckTasks.check_search_results,
-                            check_items={"nq": 1, "limit": 0})
+                            check_task=CheckTasks.err_res,
+                            check_items={ct.err_code: 1,
+                                         ct.err_msg: "fail to get shard leaders from QueryCoord: collection not loaded"})
 
     @pytest.mark.tags(CaseLabel.L2)
     @pytest.mark.xfail(reason="issue #24446")

@@ -18,6 +18,7 @@
 #include "common/CGoHelper.h"
 #include "storage/RemoteChunkManagerSingleton.h"
 #include "storage/LocalChunkManagerSingleton.h"
+#include "storage/ChunkCacheSingleton.h"
 
 CStatus
 GetLocalUsedSize(const char* c_dir, int64_t* size) {
@@ -69,6 +70,8 @@ InitRemoteChunkManagerSingleton(CStorageConfig c_storage_config) {
         storage_config.useIAM = c_storage_config.useIAM;
         milvus::storage::RemoteChunkManagerSingleton::GetInstance().Init(
             storage_config);
+
+        milvus::storage::ChunkCacheSingleton::GetInstance().Init("/tmp/milvus/");
 
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {

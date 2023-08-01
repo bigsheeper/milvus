@@ -45,9 +45,6 @@ type TestGetVectorSuite struct {
 	metricType string
 	pkType     schemapb.DataType
 	vecType    schemapb.DataType
-
-	// expected
-	searchFailed bool
 }
 
 func (s *TestGetVectorSuite) run() {
@@ -175,11 +172,6 @@ func (s *TestGetVectorSuite) run() {
 
 	searchResp, err := s.Cluster.Proxy.Search(ctx, searchReq)
 	s.Require().NoError(err)
-	if s.searchFailed {
-		s.Require().NotEqual(searchResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
-		s.T().Logf("reason:%s", searchResp.GetStatus().GetReason())
-		return
-	}
 	s.Require().Equal(searchResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
 
 	result := searchResp.GetResults()
@@ -261,7 +253,6 @@ func (s *TestGetVectorSuite) TestGetVector_FLAT() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -272,7 +263,6 @@ func (s *TestGetVectorSuite) TestGetVector_IVF_FLAT() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -283,7 +273,6 @@ func (s *TestGetVectorSuite) TestGetVector_IVF_PQ() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = true
 	s.run()
 }
 
@@ -294,7 +283,6 @@ func (s *TestGetVectorSuite) TestGetVector_IVF_SQ8() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = true
 	s.run()
 }
 
@@ -305,7 +293,6 @@ func (s *TestGetVectorSuite) TestGetVector_HNSW() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -316,7 +303,6 @@ func (s *TestGetVectorSuite) TestGetVector_IP() {
 	s.metricType = metric.IP
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -327,7 +313,6 @@ func (s *TestGetVectorSuite) TestGetVector_StringPK() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_VarChar
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -338,7 +323,6 @@ func (s *TestGetVectorSuite) TestGetVector_BinaryVector() {
 	s.metricType = metric.JACCARD
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_BinaryVector
-	s.searchFailed = false
 	s.run()
 }
 
@@ -350,15 +334,25 @@ func (s *TestGetVectorSuite) TestGetVector_Big_NQ_TOPK() {
 	s.metricType = metric.L2
 	s.pkType = schemapb.DataType_Int64
 	s.vecType = schemapb.DataType_FloatVector
-	s.searchFailed = false
 	s.run()
 }
 
-//func (s *TestGetVectorSuite) TestGetVector_DISKANN() {
+//func (s *TestGetVectorSuite) TestGetVector_DISKANN_L2() {
 //	s.nq = 10
 //	s.topK = 10
 //	s.indexType = integration.IndexDISKANN
 //	s.metricType = distance.L2
+//	s.pkType = schemapb.DataType_Int64
+//	s.vecType = schemapb.DataType_FloatVector
+//	s.searchFailed = false
+//	s.run()
+//}
+
+//func (s *TestGetVectorSuite) TestGetVector_DISKANN_IP() {
+//	s.nq = 10
+//	s.topK = 10
+//	s.indexType = integration.IndexDISKANN
+//	s.metricType = distance.IP
 //	s.pkType = schemapb.DataType_Int64
 //	s.vecType = schemapb.DataType_FloatVector
 //	s.searchFailed = false

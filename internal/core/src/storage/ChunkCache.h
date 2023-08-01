@@ -26,6 +26,7 @@ class ChunkCache {
 public:
     explicit ChunkCache(std::string path)
     : path_prefix_(std::move(path)) {
+//        columns_ = ColumnTable{};
     }
 
 public:

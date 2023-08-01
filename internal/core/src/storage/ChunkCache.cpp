@@ -27,8 +27,11 @@ ChunkCache::Read(const std::string& filepath) {
 //    }
     ColumnTable::const_accessor ca;
     if (columns_.find(ca, filepath)) {
-        return ca->second;
+        auto res = ca->second;
+        ca.release();
+        return res;
     }
+    ca.release();
 
     auto rcm = RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
     auto object_data = GetObjectData(rcm.get(), std::vector<std::string>{filepath});
@@ -75,7 +78,6 @@ ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
                fmt::format("[ChunkCache] failed to create mmap file {}", filepath.c_str()));
 
     // write the field data to disk
-    size_t total_written{0};
     auto data_size = 0;
 
     data_size += field_data->Size();
@@ -85,7 +87,7 @@ ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
             fmt::format(
                     "[ChunkCache] failed to write data file {}, written {} but total {}, err: {}",
                     filepath.c_str(),
-                    total_written,
+                    data_size,
                     data_size,
                     strerror(errno)));
     auto ok = fsync(fd);
@@ -94,9 +96,7 @@ ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
                            filepath.c_str(),
                            strerror(errno)));
 
-    auto column = std::make_shared<Column>(fd, total_written, num_rows, data_type);
-    column->Append(static_cast<const char*>(field_data->Data()),
-                   field_data->Size());
+    auto column = std::make_shared<Column>(fd, data_size, num_rows, data_type);
 
     // unlink and close
     ok = unlink(filepath.c_str());

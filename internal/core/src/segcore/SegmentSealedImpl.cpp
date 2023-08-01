@@ -653,7 +653,7 @@ SegmentSealedImpl::get_vector(FieldId field_id,
                 const auto& [data_path, offset_in_binlog] = get_field_data_path(field_id, ids[i]);
                 const auto& column = cc->Read(data_path);
                 auto vector = &column->Data()[offset_in_binlog*row_bytes];
-                std::memcpy(buf.data()+i, vector, row_bytes);
+                std::memcpy(buf.data()+i*row_bytes, vector, row_bytes);
             }
             return segcore::CreateVectorDataArrayFrom(buf.data(), count, field_meta);
         }

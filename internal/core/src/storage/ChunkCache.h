@@ -45,6 +45,9 @@ private:
     std::shared_ptr<ColumnBase>
     Mmap(const std::string& filepath, const FieldDataPtr& field_data);
 
+    std::filesystem::path
+    GetFilepath(const std::string& filepath);
+
 private:
     using ColumnTable = tbb::concurrent_hash_map<std::string, std::shared_ptr<ColumnBase>>;
 

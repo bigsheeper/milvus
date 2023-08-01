@@ -221,6 +221,14 @@ func (node *QueryNode) InitSegcore() error {
 	mmapDirPath := paramtable.Get().QueryNodeCfg.MmapDirPath.GetValue()
 	if len(mmapDirPath) > 0 {
 		log.Info("mmap enabled", zap.String("dir", mmapDirPath))
+	} else {
+		// TODO: 1. fallback to local path, use mmap; 2. disable cache, read from remote each time get vector;
+		mmapDirPath = paramtable.Get().LocalStorageCfg.Path.GetValue()
+		log.Info("fallback to local storage path", zap.String("dir", mmapDirPath))
+	}
+	err := initcore.InitChunkCache(mmapDirPath)
+	if err != nil {
+		return err
 	}
 
 	initcore.InitTraceConfig(paramtable.Get())

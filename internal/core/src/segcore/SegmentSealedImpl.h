@@ -112,6 +112,11 @@ class SegmentSealedImpl : public SegmentSealed {
            const IdArray* pks,
            const Timestamp* timestamps) override;
 
+    std::vector<OffsetMap::OffsetType>
+    find_first(int64_t limit, const BitsetType& bitset) const override {
+        return insert_record_.pk2offset_->find_first(limit, bitset);
+    }
+
  protected:
     // blob and row_count
     SpanBase
@@ -140,6 +145,11 @@ class SegmentSealedImpl : public SegmentSealed {
 
     int64_t
     get_active_count(Timestamp ts) const override;
+
+    const ConcurrentVector<Timestamp>&
+    get_timestamps() const override {
+        return insert_record_.timestamps_;
+    }
 
  private:
     template <typename T>
@@ -204,17 +214,6 @@ class SegmentSealedImpl : public SegmentSealed {
 
     std::pair<std::unique_ptr<IdArray>, std::vector<SegOffset>>
     search_ids(const IdArray& id_array, Timestamp timestamp) const override;
-
-    std::vector<SegOffset>
-    search_ids(const BitsetView& view, Timestamp timestamp) const override;
-
-    std::vector<SegOffset>
-    search_ids(const BitsetView& view,
-               const std::vector<int64_t>& offsets,
-               Timestamp timestamp) const override;
-
-    std::vector<SegOffset>
-    search_ids(const BitsetType& view, Timestamp timestamp) const override;
 
     std::tuple<std::string, int64_t>
     get_field_data_path(FieldId field_id, int64_t offset) const;

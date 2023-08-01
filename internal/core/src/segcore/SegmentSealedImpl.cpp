@@ -634,13 +634,32 @@ SegmentSealedImpl::get_vector(FieldId field_id,
         auto has_raw_data = vec_index->HasRawData();
 
         if (has_raw_data) {
+            // If index has raw data, get vector from memory.
             auto ids_ds = GenIdsDataset(count, ids);
             auto vector = vec_index->GetVector(ids_ds);
             return segcore::CreateVectorDataArrayFrom(
                 vector.data(), count, field_meta);
         } else {
-            // TODO: group by bin log files to accelerate
+            // If index doesn't have raw data, get vector from chunk cache.
             auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkManager();
+
+            // group by data_path
+            auto id_to_data_path = std::unordered_map<std::int64_t, std::tuple<std::string, int64_t>>{};
+            auto path_to_column = std::unordered_map<std::string, std::shared_ptr<ColumnBase>>{};
+            for (auto i = 0; i < count; i++) {
+                const auto& tuple = get_field_data_path(field_id, ids[i]);
+                id_to_data_path.emplace(ids[i], tuple);
+                path_to_column.emplace(std::get<0>(tuple), nullptr);
+            }
+
+            // read and prefetch
+            for (const auto& iter : path_to_column) {
+                auto data_path = iter.first;
+                const auto& column = cc->Read(data_path);
+                cc->Prefetch(data_path);
+                path_to_column[data_path] = column;
+            }
+
             auto dim = field_meta.get_dim();
             auto row_bytes = 0;
             if (field_meta.is_vector()) {
@@ -648,10 +667,16 @@ SegmentSealedImpl::get_vector(FieldId field_id,
             } else {
                 row_bytes = dim / 8;
             }
+            // assign to data array
             auto buf = std::vector<char>(count * row_bytes);
             for (auto i = 0; i < count; i++) {
-                const auto& [data_path, offset_in_binlog] = get_field_data_path(field_id, ids[i]);
-                const auto& column = cc->Read(data_path);
+                AssertInfo(id_to_data_path.count(ids[i]) != 0, "id not found");
+                const auto& [data_path, offset_in_binlog] = id_to_data_path.at(ids[i]);
+                AssertInfo(path_to_column.count(data_path) != 0, "column not found");
+                const auto& column = path_to_column.at(data_path);
+                AssertInfo(offset_in_binlog*row_bytes < column->Size(),
+                        fmt::format("column idx out of range, idx: {}, size: {}",
+                        offset_in_binlog*row_bytes, column->Size()));
                 auto vector = &column->Data()[offset_in_binlog*row_bytes];
                 std::memcpy(buf.data()+i*row_bytes, vector, row_bytes);
             }

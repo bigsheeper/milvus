@@ -20,7 +20,7 @@
 
 namespace milvus::storage {
 
-std::shared_ptr<Column>
+std::shared_ptr<ColumnBase>
 ChunkCache::Read(const std::string& filepath) {
 //    if (columns_.find(filepath) != columns_.end()) {
 //        return columns_.at(filepath);
@@ -65,7 +65,7 @@ ChunkCache::Prefetch(const std::string &filepath) {
                            strerror(errno)));
 }
 
-std::shared_ptr<Column>
+std::shared_ptr<ColumnBase>
 ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
     auto num_rows = field_data->get_num_rows();
     auto data_type = field_data->get_data_type();
@@ -94,7 +94,12 @@ ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
                            filepath.c_str(),
                            strerror(errno)));
 
-    auto column = std::make_shared<Column>(fd, data_size, num_rows, data_type);
+    std::shared_ptr<ColumnBase> column{};
+    if (datatype_is_variable(data_type)) {
+        AssertInfo(false, "[ChunkCache] unimplemented for variable data type");
+    } else {
+        column = std::make_shared<Column>(fd, data_size, num_rows, data_type);
+    }
 
     // unlink and close
     ok = unlink(filepath.c_str());

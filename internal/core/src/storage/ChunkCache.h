@@ -32,7 +32,7 @@ public:
 public:
     ~ChunkCache() = default;
 
-    std::shared_ptr<Column>
+    std::shared_ptr<ColumnBase>
     Read(const std::string& filepath);
 
     void
@@ -42,11 +42,11 @@ public:
     Prefetch(const std::string& filepath);
 
 private:
-    std::shared_ptr<Column>
+    std::shared_ptr<ColumnBase>
     Mmap(const std::string& filepath, const FieldDataPtr& field_data);
 
 private:
-    using ColumnTable = tbb::concurrent_hash_map<std::string, std::shared_ptr<Column>>;
+    using ColumnTable = tbb::concurrent_hash_map<std::string, std::shared_ptr<ColumnBase>>;
 
 private:
     std::string path_prefix_;

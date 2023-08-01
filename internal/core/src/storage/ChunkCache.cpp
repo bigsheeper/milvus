@@ -27,9 +27,7 @@ ChunkCache::Read(const std::string& filepath) {
 //    }
     ColumnTable::const_accessor ca;
     if (columns_.find(ca, filepath)) {
-        auto res = ca->second;
-        ca.release();
-        return res;
+        return ca->second;
     }
     ca.release();
 

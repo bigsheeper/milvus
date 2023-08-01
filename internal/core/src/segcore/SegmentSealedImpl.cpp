@@ -738,6 +738,15 @@ SegmentSealedImpl::SegmentSealedImpl(SchemaPtr schema, int64_t segment_id)
       id_(segment_id) {
 }
 
+SegmentSealedImpl::~SegmentSealedImpl() {
+    auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkManager();
+    for (const auto& iter : field_data_info_.field_infos) {
+        for (const auto& binlog: iter.second.insert_files) {
+            cc->Remove(binlog);
+        }
+    }
+}
+
 void
 SegmentSealedImpl::bulk_subscript(SystemFieldType system_type,
                                   const int64_t* seg_offsets,

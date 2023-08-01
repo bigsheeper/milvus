@@ -38,7 +38,7 @@ namespace milvus::segcore {
 class SegmentSealedImpl : public SegmentSealed {
  public:
     explicit SegmentSealedImpl(SchemaPtr schema, int64_t segment_id);
-    ~SegmentSealedImpl() override = default;
+    ~SegmentSealedImpl() override;
     void
     LoadIndex(const LoadIndexInfo& info) override;
     void

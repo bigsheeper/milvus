@@ -94,6 +94,14 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_meta,
                           std::string object_key);
 
+std::pair<std::string, size_t>
+EncodeAndUploadFieldSlice(ChunkManager* chunk_manager,
+                          uint8_t* buf,
+                          int64_t batch_size,
+                          FieldDataMeta field_data_meta,
+                          const FieldMeta& field_meta,
+                          std::string object_key);
+
 std::vector<FieldDataPtr>
 GetObjectData(ChunkManager* remote_chunk_manager,
               const std::vector<std::string>& remote_files);
@@ -105,6 +113,14 @@ PutIndexData(ChunkManager* remote_chunk_manager,
              const std::vector<std::string>& slice_names,
              FieldDataMeta& field_meta,
              IndexMeta& index_meta);
+
+std::map<std::string, int64_t>
+PutFieldData(ChunkManager* remote_chunk_manager,
+             const std::vector<const uint8_t*>& data_slices,
+             const std::vector<int64_t>& slice_sizes,
+             const std::vector<std::string>& slice_names,
+             FieldDataMeta& field_data_meta,
+             FieldMeta& field_meta);
 
 int64_t
 GetTotalNumRowsForFieldDatas(const std::vector<FieldDataPtr>& field_datas);

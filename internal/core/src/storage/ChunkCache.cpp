@@ -17,6 +17,7 @@
 #include "ChunkCache.h"
 #include "Exception.h"
 #include "RemoteChunkManagerSingleton.h"
+#include "LocalChunkManagerSingleton.h"
 
 namespace milvus::storage {
 
@@ -39,7 +40,7 @@ ChunkCache::Read(const std::string& filepath) {
     ca.release();
 
     auto rcm = RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
-    auto object_data = GetObjectData(rcm.get(), std::vector<std::string>{path});
+    auto object_data = GetObjectData(rcm.get(), std::vector<std::string>{filepath});
     AssertInfo(object_data.size() == 1, "[ChunkCache] GetObjectData failed");
     auto field_data = object_data[0];
 
@@ -77,13 +78,16 @@ ChunkCache::Prefetch(const std::string &filepath) {
 std::shared_ptr<ColumnBase>
 ChunkCache::Mmap(const std::string& filepath, const FieldDataPtr& field_data) {
     auto path = GetFilepath(filepath);
+    auto dir = path.parent_path();
+    std::filesystem::create_directories(dir);
+
     auto num_rows = field_data->get_num_rows();
     auto data_type = field_data->get_data_type();
 
     int fd =
             open(path.c_str(), O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
     AssertInfo(fd != -1,
-               fmt::format("[ChunkCache] failed to create mmap file {}", path.c_str()));
+               fmt::format("[ChunkCache] failed to create mmap file {}, err: {}", path.c_str(), strerror(errno)));
 
     // write the field data to disk
     auto data_size = 0;

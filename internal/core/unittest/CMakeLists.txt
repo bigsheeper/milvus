@@ -53,6 +53,7 @@ set(MILVUS_TEST_FILES
         test_integer_overflow.cpp
         test_offset_ordered_map.cpp
         test_offset_ordered_array.cpp
+        test_chunk_cache.cpp
         )
 
 if ( BUILD_DISK_ANN STREQUAL "ON" )

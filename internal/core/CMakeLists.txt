@@ -126,7 +126,7 @@ if (LINUX OR MSYS)
                   )
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
         append_flags( CMAKE_CXX_FLAGS
-                "-O3"
+#                "-O3"
                 )
     endif()
 endif ()

@@ -21,6 +21,7 @@
 #include "exceptions/EasyAssert.h"
 #include "common/Consts.h"
 #include "storage/FieldData.h"
+#include "storage/InsertData.h"
 #include "storage/FieldDataInterface.h"
 #include "storage/ThreadPool.h"
 #include "storage/LocalChunkManager.h"
@@ -375,6 +376,24 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
     return std::make_pair(std::move(object_key), serialized_index_size);
 }
 
+std::pair<std::string, size_t>
+EncodeAndUploadFieldSlice(ChunkManager* chunk_manager,
+                          uint8_t* buf,
+                          int64_t batch_size,
+                          FieldDataMeta field_data_meta,
+                          const FieldMeta& field_meta,
+                          std::string object_key) {
+    auto field_data = CreateFieldData(field_meta.get_data_type());
+    field_data->FillFieldData(buf, batch_size);
+    auto insertData = std::make_shared<InsertData>(field_data);
+    insertData->SetFieldDataMeta(field_data_meta);
+    auto serialized_index_data = insertData->serialize_to_remote_file();
+    auto serialized_index_size = serialized_index_data.size();
+    chunk_manager->Write(
+            object_key, serialized_index_data.data(), serialized_index_size);
+    return std::make_pair(std::move(object_key), serialized_index_size);
+}
+
 // /**
 //  * Returns the current resident set size (physical memory use) measured
 //  * in bytes, or zero if the value cannot be determined on this OS.
@@ -432,6 +451,40 @@ GetObjectData(ChunkManager* remote_chunk_manager,
 
     ReleaseArrowUnused();
     return datas;
+}
+
+std::map<std::string, int64_t>
+PutFieldData(ChunkManager* remote_chunk_manager,
+             const std::vector<const uint8_t*>& data_slices,
+             const std::vector<int64_t>& slice_sizes,
+             const std::vector<std::string>& slice_names,
+             FieldDataMeta& field_data_meta,
+             FieldMeta& field_meta) {
+    auto& pool = ThreadPool::GetInstance();
+    std::vector<std::future<std::pair<std::string, size_t>>> futures;
+    AssertInfo(data_slices.size() == slice_sizes.size(),
+               "inconsistent size of data slices with slice sizes!");
+    AssertInfo(data_slices.size() == slice_names.size(),
+               "inconsistent size of data slices with slice names!");
+
+    for (int64_t i = 0; i < data_slices.size(); ++i) {
+        futures.push_back(pool.Submit(EncodeAndUploadFieldSlice,
+                                      remote_chunk_manager,
+                                      const_cast<uint8_t*>(data_slices[i]),
+                                      slice_sizes[i],
+                                      field_data_meta,
+                                      field_meta,
+                                      slice_names[i]));
+    }
+
+    std::map<std::string, int64_t> remote_paths_to_size;
+    for (auto& future : futures) {
+        auto res = future.get();
+        remote_paths_to_size[res.first] = res.second;
+    }
+
+    ReleaseArrowUnused();
+    return remote_paths_to_size;
 }
 
 std::map<std::string, int64_t>

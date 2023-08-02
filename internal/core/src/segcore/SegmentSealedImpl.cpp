@@ -641,7 +641,7 @@ SegmentSealedImpl::get_vector(FieldId field_id,
                 vector.data(), count, field_meta);
         } else {
             // If index doesn't have raw data, get vector from chunk cache.
-            auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkManager();
+            auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkCache();
 
             // group by data_path
             auto id_to_data_path = std::unordered_map<std::int64_t, std::tuple<std::string, int64_t>>{};
@@ -764,7 +764,7 @@ SegmentSealedImpl::SegmentSealedImpl(SchemaPtr schema, int64_t segment_id)
 }
 
 SegmentSealedImpl::~SegmentSealedImpl() {
-    auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkManager();
+    auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkCache();
     for (const auto& iter : field_data_info_.field_infos) {
         for (const auto& binlog: iter.second.insert_files) {
             cc->Remove(binlog);

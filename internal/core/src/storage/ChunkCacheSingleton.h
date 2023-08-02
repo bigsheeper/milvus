@@ -52,7 +52,7 @@ public:
     }
 
     ChunkCachePtr
-    GetChunkManager() {
+    GetChunkCache() {
         return cc_;
     }
 

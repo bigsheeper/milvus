@@ -16,6 +16,11 @@
 #include "segcore/SegmentSealedImpl.h"
 #include "test_utils/DataGen.h"
 #include "index/IndexFactory.h"
+#include "storage/Util.h"
+#include "storage/ChunkCacheSingleton.h"
+#include "storage/RemoteChunkManagerSingleton.h"
+#include "storage/MinioChunkManager.h"
+#include "test_utils/indexbuilder_test_utils.h"
 
 using namespace milvus;
 using namespace milvus::query;
@@ -1308,6 +1313,17 @@ TEST(Sealed, GetVectorFromChunkCache) {
     auto topK = 5;
     auto N = ROW_COUNT;
     auto metric_type = knowhere::metric::L2;
+    auto index_type = knowhere::IndexEnum::INDEX_FAISS_IVFPQ;
+
+    auto mmap_dir = "/tmp/mmap";
+    auto file_name = std::string("sealed_test_get_vector_from_chunk_cache/insert_log/1/101/1000000");
+
+    auto sc = milvus::storage::StorageConfig{};
+    milvus::storage::RemoteChunkManagerSingleton::GetInstance().Init(sc);
+    auto mcm = std::make_unique<milvus::storage::MinioChunkManager>(sc);
+    mcm->CreateBucket(sc.bucket_name);
+    milvus::storage::ChunkCacheSingleton::GetInstance().Init(mmap_dir);
+
     auto schema = std::make_shared<Schema>();
     auto fakevec_id = schema->AddDebugField(
             "fakevec", DataType::VECTOR_FLOAT, dim, metric_type);
@@ -1321,22 +1337,42 @@ TEST(Sealed, GetVectorFromChunkCache) {
     schema->set_primary_field_id(counter_id);
 
     auto dataset = DataGen(schema, N);
+    auto field_data_meta = milvus::storage::FieldDataMeta{
+            1, 2, 3, fakevec_id.get()
+    };
+    auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), milvus::FieldId(101), milvus::DataType::VECTOR_FLOAT, dim, metric_type);
+
+    auto rcm = milvus::storage::RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
+    auto data = dataset.get_col<uint8_t>(fakevec_id);
+    auto data_slices = std::vector<const uint8_t*>{data.data()};
+    auto slice_sizes = std::vector<int64_t>{static_cast<int64_t>(data.size())};
+    auto slice_names = std::vector<std::string>{file_name};
+    PutFieldData(rcm.get(), data_slices, slice_sizes, slice_names, field_data_meta, field_meta);
 
     auto fakevec = dataset.get_col<float>(fakevec_id);
-
+    auto conf = generate_build_conf(index_type, metric_type);
+    auto database = knowhere::GenDataSet(N, dim, fakevec.data());
+    auto indexing = std::make_unique<index::VectorMemIndex>(index_type, metric_type);
+    indexing->BuildWithDataset(database, conf);
     auto segment_sealed = CreateSealedSegment(schema);
 
-    auto indexing = GenVecIndexing(N, dim, fakevec.data());
     LoadIndexInfo vec_info;
     vec_info.field_id = fakevec_id.get();
     vec_info.index = std::move(indexing);
     vec_info.index_params["metric_type"] = knowhere::metric::L2;
     segment_sealed->LoadIndex(vec_info);
 
-    auto segment = dynamic_cast<SegmentSealedImpl*>(segment_sealed.get());
+    auto field_binlog_info = FieldBinlogInfo{
+            fakevec_id.get(), N, std::vector<int64_t>{N}, std::vector<std::string>{file_name}
+    };
+    segment_sealed->AddFieldDataInfo(LoadFieldDataInfo{
+        std::map<int64_t, FieldBinlogInfo>{{fakevec_id.get(), field_binlog_info}},
+        mmap_dir,
+    });
 
+    auto segment = dynamic_cast<SegmentSealedImpl*>(segment_sealed.get());
     auto has = segment->HasRawData(vec_info.field_id);
-    EXPECT_TRUE(has);
+    EXPECT_FALSE(has);
 
     auto ids_ds = GenRandomIds(N);
     auto result = segment->get_vector(fakevec_id, ids_ds->GetIds(), N);
@@ -1349,4 +1385,15 @@ TEST(Sealed, GetVectorFromChunkCache) {
             EXPECT_TRUE(vector[i * dim + j] == fakevec[id * dim + j]);
         }
     }
+
+    delete segment;
+    auto exist = std::filesystem::exists(mmap_dir+std::string("/")+file_name);
+    Assert(!exist);
+
+    rcm->Remove(file_name);
+    std::filesystem::remove_all(mmap_dir);
+    exist = rcm->Exist(file_name);
+    Assert(!exist);
+    exist = std::filesystem::exists(mmap_dir);
+    Assert(!exist);
 }

@@ -383,7 +383,7 @@ EncodeAndUploadFieldSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_data_meta,
                           const FieldMeta& field_meta,
                           std::string object_key) {
-    auto field_data = CreateFieldData(field_meta.get_data_type());
+    auto field_data = CreateFieldData(field_meta.get_data_type(), field_meta.get_dim(), 0);
     field_data->FillFieldData(buf, batch_size);
     auto insertData = std::make_shared<InsertData>(field_data);
     insertData->SetFieldDataMeta(field_data_meta);

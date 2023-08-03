@@ -56,8 +56,8 @@ TEST(ChunkCacheTest, Read) {
     auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), milvus::FieldId(101), milvus::DataType::VECTOR_FLOAT, dim, knowhere::metric::L2);
 
     auto rcm = milvus::storage::RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
-    auto data = dataset.get_col<uint8_t>(fake_id);
-    auto data_slices = std::vector<const uint8_t*>{data.data()};
+    auto data = dataset.get_col<float>(fake_id);
+    auto data_slices = std::vector<const uint8_t*>{(uint8_t*)data.data()};
     auto slice_sizes = std::vector<int64_t>{static_cast<int64_t>(data.size())};
     auto slice_names = std::vector<std::string>{file_name};
     PutFieldData(rcm.get(), data_slices, slice_sizes, slice_names, field_data_meta, field_meta);

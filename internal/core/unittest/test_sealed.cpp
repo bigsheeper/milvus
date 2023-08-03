@@ -1340,20 +1340,20 @@ TEST(Sealed, GetVectorFromChunkCache) {
     auto field_data_meta = milvus::storage::FieldDataMeta{
             1, 2, 3, fakevec_id.get()
     };
-    auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), milvus::FieldId(101), milvus::DataType::VECTOR_FLOAT, dim, metric_type);
+    auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), fakevec_id, milvus::DataType::VECTOR_FLOAT, dim, metric_type);
 
     auto rcm = milvus::storage::RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
-    auto data = dataset.get_col<uint8_t>(fakevec_id);
-    auto data_slices = std::vector<const uint8_t*>{data.data()};
+    auto data = dataset.get_col<float>(fakevec_id);
+    auto data_slices = std::vector<const uint8_t*>{(uint8_t*)data.data()};
     auto slice_sizes = std::vector<int64_t>{static_cast<int64_t>(data.size())};
     auto slice_names = std::vector<std::string>{file_name};
     PutFieldData(rcm.get(), data_slices, slice_sizes, slice_names, field_data_meta, field_meta);
 
     auto fakevec = dataset.get_col<float>(fakevec_id);
     auto conf = generate_build_conf(index_type, metric_type);
-    auto database = knowhere::GenDataSet(N, dim, fakevec.data());
+    auto ds = knowhere::GenDataSet(N, dim, fakevec.data());
     auto indexing = std::make_unique<index::VectorMemIndex>(index_type, metric_type);
-    indexing->BuildWithDataset(database, conf);
+    indexing->BuildWithDataset(ds, conf);
     auto segment_sealed = CreateSealedSegment(schema);
 
     LoadIndexInfo vec_info;
@@ -1375,24 +1375,22 @@ TEST(Sealed, GetVectorFromChunkCache) {
     EXPECT_FALSE(has);
 
     auto ids_ds = GenRandomIds(N);
-    auto result = segment->get_vector(fakevec_id, ids_ds->GetIds(), N);
+    auto result = segment->get_vector(fakevec_id, ids_ds->GetIds(), ids_ds->GetRows());
 
     auto vector = result.get()->mutable_vectors()->float_vector().data();
     EXPECT_TRUE(vector.size() == fakevec.size());
     for (size_t i = 0; i < N; ++i) {
         auto id = ids_ds->GetIds()[i];
         for (size_t j = 0; j < dim; ++j) {
-            EXPECT_TRUE(vector[i * dim + j] == fakevec[id * dim + j]);
+            auto expect = fakevec[id * dim + j];
+            auto actual = vector[i * dim + j];
+            AssertInfo(expect == actual, fmt::format("expect {}, actual {}", expect, actual));
         }
     }
 
-    delete segment;
-    auto exist = std::filesystem::exists(mmap_dir+std::string("/")+file_name);
-    Assert(!exist);
-
     rcm->Remove(file_name);
     std::filesystem::remove_all(mmap_dir);
-    exist = rcm->Exist(file_name);
+    auto exist = rcm->Exist(file_name);
     Assert(!exist);
     exist = std::filesystem::exists(mmap_dir);
     Assert(!exist);

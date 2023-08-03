@@ -23,7 +23,7 @@
 #include "storage/FieldData.h"
 #include "storage/InsertData.h"
 #include "storage/FieldDataInterface.h"
-#include "storage/ThreadPool.h"
+#include "storage/ThreadPools.h"
 #include "storage/LocalChunkManager.h"
 #include "storage/MinioChunkManager.h"
 #include "storage/MemFileManagerImpl.h"
@@ -436,7 +436,7 @@ EncodeAndUploadFieldSlice(ChunkManager* chunk_manager,
 std::vector<FieldDataPtr>
 GetObjectData(ChunkManager* remote_chunk_manager,
               const std::vector<std::string>& remote_files) {
-    auto& pool = ThreadPool::GetInstance();
+    auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::HIGH);
     std::vector<std::future<std::unique_ptr<DataCodec>>> futures;
     for (auto& file : remote_files) {
         futures.emplace_back(pool.Submit(
@@ -448,7 +448,6 @@ GetObjectData(ChunkManager* remote_chunk_manager,
         auto res = futures[i].get();
         datas.emplace_back(res->GetFieldData());
     }
-
     ReleaseArrowUnused();
     return datas;
 }
@@ -460,7 +459,7 @@ PutFieldData(ChunkManager* remote_chunk_manager,
              const std::vector<std::string>& slice_names,
              FieldDataMeta& field_data_meta,
              FieldMeta& field_meta) {
-    auto& pool = ThreadPool::GetInstance();
+    auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
     std::vector<std::future<std::pair<std::string, size_t>>> futures;
     AssertInfo(data_slices.size() == slice_sizes.size(),
                "inconsistent size of data slices with slice sizes!");
@@ -494,7 +493,7 @@ PutIndexData(ChunkManager* remote_chunk_manager,
              const std::vector<std::string>& slice_names,
              FieldDataMeta& field_meta,
              IndexMeta& index_meta) {
-    auto& pool = ThreadPool::GetInstance();
+    auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
     std::vector<std::future<std::pair<std::string, size_t>>> futures;
     AssertInfo(data_slices.size() == slice_sizes.size(),
                "inconsistent size of data slices with slice sizes!");

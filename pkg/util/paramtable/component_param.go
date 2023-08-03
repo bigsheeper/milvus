@@ -228,6 +228,11 @@ type commonConfig struct {
 	ImportMaxFileSize ParamItem `refreshable:"true"`
 
 	MetricsPort ParamItem `refreshable:"false"`
+
+	//lock related params
+	EnableLockMetrics        ParamItem `refreshable:"false"`
+	LockSlowLogInfoThreshold ParamItem `refreshable:"true"`
+	LockSlowLogWarnThreshold ParamItem `refreshable:"true"`
 }
 
 func (p *commonConfig) init(base *BaseTable) {
@@ -679,6 +684,33 @@ like the old password verification when updating the credential`,
 		DefaultValue: "9091",
 	}
 	p.MetricsPort.Init(base.mgr)
+
+	p.EnableLockMetrics = ParamItem{
+		Key:          "common.locks.metrics.enable",
+		Version:      "2.0.0",
+		DefaultValue: "false",
+		Doc:          "whether gather statistics for metrics locks",
+		Export:       true,
+	}
+	p.EnableLockMetrics.Init(base.mgr)
+
+	p.LockSlowLogInfoThreshold = ParamItem{
+		Key:          "common.locks.threshold.info",
+		Version:      "2.0.0",
+		DefaultValue: "500",
+		Doc:          "minimum milliseconds for printing durations in info level",
+		Export:       true,
+	}
+	p.LockSlowLogInfoThreshold.Init(base.mgr)
+
+	p.LockSlowLogWarnThreshold = ParamItem{
+		Key:          "common.locks.threshold.warn",
+		Version:      "2.0.0",
+		DefaultValue: "1000",
+		Doc:          "minimum milliseconds for printing durations in warn level",
+		Export:       true,
+	}
+	p.LockSlowLogWarnThreshold.Init(base.mgr)
 }
 
 type traceConfig struct {
@@ -936,6 +968,8 @@ type proxyConfig struct {
 	ReplicaSelectionPolicy       ParamItem `refreshable:"false"`
 	CheckQueryNodeHealthInterval ParamItem `refreshable:"false"`
 	CostMetricsExpireTime        ParamItem `refreshable:"true"`
+	RetryTimesOnReplica          ParamItem `refreshable:"true"`
+	RetryTimesOnHealthCheck      ParamItem `refreshable:"true"`
 }
 
 func (p *proxyConfig) init(base *BaseTable) {
@@ -952,7 +986,7 @@ func (p *proxyConfig) init(base *BaseTable) {
 	p.HealthCheckTimetout = ParamItem{
 		Key:          "proxy.healthCheckTimetout",
 		Version:      "2.3.0",
-		DefaultValue: "500",
+		DefaultValue: "1000",
 		PanicIfEmpty: true,
 		Doc:          "ms, the interval that to do component healthy check",
 		Export:       true,
@@ -1180,6 +1214,21 @@ please adjust in embedded Milvus: false`,
 	}
 	p.CostMetricsExpireTime.Init(base.mgr)
 
+	p.RetryTimesOnReplica = ParamItem{
+		Key:          "proxy.retryTimesOnReplica",
+		Version:      "2.3.0",
+		DefaultValue: "2",
+		Doc:          "retry times on each replica",
+	}
+	p.RetryTimesOnReplica.Init(base.mgr)
+
+	p.RetryTimesOnHealthCheck = ParamItem{
+		Key:          "proxy.retryTimesOnHealthCheck",
+		Version:      "2.3.0",
+		DefaultValue: "3",
+		Doc:          "set query node unavailable on proxy when heartbeat failures reach this limit",
+	}
+	p.RetryTimesOnHealthCheck.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

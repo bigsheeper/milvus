@@ -58,7 +58,7 @@ TEST(ChunkCacheTest, Read) {
     auto rcm = milvus::storage::RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
     auto data = dataset.get_col<float>(fake_id);
     auto data_slices = std::vector<const uint8_t*>{(uint8_t*)data.data()};
-    auto slice_sizes = std::vector<int64_t>{static_cast<int64_t>(data.size())};
+    auto slice_sizes = std::vector<int64_t>{static_cast<int64_t>(N)};
     auto slice_names = std::vector<std::string>{file_name};
     PutFieldData(rcm.get(), data_slices, slice_sizes, slice_names, field_data_meta, field_meta);
 
@@ -67,9 +67,9 @@ TEST(ChunkCacheTest, Read) {
     Assert(column->Size() == dim * N * 4);
 
     cc->Prefetch(file_name);
-    auto actual = column->Data();
-    for (auto i = 0; i < data.size(); i++) {
-        AssertInfo(data[i] == (uint8_t)actual[i], fmt::format("expect {}, actual {}", data[i], actual[i]));
+    auto actual = (float*)column->Data();
+    for (auto i = 0; i < N; i++) {
+        AssertInfo(data[i] == actual[i], fmt::format("expect {}, actual {}", data[i], actual[i]));
     }
 
     cc->Remove(file_name);

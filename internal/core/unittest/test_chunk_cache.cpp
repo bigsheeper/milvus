@@ -30,7 +30,7 @@
 TEST(ChunkCacheTest, Read) {
     auto N = 10000;
     auto dim = 128;
-    auto metric_type = "L2";
+    auto metric_type = knowhere::metric::L2;
 
     auto mmap_dir = "/tmp/mmap";
     auto file_name = std::string("chunk_cache_test/insert_log/1/101/1000000");
@@ -51,9 +51,9 @@ TEST(ChunkCacheTest, Read) {
     auto dataset = milvus::segcore::DataGen(schema, N);
 
     auto field_data_meta = milvus::storage::FieldDataMeta{
-        1, 2, 3, 101
+            1, 2, 3, fake_id.get()
     };
-    auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), milvus::FieldId(101), milvus::DataType::VECTOR_FLOAT, dim, knowhere::metric::L2);
+    auto field_meta = milvus::FieldMeta(milvus::FieldName("facevec"), fake_id, milvus::DataType::VECTOR_FLOAT, dim, metric_type);
 
     auto rcm = milvus::storage::RemoteChunkManagerSingleton::GetInstance().GetRemoteChunkManager();
     auto data = dataset.get_col<float>(fake_id);

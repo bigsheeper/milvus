@@ -766,8 +766,8 @@ SegmentSealedImpl::SegmentSealedImpl(SchemaPtr schema, int64_t segment_id)
 
 SegmentSealedImpl::~SegmentSealedImpl() {
     auto cc = storage::ChunkCacheSingleton::GetInstance().GetChunkCache();
-    for (const auto& iter : field_data_info_.field_infos) {
-        for (const auto& binlog: iter.second.insert_files) {
+    for (const auto & iter : field_data_info_.field_infos) {
+        for (const auto & binlog: iter.second.insert_files) {
             cc->Remove(binlog);
         }
     }

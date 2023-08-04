@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <utility>
+#include <tuple>
 
 #include "common/LoadInfo.h"
 #include "pb/segcore.pb.h"

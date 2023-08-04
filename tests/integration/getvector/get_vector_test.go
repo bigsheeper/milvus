@@ -286,6 +286,16 @@ func (s *TestGetVectorSuite) TestGetVector_IVF_SQ8() {
 	s.run()
 }
 
+func (s *TestGetVectorSuite) TestGetVector_IVF_SQ8_StrPK() {
+	s.nq = 10
+	s.topK = 10
+	s.indexType = integration.IndexFaissIvfSQ8
+	s.metricType = metric.L2
+	s.pkType = schemapb.DataType_VarChar
+	s.vecType = schemapb.DataType_FloatVector
+	s.run()
+}
+
 func (s *TestGetVectorSuite) TestGetVector_HNSW() {
 	s.nq = 10
 	s.topK = 10
@@ -341,10 +351,9 @@ func (s *TestGetVectorSuite) TestGetVector_Big_NQ_TOPK() {
 //	s.nq = 10
 //	s.topK = 10
 //	s.indexType = integration.IndexDISKANN
-//	s.metricType = distance.L2
+//	s.metricType = metric.L2
 //	s.pkType = schemapb.DataType_Int64
 //	s.vecType = schemapb.DataType_FloatVector
-//	s.searchFailed = false
 //	s.run()
 //}
 
@@ -352,10 +361,9 @@ func (s *TestGetVectorSuite) TestGetVector_Big_NQ_TOPK() {
 //	s.nq = 10
 //	s.topK = 10
 //	s.indexType = integration.IndexDISKANN
-//	s.metricType = distance.IP
+//	s.metricType = metric.IP
 //	s.pkType = schemapb.DataType_Int64
 //	s.vecType = schemapb.DataType_FloatVector
-//	s.searchFailed = false
 //	s.run()
 //}
 

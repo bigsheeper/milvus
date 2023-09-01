@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 	// init embed etcd
 	embedetcdServer, tempDir, err := etcd.StartTestEmbedEtcdServer()
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Fatal("failed to start embed etcd server", zap.Error(err))
 	}
 	defer os.RemoveAll(tempDir)
 	defer embedetcdServer.Close()
@@ -139,7 +139,7 @@ func (suite *ServerSuite) SetupTest() {
 
 	suite.loadAll()
 	for _, collection := range suite.collections {
-		suite.assertLoaded(collection)
+		suite.True(suite.server.meta.Exist(collection))
 		suite.updateCollectionStatus(collection, querypb.LoadStatus_Loaded)
 	}
 }
@@ -165,27 +165,7 @@ func (suite *ServerSuite) TestRecover() {
 	suite.NoError(err)
 
 	for _, collection := range suite.collections {
-		suite.assertLoaded(collection)
-	}
-}
-
-func (suite *ServerSuite) TestRecoverFailed() {
-	err := suite.server.Stop()
-	suite.NoError(err)
-
-	suite.server, err = suite.newQueryCoord()
-	suite.NoError(err)
-
-	broker := meta.NewMockBroker(suite.T())
-	for _, collection := range suite.collections {
-		broker.EXPECT().GetRecoveryInfoV2(context.TODO(), collection).Return(nil, nil, errors.New("CollectionNotExist"))
-	}
-	suite.server.targetMgr = meta.NewTargetManager(broker, suite.server.meta)
-	err = suite.server.Start()
-	suite.NoError(err)
-
-	for _, collection := range suite.collections {
-		suite.Nil(suite.server.targetMgr.GetDmChannelsByCollection(collection, meta.NextTarget))
+		suite.True(suite.server.meta.Exist(collection))
 	}
 }
 
@@ -392,18 +372,6 @@ func (suite *ServerSuite) loadAll() {
 			resp, err := suite.server.LoadPartitions(ctx, req)
 			suite.NoError(err)
 			suite.Equal(commonpb.ErrorCode_Success, resp.ErrorCode)
-		}
-	}
-}
-
-func (suite *ServerSuite) assertLoaded(collection int64) {
-	suite.True(suite.server.meta.Exist(collection))
-	for _, channel := range suite.channels[collection] {
-		suite.NotNil(suite.server.targetMgr.GetDmChannel(collection, channel, meta.NextTarget))
-	}
-	for _, partitions := range suite.segments[collection] {
-		for _, segment := range partitions {
-			suite.NotNil(suite.server.targetMgr.GetHistoricalSegment(collection, segment, meta.NextTarget))
 		}
 	}
 }

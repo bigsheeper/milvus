@@ -462,10 +462,10 @@ func (ibNode *insertBufferNode) Sync(fgMsg *flowGraphMsg, seg2Upload []UniqueID,
 		).WithRateGroup("ibNode.sync", 1, 60)
 		// check if segment is syncing
 		segment := ibNode.channel.getSegment(task.segmentID)
-		if !task.dropped && !task.flushed && segment.isSyncing() {
-			log.RatedInfo(10, "segment is syncing, skip it")
-			continue
-		}
+		//if !task.dropped && !task.flushed && segment.isSyncing() {
+		//	log.RatedInfo(10, "segment is syncing, skip it")
+		//	continue
+		//}
 		// check if task pool is full
 		if !task.dropped && !task.flushed && ibNode.flushManager.isFull() {
 			log.RatedWarn(10, "task pool is full, skip it")

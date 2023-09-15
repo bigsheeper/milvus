@@ -1271,8 +1271,8 @@ func (s *Server) WatchChannels(ctx context.Context, req *datapb.WatchChannelsReq
 // GetFlushState gets the flush state of the collection based on the provided flush ts and segment IDs.
 func (s *Server) GetFlushState(ctx context.Context, req *datapb.GetFlushStateRequest) (*milvuspb.GetFlushStateResponse, error) {
 	log := log.Ctx(ctx).With(zap.Int64("collection", req.GetCollectionID()),
-		zap.Time("flushTs", tsoutil.PhysicalTime(req.GetFlushTs()))).
-		WithRateGroup("dc.GetFlushState", 1, 60)
+		zap.Time("flushTs", tsoutil.PhysicalTime(req.GetFlushTs())),
+		zap.Any("flushTsH", req.GetFlushTs()))
 	resp := &milvuspb.GetFlushStateResponse{Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_UnexpectedError}}
 	if s.isClosed() {
 		log.Warn("DataCoord receive GetFlushState request, server closed")
@@ -1291,7 +1291,7 @@ func (s *Server) GetFlushState(ctx context.Context, req *datapb.GetFlushStateReq
 			unflushed = append(unflushed, sid)
 		}
 		if len(unflushed) != 0 {
-			log.RatedInfo(10, "DataCoord receive GetFlushState request, Flushed is false", zap.Int64s("unflushed", unflushed), zap.Int("len", len(unflushed)))
+			log.Info("DataCoord receive GetFlushState request, Flushed is false", zap.Int64s("unflushed", unflushed), zap.Int("len", len(unflushed)))
 			resp.Flushed = false
 			resp.Status.ErrorCode = commonpb.ErrorCode_Success
 			return resp, nil
@@ -1321,7 +1321,7 @@ func (s *Server) GetFlushState(ctx context.Context, req *datapb.GetFlushStateReq
 		if cp == nil || cp.GetTimestamp() < req.GetFlushTs() {
 			resp.Flushed = false
 			resp.Status.ErrorCode = commonpb.ErrorCode_Success
-			log.RatedInfo(10, "GetFlushState failed, channel unflushed", zap.String("channel", channel),
+			log.Info("GetFlushState failed, channel unflushed", zap.String("channel", channel),
 				zap.Time("CP", tsoutil.PhysicalTime(cp.GetTimestamp())),
 				zap.Duration("lag", tsoutil.PhysicalTime(req.GetFlushTs()).Sub(tsoutil.PhysicalTime(cp.GetTimestamp()))))
 			return resp, nil

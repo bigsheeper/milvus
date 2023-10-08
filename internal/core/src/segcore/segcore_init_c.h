@@ -49,6 +49,9 @@ GetCurrentIndexVersion();
 int32_t
 GetMinimalIndexVersion();
 
+void
+DumpProfFile();
+
 #ifdef __cplusplus
 }
 #endif

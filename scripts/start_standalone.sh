@@ -26,5 +26,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	fi
 fi
 
+export MALLOC_CONF="prof:true,prof_active:false,prof_prefix:/tmp/jeprof"
+
 echo "Starting standalone..."
 nohup ./bin/milvus run standalone > /tmp/standalone.log 2>&1 &

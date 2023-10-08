@@ -397,6 +397,7 @@ func (node *QueryNode) Start() error {
 		mmapDirPath := paramtable.Get().QueryNodeCfg.MmapDirPath.GetValue()
 		mmapEnabled := len(mmapDirPath) > 0
 		node.UpdateStateCode(commonpb.StateCode_Healthy)
+		go node.DumpProfPeriodically()
 		log.Info("query node start successfully",
 			zap.Int64("queryNodeID", paramtable.GetNodeID()),
 			zap.String("Address", node.address),
@@ -554,4 +555,17 @@ func (node *QueryNode) handleQueryHookEvent() {
 	paramtable.Get().Watch(paramtable.Get().AutoIndexConfig.AutoIndexSearchConfig.Key, config.NewHandler("queryHook", onEvent))
 
 	paramtable.Get().WatchKeyPrefix(paramtable.Get().AutoIndexConfig.AutoIndexTuningConfig.KeyPrefix, config.NewHandler("queryHook2", onEvent2))
+}
+
+func (node *QueryNode) DumpProfPeriodically() {
+	C.DumpProfFile()
+	ticker := time.NewTicker(30 * time.Minute)
+	for {
+		select {
+		case <-node.ctx.Done():
+			return
+		case <-ticker.C:
+			C.DumpProfFile()
+		}
+	}
 }

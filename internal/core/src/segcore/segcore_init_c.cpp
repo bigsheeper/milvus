@@ -9,6 +9,8 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
+#include <jemalloc.h>
+
 #include "config/ConfigKnowhere.h"
 #include "log/Log.h"
 #include "segcore/SegcoreConfig.h"
@@ -85,6 +87,12 @@ GetCurrentIndexVersion() {
 extern "C" int32_t
 GetMinimalIndexVersion() {
     return milvus::config::GetMinimalIndexVersion();
+}
+
+extern "C" void
+DumpProfFile() {
+    mallctl("prof.dump", NULL, NULL, NULL, 0);
+    LOG_SEGCORE_INFO_ << "dump prof file done";
 }
 
 }  // namespace milvus::segcore

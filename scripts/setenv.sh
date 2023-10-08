@@ -39,6 +39,7 @@ case "${unameOut}" in
       LIBJEMALLOC=$PWD/internal/core/output/lib/libjemalloc.so
       if test -f "$LIBJEMALLOC"; then
         export LD_PRELOAD="$LIBJEMALLOC"
+        export MALLOC_CONF="prof:true,prof_active:false,prof_prefix:/tmp/jeprof"
       else
         echo "WARN: Cannot find $LIBJEMALLOC"
       fi

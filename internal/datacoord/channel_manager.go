@@ -61,11 +61,10 @@ type ChannelManager struct {
 }
 
 type channel struct {
-	Name            string
-	CollectionID    UniqueID
-	StartPositions  []*commonpb.KeyDataPair
-	Schema          *schemapb.CollectionSchema
-	CreateTimestamp uint64
+	Name           string
+	CollectionID   UniqueID
+	StartPositions []*commonpb.KeyDataPair
+	Schema         *schemapb.CollectionSchema
 }
 
 // String implement Stringer.

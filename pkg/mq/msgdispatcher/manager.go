@@ -59,6 +59,7 @@ type dispatcherManager struct {
 	soloDispatchers map[string]*Dispatcher // vchannel -> *Dispatcher
 
 	factory   msgstream.Factory
+	startOnce sync.Once
 	closeChan chan struct{}
 	closeOnce sync.Once
 }
@@ -150,32 +151,36 @@ func (c *dispatcherManager) Close() {
 }
 
 func (c *dispatcherManager) Run() {
-	log := log.With(zap.String("role", c.role),
-		zap.Int64("nodeID", c.nodeID), zap.String("pchannel", c.pchannel))
-	log.Info("dispatcherManager is running...")
-	ticker1 := time.NewTicker(10 * time.Second)
-	ticker2 := time.NewTicker(CheckPeriod)
-	defer ticker1.Stop()
-	defer ticker2.Stop()
-	for {
-		select {
-		case <-c.closeChan:
-			log.Info("dispatcherManager exited")
-			return
-		case <-ticker1.C:
-			c.uploadMetric()
-		case <-ticker2.C:
-			c.tryMerge()
-		case <-c.lagNotifyChan:
-			c.mu.Lock()
-			c.lagTargets.Range(func(vchannel string, t *target) bool {
-				c.split(t)
-				c.lagTargets.GetAndRemove(vchannel)
-				return true
-			})
-			c.mu.Unlock()
-		}
-	}
+	c.startOnce.Do(func() {
+		go func() {
+			log := log.With(zap.String("role", c.role),
+				zap.Int64("nodeID", c.nodeID), zap.String("pchannel", c.pchannel))
+			log.Info("dispatcherManager is running...")
+			ticker1 := time.NewTicker(10 * time.Second)
+			ticker2 := time.NewTicker(CheckPeriod)
+			defer ticker1.Stop()
+			defer ticker2.Stop()
+			for {
+				select {
+				case <-c.closeChan:
+					log.Info("dispatcherManager exited")
+					return
+				case <-ticker1.C:
+					c.uploadMetric()
+				case <-ticker2.C:
+					c.tryMerge()
+				case <-c.lagNotifyChan:
+					c.mu.Lock()
+					c.lagTargets.Range(func(vchannel string, t *target) bool {
+						c.split(t)
+						c.lagTargets.GetAndRemove(vchannel)
+						return true
+					})
+					c.mu.Unlock()
+				}
+			}
+		}()
+	})
 }
 
 func (c *dispatcherManager) tryMerge() {

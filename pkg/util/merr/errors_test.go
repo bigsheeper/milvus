@@ -18,6 +18,10 @@ package merr
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/pkg/util/funcutil"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -221,6 +225,50 @@ func (s *ErrSuite) TestIsHealthyOrStopping() {
 			s.Equal(tc.expect, IsHealthyOrStopping(tc.code) == nil)
 		})
 	}
+}
+
+func TestErr(t *testing.T) {
+	t.Run("test grpc err", func(t *testing.T) {
+		e1 := status.Error(codes.Unimplemented, "mock grpc err")
+		e2 := WrapErrCollectionNotFound(0)
+		e3 := Combine(e2, e1)
+		assert.True(t, funcutil.IsGrpcErr(e3, codes.Unimplemented))
+		e4 := Combine(e1, e2)
+		assert.True(t, funcutil.IsGrpcErr(e4, codes.Unimplemented)) // fail
+	})
+
+	t.Run("test rpc", func(t *testing.T) {
+		// without combine
+		e0 := WrapErrCollectionNotFound(0)
+		status := Status(e0)
+		err := Error(status)
+		assert.True(t, errors.Is(err, ErrCollectionNotFound))
+
+		// with combine
+		e1 := WrapErrCollectionNotFound(0)
+		e2 := WrapErrChannelNotFound("ch-0")
+		e3 := Combine(e1, e2)
+		status = Status(e3)
+		err = Error(status)
+		assert.True(t, errors.Is(err, ErrCollectionNotFound)) // fail
+		assert.True(t, errors.Is(err, ErrChannelNotFound))    // fail
+	})
+
+	t.Run("test cause", func(t *testing.T) {
+		// cause of cockroach
+		e1 := errors.New("err 1")
+		e2 := errors.Wrapf(e1, "wrap e2")
+		e3 := errors.Wrapf(e2, "wrap e3")
+		assert.True(t, errors.Is(e1, errors.Cause(e3)))
+
+		// cause of merr
+		e1 = WrapErrCollectionNotFound(0)
+		e2 = WrapErrChannelNotFound("ch-0")
+		e3 = WrapErrIndexNotFound("index-0")
+		err := Combine(e1, e2, e3)
+		status := Status(err)
+		assert.Equal(t, ErrCollectionNotFound.code(), status.GetCode()) // fail
+	})
 }
 
 func TestErrors(t *testing.T) {

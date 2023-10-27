@@ -16,6 +16,8 @@ func NewRocksmqFactory(path string, cfg *paramtable.ServiceParam) msgstream.Fact
 		log.Fatal("fail to init rocksmq", zap.Error(err))
 	}
 	log.Info("init rocksmq msgstream success", zap.String("path", path))
+	log.Info("dyh debug", zap.Int64("dyh.mq.receiveBufSize", cfg.MQCfg.ReceiveBufSize.GetAsInt64()),
+		zap.Int64("dyh.mq.MQbufSize", cfg.MQCfg.MQBufSize.GetAsInt64()))
 
 	return &msgstream.CommonFactory{
 		Newer:             rmq.NewClientWithDefaultOptions,

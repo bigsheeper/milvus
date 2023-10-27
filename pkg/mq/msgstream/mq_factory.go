@@ -56,6 +56,8 @@ type PmsFactory struct {
 
 func NewPmsFactory(serviceParam *paramtable.ServiceParam) *PmsFactory {
 	config := &serviceParam.PulsarCfg
+	log.Info("dyh debug", zap.Int64("dyh.mq.receiveBufSize", serviceParam.MQCfg.ReceiveBufSize.GetAsInt64()),
+		zap.Int64("dyh.mq.MQbufSize", serviceParam.MQCfg.MQBufSize.GetAsInt64()))
 	f := &PmsFactory{
 		MQBufSize:        serviceParam.MQCfg.MQBufSize.GetAsInt64(),
 		ReceiveBufSize:   serviceParam.MQCfg.ReceiveBufSize.GetAsInt64(),
@@ -211,6 +213,8 @@ func (f *KmsFactory) NewMsgStreamDisposer(ctx context.Context) func([]string, st
 }
 
 func NewKmsFactory(config *paramtable.ServiceParam) Factory {
+	log.Info("dyh debug", zap.Int64("dyh.mq.receiveBufSize", config.MQCfg.ReceiveBufSize.GetAsInt64()),
+		zap.Int64("dyh.mq.MQbufSize", config.MQCfg.MQBufSize.GetAsInt64()))
 	f := &KmsFactory{
 		dispatcherFactory: ProtoUDFactory{},
 		ReceiveBufSize:    config.MQCfg.ReceiveBufSize.GetAsInt64(),
@@ -225,6 +229,8 @@ func NewNatsmqFactory() Factory {
 	paramtable.Init()
 	paramtable := paramtable.Get()
 	nmq.MustInitNatsMQ(nmq.ParseServerOption(paramtable))
+	log.Info("dyh debug", zap.Int64("dyh.mq.receiveBufSize", paramtable.MQCfg.ReceiveBufSize.GetAsInt64()),
+		zap.Int64("dyh.mq.MQbufSize", paramtable.MQCfg.MQBufSize.GetAsInt64()))
 	return &CommonFactory{
 		Newer:             nmq.NewClientWithDefaultOptions,
 		DispatcherFactory: ProtoUDFactory{},

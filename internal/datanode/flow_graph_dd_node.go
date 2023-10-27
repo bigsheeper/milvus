@@ -282,6 +282,7 @@ func newDDNode(ctx context.Context, collID UniqueID, vChannelName string, droppe
 	sealedSegments []*datapb.SegmentInfo, growingSegments []*datapb.SegmentInfo, compactor *compactionExecutor,
 ) (*ddNode, error) {
 	baseNode := BaseNode{}
+	log.Info("dyh debug", zap.Int32("dyh.qn.FlowGraphMaxQueueLength", Params.DataNodeCfg.FlowGraphMaxQueueLength.GetAsInt32()))
 	baseNode.SetMaxQueueLength(Params.DataNodeCfg.FlowGraphMaxQueueLength.GetAsInt32())
 	baseNode.SetMaxParallelism(Params.DataNodeCfg.FlowGraphMaxParallelism.GetAsInt32())
 

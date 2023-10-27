@@ -254,7 +254,7 @@ queryCoord:
 queryNode:
   dataSync:
     flowGraph:
-      maxQueueLength: 16 # Maximum length of task queue in flowgraph
+      maxQueueLength: 0 # Maximum length of task queue in flowgraph
       maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
   stats:
     publishInterval: 1000 # Interval for querynode to report node information (milliseconds)
@@ -399,7 +399,7 @@ dataCoord:
 dataNode:
   dataSync:
     flowGraph:
-      maxQueueLength: 16 # Maximum length of task queue in flowgraph
+      maxQueueLength: 0 # Maximum length of task queue in flowgraph
       maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
     maxParallelSyncTaskNum: 6 # Maximum number of sync tasks executed in parallel in each flush manager
   segment:

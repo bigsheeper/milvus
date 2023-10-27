@@ -468,7 +468,7 @@ Valid values: [default, pulsar, kafka, rocksmq, natsmq]`,
 	p.MQBufSize = ParamItem{
 		Key:          "mq.mqBufSize",
 		Version:      "2.3.0",
-		DefaultValue: "16",
+		DefaultValue: "0",
 		Doc:          `MQ client consumer buffer length`,
 		Export:       true,
 	}
@@ -477,7 +477,7 @@ Valid values: [default, pulsar, kafka, rocksmq, natsmq]`,
 	p.ReceiveBufSize = ParamItem{
 		Key:          "mq.receiveBufSize",
 		Version:      "2.3.0",
-		DefaultValue: "16",
+		DefaultValue: "0",
 		Doc:          "MQ consumer chan buffer length",
 	}
 	p.ReceiveBufSize.Init(base.mgr)

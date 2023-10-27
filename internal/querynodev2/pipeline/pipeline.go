@@ -66,6 +66,7 @@ func NewPipeLine(
 	delegator delegator.ShardDelegator,
 ) (Pipeline, error) {
 	pipelineQueueLength := paramtable.Get().QueryNodeCfg.FlowGraphMaxQueueLength.GetAsInt32()
+	log.Info("dyh debug", zap.Int32("dyh.qn.FlowGraphMaxQueueLength", pipelineQueueLength))
 	excludedSegments := typeutil.NewConcurrentMap[int64, *datapb.SegmentInfo]()
 
 	p := &pipeline{

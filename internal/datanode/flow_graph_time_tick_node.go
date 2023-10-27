@@ -148,6 +148,7 @@ func (ttn *ttNode) updateChannelCP(channelPos *msgpb.MsgPosition, curTs time.Tim
 
 func newTTNode(config *nodeConfig, broker broker.Broker) (*ttNode, error) {
 	baseNode := BaseNode{}
+	log.Info("dyh debug", zap.Int32("dyh.qn.FlowGraphMaxQueueLength", Params.DataNodeCfg.FlowGraphMaxQueueLength.GetAsInt32()))
 	baseNode.SetMaxQueueLength(Params.DataNodeCfg.FlowGraphMaxQueueLength.GetAsInt32())
 	baseNode.SetMaxParallelism(Params.DataNodeCfg.FlowGraphMaxParallelism.GetAsInt32())
 

@@ -28,10 +28,8 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/util/hardware"
 	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
@@ -118,7 +116,6 @@ func (fm *flowgraphManager) execute(totalMemory uint64) {
 
 func (fm *flowgraphManager) Add(ds *dataSyncService) {
 	fm.flowgraphs.Insert(ds.vchannelName, ds)
-	metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 }
 
 func (fm *flowgraphManager) addAndStartWithEtcdTickler(dn *DataNode, vchan *datapb.VchannelInfo, schema *schemapb.CollectionSchema, tickler *etcdTickler) error {
@@ -139,7 +136,6 @@ func (fm *flowgraphManager) addAndStartWithEtcdTickler(dn *DataNode, vchan *data
 	dataSyncService.start()
 	fm.flowgraphs.Insert(vchan.GetChannelName(), dataSyncService)
 
-	metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 	return nil
 }
 
@@ -148,7 +144,6 @@ func (fm *flowgraphManager) release(vchanName string) {
 		fg.close()
 		fm.flowgraphs.Remove(vchanName)
 
-		metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 		rateCol.removeFlowGraphChannel(vchanName)
 	}
 }

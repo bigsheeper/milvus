@@ -18,8 +18,12 @@ package datanode
 
 import (
 	"context"
+	"fmt"
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
+	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/util/hardware"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
@@ -49,6 +53,10 @@ func (node *DataNode) getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, erro
 		return nil, err
 	}
 
+	fgNum := node.flowgraphManager.getFlowGraphNum()
+	metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Set(float64(fgNum))
+	log.Info("dyh debug, fg number", zap.Int("fgNum", fgNum), zap.Int64("node", paramtable.GetNodeID()))
+
 	minFGChannel, minFGTt := rateCol.getMinFlowGraphTt()
 	return &metricsinfo.DataNodeQuotaMetrics{
 		Hms: metricsinfo.HardwareMetrics{},
@@ -56,7 +64,7 @@ func (node *DataNode) getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, erro
 		Fgm: metricsinfo.FlowGraphMetric{
 			MinFlowGraphChannel: minFGChannel,
 			MinFlowGraphTt:      minFGTt,
-			NumFlowGraph:        node.flowgraphManager.getFlowGraphNum(),
+			NumFlowGraph:        fgNum,
 		},
 		Effect: metricsinfo.NodeEffect{
 			NodeID:        node.GetSession().ServerID,

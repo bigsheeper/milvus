@@ -19,6 +19,7 @@ package datanode
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
@@ -103,6 +104,7 @@ func (dsService *dataSyncService) GracefullyClose() {
 
 func (dsService *dataSyncService) close() {
 	dsService.stopOnce.Do(func() {
+		start := time.Now()
 		log := log.Ctx(dsService.ctx).With(
 			zap.Int64("collectionID", dsService.collectionID),
 			zap.String("vChanName", dsService.vchannelName),
@@ -111,7 +113,7 @@ func (dsService *dataSyncService) close() {
 			log.Info("dataSyncService closing flowgraph")
 			dsService.dispClient.Deregister(dsService.vchannelName)
 			dsService.fg.Close()
-			log.Info("dataSyncService flowgraph closed")
+			log.Info("dataSyncService flowgraph closed", zap.Duration("dur", time.Since(start)))
 		}
 
 		dsService.clearGlobalFlushingCache()
@@ -125,7 +127,7 @@ func (dsService *dataSyncService) close() {
 		dsService.cancelFn()
 		dsService.channel.close()
 
-		log.Info("dataSyncService closed")
+		log.Info("dataSyncService closed", zap.Duration("dur", time.Since(start)))
 	})
 }
 

@@ -105,6 +105,7 @@ func (t *dropCollectionTask) Execute(ctx context.Context) error {
 	redoTask.AddAsyncStep(&removeDmlChannelsStep{
 		baseStep:  baseStep{core: t.core},
 		pChannels: collMeta.PhysicalChannelNames,
+		vChannels: collMeta.VirtualChannelNames,
 	})
 	redoTask.AddAsyncStep(newConfirmGCStep(t.core, collMeta.CollectionID, allPartition))
 	redoTask.AddAsyncStep(&deleteCollectionMetaStep{

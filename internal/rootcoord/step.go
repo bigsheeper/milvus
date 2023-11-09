@@ -19,6 +19,8 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap"
 	"time"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
@@ -75,6 +77,9 @@ type deleteCollectionMetaStep struct {
 
 func (s *deleteCollectionMetaStep) Execute(ctx context.Context) ([]nestedStep, error) {
 	err := s.core.meta.RemoveCollection(ctx, s.collectionID, s.ts)
+	if err != nil {
+		log.Info("dyh debug, rc, deleteCollectionMetaStep done", zap.Int64("coll", s.collectionID))
+	}
 	return nil, err
 }
 
@@ -89,10 +94,12 @@ func (s *deleteCollectionMetaStep) Weight() stepPriority {
 type removeDmlChannelsStep struct {
 	baseStep
 	pChannels []string
+	vChannels []string
 }
 
 func (s *removeDmlChannelsStep) Execute(ctx context.Context) ([]nestedStep, error) {
 	s.core.chanTimeTick.removeDmlChannels(s.pChannels...)
+	log.Info("dyh debug, rc, removeDmlChannelsStep done", zap.Strings("vchannels", s.vChannels))
 	return nil, nil
 }
 
@@ -207,6 +214,7 @@ func (s *deleteCollectionDataStep) Execute(ctx context.Context) ([]nestedStep, e
 			channel:  channel,
 		})
 	}
+	log.Info("dyh debug, rc, deleteCollectionData done", zap.Int64("col", s.coll.CollectionID))
 	return children, nil
 }
 
@@ -232,6 +240,7 @@ func (s *waitForTsSyncedStep) Execute(ctx context.Context) ([]nestedStep, error)
 		// time.Sleep(Params.ProxyCfg.TimeTickInterval)
 		return nil, fmt.Errorf("ts not synced yet, channel: %s, synced: %d, want: %d", s.channel, syncedTs, s.ts)
 	}
+	log.Info("dyh debug, rc, waitForTsSyncedStep done")
 	return nil, nil
 }
 
@@ -471,6 +480,7 @@ func (b *confirmGCStep) Execute(ctx context.Context) ([]nestedStep, error) {
 
 	finished := b.core.broker.GcConfirm(ctx, b.collectionID, b.partitionID)
 	if finished {
+		log.Info("dyh debug, rc, confirmGCStep done", zap.Int64("col", b.collectionID))
 		return nil, nil
 	}
 

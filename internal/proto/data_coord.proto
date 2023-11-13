@@ -733,3 +733,45 @@ message ChannelOperationProgressResponse {
   ChannelWatchState state = 3;
   int32 progress = 4;
 }
+
+enum ImportState {
+  Pending = 0;
+  InProgress = 1;
+  Failed = 2;
+  Retryable = 3;
+  Completed = 4;
+}
+
+message ImportFileGroup {
+  // inputs
+  string path_prefix = 1;
+  repeated string names = 2;
+  // outputs
+  ImportState state = 3;
+  repeated int64 sizes = 4;
+  int64 num_rows = 5;
+}
+
+message PreImportRequest {
+  int64 requestID = 1;
+  int64 taskID = 2;
+  int64 collectionID = 3;
+  int64 partitionID = 4;
+  schema.CollectionSchema schema = 5;
+  repeated ImportFileGroup fileGroups = 6;
+}
+
+message GetImportStateResponse {
+  common.Status status = 1;
+  int64 taskID = 2;
+  repeated ImportFileGroup fileGroups = 3;
+}
+
+message ImportRequest {
+  int64 requestID = 1;
+  int64 taskID = 2;
+  int64 collectionID = 3;
+  int64 partitionID = 4;
+  schema.CollectionSchema schema = 5;
+  repeated ImportFileGroup fileGroups = 6;
+}

@@ -21,6 +21,7 @@
 #include "Constants.h"
 #include "common/EasyAssert.h"
 #include "common/Schema.h"
+#include "common/Types.h"
 #include "index/ScalarIndexSort.h"
 #include "index/StringIndexSort.h"
 #include "index/VectorMemIndex.h"
@@ -81,9 +82,9 @@ struct GeneratedData {
     }
 
     template <typename T>
-    std::vector<T>
+    FixedVector<T>
     get_col(FieldId field_id) const {
-        std::vector<T> ret(raw_->num_rows());
+        FixedVector<T> ret(raw_->num_rows());
         for (auto i = 0; i < raw_->fields_data_size(); i++) {
             auto target_field_data = raw_->fields_data(i);
             if (field_id.get() != target_field_data.field_id()) {
@@ -918,7 +919,7 @@ GenVecIndexing(int64_t N, int64_t dim, const float* vec) {
     auto chunk_manager = milvus::storage::CreateChunkManager(storage_config);
     milvus::storage::FileManagerContext file_manager_context(
         field_data_meta, index_meta, chunk_manager);
-    auto indexing = std::make_unique<index::VectorMemIndex>(
+    auto indexing = std::make_unique<index::VectorMemIndex<float>>(
         knowhere::IndexEnum::INDEX_FAISS_IVFFLAT,
         knowhere::metric::L2,
         knowhere::Version::GetCurrentVersion().VersionNumber(),

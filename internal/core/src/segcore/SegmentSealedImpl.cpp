@@ -194,6 +194,8 @@ SegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& load_info) {
         auto field_data_info =
             FieldDataInfo(field_id.get(), num_rows, load_info.mmap_dir_path);
 
+        LOG_SEGCORE_INFO_ << "start to load field data " << id << " of segment "
+                          << this->id_;
         auto parallel_degree = static_cast<uint64_t>(
             DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
         field_data_info.channel->set_capacity(parallel_degree * 2);
@@ -1389,7 +1391,7 @@ SegmentSealedImpl::generate_binlog_index(const FieldId field_id) {
             auto index_metric = field_binlog_config->GetMetricType();
 
             index::IndexBasePtr vec_index =
-                std::make_unique<index::VectorMemIndex>(
+                std::make_unique<index::VectorMemIndex<float>>(
                     field_binlog_config->GetIndexType(),
                     index_metric,
                     knowhere::Version::GetCurrentVersion().VersionNumber());

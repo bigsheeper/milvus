@@ -18,6 +18,7 @@ package importutil
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -203,6 +204,18 @@ func (p *NumpyParser) createReaders(filePaths []string) ([]*NumpyColumnReader, e
 			log.Warn("Numpy parser: the field is not found in collection schema", zap.String("fileName", fileName))
 			return nil, fmt.Errorf("the field name '%s' is not found in collection schema", fileName)
 		}
+
+		var magic [6]byte
+		reader, err := p.chunkManager.Reader(p.ctx, filePath)
+		if err != nil {
+			log.Warn("Numpy parser: failed to get reader", zap.String("filePath", filePath), zap.Error(err))
+			return nil, fmt.Errorf("failed to get reader, file='%s', error: %s", filePath, err.Error())
+		}
+		err = binary.Read(reader, binary.LittleEndian, &magic)
+		if err != nil {
+			return nil, fmt.Errorf("read magic failed, err=%w", err)
+		}
+		log.Info("debug numpy header", zap.ByteString("magic", magic[:]))
 
 		file, err := p.chunkManager.Reader(p.ctx, filePath)
 		if err != nil {

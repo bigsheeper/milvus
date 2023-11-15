@@ -18,7 +18,11 @@ package storage
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"github.com/milvus-io/milvus/internal/log"
+	"github.com/sbinet/npyio"
+	"go.uber.org/zap"
 	"io"
 	"math/rand"
 	"path"
@@ -31,6 +35,54 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMinIOCM2(t *testing.T) {
+	Params.Init()
+	testBucket, err := Params.Load("minio.bucketName")
+	require.NoError(t, err)
+
+	//	configRoot, err := Params.Load("minio.rootPath")
+	//	require.NoError(t, err)
+
+	//	testMinIOKVRoot := path.Join(configRoot, "milvus-minio-ut-root")
+
+	//		testLoadRoot := path.Join(testMinIOKVRoot, "test_load")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	testLoadRoot := ""
+	testCM, err := newMinIOChunkManager(ctx, testBucket, testLoadRoot)
+	require.NoError(t, err)
+	//defer testCM.RemoveWithPrefix(ctx, testLoadRoot)
+
+	assert.Equal(t, testLoadRoot, testCM.RootPath())
+
+	var magic [6]byte
+	reader, err := testCM.Reader(ctx, "4_embedding.npy")
+	if err != nil {
+		panic(err)
+	}
+	err = binary.Read(reader, binary.LittleEndian, &magic)
+	if err != nil {
+		panic(err)
+	}
+	log.Info("debug numpy header", zap.ByteString("magic", magic[:]))
+
+	file, err := testCM.Reader(ctx, "4_embedding.npy")
+
+	//filePath := "/home/czs/4_embedding.npy"
+	//file, err := os.Open(filePath)
+	assert.NoError(t, err)
+	defer file.Close()
+
+	r, err := npyio.NewReader(file)
+	assert.NotNil(t, r)
+	print(r.Header.String())
+	assert.Nil(t, err)
+
+	//adapter, err := importutil.NewNumpyAdapter(file)
+	//assert.NoError(t, err)
+	//assert.NotNil(t, adapter)
+}
 
 // TODO: NewMinioChunkManager is deprecated. Rewrite this unittest.
 func newMinIOChunkManager(ctx context.Context, bucketName string, rootPath string) (*MinioChunkManager, error) {

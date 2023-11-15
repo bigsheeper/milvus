@@ -90,6 +90,8 @@ func NewNumpyAdapter(reader io.Reader) (*NumpyAdapter, error) {
 		return nil, err
 	}
 
+	log.Info("debug numpy header 2", zap.String("header", r.Header.String()))
+
 	dataType, err := convertNumpyType(r.Header.Descr.Type)
 	if err != nil {
 		log.Warn("Numpy adapter: failed to detect data type", zap.Error(err))

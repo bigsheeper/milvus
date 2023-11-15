@@ -215,7 +215,7 @@ func (p *NumpyParser) createReaders(filePaths []string) ([]*NumpyColumnReader, e
 		if err != nil {
 			return nil, fmt.Errorf("read magic failed, err=%w", err)
 		}
-		log.Info("debug numpy header", zap.ByteString("magic", magic[:]))
+		log.Info("debug numpy header 1", zap.ByteString("magic", magic[:]))
 
 		file, err := p.chunkManager.Reader(p.ctx, filePath)
 		if err != nil {

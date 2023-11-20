@@ -121,10 +121,10 @@ service DataNode {
   rpc CheckChannelOperationProgress(ChannelWatchInfo) returns(ChannelOperationProgressResponse) {}
 
   // import v2
-  rpc PreImport(PreImportRequest) returns(common.Status) {}
-  rpc ImportV2(ImportRequest) returns(common.Status) {}
-  rpc GetImportState(GetImportStateRequest) returns(GetImportStateResponse) {}
-  rpc DropImportTask(DropImportTaskRequest) returns(common.Status) {}
+//  rpc PreImport(PreImportRequest) returns(common.Status) {}
+//  rpc ImportV2(ImportRequest) returns(common.Status) {}
+//  rpc GetImportState(GetImportStateRequest) returns(GetImportStateResponse) {}
+//  rpc DropImportTask(DropImportTaskRequest) returns(common.Status) {}
 }
 
 message FlushRequest {
@@ -741,80 +741,81 @@ message ChannelOperationProgressResponse {
   int32 progress = 4;
 }
 
-enum ImportState {
-  Pending = 0;
-  InProgress = 1;
-  Failed = 2;
-  Retryable = 3;
-  Completed = 4;
-}
-
-message ColumnBasedImportFiles {
-  repeated string files = 1;
-}
-
-message ImportFiles {
-  repeated string row_based_files = 1;
-  repeated ColumnBasedImportFiles column_based_files = 2;
-}
-
-//message ImportFileGroup {
-//  // inputs
-//  string path_prefix = 1;
-//  repeated string names = 2;
-//  // outputs
-//  ImportState state = 3;
-//  repeated int64 sizes = 4;
-//  int64 num_rows = 5;
+//enum ImportState {
+//  Pending = 0;
+//  InProgress = 1;
+//  Failed = 2;
+//  Retryable = 3;
+//  Completed = 4;
 //}
-
-message PreImportRequest {
-  int64 requestID = 1;
-  int64 taskID = 2;
-  int64 collectionID = 3;
-  int64 partitionID = 4;
-  schema.CollectionSchema schema = 5;
-  repeated ImportFiles import_files = 6;
-}
-
-message ImportRequest {
-  int64 requestID = 1;
-  int64 taskID = 2;
-  int64 collectionID = 3;
-  int64 partitionID = 4;
-  schema.CollectionSchema schema = 5;
-  repeated ImportFiles import_files = 6;
-}
-
-message GetImportStateRequest {
-  int64 requestID = 1;
-  int64 taskID = 2;
-}
-
-message GetImportStateResponse {
-  common.Status status = 1;
-  int64 taskID = 2;
-  repeated ImportFileGroup fileGroups = 3;
-}
-
-message DropImportTaskRequest {
-  int64 requestID = 1;
-  int64 taskID = 2;
-}
-
-message ImportTaskV2 {
-  int64 requestID = 1;
-  int64 taskID = 2;
-  int64 collectionID = 3;
-  int64 partitionID = 4;
-  repeated string files = 5;
-  uint64 num_rows = 6;
-  repeated common.KeyValuePair infos = 7;
-  ImportState state = 8;
-  string reason = 9;
+//
+//message ColumnBasedImportFiles {
+//  repeated string files = 1;
+//}
+//
+//message ImportFiles {
+//  repeated string row_based_files = 1;
+//  repeated ColumnBasedImportFiles column_based_files = 2;
+//}
+//
+////message ImportFileGroup {
+////  // inputs
+////  string path_prefix = 1;
+////  repeated string names = 2;
+////  // outputs
+////  ImportState state = 3;
+////  repeated int64 sizes = 4;
+////  int64 num_rows = 5;
+////}
+//
+//message PreImportRequest {
+//  int64 requestID = 1;
+//  int64 taskID = 2;
+//  int64 collectionID = 3;
+//  int64 partitionID = 4;
+//  schema.CollectionSchema schema = 5;
+//  repeated ImportFiles import_files = 6;
+//}
+//
+//message ImportRequest {
+//  int64 requestID = 1;
+//  int64 taskID = 2;
+//  int64 collectionID = 3;
+//  int64 partitionID = 4;
+//  schema.CollectionSchema schema = 5;
+//  repeated ImportFiles import_files = 6;
+//}
+//
+//message GetImportStateRequest {
+//  int64 requestID = 1;
+//  int64 taskID = 2;
+//}
+//
+//message GetImportStateResponse {
+//  common.Status status = 1;
+//  int64 taskID = 2;
+//  repeated ImportFileGroup fileGroups = 3;
+//}
+//
+//message DropImportTaskRequest {
+//  int64 requestID = 1;
+//  int64 taskID = 2;
+//}
+//
+//message ImportTaskV2 {
+//  int64 requestID = 1;
+//  int64 taskID = 2;
+//  int64 collectionID = 3;
+//  int64 partitionID = 4;
+//  repeated string files = 5;
+//  uint64 num_rows = 6;
+//  ImportState state = 8;
+//  string reason = 9;
 
   //  // outputs
   //  ImportState state = 3;
   //  repeated int64 sizes = 4;
   //  int64 num_rows = 5;
-}
+//
+//
+//}

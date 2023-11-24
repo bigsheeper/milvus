@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	_import "github.com/milvus-io/milvus/internal/datacoord/import"
 	"math/rand"
 	"os"
 	"sync"
@@ -150,6 +151,9 @@ type Server struct {
 	indexBuilder              *indexBuilder
 	indexNodeManager          *IndexNodeManager
 	indexEngineVersionManager IndexEngineVersionManager
+
+	// import
+	importManager _import.Manager
 
 	// manage ways that data coord access other coord
 	broker Broker

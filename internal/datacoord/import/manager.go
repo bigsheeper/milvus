@@ -16,12 +16,43 @@
 
 package _import
 
-import "github.com/milvus-io/milvus/internal/proto/datapb"
+import (
+	"github.com/milvus-io/milvus/pkg/util/merr"
+	"sync"
+
+	"github.com/milvus-io/milvus/internal/metastore"
+)
 
 type Manager interface {
-	Add(task *datapb.ImportTaskV2) error
-	Get(taskID int64) *datapb.ImportTaskV2
+	Add(task Task) error
+	Update(taskID int64, actions ...UpdateAction)
+	Get(taskID int64) Task
+	GetBy(filters ...TaskFilter) []Task
 	Remove(taskID int64)
-	Start()
-	Close()
+}
+
+type manager struct {
+	mu    sync.RWMutex // guards tasks
+	tasks map[int64]Task
+
+	catalog metastore.DataCoordCatalog
+}
+
+func (m *manager) Update(taskID int64, actions ...UpdateAction) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	task, ok := m.tasks[taskID]
+	if !ok {
+		return merr.XXX
+	}
+	updatedTask := task.Clone()
+	for _, action := range actions {
+		action(updatedTask)
+	}
+	err := m.catalog.UpdateImportTask(updatedTask)
+	if err != nil {
+		return err
+	}
+	m.tasks[taskID] = updatedTask
+	return nil
 }

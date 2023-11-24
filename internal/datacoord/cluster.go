@@ -137,9 +137,33 @@ func (c *Cluster) Import(ctx context.Context, nodeID int64, it *datapb.ImportTas
 	c.sessionManager.Import(ctx, nodeID, it)
 }
 
+func (c *Cluster) PreImport(ctx context.Context, nodeID int64, req *datapb.PreImportRequest) error {
+	return nil
+}
+
+func (c *Cluster) ImportV2(ctx context.Context, nodeID int64, req *datapb.ImportRequest) error {
+	return nil
+}
+
+func (c *Cluster) GetImportState(ctx context.Context, nodeID int64, req *datapb.GetImportStateRequest) (*datapb.GetImportStateResponse, error) {
+	return nil, nil
+}
+
+func (c *Cluster) AddImportSegment(ctx context.Context, nodeID int64, req *datapb.AddImportSegmentRequest) (*datapb.AddImportSegmentResponse, error) {
+	return nil, nil
+}
+
+func (c *Cluster) DropImport(ctx context.Context, nodeID int64, req *datapb.DropImportTaskRequest) error {
+	return nil
+}
+
 // GetSessions returns all sessions
 func (c *Cluster) GetSessions() []*Session {
 	return c.sessionManager.GetSessions()
+}
+
+func (c *Cluster) GetNodes() []int64 {
+	return c.sessionManager.GetLiveNodeIDs()
 }
 
 // Close releases resources opened in Cluster

@@ -103,8 +103,8 @@ func (c *SessionManager) DeleteSession(node *NodeInfo) {
 	metrics.DataCoordNumDataNodes.WithLabelValues().Set(float64(len(c.sessions.data)))
 }
 
-// getLiveNodeIDs returns IDs of all live DataNodes.
-func (c *SessionManager) getLiveNodeIDs() []int64 {
+// GetLiveNodeIDs returns IDs of all live DataNodes.
+func (c *SessionManager) GetLiveNodeIDs() []int64 {
 	c.sessions.RLock()
 	defer c.sessions.RUnlock()
 

@@ -1339,7 +1339,7 @@ func (s *Server) Import(ctx context.Context, req *datapb.ImportTaskRequest) (*da
 		}, nil
 	}
 
-	nodes := s.sessionManager.getLiveNodeIDs()
+	nodes := s.sessionManager.GetLiveNodeIDs()
 	if len(nodes) == 0 {
 		log.Warn("import failed as all DataNodes are offline")
 		resp.Status = merr.Status(merr.WrapErrNodeLackAny("no live DataNode"))
@@ -1615,7 +1615,7 @@ func (s *Server) CheckHealth(ctx context.Context, req *milvuspb.CheckHealthReque
 
 	mu := &sync.Mutex{}
 	group, ctx := errgroup.WithContext(ctx)
-	nodes := s.sessionManager.getLiveNodeIDs()
+	nodes := s.sessionManager.GetLiveNodeIDs()
 	errReasons := make([]string, 0, len(nodes))
 
 	for _, nodeID := range nodes {

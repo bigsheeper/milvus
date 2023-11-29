@@ -115,6 +115,21 @@ func (i *InsertData) Append(row map[FieldID]interface{}) error {
 	return nil
 }
 
+func (i *InsertData) AppendRows(row map[FieldID]interface{}) error {
+	for fID, v := range row {
+		field, ok := i.Data[fID]
+		if !ok {
+			return fmt.Errorf("Missing field when appending row, got %d", fID)
+		}
+
+		if err := field.AppendRow(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // FieldData defines field data interface
 type FieldData interface {
 	GetMemorySize() int
@@ -307,11 +322,14 @@ func (data *Int8FieldData) AppendRow(row interface{}) error {
 }
 
 func (data *Int16FieldData) AppendRow(row interface{}) error {
-	v, ok := row.(int16)
-	if !ok {
-		return merr.WrapErrParameterInvalid("int16", row, "Wrong row type")
+	switch v := row.(type) {
+	case int16:
+		data.Data = append(data.Data, v)
+	case []int16:
+		data.Data = append(data.Data, v...)
+	default:
+		return merr.WrapErrParameterInvalid("int16/int16s", row, "Wrong row type")
 	}
-	data.Data = append(data.Data, v)
 	return nil
 }
 

@@ -45,6 +45,26 @@ var (
 )
 
 type NumpyReader struct {
+	schema  *schemapb.CollectionSchema
+	readers map[int64]ColumnReader // fieldID -> ColumnReader
+}
+
+func (n *NumpyReader) Next(count int64) (*storage.InsertData, error) {
+	insertData, err := storage.NewInsertData(n.schema)
+	if err != nil {
+		return nil, err
+	}
+	for fieldID, reader := range n.readers {
+		fieldData, err := reader.Next(count)
+		if err != nil {
+			return nil, err
+		}
+		insertData.Data[fieldID] = fieldData
+	}
+	return insertData, nil
+}
+
+type NumpyColumnReader struct {
 	reader      io.Reader
 	npyReader   *npy.Reader
 	order       binary.ByteOrder
@@ -61,7 +81,7 @@ func ReadData[T any](reader io.Reader, order binary.ByteOrder, count int64) ([]T
 	return data, nil
 }
 
-func (n *NumpyReader) Next(count int64) (storage.FieldData, error) {
+func (n *NumpyColumnReader) Next(count int64) (storage.FieldData, error) {
 	dt := n.fieldSchema.GetDataType()
 	switch dt {
 	case schemapb.DataType_Bool:
@@ -276,7 +296,7 @@ func isStringType(typeStr string) bool {
 }
 
 // setByteOrder sets BigEndian/LittleEndian, the logic of this method is copied from npyio lib
-func (n *NumpyReader) setByteOrder() {
+func (n *NumpyColumnReader) setByteOrder() {
 	var nativeEndian binary.ByteOrder
 	v := uint16(1)
 	switch byte(v >> 8) {
@@ -296,11 +316,11 @@ func (n *NumpyReader) setByteOrder() {
 	}
 }
 
-func (n *NumpyReader) GetShape() []int {
+func (n *NumpyColumnReader) GetShape() []int {
 	return n.npyReader.Header.Descr.Shape
 }
 
-func (n *NumpyReader) checkCount(count int) int {
+func (n *NumpyColumnReader) checkCount(count int) int {
 	shape := n.GetShape()
 
 	// empty file?
@@ -325,7 +345,7 @@ func (n *NumpyReader) checkCount(count int) int {
 	return count
 }
 
-func (n *NumpyReader) ReadUint8(count int64) ([]uint8, error) {
+func (n *NumpyColumnReader) ReadUint8(count int64) ([]uint8, error) {
 	// TODO: move
 	// incorrect type
 	// here we don't use n.dataType to check because currently milvus has no uint8 type
@@ -339,37 +359,20 @@ func (n *NumpyReader) ReadUint8(count int64) ([]uint8, error) {
 	return ReadData[uint8](n.reader, n.order, count)
 }
 
-func (n *NumpyReader) ReadString(count int64) ([]string, error) {
-	if count <= 0 {
-		log.Warn("Numpy adapter: cannot read varchar data with a zero or nagative count")
-		return nil, merr.WrapErrImportFailed("cannot read varchar data with a zero or nagative count")
-	}
-
-	// incorrect type
-	if n.dataType != schemapb.DataType_VarChar {
-		log.Warn("Numpy adapter: numpy data is not varchar type")
-		return nil, merr.WrapErrImportFailed("numpy data is not varchar type")
-	}
-
+func (n *NumpyColumnReader) ReadString(count int64) ([]string, error) {
 	// varchar length, this is the max length, some item is shorter than this length, but they also occupy bytes of max length
 	maxLen, utf, err := stringLen(n.npyReader.Header.Descr.Type)
 	if err != nil || maxLen <= 0 {
-		log.Warn("Numpy adapter: failed to get max length of varchar from numpy file header", zap.Int("maxLen", maxLen), zap.Error(err))
-		return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to get max length %d of varchar from numpy file header, error: %v", maxLen, err))
+		return nil, merr.WrapErrImportFailed(
+			fmt.Sprintf("failed to get max length %d of varchar from numpy file header, error: %v", maxLen, err))
 	}
-	// log.Info("Numpy adapter: get varchar max length from numpy file header", zap.Int("maxLen", maxLen), zap.Bool("utf", utf))
 
 	// avoid read overflow
-	readSize := n.checkCount(count)
+	readSize := n.checkCount(int(count))
 	if readSize <= 0 {
 		// end of file, nothing to read
 		log.Info("Numpy adapter: read to end of file, type: varchar")
 		return nil, nil
-	}
-
-	if n.reader == nil {
-		log.Warn("Numpy adapter: reader is nil")
-		return nil, merr.WrapErrImportFailed("numpy reader is nil")
 	}
 
 	// read string one by one is not efficient, here we read strings batch by batch, each bach size is no more than 16MB

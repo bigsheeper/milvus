@@ -21,8 +21,8 @@ import (
 )
 
 type Reader interface {
-	ReadStats()
-	Next() (*storage.InsertData, error)
+	//ReadStats()
+	Next(count int64) (*storage.InsertData, error)
 }
 
 type ColumnReader interface {

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/util/merr"
-	"go.uber.org/zap"
+	"golang.org/x/exp/maps"
 	"io"
 	"strings"
 )
@@ -75,24 +75,23 @@ func (j *JsonReader) Next(count int64) (*storage.InsertData, error) {
 		}
 
 		// read buffer
-		buf := make([]map[storage.FieldID]interface{}, 0, p.bufRowCount)
+		buf := make([]map[storage.FieldID]interface{}, 0, j.bufRowCount)
 		for dec.More() {
 			var value interface{}
 			if err := dec.Decode(&value); err != nil {
 				return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to parse row value, error: %v", err))
 			}
 
-			row, err := p.verifyRow(value)
+			row, err := j.verifyRow(value)
 			if err != nil {
 				return nil, err
 			}
 
 			buf = append(buf, row)
-			if len(buf) >= p.bufRowCount {
+			if len(buf) >= j.bufRowCount {
 				isEmpty = false
 				if err = handler.Handle(buf); err != nil {
-					log.Warn("JSON parser: failed to convert row value to entity", zap.Error(err))
-					return merr.WrapErrImportFailed(fmt.Sprintf("failed to convert row value to entity, error: %v", err))
+					return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to convert row value to entity, error: %v", err))
 				}
 
 				// clear the buffer
@@ -131,11 +130,120 @@ func (j *JsonReader) Next(count int64) (*storage.InsertData, error) {
 
 	// empty file is allowed, don't return error
 	if isEmpty {
-		return nil
+		return nil, nil
 	}
-
-	updateProgress()
 
 	// send nil to notify the handler all have done
 	return handler.Handle(nil)
+}
+
+func (j *JsonReader) combineDynamicRow(dynamicValues map[string]interface{}, row map[storage.FieldID]interface{}) error {
+	if j.collectionInfo.DynamicField == nil {
+		return nil
+	}
+
+	dynamicFieldID := j.collectionInfo.DynamicField.GetFieldID()
+	// combine the dynamic field value
+	// valid input:
+	// case 1: {"id": 1, "vector": [], "x": 8, "$meta": "{\"y\": 8}"} ==>> {"id": 1, "vector": [], "$meta": "{\"y\": 8, \"x\": 8}"}
+	// case 2: {"id": 1, "vector": [], "x": 8, "$meta": {}} ==>> {"id": 1, "vector": [], "$meta": {\"x\": 8}}
+	// case 3: {"id": 1, "vector": [], "$meta": "{\"x\": 8}"}
+	// case 4: {"id": 1, "vector": [], "$meta": {"x": 8}}
+	// case 5: {"id": 1, "vector": [], "$meta": {}}
+	// case 6: {"id": 1, "vector": [], "x": 8} ==>> {"id": 1, "vector": [], "$meta": "{\"x\": 8}"}
+	// case 7: {"id": 1, "vector": []}
+	obj, ok := row[dynamicFieldID]
+	if ok {
+		if len(dynamicValues) > 0 {
+			if value, is := obj.(string); is {
+				// case 1
+				mp := make(map[string]interface{})
+				desc := json.NewDecoder(strings.NewReader(value))
+				desc.UseNumber()
+				err := desc.Decode(&mp)
+				if err != nil {
+					// invalid input
+					return merr.WrapErrImportFailed("illegal value for dynamic field, not a JSON format string")
+				}
+
+				maps.Copy(dynamicValues, mp)
+			} else if mp, is := obj.(map[string]interface{}); is {
+				// case 2
+				maps.Copy(dynamicValues, mp)
+			} else {
+				// invalid input
+				return merr.WrapErrImportFailed("illegal value for dynamic field, not a JSON object")
+			}
+			row[dynamicFieldID] = dynamicValues
+		}
+		// else case 3/4/5
+	} else {
+		if len(dynamicValues) > 0 {
+			// case 6
+			row[dynamicFieldID] = dynamicValues
+		} else {
+			// case 7
+			row[dynamicFieldID] = "{}"
+		}
+	}
+
+	return nil
+}
+
+func (j *JsonReader) verifyRow(raw interface{}) (map[storage.FieldID]interface{}, error) {
+	stringMap, ok := raw.(map[string]interface{})
+	if !ok {
+		log.Warn("JSON parser: invalid JSON format, each row should be a key-value map")
+		return nil, merr.WrapErrImportFailed("invalid JSON format, each row should be a key-value map")
+	}
+
+	dynamicValues := make(map[string]interface{})
+	row := make(map[storage.FieldID]interface{})
+	// some fields redundant?
+	for k, v := range stringMap {
+		fieldID, ok := j.collectionInfo.Name2FieldID[k]
+		if (fieldID == j.collectionInfo.PrimaryKey.GetFieldID()) && j.collectionInfo.PrimaryKey.GetAutoID() {
+			// primary key is auto-id, no need to provide
+			return nil, merr.WrapErrImportFailed(fmt.Sprintf("the primary key '%s' is auto-generated, no need to provide", k))
+		}
+
+		if ok {
+			row[fieldID] = v
+		} else if j.collectionInfo.DynamicField != nil {
+			// has dynamic field. put redundant pair to dynamicValues
+			dynamicValues[k] = v
+		} else {
+			// no dynamic field. if user provided redundant field, return error
+			return nil, merr.WrapErrImportFailed(fmt.Sprintf("the field '%s' is not defined in collection schema", k))
+		}
+	}
+
+	// some fields not provided?
+	if len(row) != len(j.collectionInfo.Name2FieldID) {
+		for k, v := range j.collectionInfo.Name2FieldID {
+			if (j.collectionInfo.DynamicField != nil) && (v == j.collectionInfo.DynamicField.GetFieldID()) {
+				// ignore dyanmic field, user don't have to provide values for dynamic field
+				continue
+			}
+
+			if v == j.collectionInfo.PrimaryKey.GetFieldID() && j.collectionInfo.PrimaryKey.GetAutoID() {
+				// ignore auto-generaed primary key
+				continue
+			}
+
+			_, ok := row[v]
+			if !ok {
+				// not auto-id primary key, no dynamic field,  must provide value
+				return nil, merr.WrapErrImportFailed(fmt.Sprintf("value of field '%s' is missed", k))
+			}
+		}
+	}
+
+	// combine the redundant pairs into dynamic field(if has)
+	err := j.combineDynamicRow(dynamicValues, row)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, err
 }

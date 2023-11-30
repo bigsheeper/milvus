@@ -23,12 +23,10 @@ import (
 	"fmt"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 	"github.com/sbinet/npyio"
 	"github.com/sbinet/npyio/npy"
-	"go.uber.org/zap"
 	"golang.org/x/text/encoding/unicode"
 	"io"
 	"reflect"
@@ -74,7 +72,7 @@ type NumpyColumnReader struct {
 
 func ReadData[T any](reader io.Reader, order binary.ByteOrder, count int64) ([]T, error) {
 	data := make([]T, count)
-	err := binary.Read(reader, order, &data)
+	err := binary.Read(reader, order, &data) // TODO: dyh, handle EOF
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +241,6 @@ func convertNumpyType(typeStr string) (schemapb.DataType, error) {
 			// Note: JSON field and VARCHAR field are using string type numpy
 			return schemapb.DataType_VarChar, nil
 		}
-		log.Warn("Numpy adapter: the numpy file data type is not supported", zap.String("dtype", typeStr))
 		return schemapb.DataType_None, merr.WrapErrImportFailed(fmt.Sprintf("the numpy file dtype '%s' is not supported", typeStr))
 	}
 }
@@ -286,7 +283,6 @@ func stringLen(dtype string) (int, bool, error) {
 		return v, utf, nil
 	}
 
-	log.Warn("Numpy adapter: the numpy file dtype is not varchar data type", zap.String("dtype", dtype))
 	return 0, false, merr.WrapErrImportFailed(fmt.Sprintf("dtype '%s' of numpy file is not varchar data type", dtype))
 }
 
@@ -320,45 +316,6 @@ func (n *NumpyColumnReader) GetShape() []int {
 	return n.npyReader.Header.Descr.Shape
 }
 
-func (n *NumpyColumnReader) checkCount(count int) int {
-	shape := n.GetShape()
-
-	// empty file?
-	if len(shape) == 0 {
-		return 0
-	}
-
-	total := 1
-	for i := 0; i < len(shape); i++ {
-		total *= shape[i]
-	}
-
-	if total == 0 {
-		return 0
-	}
-
-	// overflow?
-	if count > (total - n.readPosition) {
-		return total - n.readPosition
-	}
-
-	return count
-}
-
-func (n *NumpyColumnReader) ReadUint8(count int64) ([]uint8, error) {
-	// TODO: move
-	// incorrect type
-	// here we don't use n.dataType to check because currently milvus has no uint8 type
-	switch n.npyReader.Header.Descr.Type {
-	case "u1", "<u1", "|u1", "uint8":
-	default:
-		log.Warn("Numpy adapter: numpy data is not uint8 type")
-		return nil, merr.WrapErrImportFailed("numpy data is not uint8 type")
-	}
-
-	return ReadData[uint8](n.reader, n.order, count)
-}
-
 func (n *NumpyColumnReader) ReadString(count int64) ([]string, error) {
 	// varchar length, this is the max length, some item is shorter than this length, but they also occupy bytes of max length
 	maxLen, utf, err := stringLen(n.npyReader.Header.Descr.Type)
@@ -367,34 +324,9 @@ func (n *NumpyColumnReader) ReadString(count int64) ([]string, error) {
 			fmt.Sprintf("failed to get max length %d of varchar from numpy file header, error: %v", maxLen, err))
 	}
 
-	// avoid read overflow
-	readSize := n.checkCount(int(count))
-	if readSize <= 0 {
-		// end of file, nothing to read
-		log.Info("Numpy adapter: read to end of file, type: varchar")
-		return nil, nil
-	}
-
-	// read string one by one is not efficient, here we read strings batch by batch, each bach size is no more than 16MB
-	batchRead := 1 // rows of each batch, make sure this value is equal or greater than 1
-	if utf {
-		batchRead += ReadBufferSize / (utf8.UTFMax * maxLen)
-	} else {
-		batchRead += ReadBufferSize / maxLen
-	}
-
-	log.Info("Numpy adapter: prepare to read varchar batch by batch",
-		zap.Int("readSize", readSize), zap.Int("batchRead", batchRead))
-
 	// read data
-	data := make([]string, 0)
-	for {
-		// the last batch
-		readDone := len(data)
-		if readDone+batchRead > readSize {
-			batchRead = readSize - readDone
-		}
-
+	data := make([]string, 0, count)
+	for len(data) < int(count) {
 		if utf {
 			// in the numpy file with utf32 encoding, the dType could be like "<U2",
 			// "<" is byteorder(LittleEndian), "U" means it is utf32 encoding, "2" means the max length of strings is 2(characters)
@@ -403,63 +335,34 @@ func (n *NumpyColumnReader) ReadString(count int64) ([]string, error) {
 			// the character "a" occupys 2*4=8 bytes(0x97,0x00,0x00,0x00,0x00,0x00,0x00,0x00),
 			// the "bb" occupys 8 bytes(0x97,0x00,0x00,0x00,0x98,0x00,0x00,0x00)
 			// for non-ascii characters, the unicode could be 1 ~ 4 bytes, each character occupys 4 bytes, too
-			raw, err := io.ReadAll(io.LimitReader(n.reader, utf8.UTFMax*int64(maxLen)*int64(batchRead)))
+			raw, err := io.ReadAll(io.LimitReader(n.reader, utf8.UTFMax*int64(maxLen)))
 			if err != nil {
-				log.Warn("Numpy adapter: failed to read utf32 bytes from numpy file",
-					zap.Int("readDone", readDone), zap.Error(err))
 				return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to read utf32 bytes from numpy file, error: %v", err))
 			}
-
-			// read string one by one from the buffer
-			for j := 0; j < batchRead; j++ {
-				str, err := decodeUtf32(raw[j*utf8.UTFMax*maxLen:(j+1)*utf8.UTFMax*maxLen], n.order)
-				if err != nil {
-					log.Warn("Numpy adapter: failed todecode utf32 bytes",
-						zap.Int("position", readDone+j), zap.Error(err))
-					return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to decode utf32 bytes, error: %v", err))
-				}
-
-				data = append(data, str)
+			str, err := decodeUtf32(raw, n.order)
+			if err != nil {
+				return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to decode utf32 bytes, error: %v", err))
 			}
+			data = append(data, str)
 		} else {
 			// in the numpy file with ansi encoding, the dType could be like "S2", maxLen is 2, each string occupys 2 bytes
 			// bytes.Index(buf, []byte{0}) tell us which position is the end of the string
-			buf, err := io.ReadAll(io.LimitReader(n.reader, int64(maxLen)*int64(batchRead)))
+			buf, err := io.ReadAll(io.LimitReader(n.reader, int64(maxLen)))
 			if err != nil {
-				log.Warn("Numpy adapter: failed to read ascii bytes from numpy file",
-					zap.Int("readDone", readDone), zap.Error(err))
 				return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to read ascii bytes from numpy file, error: %v", err))
 			}
-
-			// read string one by one from the buffer
-			for j := 0; j < batchRead; j++ {
-				oneBuf := buf[j*maxLen : (j+1)*maxLen]
-				n := bytes.Index(oneBuf, []byte{0})
-				if n > 0 {
-					oneBuf = oneBuf[:n]
-				}
-
-				data = append(data, string(oneBuf))
+			n := bytes.Index(buf, []byte{0})
+			if n > 0 {
+				buf = buf[:n]
 			}
-		}
-
-		// quit the circle if specified size is read
-		if len(data) >= readSize {
-			break
+			data = append(data, string(buf))
 		}
 	}
-
-	log.Info("Numpy adapter: a block of varchar has been read", zap.Int("rowCount", len(data)))
-
-	// update read position after successfully read
-	n.readPosition += readSize
-
 	return data, nil
 }
 
 func decodeUtf32(src []byte, order binary.ByteOrder) (string, error) {
 	if len(src)%4 != 0 {
-		log.Warn("Numpy adapter: invalid utf32 bytes length, the byte array length should be multiple of 4", zap.Int("byteLen", len(src)))
 		return "", merr.WrapErrImportFailed(fmt.Sprintf("invalid utf32 bytes length %d, the byte array length should be multiple of 4", len(src)))
 	}
 
@@ -489,7 +392,6 @@ func decodeUtf32(src []byte, order binary.ByteOrder) (string, error) {
 				decoder := unicode.UTF16(uOrder, unicode.IgnoreBOM).NewDecoder()
 				res, err := decoder.Bytes(src[lowbytesPosition : lowbytesPosition+2])
 				if err != nil {
-					log.Warn("Numpy adapter: failed to decode utf32 binary bytes", zap.Error(err))
 					return "", merr.WrapErrImportFailed(fmt.Sprintf("failed to decode utf32 binary bytes, error: %v", err))
 				}
 				str += string(res)
@@ -507,7 +409,6 @@ func decodeUtf32(src []byte, order binary.ByteOrder) (string, error) {
 			utf8Code := make([]byte, 4)
 			utf8.EncodeRune(utf8Code, r)
 			if r == utf8.RuneError {
-				log.Warn("Numpy adapter: failed to convert 4 bytes unicode to utf8 rune", zap.Uint32("code", x))
 				return "", merr.WrapErrImportFailed(fmt.Sprintf("failed to convert 4 bytes unicode %d to utf8 rune", x))
 			}
 			str += string(utf8Code)

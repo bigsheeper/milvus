@@ -1247,6 +1247,7 @@ type queryCoordConfig struct {
 	UpdateNextTargetInterval       ParamItem `refreshable:"false"`
 	CheckNodeInReplicaInterval     ParamItem `refreshable:"false"`
 	CheckResourceGroupInterval     ParamItem `refreshable:"false"`
+	LeaderViewUpdateInterval       ParamItem `refreshable:"false"`
 	EnableRGAutoRecover            ParamItem `refreshable:"true"`
 	CheckHealthInterval            ParamItem `refreshable:"false"`
 	CheckHealthRPCTimeout          ParamItem `refreshable:"true"`
@@ -1254,6 +1255,7 @@ type queryCoordConfig struct {
 	CollectionRecoverTimesLimit    ParamItem `refreshable:"true"`
 	ObserverTaskParallel           ParamItem `refreshable:"false"`
 	CheckAutoBalanceConfigInterval ParamItem `refreshable:"false"`
+	CheckNodeSessionInterval       ParamItem `refreshable:"false"`
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -1518,6 +1520,15 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 	}
 	p.CheckResourceGroupInterval.Init(base.mgr)
 
+	p.LeaderViewUpdateInterval = ParamItem{
+		Key:          "queryCoord.leaderViewUpdateInterval",
+		Doc:          "the interval duration(in seconds) for LeaderObserver to fetch LeaderView from querynodes",
+		Version:      "2.3.4",
+		DefaultValue: "1",
+		PanicIfEmpty: true,
+	}
+	p.LeaderViewUpdateInterval.Init(base.mgr)
+
 	p.EnableRGAutoRecover = ParamItem{
 		Key:          "queryCoord.enableRGAutoRecover",
 		Version:      "2.2.3",
@@ -1585,6 +1596,16 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.CheckAutoBalanceConfigInterval.Init(base.mgr)
+
+	p.CheckNodeSessionInterval = ParamItem{
+		Key:          "queryCoord.checkNodeSessionInterval",
+		Version:      "2.3.4",
+		DefaultValue: "60",
+		PanicIfEmpty: true,
+		Doc:          "the interval(in seconds) of check querynode cluster session",
+		Export:       true,
+	}
+	p.CheckNodeSessionInterval.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -1600,11 +1621,12 @@ type queryNodeConfig struct {
 	StatsPublishInterval ParamItem `refreshable:"true"`
 
 	// segcore
-	KnowhereThreadPoolSize ParamItem `refreshable:"false"`
-	ChunkRows              ParamItem `refreshable:"false"`
-	EnableTempSegmentIndex ParamItem `refreshable:"false"`
-	InterimIndexNlist      ParamItem `refreshable:"false"`
-	InterimIndexNProbe     ParamItem `refreshable:"false"`
+	KnowhereThreadPoolSize    ParamItem `refreshable:"false"`
+	ChunkRows                 ParamItem `refreshable:"false"`
+	EnableTempSegmentIndex    ParamItem `refreshable:"false"`
+	InterimIndexNlist         ParamItem `refreshable:"false"`
+	InterimIndexNProbe        ParamItem `refreshable:"false"`
+	InterimIndexMemExpandRate ParamItem `refreshable:"false"`
 
 	// memory limit
 	LoadMemoryUsageFactor               ParamItem `refreshable:"true"`
@@ -1742,6 +1764,15 @@ func (p *queryNodeConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.InterimIndexNlist.Init(base.mgr)
+
+	p.InterimIndexMemExpandRate = ParamItem{
+		Key:          "queryNode.segcore.interimIndex.memExpansionRate",
+		Version:      "2.0.0",
+		DefaultValue: "1.15",
+		Doc:          "extra memory needed by building interim index",
+		Export:       true,
+	}
+	p.InterimIndexMemExpandRate.Init(base.mgr)
 
 	p.InterimIndexNProbe = ParamItem{
 		Key:     "queryNode.segcore.interimIndex.nprobe",
@@ -2523,7 +2554,6 @@ type dataNodeConfig struct {
 	FlushDeleteBufferBytes ParamItem `refreshable:"true"`
 	BinLogMaxSize          ParamItem `refreshable:"true"`
 	SyncPeriod             ParamItem `refreshable:"true"`
-	DeltaPolicy            ParamItem `refreshable:"false"`
 
 	// watchEvent
 	WatchEventTicklerInterval ParamItem `refreshable:"false"`
@@ -2652,15 +2682,6 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.SyncPeriod.Init(base.mgr)
-
-	p.DeltaPolicy = ParamItem{
-		Key:          "dataNode.segment.deltaPolicy",
-		Version:      "2.3.4",
-		DefaultValue: "bloom_filter_pkoracle",
-		Doc:          "the delta policy current datanode using",
-		Export:       true,
-	}
-	p.DeltaPolicy.Init(base.mgr)
 
 	p.WatchEventTicklerInterval = ParamItem{
 		Key:          "datanode.segment.watchEventTicklerInterval",

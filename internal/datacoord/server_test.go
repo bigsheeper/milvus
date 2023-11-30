@@ -60,6 +60,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/mq/msgstream"
 	"github.com/milvus-io/milvus/pkg/util/etcd"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/util/lock"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/metautil"
 	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
@@ -3063,15 +3064,10 @@ func TestGetCompactionState(t *testing.T) {
 		svr := &Server{}
 		svr.stateCode.Store(commonpb.StateCode_Healthy)
 
-		svr.compactionHandler = &mockCompactionHandler{
-			methods: map[string]interface{}{
-				"getCompactionTasksBySignalID": func(signalID int64) []*compactionTask {
-					return []*compactionTask{
-						{state: completed},
-					}
-				},
-			},
-		}
+		mockHandler := NewMockCompactionPlanContext(t)
+		mockHandler.EXPECT().getCompactionTasksBySignalID(mock.Anything).Return(
+			[]*compactionTask{{state: completed}})
+		svr.compactionHandler = mockHandler
 
 		resp, err := svr.GetCompactionState(context.Background(), &milvuspb.GetCompactionStateRequest{})
 		assert.NoError(t, err)
@@ -3082,24 +3078,21 @@ func TestGetCompactionState(t *testing.T) {
 		svr := &Server{}
 		svr.stateCode.Store(commonpb.StateCode_Healthy)
 
-		svr.compactionHandler = &mockCompactionHandler{
-			methods: map[string]interface{}{
-				"getCompactionTasksBySignalID": func(signalID int64) []*compactionTask {
-					return []*compactionTask{
-						{state: executing},
-						{state: executing},
-						{state: executing},
-						{state: completed},
-						{state: completed},
-						{state: failed, plan: &datapb.CompactionPlan{PlanID: 1}},
-						{state: timeout, plan: &datapb.CompactionPlan{PlanID: 2}},
-						{state: timeout},
-						{state: timeout},
-						{state: timeout},
-					}
-				},
-			},
-		}
+		mockHandler := NewMockCompactionPlanContext(t)
+		mockHandler.EXPECT().getCompactionTasksBySignalID(mock.Anything).Return(
+			[]*compactionTask{
+				{state: executing},
+				{state: executing},
+				{state: executing},
+				{state: completed},
+				{state: completed},
+				{state: failed, plan: &datapb.CompactionPlan{PlanID: 1}},
+				{state: timeout, plan: &datapb.CompactionPlan{PlanID: 2}},
+				{state: timeout},
+				{state: timeout},
+				{state: timeout},
+			})
+		svr.compactionHandler = mockHandler
 
 		resp, err := svr.GetCompactionState(context.Background(), &milvuspb.GetCompactionStateRequest{CompactionID: 1})
 		assert.NoError(t, err)
@@ -3187,18 +3180,15 @@ func TestGetCompactionStateWithPlans(t *testing.T) {
 		svr := &Server{}
 		svr.stateCode.Store(commonpb.StateCode_Healthy)
 
-		svr.compactionHandler = &mockCompactionHandler{
-			methods: map[string]interface{}{
-				"getCompactionTasksBySignalID": func(signalID int64) []*compactionTask {
-					return []*compactionTask{
-						{
-							triggerInfo: &compactionSignal{id: 1},
-							state:       executing,
-						},
-					}
+		mockHandler := NewMockCompactionPlanContext(t)
+		mockHandler.EXPECT().getCompactionTasksBySignalID(mock.Anything).Return(
+			[]*compactionTask{
+				{
+					triggerInfo: &compactionSignal{id: 1},
+					state:       executing,
 				},
-			},
-		}
+			})
+		svr.compactionHandler = mockHandler
 
 		resp, err := svr.GetCompactionStateWithPlans(context.TODO(), &milvuspb.GetCompactionPlansRequest{
 			CompactionID: 1,
@@ -3211,19 +3201,6 @@ func TestGetCompactionStateWithPlans(t *testing.T) {
 	t.Run("test get compaction state with closed server", func(t *testing.T) {
 		svr := &Server{}
 		svr.stateCode.Store(commonpb.StateCode_Abnormal)
-		svr.compactionHandler = &mockCompactionHandler{
-			methods: map[string]interface{}{
-				"getCompactionTasksBySignalID": func(signalID int64) []*compactionTask {
-					return []*compactionTask{
-						{
-							triggerInfo: &compactionSignal{id: 1},
-							state:       executing,
-						},
-					}
-				},
-			},
-		}
-
 		resp, err := svr.GetCompactionStateWithPlans(context.TODO(), &milvuspb.GetCompactionPlansRequest{
 			CompactionID: 1,
 		})
@@ -3753,13 +3730,14 @@ func TestGetFlushAllState(t *testing.T) {
 					}, nil).Maybe()
 			}
 
-			svr.meta.channelCPs = make(map[string]*msgpb.MsgPosition)
+			svr.meta.channelCPLocks = lock.NewKeyLock[string]()
+			svr.meta.channelCPs = typeutil.NewConcurrentMap[string, *msgpb.MsgPosition]()
 			for i, ts := range test.ChannelCPs {
 				channel := vchannels[i]
-				svr.meta.channelCPs[channel] = &msgpb.MsgPosition{
+				svr.meta.channelCPs.Insert(channel, &msgpb.MsgPosition{
 					ChannelName: channel,
 					Timestamp:   ts,
-				}
+				})
 			}
 
 			resp, err := svr.GetFlushAllState(context.TODO(), &milvuspb.GetFlushAllStateRequest{FlushAllTs: test.FlushAllTs})
@@ -3829,14 +3807,15 @@ func TestGetFlushAllStateWithDB(t *testing.T) {
 					CollectionName:      collectionName,
 				}, nil).Maybe()
 
-			svr.meta.channelCPs = make(map[string]*msgpb.MsgPosition)
+			svr.meta.channelCPLocks = lock.NewKeyLock[string]()
+			svr.meta.channelCPs = typeutil.NewConcurrentMap[string, *msgpb.MsgPosition]()
 			channelCPs := []Timestamp{100, 200}
 			for i, ts := range channelCPs {
 				channel := vchannels[i]
-				svr.meta.channelCPs[channel] = &msgpb.MsgPosition{
+				svr.meta.channelCPs.Insert(channel, &msgpb.MsgPosition{
 					ChannelName: channel,
 					Timestamp:   ts,
-				}
+				})
 			}
 
 			var resp *milvuspb.GetFlushAllStateResponse

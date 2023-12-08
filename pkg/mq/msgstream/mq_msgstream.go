@@ -77,7 +77,7 @@ func NewMqMsgStream(ctx context.Context,
 	consumers := make(map[string]mqwrapper.Consumer)
 	producerChannels := make([]string, 0)
 	consumerChannels := make([]string, 0)
-	receiveBuf := make(chan *MsgPack, receiveBufSize)
+	receiveBuf := make(chan *MsgPack, 1)
 
 	stream := &mqMsgStream{
 		ctx:              streamCtx,

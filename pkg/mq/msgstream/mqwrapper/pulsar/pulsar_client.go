@@ -19,7 +19,6 @@ package pulsar
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -41,29 +40,29 @@ type pulsarClient struct {
 	client    pulsar.Client
 }
 
-var sc *pulsarClient
+//var sc *pulsarClient
 
-var once sync.Once
+//var once sync.Once
 
 // NewClient creates a pulsarClient object
 // according to the parameter opts of type pulsar.ClientOptions
 func NewClient(tenant string, namespace string, opts pulsar.ClientOptions) (*pulsarClient, error) {
 	var err error
-	once.Do(func() {
-		var c pulsar.Client
-		c, err = pulsar.NewClient(opts)
-		if err != nil {
-			log.Error("Failed to set pulsar client: ", zap.Error(err))
-			return
-		}
-		cli := &pulsarClient{
-			client:    c,
-			tenant:    tenant,
-			namespace: namespace,
-		}
-		sc = cli
-	})
-	return sc, err
+	//once.Do(func() {
+	var c pulsar.Client
+	c, err = pulsar.NewClient(opts)
+	if err != nil {
+		log.Error("Failed to set pulsar client: ", zap.Error(err))
+		return nil, err
+	}
+	cli := &pulsarClient{
+		client:    c,
+		tenant:    tenant,
+		namespace: namespace,
+	}
+	//sc = cli
+	//})
+	return cli, err
 }
 
 // CreateProducer create a pulsar producer from options
@@ -194,5 +193,6 @@ func (pc *pulsarClient) BytesToMsgID(id []byte) (mqwrapper.MessageID, error) {
 // Close closes the pulsar client
 func (pc *pulsarClient) Close() {
 	// FIXME(yukun): pulsar.client is a singleton, so can't invoke this close when server run
-	// pc.client.Close()
+	pc.client.Close()
+	log.Info("pulsar client closed")
 }

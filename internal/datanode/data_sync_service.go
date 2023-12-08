@@ -357,53 +357,53 @@ func getServiceWithChannel(initCtx context.Context, node *DataNode, info *datapb
 	ds.flushManager = flushManager
 
 	// init flowgraph
-	fg := flowgraph.NewTimeTickedFlowGraph(node.ctx)
-	dmStreamNode, err := newDmInputNode(initCtx, node.dispClient, info.GetVchan().GetSeekPosition(), config)
-	if err != nil {
-		return nil, err
-	}
-
-	ddNode, err := newDDNode(
-		node.ctx,
-		collectionID,
-		channelName,
-		info.GetVchan().GetDroppedSegmentIds(),
-		flushed,
-		unflushed,
-		node.compactionExecutor,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	insertBufferNode, err := newInsertBufferNode(
-		node.ctx,
-		flushCh,
-		resendTTCh,
-		delBufferManager,
-		flushManager,
-		node.segmentCache,
-		node.timeTickSender,
-		config,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	deleteNode, err := newDeleteNode(node.ctx, flushManager, delBufferManager, node.clearSignal, config)
-	if err != nil {
-		return nil, err
-	}
-
-	ttNode, err := newTTNode(config, node.broker)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := fg.AssembleNodes(dmStreamNode, ddNode, insertBufferNode, deleteNode, ttNode); err != nil {
-		return nil, err
-	}
-	ds.fg = fg
+	//fg := flowgraph.NewTimeTickedFlowGraph(node.ctx)
+	//dmStreamNode, err := newDmInputNode(initCtx, node.dispClient, info.GetVchan().GetSeekPosition(), config)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//ddNode, err := newDDNode(
+	//	node.ctx,
+	//	collectionID,
+	//	channelName,
+	//	info.GetVchan().GetDroppedSegmentIds(),
+	//	flushed,
+	//	unflushed,
+	//	node.compactionExecutor,
+	//)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//insertBufferNode, err := newInsertBufferNode(
+	//	node.ctx,
+	//	flushCh,
+	//	resendTTCh,
+	//	delBufferManager,
+	//	flushManager,
+	//	node.segmentCache,
+	//	node.timeTickSender,
+	//	config,
+	//)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//deleteNode, err := newDeleteNode(node.ctx, flushManager, delBufferManager, node.clearSignal, config)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//ttNode, err := newTTNode(config, node.broker)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//if err := fg.AssembleNodes(dmStreamNode, ddNode, insertBufferNode, deleteNode, ttNode); err != nil {
+	//	return nil, err
+	//}
+	//ds.fg = fg
 
 	return ds, nil
 }

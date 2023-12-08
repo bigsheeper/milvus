@@ -107,7 +107,7 @@ func (pc *pulsarClient) Subscribe(options mqwrapper.ConsumerOptions) (mqwrapper.
 	start := timerecord.NewTimeRecorder("create consumer")
 	metrics.MsgStreamOpCounter.WithLabelValues(metrics.CreateConsumerLabel, metrics.TotalLabel).Inc()
 
-	receiveChannel := make(chan pulsar.ConsumerMessage, options.BufSize)
+	receiveChannel := make(chan pulsar.ConsumerMessage, 1)
 	fullTopicName, err := GetFullTopicName(pc.tenant, pc.namespace, options.Topic)
 	if err != nil {
 		metrics.MsgStreamOpCounter.WithLabelValues(metrics.CreateConsumerLabel, metrics.FailLabel).Inc()
@@ -119,6 +119,7 @@ func (pc *pulsarClient) Subscribe(options mqwrapper.ConsumerOptions) (mqwrapper.
 		Type:                        pulsar.Exclusive,
 		SubscriptionInitialPosition: pulsar.SubscriptionInitialPosition(options.SubscriptionInitialPosition),
 		MessageChannel:              receiveChannel,
+		ReceiverQueueSize:           1,
 	})
 	if err != nil {
 		metrics.MsgStreamOpCounter.WithLabelValues(metrics.CreateConsumerLabel, metrics.FailLabel).Inc()

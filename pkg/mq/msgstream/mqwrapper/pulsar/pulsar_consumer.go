@@ -139,6 +139,7 @@ func (pc *Consumer) Close() {
 			}
 			// only close if unsubscribe successfully
 			pc.c.Close()
+			log.Info("pulsar consumer closed", zap.String("subscription", pc.Subscription()))
 			return nil
 		}
 

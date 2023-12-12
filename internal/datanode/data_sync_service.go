@@ -32,7 +32,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/pkg/mq/msgstream"
 	"github.com/milvus-io/milvus/pkg/util/conc"
-	"github.com/milvus-io/milvus/pkg/util/retry"
 )
 
 // dataSyncService controls a flowgraph for a specific collection
@@ -352,7 +351,8 @@ func getServiceWithChannel(initCtx context.Context, node *DataNode, info *datapb
 		node.allocator,
 		node.chunkManager,
 		channel,
-		flushNotifyFunc(ds, retry.Attempts(50)), dropVirtualChannelFunc(ds),
+		//flushNotifyFunc(ds, retry.Attempts(50)), dropVirtualChannelFunc(ds),
+		func(pack *segmentFlushPack) {}, dropVirtualChannelFunc(ds),
 	)
 	ds.flushManager = flushManager
 

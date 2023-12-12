@@ -95,6 +95,7 @@ func NewDispatcher(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	log.Info("dyh new stream done")
 	if position != nil && len(position.MsgID) != 0 {
 		position.ChannelName = funcutil.ToPhysicalChannel(position.ChannelName)
 		err = stream.AsConsumer(ctx, []string{pchannel}, subName, mqwrapper.SubscriptionPositionUnknown)
@@ -195,6 +196,8 @@ func (d *Dispatcher) Handle(signal signal) {
 		d.once.Do(func() {
 			metrics.NumConsumers.WithLabelValues(paramtable.GetRole(), fmt.Sprint(paramtable.GetNodeID())).Dec()
 			d.stream.Close()
+			d.stream = nil
+			log.Info("dyh stream closed")
 		})
 	}
 	log.Info("handle signal done")

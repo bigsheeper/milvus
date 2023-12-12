@@ -339,7 +339,6 @@ func (mr *MilvusRoles) Run() {
 		paramtable.Init()
 	}
 
-	http.ServeHTTP()
 	setupPrometheusHTTPServer(Registry)
 
 	var wg sync.WaitGroup
@@ -368,6 +367,7 @@ func (mr *MilvusRoles) Run() {
 	}
 
 	if mr.EnableDataNode {
+		http.ServeHTTP()
 		dataNode = mr.runDataNode(ctx, local, &wg)
 	}
 	if mr.EnableIndexNode {

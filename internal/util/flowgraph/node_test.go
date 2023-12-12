@@ -90,7 +90,7 @@ func TestNodeManager_Start(t *testing.T) {
 	produceStream.Produce(&msgPack)
 
 	nodeName := "input_node"
-	inputNode := NewInputNode(msgStream.Chan(), nodeName, 100, 100, "", 0, 0, "")
+	inputNode := NewInputNode(msgStream, msgStream.Chan(), nodeName, 100, 100, "", 0, 0, "")
 
 	ddNode := BaseNode{}
 

@@ -234,6 +234,7 @@ func (q *QuotaCenter) syncMetrics() error {
 			}
 		}
 		q.writableCollections = collections.Collect()
+		log.Info("dyh debug quota", zap.Any("datanodeCols", q.writableCollections))
 		q.diskMu.Lock()
 		if dataCoordTopology.Cluster.Self.QuotaMetrics != nil {
 			q.dataCoordMetrics = dataCoordTopology.Cluster.Self.QuotaMetrics

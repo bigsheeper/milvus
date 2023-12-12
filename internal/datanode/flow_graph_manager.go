@@ -29,7 +29,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/util/hardware"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -58,7 +57,7 @@ func (fm *flowgraphManager) start(waiter *sync.WaitGroup) {
 		case <-fm.closeCh:
 			return
 		case <-ticker.C:
-			fm.execute(hardware.GetMemoryCount())
+			//fm.execute(hardware.GetMemoryCount())
 		}
 	}
 }
@@ -138,6 +137,7 @@ func (fm *flowgraphManager) addAndStartWithEtcdTickler(dn *DataNode, vchan *data
 	}
 	dataSyncService.start()
 	fm.flowgraphs.Insert(vchan.GetChannelName(), dataSyncService)
+	log.Info("dyh 2 inserted fg", zap.String("vchannel", vchan.GetChannelName()), zap.Any("fgNum", fm.flowgraphs.Len()))
 
 	metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Inc()
 	return nil
@@ -147,6 +147,7 @@ func (fm *flowgraphManager) release(vchanName string) {
 	if fg, loaded := fm.flowgraphs.Get(vchanName); loaded {
 		fg.close()
 		fm.flowgraphs.Remove(vchanName)
+		log.Info("dyh 2 removed fg", zap.String("vchannel", vchanName), zap.Any("fgNum", fm.flowgraphs.Len()))
 
 		metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Dec()
 		rateCol.removeFlowGraphChannel(vchanName)

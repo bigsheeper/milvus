@@ -227,8 +227,13 @@ func (ms *mqMsgStream) Close() {
 		}
 	}
 
+	ms.unmarshal = nil
+
 	ms.client.Close()
 	close(ms.receiveBuf)
+	log.Info("dyh close mq msg stream done",
+		zap.Int("producer num", len(ms.producers)),
+		zap.Int("consumer num", len(ms.consumers)))
 }
 
 func (ms *mqMsgStream) ComputeProduceChannelIndexes(tsMsgs []TsMsg) [][]int32 {

@@ -44,6 +44,7 @@ const (
 type InputNode struct {
 	BaseNode
 	input        <-chan *msgstream.MsgPack
+	stream       msgstream.MsgStream
 	lastMsg      *msgstream.MsgPack
 	name         string
 	role         string
@@ -70,6 +71,12 @@ func (inNode *InputNode) IsValidInMsg(in []Msg) bool {
 // Name returns node name
 func (inNode *InputNode) Name() string {
 	return inNode.name
+}
+
+func (inNode *InputNode) Close() {
+	inNode.stream.Close()
+	inNode.stream = nil
+	log.Info("dyh close InputNode", zap.Any("name", inNode.name))
 }
 
 func (inNode *InputNode) SetCloseMethod(gracefully bool) {
@@ -191,13 +198,14 @@ func (inNode *InputNode) Operate(in []Msg) []Msg {
 }
 
 // NewInputNode composes an InputNode with provided input channel, name and parameters
-func NewInputNode(input <-chan *msgstream.MsgPack, nodeName string, maxQueueLength int32, maxParallelism int32, role string, nodeID int64, collectionID int64, dataType string) *InputNode {
+func NewInputNode(stream msgstream.MsgStream, input <-chan *msgstream.MsgPack, nodeName string, maxQueueLength int32, maxParallelism int32, role string, nodeID int64, collectionID int64, dataType string) *InputNode {
 	baseNode := BaseNode{}
 	baseNode.SetMaxQueueLength(maxQueueLength)
 	baseNode.SetMaxParallelism(maxParallelism)
 
 	return &InputNode{
 		BaseNode:            baseNode,
+		stream:              stream,
 		input:               input,
 		name:                nodeName,
 		role:                role,

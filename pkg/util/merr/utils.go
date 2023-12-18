@@ -156,7 +156,7 @@ func oldCode(code int32) commonpb.ErrorCode {
 	case ErrServiceRateLimit.code():
 		return commonpb.ErrorCode_RateLimit
 
-	case ErrServiceForceDeny.code():
+	case ErrServiceQuotaExceeded.code():
 		return commonpb.ErrorCode_ForceDeny
 
 	case ErrIndexNotFound.code():
@@ -197,7 +197,7 @@ func OldCodeToMerr(code commonpb.ErrorCode) error {
 		return ErrServiceRateLimit
 
 	case commonpb.ErrorCode_ForceDeny:
-		return ErrServiceForceDeny
+		return ErrServiceQuotaExceeded
 
 	case commonpb.ErrorCode_IndexNotExist:
 		return ErrIndexNotFound
@@ -362,10 +362,9 @@ func WrapErrServiceRateLimit(rate float64) error {
 	return wrapFields(ErrServiceRateLimit, value("rate", rate))
 }
 
-func WrapErrServiceForceDeny(op string, reason error, method string) error {
-	return wrapFieldsWithDesc(ErrServiceForceDeny,
+func WrapErrServiceForceDeny(reason error, method string) error {
+	return wrapFieldsWithDesc(ErrServiceQuotaExceeded,
 		reason.Error(),
-		value("op", op),
 		value("req", method),
 	)
 }

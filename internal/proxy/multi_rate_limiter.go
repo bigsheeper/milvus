@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
@@ -39,10 +40,10 @@ import (
 )
 
 var QuotaErrorString = map[commonpb.ErrorCode]string{
-	commonpb.ErrorCode_ForceDeny:            "manually force deny",
+	commonpb.ErrorCode_ForceDeny:            "writing has been deactivated by the administrator",
 	commonpb.ErrorCode_MemoryQuotaExhausted: "memory quota exhausted, please allocate more resources",
 	commonpb.ErrorCode_DiskQuotaExhausted:   "disk quota exhausted, please allocate more resources",
-	commonpb.ErrorCode_TimeTickLongDelay:    "time tick long delay",
+	commonpb.ErrorCode_TimeTickLongDelay:    "time tick delay",
 }
 
 func GetQuotaErrorString(errCode commonpb.ErrorCode) string {
@@ -242,11 +243,11 @@ func (rl *rateLimiter) getError(rt internalpb.RateType) error {
 	switch rt {
 	case internalpb.RateType_DMLInsert, internalpb.RateType_DMLUpsert, internalpb.RateType_DMLDelete, internalpb.RateType_DMLBulkLoad:
 		if errCode, ok := rl.quotaStates.Get(milvuspb.QuotaState_DenyToWrite); ok {
-			return merr.OldCodeToMerr(errCode)
+			return errors.New(GetQuotaErrorString(errCode))
 		}
 	case internalpb.RateType_DQLSearch, internalpb.RateType_DQLQuery:
 		if errCode, ok := rl.quotaStates.Get(milvuspb.QuotaState_DenyToRead); ok {
-			return merr.OldCodeToMerr(errCode)
+			return errors.New(GetQuotaErrorString(errCode))
 		}
 	}
 	return nil

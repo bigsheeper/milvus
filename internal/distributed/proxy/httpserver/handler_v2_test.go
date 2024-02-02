@@ -45,6 +45,10 @@ type requestBodyTestCase struct {
 
 type DefaultReq struct{}
 
+func init() {
+	paramtable.Init()
+}
+
 func TestHTTPWrapper(t *testing.T) {
 	postTestCases := []requestBodyTestCase{}
 	postTestCasesTrace := []requestBodyTestCase{}
@@ -700,7 +704,7 @@ func TestMethodGet(t *testing.T) {
 				`"indexName": "` + DefaultIndexName + `",` +
 				`"userName": "` + util.UserRoot + `",` +
 				`"roleName": "` + util.RoleAdmin + `",` +
-				`"aliasName": "` + DefaultAliasName + `",` +
+				`"aliasName": "` + DefaultAliasName + `"` +
 				`}`))
 			req := httptest.NewRequest(http.MethodPost, testcase.path, bodyReader)
 			w := httptest.NewRecorder()

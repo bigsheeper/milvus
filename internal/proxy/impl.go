@@ -5550,3 +5550,15 @@ func (node *Proxy) GetVersion(ctx context.Context, request *milvuspb.GetVersionR
 		Status: merr.Success(),
 	}, nil
 }
+
+func (node *Proxy) ImportV2(ctx context.Context, req *internalpb.ImportRequest) (*internalpb.ImportResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}
+
+func (node *Proxy) GetImportProgress(ctx context.Context, req *internalpb.GetImportProgressRequest) (*internalpb.GetImportProgressResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}
+
+func (node *Proxy) ListImports(ctx context.Context, req *internalpb.ListImportsRequest) (*internalpb.ListImportsResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}

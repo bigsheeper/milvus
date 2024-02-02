@@ -1712,3 +1712,15 @@ func (s *Server) GcControl(ctx context.Context, request *datapb.GcControlRequest
 
 	return status, nil
 }
+
+func (s *Server) ImportV2(ctx context.Context, in *internalpb.ImportRequestInternal) (*internalpb.ImportResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}
+
+func (s *Server) GetImportProgress(ctx context.Context, in *internalpb.GetImportProgressRequest) (*internalpb.GetImportProgressResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}
+
+func (s *Server) ListImports(ctx context.Context, in *internalpb.ListImportsRequest) (*internalpb.ListImportsResponse, error) {
+	return nil, merr.ErrServiceUnimplemented
+}

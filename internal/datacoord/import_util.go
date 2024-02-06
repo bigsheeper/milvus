@@ -26,17 +26,16 @@ import (
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
-	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 )
 
-func WrapLogFields(task ImportTask, fields ...zap.Field) []zap.Field {
+func WrapTaskLog(task ImportTask, fields ...zap.Field) []zap.Field {
 	res := []zap.Field{
 		zap.Int64("taskID", task.GetTaskID()),
 		zap.Int64("jobID", task.GetJobID()),
@@ -49,7 +48,17 @@ func WrapLogFields(task ImportTask, fields ...zap.Field) []zap.Field {
 	return res
 }
 
-func AssemblePreImportRequest(task ImportTask) *datapb.PreImportRequest {
+func WrapJobLog(job ImportJob, fields ...zap.Field) []zap.Field {
+	res := []zap.Field{
+		zap.Int64("jobID", job.GetJobID()),
+		zap.Int64("collectionID", job.GetCollectionID()),
+		zap.String("state", job.GetState().String()),
+	}
+	res = append(res, fields...)
+	return res
+}
+
+func AssemblePreImportRequest(task ImportTask, schema *schemapb.CollectionSchema) *datapb.PreImportRequest {
 	importFiles := lo.Map(task.(*preImportTask).GetFileStats(),
 		func(fileStats *datapb.ImportFileStats, _ int) *internalpb.ImportFile {
 			return fileStats.GetImportFile()
@@ -61,7 +70,7 @@ func AssemblePreImportRequest(task ImportTask) *datapb.PreImportRequest {
 		CollectionID: task.GetCollectionID(),
 		PartitionIDs: pt.GetPartitionIDs(),
 		Vchannels:    pt.GetVchannels(),
-		Schema:       task.GetSchema(),
+		Schema:       schema,
 		ImportFiles:  importFiles,
 		Options:      pt.GetOptions(),
 	}
@@ -111,7 +120,7 @@ func AssignSegments(task ImportTask, manager Manager) ([]int64, error) {
 	return segments, nil
 }
 
-func AssembleImportRequest(task ImportTask, meta *meta, alloc allocator) (*datapb.ImportRequest, error) {
+func AssembleImportRequest(task ImportTask, schema *schemapb.CollectionSchema, meta *meta, alloc allocator) (*datapb.ImportRequest, error) {
 	requestSegments := make([]*datapb.ImportRequestSegment, 0)
 	for _, segmentID := range task.(*importTask).GetSegmentIDs() {
 		segment := meta.GetSegment(segmentID)
@@ -144,7 +153,7 @@ func AssembleImportRequest(task ImportTask, meta *meta, alloc allocator) (*datap
 		JobID:           task.GetJobID(),
 		TaskID:          task.GetTaskID(),
 		CollectionID:    task.GetCollectionID(),
-		Schema:          task.GetSchema(),
+		Schema:          schema,
 		Files:           importFiles,
 		Options:         task.(*importTask).GetOptions(),
 		Ts:              ts,
@@ -153,17 +162,13 @@ func AssembleImportRequest(task ImportTask, meta *meta, alloc allocator) (*datap
 	}, nil
 }
 
-func RegroupImportFiles(tasks []ImportTask) ([][]*datapb.ImportFileStats, error) {
-	if len(tasks) == 0 {
+func RegroupImportFiles(job ImportJob, files []*datapb.ImportFileStats) ([][]*datapb.ImportFileStats, error) {
+	if len(files) == 0 {
 		return nil, nil
 	}
-	pt := tasks[0].(*preImportTask)
-	files := lo.FlatMap(tasks, func(t ImportTask, _ int) []*datapb.ImportFileStats {
-		return t.(*preImportTask).GetFileStats()
-	})
 
 	segmentMaxSize := paramtable.Get().DataCoordCfg.SegmentMaxSize.GetAsInt() * 1024 * 1024
-	maxSizePerFileGroup := segmentMaxSize * len(pt.GetPartitionIDs()) * len(pt.GetVchannels())
+	maxSizePerFileGroup := segmentMaxSize * len(job.GetPartitionIDs()) * len(job.GetVchannels())
 	threshold := paramtable.Get().DataCoordCfg.MaxSizeInMBPerImportTask.GetAsInt() * 1024 * 1024
 	if maxSizePerFileGroup > threshold {
 		maxSizePerFileGroup = threshold
@@ -194,8 +199,42 @@ func RegroupImportFiles(tasks []ImportTask) ([][]*datapb.ImportFileStats, error)
 	return fileGroups, nil
 }
 
+func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
+	job ImportJob,
+	alloc allocator,
+) ([]ImportTask, error) {
+	idStart, _, err := alloc.allocN(int64(len(fileGroups)))
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]ImportTask, 0, len(fileGroups))
+	for i, files := range fileGroups {
+		fileStats := lo.Map(files, func(f *internalpb.ImportFile, _ int) *datapb.ImportFileStats {
+			return &datapb.ImportFileStats{
+				ImportFile: f,
+			}
+		})
+		task := &preImportTask{
+			PreImportTask: &datapb.PreImportTask{
+				JobID:        job.GetJobID(),
+				TaskID:       idStart + int64(i),
+				CollectionID: job.GetCollectionID(),
+				PartitionIDs: job.GetPartitionIDs(),
+				Vchannels:    job.GetVchannels(),
+				State:        internalpb.ImportState_Pending,
+				TimeoutTs:    job.GetTimeoutTs(),
+				FileStats:    fileStats,
+				Options:      job.GetOptions(),
+			},
+			lastActiveTime: time.Now(),
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
+}
+
 func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
-	pt *preImportTask,
+	job ImportJob,
 	manager Manager,
 	alloc allocator,
 ) ([]ImportTask, error) {
@@ -207,16 +246,15 @@ func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
 	for i, group := range fileGroups {
 		task := &importTask{
 			ImportTaskV2: &datapb.ImportTaskV2{
-				JobID:        pt.GetJobID(),
+				JobID:        job.GetJobID(),
 				TaskID:       idBegin + int64(i),
-				CollectionID: pt.GetCollectionID(),
+				CollectionID: job.GetCollectionID(),
 				NodeID:       NullNodeID,
 				State:        internalpb.ImportState_Pending,
-				TimeoutTs:    pt.GetTimeoutTs(),
+				TimeoutTs:    job.GetTimeoutTs(),
 				FileStats:    group,
-				Options:      pt.GetOptions(),
+				Options:      job.GetOptions(),
 			},
-			schema:         pt.GetSchema(),
 			lastActiveTime: time.Now(),
 		}
 		segments, err := AssignSegments(task, manager)
@@ -248,43 +286,15 @@ func AddImportSegment(cluster Cluster, meta *meta, segmentID int64) error {
 	return err
 }
 
-func AreAllTasksFinished(tasks []ImportTask, meta *meta, imeta ImportMeta) bool {
-	finished := true
-	for _, task := range tasks {
-		if task.GetState() != internalpb.ImportState_Completed {
-			return false
-		}
-		segmentIDs := task.(*importTask).GetSegmentIDs()
-		validSegments := make([]int64, 0)
-		for _, segmentID := range segmentIDs {
-			segment := meta.GetSegment(segmentID)
-			if segment.GetState() == commonpb.SegmentState_Dropped {
-				continue // this segment has been compacted
-			}
-			validSegments = append(validSegments, segmentID)
-			if segment.GetIsImporting() {
-				finished = false
-			}
-		}
-		if len(validSegments) < len(segmentIDs) {
-			err := imeta.Update(task.GetTaskID(), UpdateSegmentIDs(validSegments))
-			if err != nil {
-				log.Warn("update segmentIDs failed", WrapLogFields(task, zap.Error(err))...)
-			}
-		}
-	}
-	return finished
-}
-
-func GetImportProgress(jobID int64, imeta ImportMeta, meta *meta) (int64, internalpb.ImportState, string) {
-	tasks := imeta.GetBy(WithJob(jobID), WithType(PreImportTaskType))
+func GetImportProgress(jobID int64, tm ImportMeta, meta *meta) (int64, internalpb.ImportState, string) {
+	tasks := tm.GetTaskBy(WithJob(jobID), WithType(PreImportTaskType))
 	var (
 		preparingProgress float32 = 100
 		preImportProgress float32
 		importProgress    float32
 		segStateProgress  float32
 	)
-	totalTaskNum := len(imeta.GetBy(WithJob(jobID)))
+	totalTaskNum := len(tm.GetTaskBy(WithJob(jobID)))
 	for _, task := range tasks {
 		switch task.GetState() {
 		case internalpb.ImportState_Failed:
@@ -295,7 +305,7 @@ func GetImportProgress(jobID int64, imeta ImportMeta, meta *meta) (int64, intern
 			preImportProgress += 100 / float32(len(tasks))
 		}
 	}
-	tasks = imeta.GetBy(WithJob(jobID), WithType(ImportTaskType))
+	tasks = tm.GetTaskBy(WithJob(jobID), WithType(ImportTaskType))
 	var (
 		unsetImportStateSegments = 0
 		totalSegments            = 0
@@ -353,7 +363,7 @@ func GetImportProgress(jobID int64, imeta ImportMeta, meta *meta) (int64, intern
 	return int64(progress), internalpb.ImportState_InProgress, ""
 }
 
-func DropImportTask(task ImportTask, cluster Cluster, imeta ImportMeta) error {
+func DropImportTask(task ImportTask, cluster Cluster, tm ImportMeta) error {
 	if task.GetNodeID() == NullNodeID {
 		return nil
 	}
@@ -365,7 +375,7 @@ func DropImportTask(task ImportTask, cluster Cluster, imeta ImportMeta) error {
 	if err != nil && !errors.Is(err, merr.ErrNodeNotFound) {
 		return err
 	}
-	return imeta.Update(task.GetTaskID(), UpdateNodeID(NullNodeID))
+	return tm.UpdateTask(task.GetTaskID(), UpdateNodeID(NullNodeID))
 }
 
 func ListBinlogsAndGroupBySegment(ctx context.Context, cm storage.ChunkManager, importFile *internalpb.ImportFile) ([]*internalpb.ImportFile, error) {

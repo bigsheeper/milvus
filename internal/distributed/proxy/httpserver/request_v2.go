@@ -69,7 +69,7 @@ func (req *ImportReq) GetCollectionName() string {
 }
 
 func (req *ImportReq) GetPartitionName() string {
-	return req.CollectionName
+	return req.PartitionName
 }
 
 func (req *ImportReq) GetFiles() [][]string {
@@ -81,10 +81,10 @@ func (req *ImportReq) GetOptions() map[string]string {
 }
 
 type JobIDReq struct {
-	JobID int64 `json:"jobID" binding:"required"`
+	JobID string `json:"jobID" binding:"required"`
 }
 
-func (req *JobIDReq) GetJobID() int64 { return req.JobID }
+func (req *JobIDReq) GetJobID() string { return req.JobID }
 
 type QueryReqV2 struct {
 	DbName         string   `json:"dbName"`
@@ -211,7 +211,7 @@ type OptionsGetter interface {
 	GetOptions() map[string]string
 }
 type JobIDGetter interface {
-	GetJobID() int64
+	GetJobID() string
 }
 
 type PasswordReq struct {

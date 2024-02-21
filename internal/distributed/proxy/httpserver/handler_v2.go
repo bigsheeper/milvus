@@ -1564,7 +1564,7 @@ func (h *HandlersV2) getImportJobProcess(ctx context.Context, c *gin.Context, an
 	jobIDGetter := anyReq.(JobIDGetter)
 	req := &internalpb.GetImportProgressRequest{
 		DbName: dbName,
-		JobID:  strconv.FormatInt(jobIDGetter.GetJobID(), 10),
+		JobID:  jobIDGetter.GetJobID(),
 	}
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, func(reqCtx context.Context, req any) (interface{}, error) {
 		return h.proxy.GetImportProgress(reqCtx, req.(*internalpb.GetImportProgressRequest))

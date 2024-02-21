@@ -15,7 +15,7 @@ TIMEOUT = 20
 
 
 def vector_bulkinsert(url, payload, check_items=None):
-    url = f'http://{url}/v1/vector/bulkinsert'
+    url = f'http://{url}/v2/vectordb/jobs/import/create'
     headers = {
         'Content-Type': 'application/json',
         'RequestId': str(uuid.uuid1())
@@ -32,12 +32,15 @@ def vector_bulkinsert(url, payload, check_items=None):
 
 
 def vector_bulkinsert_describe(url, job_id):
-    url = f'http://{url}/v1/vector/bulkinsert/describe?jobID={job_id}'
+    payload = {
+        "jobID": job_id,
+    }
+    url = f'http://{url}/v2/vectordb/jobs/import/get_progress'
     headers = {
         'Content-Type': 'application/json',
         'RequestId': str(uuid.uuid1())
     }
-    response = requests.get(url, headers=headers, verify=False)
+    response = requests.post(url, headers=headers, json=payload, verify=False)
     res = response.json()
     log.info(f"vector_bulkinsert_describe response: {res}, code={res['code']}")
     assert res['code'] == 200
@@ -45,12 +48,12 @@ def vector_bulkinsert_describe(url, job_id):
 
 
 def vector_bulkinsert_list(url):
-    url = f'http://{url}/v1/vector/bulkinsert/list'
+    url = f'http://{url}/v2/vectordb/jobs/import/list'
     headers = {
         'Content-Type': 'application/json',
         'RequestId': str(uuid.uuid1())
     }
-    response = requests.get(url, headers=headers, verify=False)
+    response = requests.post(url, headers=headers, verify=False)
     res = response.json()
     assert res['code'] == 200
     return res['data']
@@ -77,7 +80,7 @@ class ApiUtilityWrapper:
         res = vector_bulkinsert("localhost:19530", payload, check_items)
         # check_result = ResponseChecker(res, func_name, check_task, check_items, is_succ,
         #                                collection_name=collection_name, using=using).run()
-        time.sleep(1)
+        # time.sleep(1)
         return res, None
 
     # def do_bulk_insert(self, collection_name, files="", partition_name=None, timeout=None,

@@ -810,18 +810,18 @@ func TestMethodPost(t *testing.T) {
 	mp.EXPECT().ListImports(mock.Anything, mock.Anything).Return(&internalpb.ListImportsResponse{
 		Status: &StatusSuccess,
 		JobIDs: []string{"1", "2", "3", "4"},
-		States: []internalpb.ImportState{
-			internalpb.ImportState_Pending,
-			internalpb.ImportState_InProgress,
-			internalpb.ImportState_Failed,
-			internalpb.ImportState_Completed,
+		States: []internalpb.ImportJobState{
+			internalpb.ImportJobState_Pending,
+			internalpb.ImportJobState_Importing,
+			internalpb.ImportJobState_Failed,
+			internalpb.ImportJobState_Completed,
 		},
 		Reasons:    []string{"", "", "mock reason", ""},
 		Progresses: []int64{0, 30, 0, 100},
 	}, nil).Once()
 	mp.EXPECT().GetImportProgress(mock.Anything, mock.Anything).Return(&internalpb.GetImportProgressResponse{
 		Status:   &StatusSuccess,
-		State:    internalpb.ImportState_Completed,
+		State:    internalpb.ImportJobState_Completed,
 		Reason:   "",
 		Progress: 100,
 	}, nil).Once()

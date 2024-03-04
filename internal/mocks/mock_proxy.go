@@ -5692,8 +5692,8 @@ type MockProxy_UpdateResourceGroups_Call struct {
 }
 
 // UpdateResourceGroups is a helper method to define mock.On call
-//  - _a0 context.Context
-//  - _a1 *milvuspb.UpdateResourceGroupsRequest
+//   - _a0 context.Context
+//   - _a1 *milvuspb.UpdateResourceGroupsRequest
 func (_e *MockProxy_Expecter) UpdateResourceGroups(_a0 interface{}, _a1 interface{}) *MockProxy_UpdateResourceGroups_Call {
 	return &MockProxy_UpdateResourceGroups_Call{Call: _e.mock.On("UpdateResourceGroups", _a0, _a1)}
 }

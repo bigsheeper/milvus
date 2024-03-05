@@ -29,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/crypto"
+	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/requestutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -1586,7 +1587,9 @@ func (h *HandlersV2) createImportJob(ctx context.Context, c *gin.Context, anyReq
 		return h.proxy.ImportV2(reqCtx, req.(*internalpb.ImportRequest))
 	})
 	if err == nil {
-		c.JSON(http.StatusOK, gin.H{HTTPReturnCode: http.StatusOK, "jobID": resp.(*internalpb.ImportResponse).GetJobID()})
+		returnData := make(map[string]interface{})
+		returnData["jobID"] = resp.(*internalpb.ImportResponse).GetJobID()
+		c.JSON(http.StatusOK, gin.H{HTTPReturnCode: http.StatusOK, HTTPReturnData: returnData})
 	}
 	return resp, err
 }

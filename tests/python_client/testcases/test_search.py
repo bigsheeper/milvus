@@ -473,7 +473,7 @@ class TestCollectionSearchInvalid(TestcaseBase):
         """
         # 1. create a collection
         nb = 1
-        dim = 1
+        dim = 2
         fields = [cf.gen_int64_field("int64_1"), cf.gen_int64_field("int64_2"),
                   cf.gen_float_vec_field(dim=dim)]
         schema = cf.gen_collection_schema(fields=fields, primary_field="int64_1")
@@ -3402,7 +3402,7 @@ class TestCollectionSearch(TestcaseBase):
         """
         # 1. create a collection
         nb = 10
-        dim = 1
+        dim = 2
         fields = [cf.gen_int64_field("int64_1"), cf.gen_int64_field("int64_2"),
                   cf.gen_float_vec_field(dim=dim)]
         schema = cf.gen_collection_schema(fields=fields, primary_field="int64_1")
@@ -5060,6 +5060,66 @@ class TestSearchBase(TestcaseBase):
                                 check_items={"nq": nq,
                                              "ids": insert_ids,
                                              "limit": top_k})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.parametrize("index, params", zip(ct.all_index_types[:6], ct.default_index_params[:6]))
+    def test_each_index_with_mmap_enabled_search(self, index, params):
+        """
+        target: test each index with mmap enabled search
+        method: test each index with mmap enabled search
+        expected: search success
+        """
+        self._connect()
+        c_name = cf.gen_unique_str(prefix)
+        collection_w, _ = self.collection_wrap.init_collection(c_name, schema=cf.gen_default_collection_schema())
+        default_index = {"index_type": index, "params": params, "metric_type": "L2"}
+        collection_w.create_index(field_name, default_index, index_name="mmap_index")
+        # mmap index
+        collection_w.alter_index("mmap_index", {'mmap.enabled': True})
+        # search
+        collection_w.load()
+        search_params = cf.gen_search_param(index)[0]
+        vector = [[random.random() for _ in range(default_dim)] for _ in range(default_nq)]
+        collection_w.search(vector, default_search_field, search_params, ct.default_limit)
+        # enable mmap
+        collection_w.release()
+        collection_w.alter_index("mmap_index", {'mmap.enabled': False})
+        collection_w.load()
+        collection_w.search(vector, default_search_field, search_params, ct.default_limit,
+                            check_task=CheckTasks.check_search_results,
+                            check_items={"nq": default_nq,
+                                         "limit": ct.default_limit})
+
+    @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.parametrize("index, params", zip(ct.all_index_types[7:9], ct.default_index_params[7:9]))
+    def test_enable_mmap_search_for_binary_indexes(self, index, params, dim):
+        """
+        target: enable mmap for binary indexes
+        method: enable mmap for binary indexes
+        expected: search success
+        """
+        self._connect()
+        c_name = cf.gen_unique_str(prefix)
+        default_schema = cf.gen_default_binary_collection_schema(auto_id=False, dim=dim,
+                                                                 primary_field=ct.default_int64_field_name)
+        collection_w, _ = self.collection_wrap.init_collection(c_name, schema=default_schema)
+
+        default_index = {"index_type": index,
+                         "params": params, "metric_type": "JACCARD"}
+        collection_w.create_index("binary_vector", default_index, index_name="binary_idx_name")
+        collection_w.alter_index("binary_idx_name", {'mmap.enabled': True})
+        collection_w.set_properties({'mmap.enabled': True})
+        collection_w.load()
+        pro = collection_w.describe().get("properties")
+        assert pro["mmap.enabled"] == 'True'
+        assert collection_w.index().params["mmap.enabled"] == 'True'
+        # search
+        binary_vectors = cf.gen_binary_vectors(3000, dim)[1]
+        search_params = {"metric_type": "JACCARD", "params": {"nprobe": 10}}
+        output_fields = [default_string_field_name]
+        collection_w.search(binary_vectors[:default_nq], "binary_vector", search_params,
+                            default_limit, default_search_string_exp, output_fields=output_fields,
+                            check_task=CheckTasks.check_search_results)
 
 
 class TestSearchDSL(TestcaseBase):

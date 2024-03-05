@@ -28,7 +28,7 @@ def vector_bulkinsert(url, payload, check_items=None):
         assert check_items["err_msg"] in res['message']
     else:
         assert res['code'] == 200
-        return res['jobID']
+        return res['data']['jobID']
 
 
 def vector_bulkinsert_describe(url, job_id):

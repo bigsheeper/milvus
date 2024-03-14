@@ -40,23 +40,25 @@ type Options []*commonpb.KeyValuePair
 
 func ParseTimeRange(options Options) (uint64, uint64, error) {
 	importOptions := funcutil.KeyValuePair2Map(options)
-	getTimestamp := func(defaultValue uint64, keys ...string) (uint64, error) {
-		for _, key := range keys {
-			if value, ok := importOptions[key]; ok {
-				pTs, err := strconv.ParseInt(value, 10, 64)
-				if err != nil {
-					return 0, merr.WrapErrImportFailed(fmt.Sprintf("parse %s failed, value=%s, err=%s", key, value, err))
+	getTimestamp := func(defaultValue uint64, targetKeys ...string) (uint64, error) {
+		for _, targetKey := range targetKeys {
+			for key, value := range importOptions {
+				if strings.EqualFold(key, targetKey) {
+					pTs, err := strconv.ParseInt(value, 10, 64)
+					if err != nil {
+						return 0, merr.WrapErrImportFailed(fmt.Sprintf("parse %s failed, value=%s, err=%s", targetKey, value, err))
+					}
+					return tsoutil.ComposeTS(pTs, 0), nil
 				}
-				return tsoutil.ComposeTS(pTs, 0), nil
 			}
 		}
 		return defaultValue, nil
 	}
-	tsStart, err := getTimestamp(0, StartTsdgdfghfghfd)
+	tsStart, err := getTimestamp(0, StartTs, StartTs2)
 	if err != nil {
 		return 0, 0, err
 	}
-	tsEnd, err := getTimestamp(math.MaxUint64, EndTs)
+	tsEnd, err := getTimestamp(math.MaxUint64, EndTs, EndTs2)
 	if err != nil {
 		return 0, 0, err
 	}

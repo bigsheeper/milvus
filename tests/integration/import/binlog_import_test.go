@@ -29,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/metric"
+	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/tests/integration"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
@@ -207,8 +208,8 @@ func (s *BinlogImportSuite) TestBinlogImport() {
 	files := []*internalpb.ImportFile{
 		{
 			Paths: []string{
-				fmt.Sprintf("files/insert_log/%d/%d/", collectionID, partitionID),
-				fmt.Sprintf("files/delta_log/%d/%d/", collectionID, partitionID),
+				fmt.Sprintf("/tmp/%s/insert_log/%d/%d/", paramtable.Get().EtcdCfg.RootPath.GetValue(), collectionID, partitionID),
+				fmt.Sprintf("/tmp/%s/delta_log/%d/%d/", paramtable.Get().EtcdCfg.RootPath.GetValue(), collectionID, partitionID),
 			},
 		},
 	}
@@ -244,18 +245,19 @@ func (s *BinlogImportSuite) TestBinlogImport() {
 	s.WaitForLoadRefresh(ctx, "", collectionName)
 
 	// search
-	expr := ""
+	expr := fmt.Sprintf("%s > 0", integration.Int64Field)
 	nq := 10
 	topk := 10
 	roundDecimal := -1
 
-	params := integration.GetSearchParams(integration.IndexHNSW, metric.L2)
+	params := integration.GetSearchParams(integration.IndexFaissIvfFlat, metric.L2)
 	searchReq := integration.ConstructSearchRequest("", collectionName, expr,
-		"embeddings", schemapb.DataType_FloatVector, nil, metric.L2, params, nq, dim, topk, roundDecimal)
+		integration.FloatVecField, schemapb.DataType_FloatVector, nil, metric.L2, params, nq, dim, topk, roundDecimal)
 
 	searchResult, err := c.Proxy.Search(ctx, searchReq)
+
+	err = merr.CheckRPCCall(searchResult, err)
 	s.NoError(err)
-	s.Equal(commonpb.ErrorCode_Success, searchResult.GetStatus().GetErrorCode())
 	s.Equal(nq*topk, len(searchResult.GetResults().GetScores()))
 }
 

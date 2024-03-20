@@ -163,7 +163,7 @@ func (t *hybridSearchTask) PreExecute(ctx context.Context) error {
 		log.Info("generate reScorer failed", zap.Any("rank params", t.request.GetRankParams()), zap.Error(err))
 		return err
 	}
-
+	t.HybridSearchRequest.GuaranteeTimestamp = guaranteeTs
 	t.searchTasks = make([]*searchTask, len(t.request.GetRequests()))
 	for index := range t.request.Requests {
 		searchReq := t.request.Requests[index]
@@ -216,7 +216,7 @@ func (t *hybridSearchTask) PreExecute(ctx context.Context) error {
 	}
 
 	log.Debug("hybrid search preExecute done.",
-		zap.Uint64("guarantee_ts", t.request.GetGuaranteeTimestamp()),
+		zap.Uint64("guarantee_ts", guaranteeTs),
 		zap.Bool("use_default_consistency", t.request.GetUseDefaultConsistency()),
 		zap.Any("consistency level", t.request.GetConsistencyLevel()))
 
@@ -246,10 +246,12 @@ func (t *hybridSearchTask) hybridSearchShard(ctx context.Context, nodeID int64, 
 	result, err = qn.HybridSearch(ctx, req)
 	if err != nil {
 		log.Warn("QueryNode hybrid search return error", zap.Error(err))
+		globalMetaCache.DeprecateShardCache(t.request.GetDbName(), t.request.GetCollectionName())
 		return err
 	}
 	if result.GetStatus().GetErrorCode() == commonpb.ErrorCode_NotShardLeader {
 		log.Warn("QueryNode is not shardLeader")
+		globalMetaCache.DeprecateShardCache(t.request.GetDbName(), t.request.GetCollectionName())
 		return errInvalidShardLeaders
 	}
 	if result.GetStatus().GetErrorCode() != commonpb.ErrorCode_Success {

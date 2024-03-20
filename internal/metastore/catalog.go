@@ -16,6 +16,7 @@ type RootCoordCatalog interface {
 	CreateDatabase(ctx context.Context, db *model.Database, ts typeutil.Timestamp) error
 	DropDatabase(ctx context.Context, dbID int64, ts typeutil.Timestamp) error
 	ListDatabases(ctx context.Context, ts typeutil.Timestamp) ([]*model.Database, error)
+	AlterDatabase(ctx context.Context, newDB *model.Database, ts typeutil.Timestamp) error
 
 	CreateCollection(ctx context.Context, collectionInfo *model.Collection, ts typeutil.Timestamp) error
 	GetCollectionByID(ctx context.Context, dbID int64, ts typeutil.Timestamp, collectionID typeutil.UniqueID) (*model.Collection, error)
@@ -163,4 +164,8 @@ type QueryCoordCatalog interface {
 	SaveResourceGroup(rgs ...*querypb.ResourceGroup) error
 	RemoveResourceGroup(rgName string) error
 	GetResourceGroups() ([]*querypb.ResourceGroup, error)
+
+	SaveCollectionTarget(target *querypb.CollectionTarget) error
+	RemoveCollectionTarget(collectionID int64) error
+	GetCollectionTargets() (map[int64]*querypb.CollectionTarget, error)
 }

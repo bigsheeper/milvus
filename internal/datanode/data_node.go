@@ -318,6 +318,7 @@ func (node *DataNode) handleChannelEvt(evt *clientv3.Event) {
 func (node *DataNode) tryToReleaseFlowgraph(vChanName string) {
 	log.Info("try to release flowgraph", zap.String("vChanName", vChanName))
 	node.flowgraphManager.RemoveFlowgraph(vChanName)
+	node.writeBufferManager.RemoveChannel(vChanName)
 }
 
 // BackGroundGC runs in background to release datanode resources
@@ -426,8 +427,6 @@ func (node *DataNode) Stop() error {
 	node.stopOnce.Do(func() {
 		// https://github.com/milvus-io/milvus/issues/12282
 		node.UpdateStateCode(commonpb.StateCode_Abnormal)
-		// Delay the cancellation of ctx to ensure that the session is automatically recycled after closed the flow graph
-		node.cancel()
 
 		node.eventManager.CloseAll()
 
@@ -460,6 +459,7 @@ func (node *DataNode) Stop() error {
 			node.importManager.Close()
 		}
 
+		node.cancel()
 		node.stopWaiter.Wait()
 	})
 	return nil

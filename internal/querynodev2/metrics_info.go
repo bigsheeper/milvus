@@ -104,12 +104,15 @@ func getQuotaMetrics(node *QueryNode) (*metricsinfo.QueryNodeQuotaMetrics, error
 
 	minTsafeChannel, minTsafe := node.tSafeManager.Min()
 
+	collections := node.manager.Collection.List()
+
 	var totalGrowingSize int64
 	growingSegments := node.manager.Segment.GetBy(segments.WithType(segments.SegmentTypeGrowing))
 	growingGroupByCollection := lo.GroupBy(growingSegments, func(seg segments.Segment) int64 {
 		return seg.Collection()
 	})
-	for collection, segs := range growingGroupByCollection {
+	for _, collection := range collections {
+		segs := growingGroupByCollection[collection]
 		size := lo.SumBy(segs, func(seg segments.Segment) int64 {
 			return seg.MemSize()
 		})
@@ -122,18 +125,13 @@ func getQuotaMetrics(node *QueryNode) (*metricsinfo.QueryNodeQuotaMetrics, error
 	sealedGroupByCollection := lo.GroupBy(sealedSegments, func(seg segments.Segment) int64 {
 		return seg.Collection()
 	})
-	for collection, segs := range sealedGroupByCollection {
+	for _, collection := range collections {
+		segs := sealedGroupByCollection[collection]
 		size := lo.SumBy(segs, func(seg segments.Segment) int64 {
 			return seg.MemSize()
 		})
 		metrics.QueryNodeEntitiesSize.WithLabelValues(fmt.Sprint(node.GetNodeID()),
 			fmt.Sprint(collection), segments.SegmentTypeSealed.String()).Set(float64(size))
-	}
-
-	allSegments := node.manager.Segment.GetBy()
-	collections := typeutil.NewUniqueSet()
-	for _, segment := range allSegments {
-		collections.Insert(segment.Collection())
 	}
 
 	return &metricsinfo.QueryNodeQuotaMetrics{
@@ -149,9 +147,21 @@ func getQuotaMetrics(node *QueryNode) (*metricsinfo.QueryNodeQuotaMetrics, error
 		GrowingSegmentsSize: totalGrowingSize,
 		Effect: metricsinfo.NodeEffect{
 			NodeID:        node.GetNodeID(),
-			CollectionIDs: collections.Collect(),
+			CollectionIDs: collections,
 		},
 	}, nil
+}
+
+func getCollectionMetrics(node *QueryNode) (*metricsinfo.QueryNodeCollectionMetrics, error) {
+	allSegments := node.manager.Segment.GetBy()
+	ret := &metricsinfo.QueryNodeCollectionMetrics{
+		CollectionRows: make(map[int64]int64),
+	}
+	for _, segment := range allSegments {
+		collectionID := segment.Collection()
+		ret.CollectionRows[collectionID] += segment.RowNum()
+	}
+	return ret, nil
 }
 
 // getSystemInfoMetrics returns metrics info of QueryNode
@@ -163,7 +173,7 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 	if err != nil {
 		return &milvuspb.GetMetricsResponse{
 			Status:        merr.Status(err),
-			ComponentName: metricsinfo.ConstructComponentName(typeutil.DataNodeRole, node.GetNodeID()),
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, node.GetNodeID()),
 		}, nil
 	}
 	hardwareInfos := metricsinfo.HardwareMetrics{
@@ -176,6 +186,14 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 		DiskUsage:    hardware.GetDiskUsage(),
 	}
 	quotaMetrics.Hms = hardwareInfos
+
+	collectionMetrics, err := getCollectionMetrics(node)
+	if err != nil {
+		return &milvuspb.GetMetricsResponse{
+			Status:        merr.Status(err),
+			ComponentName: metricsinfo.ConstructComponentName(typeutil.QueryNodeRole, node.GetNodeID()),
+		}, nil
+	}
 
 	nodeInfos := metricsinfo.QueryNodeInfos{
 		BaseComponentInfos: metricsinfo.BaseComponentInfos{
@@ -190,7 +208,8 @@ func getSystemInfoMetrics(ctx context.Context, req *milvuspb.GetMetricsRequest, 
 		SystemConfigurations: metricsinfo.QueryNodeConfiguration{
 			SimdType: paramtable.Get().CommonCfg.SimdType.GetValue(),
 		},
-		QuotaMetrics: quotaMetrics,
+		QuotaMetrics:      quotaMetrics,
+		CollectionMetrics: collectionMetrics,
 	}
 	metricsinfo.FillDeployMetricsWithEnv(&nodeInfos.SystemInfo)
 

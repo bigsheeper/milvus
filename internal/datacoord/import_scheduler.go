@@ -18,10 +18,10 @@ package datacoord
 
 import (
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
@@ -29,7 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/util/merr"
+	"github.com/milvus-io/milvus/pkg/metrics"
 )
 
 const (
@@ -130,24 +130,6 @@ func (s *importScheduler) process() {
 	}
 }
 
-func (s *importScheduler) checkErr(task ImportTask, err error) {
-	if merr.IsRetryableErr(err) || merr.IsCanceledOrTimeout(err) || errors.Is(err, merr.ErrNodeNotFound) {
-		err = s.imeta.UpdateTask(task.GetTaskID(), UpdateState(datapb.ImportTaskStateV2_Pending))
-		if err != nil {
-			log.Warn("failed to update import task state to pending", WrapTaskLog(task, zap.Error(err))...)
-			return
-		}
-		log.Info("reset task state to pending due to error occurs", WrapTaskLog(task, zap.Error(err))...)
-	} else {
-		err = s.imeta.UpdateJob(task.GetJobID(), UpdateJobState(internalpb.ImportJobState_Failed), UpdateJobReason(err.Error()))
-		if err != nil {
-			log.Warn("failed to update job state to Failed", zap.Int64("jobID", task.GetJobID()), zap.Error(err))
-			return
-		}
-		log.Info("import task failed", WrapTaskLog(task, zap.Error(err))...)
-	}
-}
-
 func (s *importScheduler) peekSlots() map[int64]int64 {
 	nodeIDs := lo.Map(s.cluster.GetSessions(), func(s *Session, _ int) int64 {
 		return s.info.NodeID
@@ -229,8 +211,11 @@ func (s *importScheduler) processInProgressPreImport(task ImportTask) {
 	}
 	resp, err := s.cluster.QueryPreImport(task.GetNodeID(), req)
 	if err != nil {
-		log.Warn("query preimport failed", WrapTaskLog(task, zap.Error(err))...)
-		s.checkErr(task, err)
+		updateErr := s.imeta.UpdateTask(task.GetTaskID(), UpdateState(datapb.ImportTaskStateV2_Pending))
+		if updateErr != nil {
+			log.Warn("failed to update preimport task state to pending", WrapTaskLog(task, zap.Error(updateErr))...)
+		}
+		log.Info("reset preimport task state to pending due to error occurs", WrapTaskLog(task, zap.Error(err))...)
 		return
 	}
 	if resp.GetState() == datapb.ImportTaskStateV2_Failed {
@@ -262,8 +247,11 @@ func (s *importScheduler) processInProgressImport(task ImportTask) {
 	}
 	resp, err := s.cluster.QueryImport(task.GetNodeID(), req)
 	if err != nil {
-		log.Warn("query import failed", WrapTaskLog(task, zap.Error(err))...)
-		s.checkErr(task, err)
+		updateErr := s.imeta.UpdateTask(task.GetTaskID(), UpdateState(datapb.ImportTaskStateV2_Pending))
+		if updateErr != nil {
+			log.Warn("failed to update import task state to pending", WrapTaskLog(task, zap.Error(updateErr))...)
+		}
+		log.Info("reset import task state to pending due to error occurs", WrapTaskLog(task, zap.Error(err))...)
 		return
 	}
 	if resp.GetState() == datapb.ImportTaskStateV2_Failed {
@@ -280,12 +268,16 @@ func (s *importScheduler) processInProgressImport(task ImportTask) {
 		if info.GetImportedRows() <= segment.GetNumOfRows() {
 			continue // rows not changed, no need to update
 		}
+		diff := info.GetImportedRows() - segment.GetNumOfRows()
 		op := UpdateImportedRows(info.GetSegmentID(), info.GetImportedRows())
 		err = s.meta.UpdateSegmentsInfo(op)
 		if err != nil {
 			log.Warn("update import segment rows failed", WrapTaskLog(task, zap.Error(err))...)
 			return
 		}
+		metrics.DataCoordBulkVectors.WithLabelValues(
+			strconv.FormatInt(task.GetCollectionID(), 10),
+		).Add(float64(diff))
 	}
 	if resp.GetState() == datapb.ImportTaskStateV2_Completed {
 		for _, info := range resp.GetImportSegmentsInfo() {

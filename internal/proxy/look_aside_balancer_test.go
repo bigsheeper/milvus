@@ -334,6 +334,20 @@ func (suite *LookAsideBalancerSuite) TestCheckHealthLoop() {
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
+func (suite *LookAsideBalancerSuite) TestGetClientFailed() {
+	suite.balancer.metricsUpdateTs.Insert(2, time.Now().UnixMilli())
+
+	// test get shard client from client mgr return nil
+	suite.clientMgr.ExpectedCalls = nil
+	suite.clientMgr.EXPECT().GetClient(mock.Anything, int64(2)).Return(nil, errors.New("shard client not found"))
+	failCounter := atomic.NewInt64(0)
+	suite.balancer.failedHeartBeatCounter.Insert(2, failCounter)
+
+	// slepp 10s, wait for checkNodeHealth execute for more than one round
+	time.Sleep(10 * time.Second)
+	suite.True(failCounter.Load() == 0)
+}
+
 func (suite *LookAsideBalancerSuite) TestNodeRecover() {
 	// mock qn down for a while and then recover
 	qn3 := mocks.NewMockQueryNodeClient(suite.T())

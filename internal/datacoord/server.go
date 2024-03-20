@@ -531,6 +531,7 @@ func (s *Server) initGarbageCollection(cli storage.ChunkManager) {
 		cli:              cli,
 		enabled:          Params.DataCoordCfg.EnableGarbageCollection.GetAsBool(),
 		checkInterval:    Params.DataCoordCfg.GCInterval.GetAsDuration(time.Second),
+		scanInterval:     Params.DataCoordCfg.GCScanIntervalInHour.GetAsDuration(time.Hour),
 		missingTolerance: Params.DataCoordCfg.GCMissingTolerance.GetAsDuration(time.Second),
 		dropTolerance:    Params.DataCoordCfg.GCDropTolerance.GetAsDuration(time.Second),
 	})
@@ -1126,9 +1127,6 @@ func (s *Server) Stop() error {
 	s.cluster.Close()
 	logutil.Logger(s.ctx).Info("datacoord cluster stopped")
 
-	s.stopServerLoop()
-	logutil.Logger(s.ctx).Info("datacoord serverloop stopped")
-
 	if s.session != nil {
 		s.session.Stop()
 	}
@@ -1136,6 +1134,9 @@ func (s *Server) Stop() error {
 	if s.icSession != nil {
 		s.icSession.Stop()
 	}
+
+	s.stopServerLoop()
+	logutil.Logger(s.ctx).Info("datacoord serverloop stopped")
 	logutil.Logger(s.ctx).Warn("datacoord stop successful")
 
 	return nil

@@ -18,7 +18,6 @@ package datacoord
 
 import (
 	"context"
-	"fmt"
 	"path"
 	"sort"
 	"time"

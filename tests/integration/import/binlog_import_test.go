@@ -19,7 +19,13 @@ package importv2
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -31,10 +37,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/metric"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/tests/integration"
-	"github.com/stretchr/testify/suite"
-	"go.uber.org/zap"
-	"testing"
-	"time"
 )
 
 type BinlogImportSuite struct {

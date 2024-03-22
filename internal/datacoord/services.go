@@ -1853,6 +1853,7 @@ func (s *Server) ImportV2(ctx context.Context, in *internalpb.ImportRequestInter
 			State:          internalpb.ImportJobState_Pending,
 			Files:          files,
 			Options:        in.GetOptions(),
+			StartTime:      time.Now().Format("2006-01-02T15:04:05Z07:00"),
 		},
 	}
 	err = s.importMeta.AddJob(job)

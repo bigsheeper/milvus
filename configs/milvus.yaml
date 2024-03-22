@@ -68,7 +68,9 @@ minio:
   port: 9000 # Port of MinIO/S3
   accessKeyID: minioadmin # accessKeyID of MinIO/S3
   secretAccessKey: minioadmin # MinIO/S3 encryption string
-  useSSL: false # Access to MinIO/S3 with SSL
+  ssl:
+    enabled: false # Access to MinIO/S3 with SSL
+    tlsCACert: /path/to/public.crt # path to your CACert file, ignore when it is empty
   bucketName: a-bucket # Bucket name in MinIO/S3
   rootPath: files # The root path where the message is stored in MinIO/S3
   # Whether to useIAM role to access S3/GCS instead of access/secret keys
@@ -356,7 +358,8 @@ queryNode:
       taskQueueExpire: 60 # 1 min by default, expire time of inner user task queue since queue is empty.
       enableCrossUserGrouping: false # false by default Enable Cross user grouping when using user-task-polling policy. (close it if task of any user can not merge others).
       maxPendingTaskPerUser: 1024 # 50 by default, max pending task in scheduler per user.
-  mmapEnabled: false # enable mmap global, if set true, will use mmap to load segment data
+  mmap:
+    mmapEnabled: false # enable mmap global, if set true, will use mmap to load segment data
 
   # can specify ip for example
   # ip: 127.0.0.1

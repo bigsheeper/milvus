@@ -201,7 +201,7 @@ type commonConfig struct {
 	HighPriorityThreadCoreCoefficient   ParamItem `refreshable:"false"`
 	MiddlePriorityThreadCoreCoefficient ParamItem `refreshable:"false"`
 	LowPriorityThreadCoreCoefficient    ParamItem `refreshable:"false"`
-	EnableNodeFilteringOnPartitionKey   ParamItem `refreshable:"false"`
+	EnableMaterializedView              ParamItem `refreshable:"false"`
 	BuildIndexThreadPoolRatio           ParamItem `refreshable:"false"`
 	MaxDegree                           ParamItem `refreshable:"true"`
 	SearchListSize                      ParamItem `refreshable:"true"`
@@ -435,12 +435,12 @@ This configuration is only used by querynode and indexnode, it selects CPU instr
 	}
 	p.IndexSliceSize.Init(base.mgr)
 
-	p.EnableNodeFilteringOnPartitionKey = ParamItem{
-		Key:          "common.nodeFiltering.enableOnPartitionKey",
+	p.EnableMaterializedView = ParamItem{
+		Key:          "common.materializedView.enabled",
 		Version:      "2.5.0",
 		DefaultValue: "false",
 	}
-	p.EnableNodeFilteringOnPartitionKey.Init(base.mgr)
+	p.EnableMaterializedView.Init(base.mgr)
 
 	p.MaxDegree = ParamItem{
 		Key:          "common.DiskIndex.MaxDegree",
@@ -2205,17 +2205,19 @@ func (p *queryNodeConfig) init(base *BaseTable) {
 	p.CacheEnabled.Init(base.mgr)
 
 	p.MmapDirPath = ParamItem{
-		Key:          "queryNode.mmapDirPath",
+		Key:          "queryNode.mmap.mmapDirPath",
 		Version:      "2.3.0",
 		DefaultValue: "",
+		FallbackKeys: []string{"queryNode.mmapDirPath"},
 		Doc:          "The folder that storing data files for mmap, setting to a path will enable Milvus to load data with mmap",
 	}
 	p.MmapDirPath.Init(base.mgr)
 
 	p.MmapEnabled = ParamItem{
-		Key:          "queryNode.mmapEnabled",
+		Key:          "queryNode.mmap.mmapEnabled",
 		Version:      "2.4.0",
 		DefaultValue: "false",
+		FallbackKeys: []string{"queryNode.mmapEnabled"},
 		Doc:          "Enable mmap for loading data",
 	}
 	p.MmapEnabled.Init(base.mgr)

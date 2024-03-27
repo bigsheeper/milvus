@@ -47,7 +47,8 @@ type scheduler struct {
 	syncMgr syncmgr.SyncManager
 	cm      storage.ChunkManager
 
-	pool *conc.Pool[any]
+	pool     *conc.Pool[any]
+	syncDisp *syncDispatcher
 
 	closeOnce sync.Once
 	closeChan chan struct{}
@@ -58,11 +59,13 @@ func NewScheduler(manager TaskManager, syncMgr syncmgr.SyncManager, cm storage.C
 		paramtable.Get().DataNodeCfg.MaxConcurrentImportTaskNum.GetAsInt(),
 		conc.WithPreAlloc(true),
 	)
+	syncDisp := newSyncDispatcher(paramtable.Get().DataNodeCfg.MaxConcurrentImportTaskNum.GetAsInt(), syncMgr)
 	return &scheduler{
 		manager:   manager,
 		syncMgr:   syncMgr,
 		cm:        cm,
 		pool:      pool,
+		syncDisp:  syncDisp,
 		closeChan: make(chan struct{}),
 	}
 }
@@ -325,7 +328,7 @@ func (s *scheduler) Sync(task *ImportTask, hashedData HashedData) ([]*conc.Futur
 				return nil, nil, err
 			}
 			segmentImportedSizes[segmentID] += size
-			future := s.syncMgr.SyncData(task.GetCtx(), syncTask)
+			future := s.syncDisp.Submit(task.GetCtx(), syncTask)
 			futures = append(futures, future)
 			syncTasks = append(syncTasks, syncTask)
 		}

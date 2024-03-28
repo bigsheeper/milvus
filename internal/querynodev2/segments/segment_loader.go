@@ -611,7 +611,8 @@ func (loader *segmentLoader) Load(ctx context.Context,
 		return nil, err
 	}
 
-	if common.IsCollectionLazyLoadEnabled(collection.Schema().Properties...) {
+	if common.IsCollectionLazyLoadEnabled(collection.Schema().Properties...) ||
+		(!common.HasLazyload(collection.Schema().Properties) && params.Params.QueryNodeCfg.LazyLoadEnabled.GetAsBool()) {
 		loadStatus = LoadStatusMeta
 	}
 
@@ -1487,7 +1488,7 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 		var mmapEnabled bool
 		if fieldIndexInfo, ok := vecFieldID2IndexInfo[fieldID]; ok {
 			mmapEnabled = isIndexMmapEnable(fieldIndexInfo)
-			neededMemSize, neededDiskSize, err := getIndexAttrCache().GetIndexResourceUsage(fieldIndexInfo, multiplyFactor.memoryIndexUsageFactor)
+			neededMemSize, neededDiskSize, err := getIndexAttrCache().GetIndexResourceUsage(fieldIndexInfo, multiplyFactor.memoryIndexUsageFactor, fieldBinlog)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to get index size collection %d, segment %d, indexBuildID %d",
 					loadInfo.GetCollectionID(),

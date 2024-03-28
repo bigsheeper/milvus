@@ -56,7 +56,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 	}
 	r, err := file.NewParquetReader(cmReader, file.WithReadProps(&parquet.ReaderProperties{
 		BufferSize:            int64(bufferSize),
-		BufferedStreamEnabled: true,
+		BufferedStreamEnabled: false,
 	}))
 	if err != nil {
 		return nil, merr.WrapErrImportFailed(fmt.Sprintf("new parquet reader failed, err=%v", err))

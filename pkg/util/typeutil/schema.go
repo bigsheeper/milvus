@@ -241,6 +241,10 @@ func EstimateEntitySize(fieldsData []*schemapb.FieldData, rowOffset int) (int, e
 			res += int(fs.GetVectors().GetDim())
 		case schemapb.DataType_FloatVector:
 			res += int(fs.GetVectors().GetDim() * 4)
+		case schemapb.DataType_Float16Vector:
+			res += int(fs.GetVectors().GetDim() * 2)
+		case schemapb.DataType_BFloat16Vector:
+			res += int(fs.GetVectors().GetDim() * 2)
 		case schemapb.DataType_SparseFloatVector:
 			vec := fs.GetVectors().GetSparseFloatVector()
 			// counting only the size of the vector data, ignoring other
@@ -526,6 +530,10 @@ func PrepareResultFieldData(sample []*schemapb.FieldData, topK int64) []*schemap
 			case *schemapb.VectorField_Float16Vector:
 				vectors.Vectors.Data = &schemapb.VectorField_Float16Vector{
 					Float16Vector: make([]byte, 0, topK*dim*2),
+				}
+			case *schemapb.VectorField_Bfloat16Vector:
+				vectors.Vectors.Data = &schemapb.VectorField_Bfloat16Vector{
+					Bfloat16Vector: make([]byte, 0, topK*dim*2),
 				}
 			case *schemapb.VectorField_BinaryVector:
 				vectors.Vectors.Data = &schemapb.VectorField_BinaryVector{
@@ -957,6 +965,24 @@ func MergeFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData) error 
 					dstBinaryVector := dstVector.Data.(*schemapb.VectorField_BinaryVector)
 					dstBinaryVector.BinaryVector = append(dstBinaryVector.BinaryVector, srcVector.BinaryVector...)
 				}
+			case *schemapb.VectorField_Float16Vector:
+				if dstVector.GetFloat16Vector() == nil {
+					dstVector.Data = &schemapb.VectorField_Float16Vector{
+						Float16Vector: srcVector.Float16Vector,
+					}
+				} else {
+					dstFloat16Vector := dstVector.Data.(*schemapb.VectorField_Float16Vector)
+					dstFloat16Vector.Float16Vector = append(dstFloat16Vector.Float16Vector, srcVector.Float16Vector...)
+				}
+			case *schemapb.VectorField_Bfloat16Vector:
+				if dstVector.GetBfloat16Vector() == nil {
+					dstVector.Data = &schemapb.VectorField_Bfloat16Vector{
+						Bfloat16Vector: srcVector.Bfloat16Vector,
+					}
+				} else {
+					dstBfloat16Vector := dstVector.Data.(*schemapb.VectorField_Bfloat16Vector)
+					dstBfloat16Vector.Bfloat16Vector = append(dstBfloat16Vector.Bfloat16Vector, srcVector.Bfloat16Vector...)
+				}
 			case *schemapb.VectorField_FloatVector:
 				if dstVector.GetFloatVector() == nil {
 					dstVector.Data = &schemapb.VectorField_FloatVector{
@@ -1072,6 +1098,12 @@ func GetPrimaryFieldData(datas []*schemapb.FieldData, primaryFieldSchema *schema
 func GetField(schema *schemapb.CollectionSchema, fieldID int64) *schemapb.FieldSchema {
 	return lo.FindOrElse(schema.GetFields(), nil, func(field *schemapb.FieldSchema) bool {
 		return field.GetFieldID() == fieldID
+	})
+}
+
+func GetFieldByName(schema *schemapb.CollectionSchema, fieldName string) *schemapb.FieldSchema {
+	return lo.FindOrElse(schema.GetFields(), nil, func(field *schemapb.FieldSchema) bool {
+		return field.GetName() == fieldName
 	})
 }
 

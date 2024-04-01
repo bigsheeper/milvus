@@ -81,6 +81,7 @@ func NewSyncTask(ctx context.Context, task *ImportTask, segmentID, partitionID i
 		WithBatchSize(int64(insertData.GetRowNum()))
 
 	syncTask := syncmgr.NewSyncTask()
+	syncTask.WithSegmentID(segmentID)
 	syncTask.WithInsertData(insertData)
 	syncTask.WithSyncPack(syncPack)
 	syncTask.WithSerializer(serializer)

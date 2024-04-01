@@ -168,12 +168,6 @@ func (t *SyncTask) Run() (err error) {
 		t.segmentID = t.segment.CompactTo()
 	}
 
-	err = t.prefetchIDs()
-	if err != nil {
-		log.Warn("failed allocate ids for sync task", zap.Error(err))
-		return err
-	}
-
 	if t.insertData != nil {
 		memSize := make(map[int64]int64)
 		for fieldID, fieldData := range t.insertData.Data {
@@ -213,6 +207,12 @@ func (t *SyncTask) Run() (err error) {
 		t.serializer.setTaskMeta(t, t.pack)
 		t.pack = nil
 		log.Info("dyh debug aaaaaa", zap.String("taskChannel", t.channelName))
+	}
+
+	err = t.prefetchIDs()
+	if err != nil {
+		log.Warn("failed allocate ids for sync task", zap.Error(err))
+		return err
 	}
 
 	t.processInsertBlobs()

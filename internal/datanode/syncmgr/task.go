@@ -80,6 +80,10 @@ type SyncTask struct {
 	statsBinlogs  map[int64]*datapb.FieldBinlog // map[int64]*datapb.Binlog
 	deltaBinlog   *datapb.FieldBinlog
 
+	// data
+	insertData *storage.InsertData
+	deltaData  *storage.DeleteData
+
 	binlogBlobs     map[int64]*storage.Blob // fieldID => blob
 	binlogMemsize   map[int64]int64         // memory size
 	batchStatsBlob  *storage.Blob
@@ -166,6 +170,40 @@ func (t *SyncTask) Run() (err error) {
 	if err != nil {
 		log.Warn("failed allocate ids for sync task", zap.Error(err))
 		return err
+	}
+
+	if t.insertData != nil {
+		memSize := make(map[int64]int64)
+		for fieldID, fieldData := range t.insertData.Data {
+			memSize[fieldID] = int64(fieldData.GetMemorySize())
+		}
+		t.binlogMemsize = memSize
+
+		binlogBlobs, err := s.serializeBinlog(ctx, pack)
+		if err != nil {
+			log.Warn("failed to serialize binlog", zap.Error(err))
+			return nil, err
+		}
+		task.binlogBlobs = binlogBlobs
+
+		singlePKStats, batchStatsBlob, err := s.serializeStatslog(pack)
+		if err != nil {
+			log.Warn("failed to serialized statslog", zap.Error(err))
+			return nil, err
+		}
+
+		task.batchStatsBlob = batchStatsBlob
+		s.metacache.UpdateSegments(metacache.RollStats(singlePKStats), metacache.WithSegmentIDs(pack.segmentID))
+	}
+
+	if t.deltaData != nil {
+		deltaBlob, err := s.serializeDeltalog(pack)
+		if err != nil {
+			log.Warn("failed to serialize delta log", zap.Error(err))
+			return nil, err
+		}
+		task.deltaBlob = deltaBlob
+		task.deltaRowCount = pack.deltaData.RowCount
 	}
 
 	t.processInsertBlobs()

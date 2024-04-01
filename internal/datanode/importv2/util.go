@@ -80,7 +80,12 @@ func NewSyncTask(ctx context.Context, task *ImportTask, segmentID, partitionID i
 		WithTimeRange(task.req.GetTs(), task.req.GetTs()).
 		WithBatchSize(int64(insertData.GetRowNum()))
 
-	return serializer.EncodeBuffer(ctx, syncPack)
+	syncTask := syncmgr.NewSyncTask()
+	syncTask.WithInsertData(insertData)
+	syncTask.WithSyncPack(syncPack)
+	syncTask.WithSerializer(serializer)
+
+	return syncTask, nil
 }
 
 func NewImportSegmentInfo(syncTask syncmgr.Task, task *ImportTask) (*datapb.ImportSegmentInfo, error) {

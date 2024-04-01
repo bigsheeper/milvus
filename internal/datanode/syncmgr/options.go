@@ -116,3 +116,23 @@ func (t *SyncTask) WithLevel(level datapb.SegmentLevel) *SyncTask {
 	t.level = level
 	return t
 }
+
+func (t *SyncTask) WithInsertData(insertData *storage.InsertData) *SyncTask {
+	t.insertData = insertData
+	return t
+}
+
+func (t *SyncTask) WithDeltaData(deltaData *storage.DeleteData) *SyncTask {
+	t.deltaData = deltaData
+	return t
+}
+
+func (t *SyncTask) WithSyncPack(pack *SyncPack) *SyncTask {
+	t.pack = pack
+	return t
+}
+
+func (t *SyncTask) WithSerializer(serializer Serializer) *SyncTask {
+	t.serializer = serializer.(*storageV1Serializer)
+	return t
+}

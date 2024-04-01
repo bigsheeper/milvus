@@ -83,6 +83,8 @@ type SyncTask struct {
 	// data
 	insertData *storage.InsertData
 	deltaData  *storage.DeleteData
+	pack       *SyncPack
+	serializer *storageV1Serializer
 
 	binlogBlobs     map[int64]*storage.Blob // fieldID => blob
 	binlogMemsize   map[int64]int64         // memory size
@@ -179,31 +181,37 @@ func (t *SyncTask) Run() (err error) {
 		}
 		t.binlogMemsize = memSize
 
-		binlogBlobs, err := s.serializeBinlog(ctx, pack)
+		binlogBlobs, err := t.serializer.serializeBinlog(context.Background(), t.pack)
 		if err != nil {
 			log.Warn("failed to serialize binlog", zap.Error(err))
-			return nil, err
+			return err
 		}
-		task.binlogBlobs = binlogBlobs
+		t.binlogBlobs = binlogBlobs
 
-		singlePKStats, batchStatsBlob, err := s.serializeStatslog(pack)
+		singlePKStats, batchStatsBlob, err := t.serializer.serializeStatslog(t.pack)
 		if err != nil {
 			log.Warn("failed to serialized statslog", zap.Error(err))
-			return nil, err
+			return err
 		}
 
-		task.batchStatsBlob = batchStatsBlob
-		s.metacache.UpdateSegments(metacache.RollStats(singlePKStats), metacache.WithSegmentIDs(pack.segmentID))
+		t.batchStatsBlob = batchStatsBlob
+		t.metacache.UpdateSegments(metacache.RollStats(singlePKStats), metacache.WithSegmentIDs(t.pack.segmentID))
+		t.insertData = nil
 	}
 
 	if t.deltaData != nil {
-		deltaBlob, err := s.serializeDeltalog(pack)
+		deltaBlob, err := t.serializer.serializeDeltalog(t.pack)
 		if err != nil {
 			log.Warn("failed to serialize delta log", zap.Error(err))
-			return nil, err
+			return err
 		}
-		task.deltaBlob = deltaBlob
-		task.deltaRowCount = pack.deltaData.RowCount
+		t.deltaBlob = deltaBlob
+		t.deltaRowCount = t.pack.deltaData.RowCount
+		t.deltaData = nil
+	}
+	if t.pack != nil {
+		t.serializer.setTaskMeta(t, t.pack)
+		t.pack = nil
 	}
 
 	t.processInsertBlobs()

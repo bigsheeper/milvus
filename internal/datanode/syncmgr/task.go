@@ -212,6 +212,7 @@ func (t *SyncTask) Run() (err error) {
 	if t.pack != nil {
 		t.serializer.setTaskMeta(t, t.pack)
 		t.pack = nil
+		log.Info("dyh debug aaaaaa", zap.String("taskChannel", t.channelName))
 	}
 
 	t.processInsertBlobs()

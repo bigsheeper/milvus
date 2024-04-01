@@ -84,6 +84,7 @@ func NewSyncTask(ctx context.Context, task *ImportTask, segmentID, partitionID i
 	syncTask.WithInsertData(insertData)
 	syncTask.WithSyncPack(syncPack)
 	syncTask.WithSerializer(serializer)
+	syncTask.WithMetaCache(metaCache)
 
 	return syncTask, nil
 }

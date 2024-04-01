@@ -46,6 +46,16 @@ func (s *FutureSuite) TestFuture() {
 	s.Equal(10, resultFuture.Value())
 }
 
+func (s *FutureSuite) TestErr() {
+	errFuture := Go(func() (error, error) {
+		return errors.New("errFuture"), nil
+	})
+
+	err := AwaitAll(errFuture)
+
+	s.Error(err)
+}
+
 func TestFuture(t *testing.T) {
 	suite.Run(t, new(FutureSuite))
 }

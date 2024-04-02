@@ -19,6 +19,7 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/timerecord"
 	"io"
 
 	"github.com/apache/arrow/go/v12/arrow/memory"
@@ -35,6 +36,7 @@ import (
 )
 
 type reader struct {
+	taskID int64
 	ctx    context.Context
 	cm     storage.ChunkManager
 	schema *schemapb.CollectionSchema
@@ -49,7 +51,7 @@ type reader struct {
 	frs map[int64]*FieldReader // fieldID -> FieldReader
 }
 
-func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.CollectionSchema, path string, bufferSize int) (*reader, error) {
+func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.CollectionSchema, path string, bufferSize int, taskID int64) (*reader, error) {
 	cmReader, err := cm.Reader(ctx, path)
 	if err != nil {
 		return nil, err
@@ -78,6 +80,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 		return nil, err
 	}
 	return &reader{
+		taskID:     taskID,
 		ctx:        ctx,
 		cm:         cm,
 		schema:     schema,
@@ -97,11 +100,13 @@ func (r *reader) Read() (*storage.InsertData, error) {
 	}
 OUTER:
 	for {
+		tr := timerecord.NewTimeRecorder("parquet reader")
 		for fieldID, cr := range r.frs {
 			data, err := cr.Next(r.count)
 			if err != nil {
 				return nil, err
 			}
+			log.Info("parquet Next", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 			if data == nil {
 				break OUTER
 			}
@@ -109,8 +114,10 @@ OUTER:
 			if err != nil {
 				return nil, err
 			}
+			log.Info("parquet AppendRows", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 		}
 		if insertData.GetMemorySize() >= r.bufferSize {
+			log.Info("parquet read bufferSize", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.ElapseSpan()))
 			break
 		}
 	}

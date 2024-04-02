@@ -261,7 +261,7 @@ func (suite *ReaderSuite) run(dt schemapb.DataType) {
 		r := &mockReader{Reader: strings.NewReader(string(jsonBytes))}
 		return r, nil
 	})
-	reader, err := NewReader(context.Background(), cm, schema, "mockPath", math.MaxInt)
+	reader, err := NewReader(context.Background(), cm, schema, "mockPath", math.MaxInt, 0)
 	suite.NoError(err)
 
 	checkFn := func(actualInsertData *storage.InsertData, offsetBegin, expectRows int) {

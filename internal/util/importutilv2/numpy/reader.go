@@ -19,6 +19,9 @@ package numpy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/timerecord"
+	"go.uber.org/zap"
 	"io"
 	"path/filepath"
 	"strings"
@@ -32,6 +35,7 @@ import (
 )
 
 type reader struct {
+	taskID int64
 	ctx    context.Context
 	cm     storage.ChunkManager
 	schema *schemapb.CollectionSchema
@@ -43,7 +47,7 @@ type reader struct {
 	frs   map[int64]*FieldReader // fieldID -> FieldReader
 }
 
-func NewReader(ctx context.Context, schema *schemapb.CollectionSchema, paths []string, cm storage.ChunkManager, bufferSize int) (*reader, error) {
+func NewReader(ctx context.Context, schema *schemapb.CollectionSchema, paths []string, cm storage.ChunkManager, bufferSize int, taskID int64) (*reader, error) {
 	fields := lo.KeyBy(schema.GetFields(), func(field *schemapb.FieldSchema) int64 {
 		return field.GetFieldID()
 	})
@@ -64,6 +68,7 @@ func NewReader(ctx context.Context, schema *schemapb.CollectionSchema, paths []s
 		crs[fieldID] = cr
 	}
 	return &reader{
+		taskID:   taskID,
 		ctx:      ctx,
 		cm:       cm,
 		schema:   schema,
@@ -75,6 +80,7 @@ func NewReader(ctx context.Context, schema *schemapb.CollectionSchema, paths []s
 }
 
 func (r *reader) Read() (*storage.InsertData, error) {
+	tr := timerecord.NewTimeRecorder("numpy reader")
 	insertData, err := storage.NewInsertData(r.schema)
 	if err != nil {
 		return nil, err
@@ -85,6 +91,7 @@ func (r *reader) Read() (*storage.InsertData, error) {
 		if err != nil {
 			return nil, err
 		}
+		log.Info("numpy Next", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 		if data == nil {
 			return nil, io.EOF
 		}
@@ -92,11 +99,13 @@ func (r *reader) Read() (*storage.InsertData, error) {
 		if err != nil {
 			return nil, err
 		}
+		log.Info("numpy AppendRows", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 	}
 	err = fillDynamicData(insertData, r.schema)
 	if err != nil {
 		return nil, err
 	}
+	log.Info("numpy fillDynamicData", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 	return insertData, nil
 }
 

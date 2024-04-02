@@ -49,6 +49,7 @@ func NewReader(ctx context.Context,
 	importFile *internalpb.ImportFile,
 	options Options,
 	bufferSize int,
+	taskID int64,
 ) (Reader, error) {
 	if IsBackup(options) {
 		tsStart, tsEnd, err := ParseTimeRange(options)
@@ -65,11 +66,11 @@ func NewReader(ctx context.Context,
 	}
 	switch fileType {
 	case JSON:
-		return json.NewReader(ctx, cm, schema, importFile.GetPaths()[0], bufferSize)
+		return json.NewReader(ctx, cm, schema, importFile.GetPaths()[0], bufferSize, taskID)
 	case Numpy:
-		return numpy.NewReader(ctx, schema, importFile.GetPaths(), cm, bufferSize)
+		return numpy.NewReader(ctx, schema, importFile.GetPaths(), cm, bufferSize, taskID)
 	case Parquet:
-		return parquet.NewReader(ctx, cm, schema, importFile.GetPaths()[0], bufferSize)
+		return parquet.NewReader(ctx, cm, schema, importFile.GetPaths()[0], bufferSize, taskID)
 	}
 	return nil, merr.WrapErrImportFailed("unexpected import file")
 }

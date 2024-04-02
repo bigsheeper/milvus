@@ -18,6 +18,7 @@ package importv2
 
 import (
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/timerecord"
 	"io"
 	"sync"
 	"time"
@@ -81,6 +82,7 @@ func (s *scheduler) Start() {
 			log.Info("import scheduler exited")
 			return
 		case <-exeTicker.C:
+			tr := timerecord.NewTimeRecorder("exeTicker")
 			tasks := s.manager.GetBy(WithStates(datapb.ImportTaskStateV2_Pending))
 			futures := make(map[int64][]*conc.Future[any])
 			for _, task := range tasks {
@@ -101,7 +103,7 @@ func (s *scheduler) Start() {
 					return
 				}
 				s.manager.Update(taskID, UpdateState(datapb.ImportTaskStateV2_Completed))
-				log.Info("preimport/import done", zap.Int64("taskID", taskID))
+				log.Info("preimport/import done", zap.Int64("taskID", taskID), zap.Duration("dur", tr.ElapseSpan()))
 			}
 		case <-logTicker.C:
 			LogStats(s.manager)
@@ -161,7 +163,7 @@ func (s *scheduler) PreImport(task Task) []*conc.Future[any] {
 		})
 
 	fn := func(i int, file *internalpb.ImportFile) error {
-		reader, err := importutilv2.NewReader(task.GetCtx(), s.cm, task.GetSchema(), file, task.GetOptions(), bufferSize)
+		reader, err := importutilv2.NewReader(task.GetCtx(), s.cm, task.GetSchema(), file, task.GetOptions(), bufferSize, task.GetTaskID())
 		if err != nil {
 			s.handleErr(task, err, "new reader failed")
 			return err
@@ -192,6 +194,7 @@ func (s *scheduler) PreImport(task Task) []*conc.Future[any] {
 }
 
 func (s *scheduler) readFileStat(reader importutilv2.Reader, task Task, fileIdx int) error {
+	tr := timerecord.NewTimeRecorder("read file stat")
 	fileSize, err := reader.Size()
 	if err != nil {
 		return err
@@ -202,6 +205,7 @@ func (s *scheduler) readFileStat(reader importutilv2.Reader, task Task, fileIdx 
 			"The import file size has reached the maximum limit allowed for importing, "+
 				"fileSize=%d, maxSize=%d", fileSize, int64(maxSize)))
 	}
+	log.Info("preimport get size", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 
 	totalRows := 0
 	totalSize := 0
@@ -214,20 +218,23 @@ func (s *scheduler) readFileStat(reader importutilv2.Reader, task Task, fileIdx 
 			}
 			return err
 		}
+		log.Info("preimport read", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		err = CheckRowsEqual(task.GetSchema(), data)
 		if err != nil {
 			return err
 		}
+		log.Info("preimport CheckRowsEqual", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		rowsCount, err := GetRowsStats(task, data)
 		if err != nil {
 			return err
 		}
+		log.Info("preimport GetRowsStats", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		MergeHashedStats(rowsCount, hashedStats)
 		rows := data.GetRowNum()
 		size := data.GetMemorySize()
 		totalRows += rows
 		totalSize += size
-		log.Info("reading file stat...", WrapLogFields(task, zap.Int("readRows", rows), zap.Int("readSize", size))...)
+		log.Info("preimport MergeHashedStats", WrapLogFields(task, zap.Int("readRows", rows), zap.Int("readSize", size), zap.Duration("dur", tr.RecordSpan()))...)
 	}
 
 	stat := &datapb.ImportFileStats{
@@ -250,7 +257,7 @@ func (s *scheduler) Import(task Task) []*conc.Future[any] {
 	req := task.(*ImportTask).req
 
 	fn := func(file *internalpb.ImportFile) error {
-		reader, err := importutilv2.NewReader(task.GetCtx(), s.cm, task.GetSchema(), file, task.GetOptions(), bufferSize)
+		reader, err := importutilv2.NewReader(task.GetCtx(), s.cm, task.GetSchema(), file, task.GetOptions(), bufferSize, task.GetTaskID())
 		if err != nil {
 			s.handleErr(task, err, fmt.Sprintf("new reader failed, file: %s", file.String()))
 			return err
@@ -284,6 +291,7 @@ func (s *scheduler) importFile(reader importutilv2.Reader, task Task) error {
 	syncFutures := make([]*conc.Future[error], 0)
 	syncTasks := make([]syncmgr.Task, 0)
 	for {
+		tr := timerecord.NewTimeRecorder("import file")
 		data, err := reader.Read()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -291,14 +299,17 @@ func (s *scheduler) importFile(reader importutilv2.Reader, task Task) error {
 			}
 			return err
 		}
+		log.Info("import read", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		err = AppendSystemFieldsData(iTask, data)
 		if err != nil {
 			return err
 		}
+		log.Info("import AppendSystemFieldsData", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		hashedData, err := HashData(iTask, data)
 		if err != nil {
 			return err
 		}
+		log.Info("import HashData", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 		fs, sts, err := s.Sync(iTask, hashedData)
 		if err != nil {
 			return err
@@ -311,6 +322,7 @@ func (s *scheduler) importFile(reader importutilv2.Reader, task Task) error {
 		return err
 	}
 	for _, syncTask := range syncTasks {
+		log.Info("import sync", WrapLogFields(task, zap.Duration("dur", syncTask.Dur()))...)
 		segmentInfo, err := NewImportSegmentInfo(syncTask, iTask)
 		if err != nil {
 			return err
@@ -335,10 +347,12 @@ func (s *scheduler) Sync(task *ImportTask, hashedData HashedData) ([]*conc.Futur
 			partitionID := task.GetPartitionIDs()[partitionIdx]
 			size := data.GetMemorySize()
 			segmentID := PickSegment(task, segmentImportedSizes, channel, partitionID, size)
+			tr := timerecord.NewTimeRecorder("import sync")
 			syncTask, err := NewSyncTask(task.GetCtx(), task, segmentID, partitionID, channel, data)
 			if err != nil {
 				return nil, nil, err
 			}
+			log.Info("import NewSyncTask", WrapLogFields(task, zap.Duration("dur", tr.RecordSpan()))...)
 			segmentImportedSizes[segmentID] += size
 			future := s.syncMgr.SyncData(task.GetCtx(), syncTask)
 			futures = append(futures, future)

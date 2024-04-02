@@ -20,6 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/timerecord"
+	"go.uber.org/zap"
 	"io"
 	"strings"
 
@@ -38,6 +41,7 @@ const (
 type Row = map[storage.FieldID]any
 
 type reader struct {
+	taskID int64
 	ctx    context.Context
 	cm     storage.ChunkManager
 	schema *schemapb.CollectionSchema
@@ -53,7 +57,7 @@ type reader struct {
 	parser RowParser
 }
 
-func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.CollectionSchema, path string, bufferSize int) (*reader, error) {
+func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.CollectionSchema, path string, bufferSize int, taskID int64) (*reader, error) {
 	r, err := cm.Reader(ctx, path)
 	if err != nil {
 		return nil, merr.WrapErrImportFailed(fmt.Sprintf("read json file failed, path=%s, err=%s", path, err.Error()))
@@ -63,6 +67,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 		return nil, err
 	}
 	reader := &reader{
+		taskID:     taskID,
 		ctx:        ctx,
 		cm:         cm,
 		schema:     schema,
@@ -101,6 +106,7 @@ func (j *reader) Init() error {
 }
 
 func (j *reader) Read() (*storage.InsertData, error) {
+	tr := timerecord.NewTimeRecorder("json reader")
 	insertData, err := storage.NewInsertData(j.schema)
 	if err != nil {
 		return nil, err
@@ -138,18 +144,22 @@ func (j *reader) Read() (*storage.InsertData, error) {
 		if err = j.dec.Decode(&value); err != nil {
 			return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to parse row, error: %v", err))
 		}
+		log.Debug("json Decode", zap.Int64("taskID", j.taskID), zap.Duration("dur", tr.RecordSpan()))
 		row, err := j.parser.Parse(value)
 		if err != nil {
 			return nil, err
 		}
+		log.Debug("json Parse", zap.Int64("taskID", j.taskID), zap.Duration("dur", tr.RecordSpan()))
 		err = insertData.Append(row)
 		if err != nil {
 			return nil, merr.WrapErrImportFailed(fmt.Sprintf("failed to append row, err=%s", err.Error()))
 		}
+		log.Debug("json Append", zap.Int64("taskID", j.taskID), zap.Duration("dur", tr.RecordSpan()))
 		cnt++
 		if cnt >= j.count {
 			cnt = 0
 			if insertData.GetMemorySize() >= j.bufferSize {
+				log.Info("json read bufferSize", zap.Int64("taskID", j.taskID), zap.Duration("dur", tr.ElapseSpan()))
 				break
 			}
 		}

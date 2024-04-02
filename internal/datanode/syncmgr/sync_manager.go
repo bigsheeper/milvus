@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
@@ -123,6 +124,12 @@ func (mgr *syncManager) safeSubmitTask(task Task) *conc.Future[error] {
 	mgr.tasks.Insert(taskKey, task)
 
 	return conc.Go[error](func() (error, error) {
+		tr := time.Now()
+		defer func() {
+			if _, ok := task.(*SyncTask); ok {
+				task.(*SyncTask).dur = time.Since(tr)
+			}
+		}()
 		defer mgr.tasks.Remove(taskKey)
 		for {
 			targetID, err := task.CalcTargetSegment()

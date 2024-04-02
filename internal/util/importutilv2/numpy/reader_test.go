@@ -290,7 +290,7 @@ func (suite *ReaderSuite) run(dt schemapb.DataType) {
 		}
 	}
 
-	reader, err := NewReader(context.Background(), schema, lo.Values(files), cm, math.MaxInt)
+	reader, err := NewReader(context.Background(), schema, lo.Values(files), cm, math.MaxInt, 0)
 	suite.NoError(err)
 
 	checkFn := func(actualInsertData *storage.InsertData, offsetBegin, expectRows int) {
@@ -417,7 +417,7 @@ func (suite *ReaderSuite) failRun(dt schemapb.DataType, isDynamic bool) {
 		}
 	}
 
-	reader, err := NewReader(context.Background(), schema, lo.Values(files), cm, math.MaxInt)
+	reader, err := NewReader(context.Background(), schema, lo.Values(files), cm, math.MaxInt, 0)
 	suite.NoError(err)
 
 	_, err = reader.Read()

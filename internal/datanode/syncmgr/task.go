@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -72,6 +73,8 @@ type SyncTask struct {
 
 	isFlush bool
 	isDrop  bool
+
+	dur time.Duration
 
 	metacache  metacache.MetaCache
 	metaWriter MetaWriter
@@ -381,4 +384,8 @@ func (t *SyncTask) ChannelName() string {
 
 func (t *SyncTask) Binlogs() (map[int64]*datapb.FieldBinlog, map[int64]*datapb.FieldBinlog, *datapb.FieldBinlog) {
 	return t.insertBinlogs, t.statsBinlogs, t.deltaBinlog
+}
+
+func (t *SyncTask) Dur() time.Duration {
+	return t.dur
 }

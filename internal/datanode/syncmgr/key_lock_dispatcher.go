@@ -4,6 +4,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus/pkg/util/conc"
 	"github.com/milvus-io/milvus/pkg/util/lock"
+	"time"
 )
 
 type Task interface {
@@ -12,6 +13,7 @@ type Task interface {
 	Checkpoint() *msgpb.MsgPosition
 	StartPosition() *msgpb.MsgPosition
 	ChannelName() string
+	Dur() time.Duration
 	Run() error
 }
 

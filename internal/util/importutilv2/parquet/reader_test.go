@@ -413,7 +413,7 @@ func (s *ReaderSuite) run(dt schemapb.DataType) {
 	f := storage.NewChunkManagerFactory("local", storage.RootPath("/tmp/milvus_test/test_parquet_reader/"))
 	cm, err := f.NewPersistentStorageChunkManager(ctx)
 	assert.NoError(s.T(), err)
-	reader, err := NewReader(ctx, cm, schema, filePath, 64*1024*1024)
+	reader, err := NewReader(ctx, cm, schema, filePath, 64*1024*1024, 0)
 	s.NoError(err)
 
 	checkFn := func(actualInsertData *storage.InsertData, offsetBegin, expectRows int) {
@@ -492,7 +492,7 @@ func (s *ReaderSuite) failRun(dt schemapb.DataType, isDynamic bool) {
 	f := storage.NewChunkManagerFactory("local", storage.RootPath("/tmp/milvus_test/test_parquet_reader/"))
 	cm, err := f.NewPersistentStorageChunkManager(ctx)
 	assert.NoError(s.T(), err)
-	reader, err := NewReader(ctx, cm, schema, filePath, 64*1024*1024)
+	reader, err := NewReader(ctx, cm, schema, filePath, 64*1024*1024, 0)
 	s.NoError(err)
 
 	_, err = reader.Read()

@@ -94,6 +94,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 }
 
 func (r *reader) Read() (*storage.InsertData, error) {
+	ttr := timerecord.NewTimeRecorder("parquet reader2")
 	insertData, err := storage.NewInsertData(r.schema)
 	if err != nil {
 		return nil, err
@@ -117,7 +118,7 @@ OUTER:
 			log.Info("parquet AppendRows", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.RecordSpan()))
 		}
 		if insertData.GetMemorySize() >= r.bufferSize {
-			log.Info("parquet read bufferSize", zap.Int64("taskID", r.taskID), zap.Duration("dur", tr.ElapseSpan()))
+			log.Info("parquet read bufferSize", zap.Int64("taskID", r.taskID), zap.Duration("dur", ttr.ElapseSpan()))
 			break
 		}
 	}

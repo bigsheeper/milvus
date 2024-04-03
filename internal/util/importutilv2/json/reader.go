@@ -17,6 +17,7 @@
 package json
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -66,6 +67,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 	if err != nil {
 		return nil, err
 	}
+	br := bufio.NewReaderSize(r, bufferSize)
 	reader := &reader{
 		taskID:     taskID,
 		ctx:        ctx,
@@ -73,7 +75,7 @@ func NewReader(ctx context.Context, cm storage.ChunkManager, schema *schemapb.Co
 		schema:     schema,
 		fileSize:   atomic.NewInt64(0),
 		filePath:   path,
-		dec:        json.NewDecoder(r),
+		dec:        json.NewDecoder(br),
 		bufferSize: bufferSize,
 		count:      count,
 	}

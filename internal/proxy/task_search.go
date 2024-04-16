@@ -860,8 +860,10 @@ func doRequery(ctx context.Context,
 	for i := 0; i < typeutil.GetSizeOfIDs(ids); i++ {
 		id := typeutil.GetPK(ids, int64(i))
 		if _, ok := offsets[id]; !ok {
-			return merr.WrapErrInconsistentRequery(fmt.Sprintf("incomplete query result, missing id %s, len(searchIDs) = %d, len(queryIDs) = %d, collection=%d",
+			err = merr.WrapErrInconsistentRequery(fmt.Sprintf("incomplete query result, missing id %s, len(searchIDs) = %d, len(queryIDs) = %d, collection=%d",
 				id, typeutil.GetSizeOfIDs(ids), len(offsets), collectionID))
+			log.Ctx(ctx).Warn("dyh debug", zap.Error(err))
+			return err
 		}
 		typeutil.AppendFieldData(result.Results.FieldsData, queryResult.GetFieldsData(), int64(offsets[id]))
 	}

@@ -794,7 +794,10 @@ func doRequery(ctx context.Context,
 	for k, v := range queryChannelsTs {
 		channelsMvcc[k] = v
 	}
-	log.Debug("sheep debug before doRequery", zap.Any("plan", plan), zap.Any("expr", IDs2Expr(pkField.GetName(), ids)), zap.Any("searchIds", ids.GetIntId().GetData()))
+	log.Debug("sheep debug before doRequery",
+		zap.Any("channelMvcc", channelsMvcc),
+		zap.Any("plan", plan), zap.Any("expr", IDs2Expr(pkField.GetName(), ids)),
+		zap.Any("searchIds", ids.GetIntId().GetData()))
 	qt := &queryTask{
 		ctx:       ctx,
 		Condition: NewTaskCondition(ctx),

@@ -570,9 +570,17 @@ func (s *LocalSegment) Retrieve(ctx context.Context, plan *RetrievePlan) (*segco
 		return nil, err
 	}
 
-	log.Debug("retrieve segment done",
-		zap.Int("resultNum", len(result.Offset)),
-	)
+	if result.GetIds().GetIntId() != nil {
+		log.Debug("retrieve segment done",
+			zap.Int("resultNum", len(result.Offset)),
+			zap.Any("ids", result.GetIds().GetIntId().GetData()),
+		)
+	} else {
+		log.Debug("retrieve segment done",
+			zap.Int("resultNum", len(result.Offset)),
+			zap.Any("ids", result.GetIds().GetStrId().GetData()),
+		)
+	}
 
 	// Sort was done by the segcore.
 	// sort.Sort(&byPK{result})

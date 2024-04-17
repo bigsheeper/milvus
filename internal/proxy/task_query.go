@@ -594,6 +594,14 @@ func reduceRetrieveResults(ctx context.Context, retrieveResults []*internalpb.Re
 		loopEnd += size
 	}
 
+	for _, res := range retrieveResults {
+		if res.GetIds().GetIntId() != nil {
+			log.Debug("sheep debug proxy reduceRetrieveResults 1", zap.Int("numRes", len(res.GetIds().GetIntId().GetData())), zap.Any("loopEnd", loopEnd), zap.Any("ids", res.GetIds().GetIntId().GetData()))
+		} else {
+			log.Debug("sheep debug proxy reduceRetrieveResults 1", zap.Int("numRes", len(res.GetIds().GetStrId().GetData())), zap.Any("loopEnd", loopEnd), zap.Any("ids", res.GetIds().GetStrId().GetData()))
+		}
+	}
+
 	if len(validRetrieveResults) == 0 {
 		return ret, nil
 	}

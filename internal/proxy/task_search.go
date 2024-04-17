@@ -794,6 +794,7 @@ func doRequery(ctx context.Context,
 	for k, v := range queryChannelsTs {
 		channelsMvcc[k] = v
 	}
+	log.Debug("sheep debug before doRequery", zap.Any("plan", plan), zap.Any("expr", IDs2Expr(pkField.GetName(), ids)), zap.Any("searchIds", ids.GetIntId().GetData()))
 	qt := &queryTask{
 		ctx:       ctx,
 		Condition: NewTaskCondition(ctx),
@@ -843,6 +844,11 @@ func doRequery(ctx context.Context,
 	for i := 0; i < typeutil.GetPKSize(pkFieldData); i++ {
 		pk := typeutil.GetData(pkFieldData, i)
 		offsets[pk] = i
+	}
+	if ids.GetIntId() != nil {
+		log.Debug("sheep debug doRequery", zap.Any("searchIds", ids.GetIntId().GetData()), zap.Any("queryIDs", offsets))
+	} else {
+		log.Debug("sheep debug doRequery", zap.Any("searchIds", ids.GetStrId().GetData()), zap.Any("queryIDs", offsets))
 	}
 
 	result.Results.FieldsData = make([]*schemapb.FieldData, len(queryResult.GetFieldsData()))

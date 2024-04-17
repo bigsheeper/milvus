@@ -368,6 +368,13 @@ func MergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 		zap.Int64("limit", param.limit),
 		zap.Int("resultNum", len(retrieveResults)),
 	)
+	for _, res := range retrieveResults {
+		if res.GetIds().GetIntId() != nil {
+			log.Debug("sheep debug MergeInternalRetrieveResult 1", zap.Int("numRes", len(res.GetIds().GetIntId().GetData())), zap.Any("ids", res.GetIds().GetIntId().GetData()))
+		} else {
+			log.Debug("sheep debug MergeInternalRetrieveResult 1", zap.Int("numRes", len(res.GetIds().GetStrId().GetData())), zap.Any("ids", res.GetIds().GetStrId().GetData()))
+		}
+	}
 	if len(retrieveResults) == 1 {
 		return retrieveResults[0], nil
 	}
@@ -453,6 +460,11 @@ func MergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 
 		return nil, false
 	})
+	if ret.GetIds().GetIntId() != nil {
+		log.Debug("sheep debug MergeInternalRetrieveResult 2", zap.Int("numRes", len(ret.GetIds().GetIntId().GetData())), zap.Any("ids", ret.GetIds().GetIntId().GetData()))
+	} else {
+		log.Debug("sheep debug MergeInternalRetrieveResult 2", zap.Int("numRes", len(ret.GetIds().GetStrId().GetData())), zap.Any("ids", ret.GetIds().GetStrId().GetData()))
+	}
 	ret.CostAggregation = mergeRequestCost(requestCosts)
 	if ret.CostAggregation == nil {
 		ret.CostAggregation = &internalpb.CostAggregation{}
@@ -480,6 +492,13 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 		zap.Int64("limit", param.limit),
 		zap.Int("resultNum", len(retrieveResults)),
 	)
+	for _, res := range retrieveResults {
+		if res.GetIds().GetIntId() != nil {
+			log.Debug("sheep debug MergeSegcoreRetrieveResults 1", zap.Int("numRes", len(res.GetIds().GetIntId().GetData())), zap.Any("ids", res.GetIds().GetIntId().GetData()))
+		} else {
+			log.Debug("sheep debug MergeSegcoreRetrieveResults 1", zap.Int("numRes", len(res.GetIds().GetStrId().GetData())), zap.Any("ids", res.GetIds().GetStrId().GetData()))
+		}
+	}
 	var (
 		ret = &segcorepb.RetrieveResults{
 			Ids: &schemapb.IDs{},
@@ -543,6 +562,11 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 		log.Debug("skip duplicated query result while reducing segcore.RetrieveResults", zap.Int64("dupCount", skipDupCnt))
 	}
 
+	if ret.GetIds().GetIntId() != nil {
+		log.Debug("sheep debug MergeSegcoreRetrieveResults 2", zap.Int("numRes", len(ret.GetIds().GetIntId().GetData())), zap.Any("ids", ret.GetIds().GetIntId().GetData()))
+	} else {
+		log.Debug("sheep debug MergeSegcoreRetrieveResults 2", zap.Int("numRes", len(ret.GetIds().GetStrId().GetData())), zap.Any("ids", ret.GetIds().GetStrId().GetData()))
+	}
 	return ret, nil
 }
 

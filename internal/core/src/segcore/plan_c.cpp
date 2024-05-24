@@ -13,6 +13,7 @@
 #include "query/Plan.h"
 #include "segcore/Collection.h"
 #include "segcore/plan_c.h"
+#include "common/Exception.h"
 
 // Note: serialized_expr_plan is of binary format
 CStatus
@@ -23,6 +24,9 @@ CreateSearchPlanByExpr(CCollection c_col,
     auto col = (milvus::segcore::Collection*)c_col;
 
     try {
+//        throw milvus::query::MyCustomException("I want to see THIS message when I fail ... but I don't...");
+        throw milvus::NotImplementedException("I want to see THIS message aaa");
+//        throw std::runtime_error(std::string("mock err, aaaaaaaa"));
         auto res = milvus::query::CreateSearchPlanByExpr(
             *col->get_schema(), serialized_expr_plan, size);
         auto col_index_meta = col->get_index_meta();
@@ -46,11 +50,7 @@ CreateSearchPlanByExpr(CCollection c_col,
         *res_plan = nullptr;
         return status;
     } catch (std::exception& e) {
-        auto status = CStatus();
-        status.error_code = milvus::UnexpectedError;
-        status.error_msg = strdup(e.what());
-        *res_plan = nullptr;
-        return status;
+        return milvus::FailureCStatus(&e);
     }
 }
 

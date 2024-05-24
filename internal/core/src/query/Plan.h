@@ -21,6 +21,21 @@
 
 namespace milvus::query {
 
+    class MyCustomException : public std::exception{
+    private:
+        std::string message;
+
+    public:
+        MyCustomException (std::string msg) {
+            message = msg;
+        } //in .cpp implements "message = msg"
+        ~MyCustomException() throw(){ }
+        std::string what() {
+            return message;
+        } //implemented to return message.
+
+    };
+
 // Incomplete Definition, shouldn't be instantiated
 struct Plan;
 struct PlaceholderGroup;

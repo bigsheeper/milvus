@@ -62,6 +62,7 @@ func (suite *PlanSuite) TestPlanCreateByExpr() {
 	suite.NoError(err)
 
 	_, err = createSearchPlanByExpr(context.Background(), suite.collection, expr)
+	suite.T().Logf("%v", err)
 	suite.Error(err)
 }
 

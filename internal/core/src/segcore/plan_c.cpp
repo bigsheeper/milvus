@@ -14,8 +14,20 @@
 #include "segcore/Collection.h"
 #include "segcore/plan_c.h"
 #include "common/Exception.h"
+#include "common/Channel.h"
+#include "log/Log.h"
 
 // Note: serialized_expr_plan is of binary format
+
+void AAA(std::shared_ptr<milvus::Channel<int>> channel) {
+    try {
+        throw milvus::NotImplementedException("I want to see THIS message aaa");
+    } catch (std::exception& e) {
+//        LOG_INFO("failed to load data from remote: {}", e.what());
+        channel->close(e);
+    }
+}
+
 CStatus
 CreateSearchPlanByExpr(CCollection c_col,
                        const void* serialized_expr_plan,
@@ -24,25 +36,35 @@ CreateSearchPlanByExpr(CCollection c_col,
     auto col = (milvus::segcore::Collection*)c_col;
 
     try {
-//        throw milvus::query::MyCustomException("I want to see THIS message when I fail ... but I don't...");
-        throw milvus::NotImplementedException("I want to see THIS message aaa");
-//        throw std::runtime_error(std::string("mock err, aaaaaaaa"));
-        auto res = milvus::query::CreateSearchPlanByExpr(
-            *col->get_schema(), serialized_expr_plan, size);
-        auto col_index_meta = col->get_index_meta();
-        auto field_id = milvus::query::GetFieldID(res.get());
-        AssertInfo(col_index_meta != nullptr, "index meta not exist");
-        auto field_index_meta =
-            col_index_meta->GetFieldIndexMeta(milvus::FieldId(field_id));
-        res->plan_node_->search_info_.metric_type_ =
-            field_index_meta.GeMetricType();
-
+        auto c = std::make_shared<milvus::Channel<int>>();
+        AAA(c);
+        auto i = 0;
+        while (c->pop(i)) {
+            LOG_INFO("aaaaaaaa");
+        }
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";
-        auto plan = (CSearchPlan)res.release();
-        *res_plan = plan;
         return status;
+//        throw milvus::query::MyCustomException("I want to see THIS message when I fail ... but I don't...");
+//        throw milvus::NotImplementedException("I want to see THIS message aaa");
+//        throw std::runtime_error(std::string("mock err, aaaaaaaa"));
+//        auto res = milvus::query::CreateSearchPlanByExpr(
+//            *col->get_schema(), serialized_expr_plan, size);
+//        auto col_index_meta = col->get_index_meta();
+//        auto field_id = milvus::query::GetFieldID(res.get());
+//        AssertInfo(col_index_meta != nullptr, "index meta not exist");
+//        auto field_index_meta =
+//            col_index_meta->GetFieldIndexMeta(milvus::FieldId(field_id));
+//        res->plan_node_->search_info_.metric_type_ =
+//            field_index_meta.GeMetricType();
+//
+//        auto status = CStatus();
+//        status.error_code = milvus::Success;
+//        status.error_msg = "";
+//        auto plan = (CSearchPlan)res.release();
+//        *res_plan = plan;
+//        return status;
     } catch (milvus::SegcoreError& e) {
         auto status = CStatus();
         status.error_code = e.get_error_code();

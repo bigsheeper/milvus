@@ -65,6 +65,8 @@ CreateRetrievePlanByExpr(CCollection c_col,
                          const int64_t size,
                          CRetrievePlan* res_plan);
 
+void AAA();
+
 void
 DeleteRetrievePlan(CRetrievePlan plan);
 

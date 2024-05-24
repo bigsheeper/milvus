@@ -57,7 +57,7 @@ class Channel {
     void
     close(std::optional<std::exception> ex = std::nullopt) {
         if (ex.has_value()) {
-            ex_ = std::move(ex);
+            ex_ = ex;
         }
         inner_.push(std::nullopt);
     }

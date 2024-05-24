@@ -47,7 +47,7 @@ func createSearchPlanByExpr(ctx context.Context, col *Collection, expr []byte) (
 		return nil, errors.New("nil collection ptr, collectionID = " + fmt.Sprintln(col.id))
 	}
 	var cPlan C.CSearchPlan
-	status := C.CreateSearchPlanByExpr(col.collectionPtr, unsafe.Pointer(&expr[0]), (C.int64_t)(len(expr)), &cPlan)
+	status := C.CreateSearchPlanByExpr(nil, unsafe.Pointer(&expr[0]), (C.int64_t)(len(expr)), &cPlan)
 
 	err1 := HandleCStatus(ctx, &status, "Create Plan by expr failed")
 	if err1 != nil {

@@ -924,6 +924,8 @@ func (ms *MqTtMsgStream) Seek(ctx context.Context, msgPositions []*MsgPosition, 
 				if err != nil {
 					return fmt.Errorf("failed to unmarshal tsMsg, err %s", err.Error())
 				}
+				fmt.Println("dyh debug receive msg, msgID=", msg.ID().Serialize(), ", msgType=", tsMsg.Type().String(),
+					", tsMsg.BeginTs=", tsMsg.BeginTs(), ", mp.Ts=", mp.Timestamp)
 				if tsMsg.Type() == commonpb.MsgType_TimeTick && tsMsg.BeginTs() >= mp.Timestamp {
 					runLoop = false
 				} else if tsMsg.BeginTs() > mp.Timestamp {

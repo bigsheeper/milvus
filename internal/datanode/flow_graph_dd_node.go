@@ -163,6 +163,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 
 		case commonpb.MsgType_Insert:
 			imsg := msg.(*msgstream.InsertMsg)
+			fmt.Println("dyh debug receive insert, msgID=", imsg.Position().GetMsgID(), "ts=", imsg.BeginTs())
 			if imsg.CollectionID != ddn.collectionID {
 				log.Warn("filter invalid insert message, collection mis-match",
 					zap.Int64("Get collID", imsg.CollectionID),

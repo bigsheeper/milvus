@@ -109,6 +109,7 @@ func NewDispatcher(ctx context.Context,
 			log.Error("seek failed", zap.Error(err))
 			return nil, err
 		}
+		fmt.Println("dyh debug seek end, msgID=", position.GetMsgID(), "ts=", position.GetTimestamp())
 		posTime := tsoutil.PhysicalTime(position.GetTimestamp())
 		log.Info("seek successfully", zap.Time("posTime", posTime),
 			zap.Duration("tsLag", time.Since(posTime)))

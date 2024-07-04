@@ -109,7 +109,7 @@ func NewDispatcher(ctx context.Context,
 			log.Error("seek failed", zap.Error(err))
 			return nil, err
 		}
-		fmt.Println("dyh debug seek end, msgID=", position.GetMsgID(), "ts=", position.GetTimestamp())
+		//fmt.Println("dyh debug seek end, msgID=", position.GetMsgID(), "ts=", position.GetTimestamp())
 		posTime := tsoutil.PhysicalTime(position.GetTimestamp())
 		log.Info("seek successfully", zap.Time("posTime", posTime),
 			zap.Duration("tsLag", time.Since(posTime)))
@@ -216,6 +216,14 @@ func (d *Dispatcher) work() {
 				continue
 			}
 			d.curTs.Store(pack.EndPositions[0].GetTimestamp())
+			for _, msg := range pack.Msgs {
+				if msg.Type() == commonpb.MsgType_Insert {
+					imsg := msg.(*msgstream.InsertMsg)
+					log.Info("dispatcher get insert msg", zap.Int64("segmentID", imsg.GetSegmentID()),
+						zap.String("channel", imsg.GetShardName()), zap.Uint64("numRows", imsg.GetNumRows()),
+						zap.Uint64("startPosTs", pack.StartPositions[0].GetTimestamp()))
+				}
+			}
 
 			targetPacks := d.groupingMsgs(pack)
 			for vchannel, p := range targetPacks {

@@ -179,6 +179,7 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 
 	if t.isDrop {
 		t.metacache.RemoveSegments(metacache.WithSegmentIDs(t.segment.SegmentID()))
+		log.Info("remove segments done", zap.Int64("segmentID", t.segment.SegmentID()))
 	}
 
 	log.Info("task done", zap.Float64("flushedSize", totalSize))

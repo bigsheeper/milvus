@@ -576,9 +576,16 @@ func (wb *writeBufferBase) getSyncTask(ctx context.Context, segmentID int64) (sy
 	}
 
 	actions := []metacache.SegmentAction{}
+<<<<<<< HEAD
 	if insert != nil {
 		batchSize = int64(insert.GetRowNum())
 		totalMemSize += float64(insert.GetMemorySize())
+=======
+
+	for _, chunk := range insert {
+		batchSize += int64(chunk.GetRowNum())
+		totalMemSize += float64(chunk.GetMemorySize())
+>>>>>>> 0732167c87... fix: Fix incorrect segment num rows (#34441) (#34474)
 	}
 	if delta != nil {
 		totalMemSize += float64(delta.Size())

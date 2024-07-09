@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/workerpb"
 	"strconv"
 	"time"
 
@@ -73,7 +74,7 @@ func (s *Server) createIndexForSegment(segment *SegmentInfo, indexID UniqueID) e
 	}
 	s.taskScheduler.enqueue(&indexBuildTask{
 		taskID: buildID,
-		taskInfo: &indexpb.IndexTaskInfo{
+		taskInfo: &workerpb.IndexTaskInfo{
 			BuildID: buildID,
 			State:   commonpb.IndexState_Unissued,
 		},

@@ -21,7 +21,7 @@ if [[ ! ${jobs+1} ]]; then
     if command -v nproc &> /dev/null
     # For linux
     then
-        jobs=$(nproc)
+        jobs=4
     elif command -v sysctl &> /dev/null
     # For macOS
     then

@@ -142,28 +142,19 @@ func (dt *deleteTask) Execute(ctx context.Context) (err error) {
 		return err
 	}
 
-	hashValues := typeutil.HashPK2Channels(dt.primaryKeys, dt.vChannels)
-	// repack delete msg by dmChannel
-	result := make(map[uint32]msgstream.TsMsg)
-	numRows := int64(0)
-	for index, key := range hashValues {
-		vchannel := dt.vChannels[key]
-		_, ok := result[key]
-		if !ok {
-			deleteMsg, err := dt.newDeleteMsg(ctx)
-			if err != nil {
-				return err
-			}
-			deleteMsg.ShardName = vchannel
-			result[key] = deleteMsg
-		}
-		curMsg := result[key].(*msgstream.DeleteMsg)
-		curMsg.HashValues = append(curMsg.HashValues, hashValues[index])
-		curMsg.Timestamps = append(curMsg.Timestamps, dt.ts)
-
-		typeutil.AppendIDs(curMsg.PrimaryKeys, dt.primaryKeys, index)
-		curMsg.NumRows++
-		numRows++
+	result, numRows, err := repackDeleteMsgByHash(
+		ctx,
+		dt.primaryKeys,
+		dt.vChannels,
+		dt.idAllocator,
+		dt.ts,
+		dt.collectionID,
+		dt.req.GetCollectionName(),
+		dt.partitionID,
+		dt.req.GetPartitionName(),
+	)
+	if err != nil {
+		return err
 	}
 
 	// send delete request to log broker
@@ -197,8 +188,61 @@ func (dt *deleteTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
-func (dt *deleteTask) newDeleteMsg(ctx context.Context) (*msgstream.DeleteMsg, error) {
-	msgid, err := dt.idAllocator.AllocOne()
+func repackDeleteMsgByHash(
+	ctx context.Context,
+	primaryKeys *schemapb.IDs,
+	vChannels []string,
+	idAllocator allocator.Interface,
+	ts uint64,
+	collectionID int64,
+	collectionName string,
+	partitionID int64,
+	partitionName string,
+) (map[uint32]*msgstream.DeleteMsg, int64, error) {
+	hashValues := typeutil.HashPK2Channels(primaryKeys, vChannels)
+	// repack delete msg by dmChannel
+	result := make(map[uint32]*msgstream.DeleteMsg)
+	numRows := int64(0)
+	for index, key := range hashValues {
+		vchannel := vChannels[key]
+		_, ok := result[key]
+		if !ok {
+			deleteMsg, err := newDeleteMsg(
+				ctx,
+				idAllocator,
+				ts,
+				collectionID,
+				collectionName,
+				partitionID,
+				partitionName,
+			)
+			if err != nil {
+				return nil, 0, err
+			}
+			deleteMsg.ShardName = vchannel
+			result[key] = deleteMsg
+		}
+		curMsg := result[key]
+		curMsg.HashValues = append(curMsg.HashValues, hashValues[index])
+		curMsg.Timestamps = append(curMsg.Timestamps, ts)
+
+		typeutil.AppendIDs(curMsg.PrimaryKeys, primaryKeys, index)
+		curMsg.NumRows++
+		numRows++
+	}
+	return result, numRows, nil
+}
+
+func newDeleteMsg(
+	ctx context.Context,
+	idAllocator allocator.Interface,
+	ts uint64,
+	collectionID int64,
+	collectionName string,
+	partitionID int64,
+	partitionName string,
+) (*msgstream.DeleteMsg, error) {
+	msgid, err := idAllocator.AllocOne()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to allocate MsgID of delete")
 	}
@@ -208,13 +252,13 @@ func (dt *deleteTask) newDeleteMsg(ctx context.Context) (*msgstream.DeleteMsg, e
 			// msgid of delete msg must be set
 			// or it will be seen as duplicated msg in mq
 			commonpbutil.WithMsgID(msgid),
-			commonpbutil.WithTimeStamp(dt.ts),
+			commonpbutil.WithTimeStamp(ts),
 			commonpbutil.WithSourceID(paramtable.GetNodeID()),
 		),
-		CollectionID:   dt.collectionID,
-		PartitionID:    dt.partitionID,
-		CollectionName: dt.req.GetCollectionName(),
-		PartitionName:  dt.req.GetPartitionName(),
+		CollectionID:   collectionID,
+		PartitionID:    partitionID,
+		CollectionName: collectionName,
+		PartitionName:  partitionName,
 		PrimaryKeys:    &schemapb.IDs{},
 	}
 	return &msgstream.DeleteMsg{

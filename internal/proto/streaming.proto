@@ -19,7 +19,7 @@ message MessageID {
 
 // Message is the basic unit of communication between publisher and consumer.
 message Message {
-    bytes payload = 1;                   // message body
+    bytes payload                  = 1;  // message body
     map<string, string> properties = 2;  // message properties
 }
 
@@ -27,7 +27,7 @@ message Message {
 // basic info of a pchannel. It's used in many rpc and meta, so keep it simple.
 message PChannelInfo {
     string name = 1;  // channel name
-    int64 term = 2;   // A monotonic increasing term, every time the channel is
+    int64 term  = 2;  // A monotonic increasing term, every time the channel is
                       // recovered or moved to another streamingnode, the term
                       // will increase by meta server.
 }
@@ -57,7 +57,7 @@ enum PChannelMetaState {
 // that is necessary to persistent. It's only used in meta, so do not use it in
 // rpc.
 message PChannelMeta {
-    PChannelInfo channel = 1;    // keep the meta info that current assigned to.
+    PChannelInfo channel   = 1;  // keep the meta info that current assigned to.
     StreamingNodeInfo node = 2;  // nil if channel is not uninitialized.
     PChannelMetaState state = 3;  // state of the channel.
     repeated PChannelAssignmentLog histories =
@@ -67,7 +67,7 @@ message PChannelMeta {
 // VersionPair is the version pair of global and local.
 message VersionPair {
     int64 global = 1;
-    int64 local = 2;
+    int64 local  = 2;
 }
 
 //
@@ -76,14 +76,12 @@ message VersionPair {
 
 service StreamingCoordStateService {
     rpc GetComponentStates(milvus.GetComponentStatesRequest)
-        returns (milvus.ComponentStates) {
-    }
+        returns (milvus.ComponentStates) {}
 }
 
 service StreamingNodeStateService {
     rpc GetComponentStates(milvus.GetComponentStatesRequest)
-        returns (milvus.ComponentStates) {
-    }
+        returns (milvus.ComponentStates) {}
 }
 
 //
@@ -98,8 +96,7 @@ service StreamingCoordAssignmentService {
     // streamingcoord. Channel assignment information will be pushed to client
     // by stream.
     rpc AssignmentDiscover(stream AssignmentDiscoverRequest)
-        returns (stream AssignmentDiscoverResponse) {
-    }
+        returns (stream AssignmentDiscoverResponse) {}
 }
 
 // AssignmentDiscoverRequest is the request of Discovery
@@ -115,12 +112,11 @@ message AssignmentDiscoverRequest {
 // happens.
 message ReportAssignmentErrorRequest {
     PChannelInfo pchannel = 1;  // channel
-    StreamingError err = 2;     // error happend on log node
+    StreamingError err    = 2;  // error happend on log node
 }
 
 // CloseAssignmentDiscoverRequest is the request to close the stream.
-message CloseAssignmentDiscoverRequest {
-}
+message CloseAssignmentDiscoverRequest {}
 
 // AssignmentDiscoverResponse is the response of Discovery
 message AssignmentDiscoverResponse {
@@ -135,29 +131,28 @@ message AssignmentDiscoverResponse {
 // FullStreamingNodeAssignmentWithVersion is the full assignment info of a log
 // node with version.
 message FullStreamingNodeAssignmentWithVersion {
-    VersionPair version = 1;
+    VersionPair version                          = 1;
     repeated StreamingNodeAssignment assignments = 2;
 }
 
-message CloseAssignmentDiscoverResponse {
-}
+message CloseAssignmentDiscoverResponse {}
 
 // StreamingNodeInfo is the information of a streaming node.
 message StreamingNodeInfo {
     int64 server_id = 1;
-    string address = 2;
+    string address  = 2;
 }
 
 // StreamingNodeAssignment is the assignment info of a streaming node.
 message StreamingNodeAssignment {
-    StreamingNodeInfo node = 1;
+    StreamingNodeInfo node         = 1;
     repeated PChannelInfo channels = 2;
 }
 
 // DeliverPolicy is the policy to deliver message.
 message DeliverPolicy {
     oneof policy {
-        google.protobuf.Empty all = 1;     // deliver all messages.
+        google.protobuf.Empty all    = 1;  // deliver all messages.
         google.protobuf.Empty latest = 2;  // deliver the latest message.
         MessageID start_from =
             3;  // deliver message from this message id. [startFrom, ...]
@@ -169,10 +164,10 @@ message DeliverPolicy {
 // DeliverFilter is the filter to deliver message.
 message DeliverFilter {
     oneof filter {
-        DeliverFilterTimeTickGT time_tick_gt = 1;
+        DeliverFilterTimeTickGT time_tick_gt   = 1;
         DeliverFilterTimeTickGTE time_tick_gte = 2;
-        DeliverFilterVChannel vchannel = 3;
-        DeliverFilterMessageType message_type = 4;
+        DeliverFilterVChannel vchannel         = 3;
+        DeliverFilterMessageType message_type  = 4;
     }
 }
 
@@ -202,22 +197,22 @@ message DeliverFilterMessageType {
 
 // StreamingCode is the error code for log internal component.
 enum StreamingCode {
-    STREAMING_CODE_OK = 0;
-    STREAMING_CODE_CHANNEL_NOT_EXIST = 1;       // channel not exist
-    STREAMING_CODE_CHANNEL_FENCED = 2;          // channel is fenced
-    STREAMING_CODE_ON_SHUTDOWN = 3;             // component is on shutdown
-    STREAMING_CODE_INVALID_REQUEST_SEQ = 4;     // invalid request sequence
-    STREAMING_CODE_UNMATCHED_CHANNEL_TERM = 5;  // unmatched channel term
-    STREAMING_CODE_IGNORED_OPERATION = 6;       // ignored operation
-    STREAMING_CODE_INNER = 7;                   // underlying service failure.
-    STREAMING_CODE_INVAILD_ARGUMENT = 8;        // invalid argument
-    STREAMING_CODE_UNKNOWN = 999;               // unknown error
+    STREAMING_CODE_OK                     = 0;
+    STREAMING_CODE_CHANNEL_NOT_EXIST      = 1;    // channel not exist
+    STREAMING_CODE_CHANNEL_FENCED         = 2;    // channel is fenced
+    STREAMING_CODE_ON_SHUTDOWN            = 3;    // component is on shutdown
+    STREAMING_CODE_INVALID_REQUEST_SEQ    = 4;    // invalid request sequence
+    STREAMING_CODE_UNMATCHED_CHANNEL_TERM = 5;    // unmatched channel term
+    STREAMING_CODE_IGNORED_OPERATION      = 6;    // ignored operation
+    STREAMING_CODE_INNER                  = 7;    // underlying service failure.
+    STREAMING_CODE_INVAILD_ARGUMENT       = 8;    // invalid argument
+    STREAMING_CODE_UNKNOWN                = 999;  // unknown error
 }
 
 // StreamingError is the error type for log internal component.
 message StreamingError {
     StreamingCode code = 1;
-    string cause = 2;
+    string cause       = 2;
 }
 
 //
@@ -236,8 +231,7 @@ service StreamingNodeHandlerService {
     // sequence of responsing. Error: If channel isn't assign to this log node,
     // the RPC will return error CHANNEL_NOT_EXIST. If channel is moving away to
     // other log node, the RPC will return error CHANNEL_FENCED.
-    rpc Produce(stream ProduceRequest) returns (stream ProduceResponse) {
-    };
+    rpc Produce(stream ProduceRequest) returns (stream ProduceResponse) {};
 
     // Consume is a server streaming RPC to receive messages from a channel.
     // All message after given startMessageID and excluding will be sent to the
@@ -245,8 +239,7 @@ service StreamingNodeHandlerService {
     // blocked until new message coming. Error: If channel isn't assign to this
     // log node, the RPC will return error CHANNEL_NOT_EXIST. If channel is
     // moving away to other log node, the RPC will return error CHANNEL_FENCED.
-    rpc Consume(stream ConsumeRequest) returns (stream ConsumeResponse) {
-    };
+    rpc Consume(stream ConsumeRequest) returns (stream ConsumeResponse) {};
 }
 
 // ProduceRequest is the request of the Produce RPC.
@@ -255,7 +248,7 @@ service StreamingNodeHandlerService {
 message ProduceRequest {
     oneof request {
         ProduceMessageRequest produce = 1;
-        CloseProducerRequest close = 2;
+        CloseProducerRequest close    = 2;
     }
 }
 
@@ -268,26 +261,25 @@ message CreateProducerRequest {
 // ProduceMessageRequest is the request of the Produce RPC.
 message ProduceMessageRequest {
     int64 request_id = 1;  // request id for reply.
-    Message message = 2;   // message to be sent.
+    Message message  = 2;  // message to be sent.
 }
 
 // CloseProducerRequest is the request of the CloseProducer RPC.
 // After CloseProducerRequest is requested, no more ProduceRequest can be sent.
-message CloseProducerRequest {
-}
+message CloseProducerRequest {}
 
 // ProduceResponse is the response of the Produce RPC.
 message ProduceResponse {
     oneof response {
-        CreateProducerResponse create = 1;
+        CreateProducerResponse create  = 1;
         ProduceMessageResponse produce = 2;
-        CloseProducerResponse close = 3;
+        CloseProducerResponse close    = 3;
     }
 }
 
 // CreateProducerResponse is the result of the CreateProducer RPC.
 message CreateProducerResponse {
-    string wal_name = 1;    // wal name at server side.
+    string wal_name   = 1;  // wal name at server side.
     int64 producer_id = 2;  // A unique producer id on streamingnode for this
                             // producer in streamingnode lifetime.
     // Is used to identify the producer in streamingnode for other unary grpc
@@ -299,20 +291,19 @@ message ProduceMessageResponse {
     int64 request_id = 1;
     oneof response {
         ProduceMessageResponseResult result = 2;
-        StreamingError error = 3;
+        StreamingError error                = 3;
     }
 }
 
 // ProduceMessageResponseResult is the result of the produce message streaming
 // RPC.
 message ProduceMessageResponseResult {
-    MessageID id = 1;     // the offset of the message in the channel.
+    MessageID id    = 1;  // the offset of the message in the channel.
     uint64 timetick = 2;  // the timetick of that message sent.
 }
 
 // CloseProducerResponse is the result of the CloseProducer RPC.
-message CloseProducerResponse {
-}
+message CloseProducerResponse {}
 
 // ConsumeRequest is the request of the Consume RPC.
 // Add more control block in future.
@@ -324,14 +315,13 @@ message ConsumeRequest {
 
 // CloseConsumerRequest is the request of the CloseConsumer RPC.
 // After CloseConsumerRequest is requested, no more ConsumeRequest can be sent.
-message CloseConsumerRequest {
-}
+message CloseConsumerRequest {}
 
 // CreateConsumerRequest is the request of the CreateConsumer RPC.
 // CreateConsumerRequest is passed in the header of stream.
 message CreateConsumerRequest {
-    PChannelInfo pchannel = 1;
-    DeliverPolicy deliver_policy = 2;            // deliver policy.
+    PChannelInfo pchannel                  = 1;
+    DeliverPolicy deliver_policy           = 2;  // deliver policy.
     repeated DeliverFilter deliver_filters = 3;  // deliver filter.
 }
 
@@ -340,7 +330,7 @@ message ConsumeResponse {
     oneof response {
         CreateConsumerResponse create = 1;
         ConsumeMessageReponse consume = 2;
-        CloseConsumerResponse close = 3;
+        CloseConsumerResponse close   = 3;
     }
 }
 
@@ -349,12 +339,11 @@ message CreateConsumerResponse {
 }
 
 message ConsumeMessageReponse {
-    MessageID id = 1;     // message id of message.
+    MessageID id    = 1;  // message id of message.
     Message message = 2;  // message to be consumed.
 }
 
-message CloseConsumerResponse {
-}
+message CloseConsumerResponse {}
 
 //
 // StreamingNodeManagerService
@@ -370,8 +359,7 @@ service StreamingNodeManagerService {
     // node. Error: If the channel already exists, return error with code
     // CHANNEL_EXIST.
     rpc Assign(StreamingNodeManagerAssignRequest)
-        returns (StreamingNodeManagerAssignResponse) {
-    };
+        returns (StreamingNodeManagerAssignResponse) {};
 
     // Remove is unary RPC to remove a channel on a log node.
     // Data of the channel on flying would be sent or flused as much as
@@ -380,16 +368,14 @@ service StreamingNodeManagerService {
     // with special error. Error: If the channel does not exist, return error
     // with code CHANNEL_NOT_EXIST.
     rpc Remove(StreamingNodeManagerRemoveRequest)
-        returns (StreamingNodeManagerRemoveResponse) {
-    };
+        returns (StreamingNodeManagerRemoveResponse) {};
 
     // rpc CollectStatus() ...
     // CollectStatus is unary RPC to collect all avaliable channel info and load
     // balance info on a log node. Used to recover channel info on log coord,
     // collect balance info and health check.
     rpc CollectStatus(StreamingNodeManagerCollectStatusRequest)
-        returns (StreamingNodeManagerCollectStatusResponse) {
-    };
+        returns (StreamingNodeManagerCollectStatusResponse) {};
 }
 
 // StreamingManagerAssignRequest is the request message of Assign RPC.
@@ -397,18 +383,15 @@ message StreamingNodeManagerAssignRequest {
     PChannelInfo pchannel = 1;
 }
 
-message StreamingNodeManagerAssignResponse {
-}
+message StreamingNodeManagerAssignResponse {}
 
 message StreamingNodeManagerRemoveRequest {
     PChannelInfo pchannel = 1;
 }
 
-message StreamingNodeManagerRemoveResponse {
-}
+message StreamingNodeManagerRemoveResponse {}
 
-message StreamingNodeManagerCollectStatusRequest {
-}
+message StreamingNodeManagerCollectStatusRequest {}
 
 message StreamingNodeBalanceAttributes {
     // TODO: traffic of pchannel or other things.
@@ -427,12 +410,12 @@ message StreamingNodeManagerCollectStatusResponse {
 // Used to storage the segment assignment stat
 // at meta-store. The WAL use it to determine when to make the segment sealed.
 message SegmentAssignmentMeta {
-    int64 collection_id = 1;
-    int64 partition_id = 2;
-    int64 segment_id = 3;
-    string vchannel = 4;
+    int64 collection_id          = 1;
+    int64 partition_id           = 2;
+    int64 segment_id             = 3;
+    string vchannel              = 4;
     SegmentAssignmentState state = 5;
-    SegmentAssignmentStat stat = 6;
+    SegmentAssignmentStat stat   = 6;
 }
 
 // SegmentAssignmentState is the state of segment assignment.
@@ -442,17 +425,17 @@ enum SegmentAssignmentState {
     SEGMENT_ASSIGNMENT_STATE_UNKNOWN = 0;  // should never used.
     SEGMENT_ASSIGNMENT_STATE_PENDING = 1;
     SEGMENT_ASSIGNMENT_STATE_GROWING = 2;
-    SEGMENT_ASSIGNMENT_STATE_SEALED = 3;
+    SEGMENT_ASSIGNMENT_STATE_SEALED  = 3;
     SEGMENT_ASSIGNMENT_STATE_FLUSHED = 4;  // can never be seen, because it's
     // removed physically when enter FLUSHED.
 }
 
 // SegmentAssignmentStat is the stat of segment assignment.
 message SegmentAssignmentStat {
-    uint64 max_binary_size = 1;
-    uint64 inserted_rows = 2;
-    uint64 inserted_binary_size = 3;
-    int64 create_timestamp_nanoseconds = 4;
+    uint64 max_binary_size                    = 1;
+    uint64 inserted_rows                      = 2;
+    uint64 inserted_binary_size               = 3;
+    int64 create_timestamp_nanoseconds        = 4;
     int64 last_modified_timestamp_nanoseconds = 5;
-    uint64 binlog_counter = 6;
+    uint64 binlog_counter                     = 6;
 }

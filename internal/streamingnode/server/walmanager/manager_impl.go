@@ -3,9 +3,8 @@ package walmanager
 import (
 	"context"
 
-	"go.uber.org/zap"
-
 	"github.com/cockroachdb/errors"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/registry"

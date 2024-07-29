@@ -7,8 +7,9 @@ import (
 
 	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource/idalloc"
-	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/inspector"
+	sinspector "github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/inspector"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/stats"
+	tinspector "github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/timetick/inspector"
 	"github.com/milvus-io/milvus/internal/types"
 )
 
@@ -55,7 +56,8 @@ func Init(opts ...optResourceInit) {
 	r.timestampAllocator = idalloc.NewTSOAllocator(r.rootCoordClient)
 	r.idAllocator = idalloc.NewIDAllocator(r.rootCoordClient)
 	r.segmentAssignStatsManager = stats.NewStatsManager()
-	r.segmentSealedInspector = inspector.NewSealedInspector(r.segmentAssignStatsManager.SealNotifier())
+	r.segmentSealedInspector = sinspector.NewSealedInspector(r.segmentAssignStatsManager.SealNotifier())
+	r.timeTickInspector = tinspector.NewTimeTickSyncInspector()
 
 	assertNotNil(r.TSOAllocator())
 	assertNotNil(r.ETCD())
@@ -64,6 +66,7 @@ func Init(opts ...optResourceInit) {
 	assertNotNil(r.StreamingNodeCatalog())
 	assertNotNil(r.SegmentAssignStatsManager())
 	assertNotNil(r.SegmentSealedInspector())
+	assertNotNil(r.TimeTickInspector())
 }
 
 // Resource access the underlying singleton of resources.
@@ -81,7 +84,8 @@ type resourceImpl struct {
 	dataCoordClient           types.DataCoordClient
 	streamingNodeCatalog      metastore.StreamingNodeCataLog
 	segmentAssignStatsManager *stats.StatsManager
-	segmentSealedInspector    inspector.SealOperationInspector
+	segmentSealedInspector    sinspector.SealOperationInspector
+	timeTickInspector         tinspector.TimeTickSyncInspector
 }
 
 // TSOAllocator returns the timestamp allocator to allocate timestamp.
@@ -120,8 +124,12 @@ func (r *resourceImpl) SegmentAssignStatsManager() *stats.StatsManager {
 }
 
 // SegmentSealedInspector returns the segment sealed inspector.
-func (r *resourceImpl) SegmentSealedInspector() inspector.SealOperationInspector {
+func (r *resourceImpl) SegmentSealedInspector() sinspector.SealOperationInspector {
 	return r.segmentSealedInspector
+}
+
+func (r *resourceImpl) TimeTickInspector() tinspector.TimeTickSyncInspector {
+	return r.timeTickInspector
 }
 
 // assertNotNil panics if the resource is nil.

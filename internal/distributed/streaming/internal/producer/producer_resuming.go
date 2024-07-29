@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/milvus-io/milvus/internal/distributed/streaming/internal/errs"
 	"github.com/milvus-io/milvus/internal/streamingnode/client/handler"
 	"github.com/milvus-io/milvus/pkg/util/syncutil"

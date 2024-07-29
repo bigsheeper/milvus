@@ -319,7 +319,6 @@ func (t *timetickSync) startWatch(wg *sync.WaitGroup) {
 
 // SendTimeTickToChannel send each channel's min timetick to msg stream
 func (t *timetickSync) sendTimeTickToChannel(chanNames []string, ts typeutil.Timestamp) error {
-	return nil
 	func() {
 		sub := tsoutil.SubByNow(ts)
 		for _, chanName := range chanNames {

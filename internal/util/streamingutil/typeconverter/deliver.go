@@ -3,6 +3,7 @@ package typeconverter
 import (
 	"github.com/cockroachdb/errors"
 
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/internal/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/streaming/util/options"
@@ -104,6 +105,14 @@ func NewProtoFromDeliverFilter(filter options.DeliverFilter) (*streamingpb.Deliv
 				},
 			},
 		}, nil
+	case options.DeliverFilterTypeMessageType:
+		return &streamingpb.DeliverFilter{
+			Filter: &streamingpb.DeliverFilter_MessageType{
+				MessageType: &streamingpb.DeliverFilterMessageType{
+					MessageTypes: filter.(interface{ MessageTypes() []commonpb.MsgType }).MessageTypes(),
+				},
+			},
+		}, nil
 	default:
 		return nil, errors.New("unknown deliver filter")
 	}
@@ -131,6 +140,12 @@ func NewDeliverFilterFromProto(proto *streamingpb.DeliverFilter) (options.Delive
 		return options.DeliverFilterTimeTickGTE(proto.GetTimeTickGte().GetTimeTick()), nil
 	case *streamingpb.DeliverFilter_Vchannel:
 		return options.DeliverFilterVChannel(proto.GetVchannel().GetVchannel()), nil
+	case *streamingpb.DeliverFilter_MessageType:
+		msgs := make([]message.MessageType, 0, len(proto.GetMessageType().GetMessageTypes()))
+		for _, mt := range proto.GetMessageType().GetMessageTypes() {
+			msgs = append(msgs, message.MessageType(mt))
+		}
+		return options.DeliverFilterMessageType(msgs...), nil
 	default:
 		return nil, errors.New("unknown deliver filter")
 	}

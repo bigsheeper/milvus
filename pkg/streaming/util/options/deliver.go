@@ -1,6 +1,7 @@
 package options
 
 import (
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 )
 
@@ -13,6 +14,7 @@ const (
 	DeliverFilterTypeTimeTickGT  deliverFilterType = 1
 	DeliverFilterTypeTimeTickGTE deliverFilterType = 2
 	DeliverFilterTypeVChannel    deliverFilterType = 3
+	DeliverFilterTypeMessageType deliverFilterType = 4
 )
 
 type (
@@ -86,6 +88,17 @@ func DeliverFilterTimeTickGTE(timeTick uint64) DeliverFilter {
 func DeliverFilterVChannel(vchannel string) DeliverFilter {
 	return &deliverFilterVChannel{
 		vchannel: vchannel,
+	}
+}
+
+// DeliverFilterMessageType delivers messages filtered by message type.
+func DeliverFilterMessageType(messageType ...message.MessageType) DeliverFilter {
+	messageTypes := make([]commonpb.MsgType, 0, len(messageType))
+	for _, mt := range messageType {
+		messageTypes = append(messageTypes, commonpb.MsgType(mt))
+	}
+	return &deliverFilterMessageType{
+		messageTypes: messageTypes,
 	}
 }
 

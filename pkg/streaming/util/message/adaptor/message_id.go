@@ -32,3 +32,21 @@ func MustGetMessageIDFromMQWrapperID(commonMessageID common.MessageID) message.M
 	}
 	return nil
 }
+
+func MustGetMessageIDFromMQWrapperIDBytes(walName string, msgIDBytes []byte) message.MessageID {
+	var commonMsgID common.MessageID
+	switch walName {
+	case "rocksmq":
+		id := server.DeserializeRmqID(msgIDBytes)
+		commonMsgID = &server.RmqID{MessageID: id}
+	case "pulsar":
+		msgID, err := mqpulsar.DeserializePulsarMsgID(msgIDBytes)
+		if err != nil {
+			panic(err)
+		}
+		commonMsgID = mqpulsar.NewPulsarID(msgID)
+	default:
+		panic("unsupported now")
+	}
+	return MustGetMessageIDFromMQWrapperID(commonMsgID)
+}

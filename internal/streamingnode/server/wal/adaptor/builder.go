@@ -4,6 +4,7 @@ import (
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/ddl"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/timetick"
 	"github.com/milvus-io/milvus/pkg/streaming/walimpls"
 )
@@ -33,5 +34,6 @@ func (b builderAdaptorImpl) Build() (wal.Opener, error) {
 	return adaptImplsToOpener(o, []interceptors.InterceptorBuilder{
 		timetick.NewInterceptorBuilder(),
 		ddl.NewInterceptorBuilder(),
+		segment.NewInterceptorBuilder(),
 	}), nil
 }

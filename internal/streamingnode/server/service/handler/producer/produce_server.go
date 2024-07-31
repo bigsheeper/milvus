@@ -90,8 +90,22 @@ func (p *ProduceServer) sendLoop() (err error) {
 		}
 		p.logger.Info("send arm of stream closed")
 	}()
+	available := p.wal.Available()
+	var appendWGDoneChan <-chan struct{}
+
 	for {
 		select {
+		case <-available:
+			// If the wal is not available any more, we should stop sending message, and close the server.
+			// appendWGDoneChan make a graceful shutdown for those case.
+			available = nil
+			appendWGDoneChan = p.getWaitAppendChan()
+		case <-appendWGDoneChan:
+			// All pending append request has been finished, we can close the streaming server now.
+			// Recv arm will be closed by context cancel of stream server.
+			// Send an unavailable response to ask client to release resource.
+			p.produceServer.SendClosed()
+			return errors.New("send loop is stopped for close of wal")
 		case resp, ok := <-p.produceMessageCh:
 			if !ok {
 				// all message has been sent, sent close response.
@@ -105,6 +119,15 @@ func (p *ProduceServer) sendLoop() (err error) {
 			return errors.Wrap(p.produceServer.Context().Err(), "cancel send loop by stream server")
 		}
 	}
+}
+
+// getWaitAppendChan returns the channel that can be used to wait for the append operation.
+func (p *ProduceServer) getWaitAppendChan() <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		close(ch)
+	}()
+	return p.wal.Available()
 }
 
 // recvLoop receives the message from client.
@@ -142,11 +165,19 @@ func (p *ProduceServer) recvLoop() (err error) {
 
 // handleProduce handles the produce message request.
 func (p *ProduceServer) handleProduce(req *streamingpb.ProduceMessageRequest) {
+	// Stop handling if the wal is not available any more.
+	// The counter of  appendWG will never increased.
+	if !p.wal.IsAvailable() {
+		return
+	}
+
+	p.appendWG.Add(1)
 	p.logger.Debug("recv produce message from client", zap.Int64("requestID", req.RequestId))
 	msg := message.NewMutableMessage(req.GetMessage().GetPayload(), req.GetMessage().GetProperties())
 	if err := p.validateMessage(msg); err != nil {
 		p.logger.Warn("produce message validation failed", zap.Int64("requestID", req.RequestId), zap.Error(err))
 		p.sendProduceResult(req.RequestId, nil, err)
+		p.appendWG.Done()
 		return
 	}
 
@@ -154,13 +185,12 @@ func (p *ProduceServer) handleProduce(req *streamingpb.ProduceMessageRequest) {
 	// Concurrent append request can be executed concurrently.
 	messageSize := msg.EstimateSize()
 	now := time.Now()
-	p.appendWG.Add(1)
-	p.wal.AppendAsync(p.produceServer.Context(), msg, func(id message.MessageID, err error) {
+	p.wal.AppendAsync(p.produceServer.Context(), msg, func(appendResult *wal.AppendResult, err error) {
 		defer func() {
 			p.appendWG.Done()
 			p.updateMetrics(messageSize, time.Since(now).Seconds(), err)
 		}()
-		p.sendProduceResult(req.RequestId, id, err)
+		p.sendProduceResult(req.RequestId, appendResult, err)
 	})
 }
 
@@ -180,7 +210,7 @@ func (p *ProduceServer) validateMessage(msg message.MutableMessage) error {
 }
 
 // sendProduceResult sends the produce result to client.
-func (p *ProduceServer) sendProduceResult(reqID int64, id message.MessageID, err error) {
+func (p *ProduceServer) sendProduceResult(reqID int64, appendResult *wal.AppendResult, err error) {
 	resp := &streamingpb.ProduceMessageResponse{
 		RequestId: reqID,
 	}
@@ -193,8 +223,9 @@ func (p *ProduceServer) sendProduceResult(reqID int64, id message.MessageID, err
 		resp.Response = &streamingpb.ProduceMessageResponse_Result{
 			Result: &streamingpb.ProduceMessageResponseResult{
 				Id: &streamingpb.MessageID{
-					Id: id.Marshal(),
+					Id: appendResult.MessageID.Marshal(),
 				},
+				Timetick: appendResult.TimeTick,
 			},
 		}
 	}
@@ -203,9 +234,9 @@ func (p *ProduceServer) sendProduceResult(reqID int64, id message.MessageID, err
 	// all pending response message should be dropped, client side will handle it.
 	select {
 	case p.produceMessageCh <- resp:
-		p.logger.Debug("send produce message response to client", zap.Int64("requestID", reqID), zap.Any("messageID", id), zap.Error(err))
+		p.logger.Debug("send produce message response to client", zap.Int64("requestID", reqID), zap.Uint64("timetick", appendResult.TimeTick), zap.Any("messageID", appendResult.MessageID), zap.Error(err))
 	case <-p.produceServer.Context().Done():
-		p.logger.Warn("stream closed before produce message response sent", zap.Int64("requestID", reqID), zap.Any("messageID", id))
+		p.logger.Warn("stream closed before produce message response sent", zap.Int64("requestID", reqID), zap.Uint64("timetick", appendResult.TimeTick), zap.Any("messageID", appendResult.MessageID))
 		return
 	}
 }

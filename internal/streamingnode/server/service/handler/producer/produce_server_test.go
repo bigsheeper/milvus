@@ -18,6 +18,7 @@ import (
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/server/mock_wal"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/server/mock_walmanager"
 	"github.com/milvus-io/milvus/internal/proto/streamingpb"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/walmanager"
 	"github.com/milvus-io/milvus/internal/util/streamingutil/service/contextutil"
 	"github.com/milvus-io/milvus/pkg/log"
@@ -187,9 +188,12 @@ func TestProduceServerRecvArm(t *testing.T) {
 		Name: "test",
 		Term: 1,
 	})
-	l.EXPECT().AppendAsync(mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, mm message.MutableMessage, f func(message.MessageID, error)) {
+	l.EXPECT().AppendAsync(mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, mm message.MutableMessage, f func(*wal.AppendResult, error)) {
 		msgID := walimplstest.NewTestMessageID(1)
-		f(msgID, nil)
+		f(&wal.AppendResult{
+			MessageID: msgID,
+			TimeTick:  100,
+		}, nil)
 	})
 
 	p := &ProduceServer{
@@ -230,7 +234,7 @@ func TestProduceServerRecvArm(t *testing.T) {
 
 	// Test send error.
 	l.EXPECT().AppendAsync(mock.Anything, mock.Anything, mock.Anything).Unset()
-	l.EXPECT().AppendAsync(mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, mm message.MutableMessage, f func(message.MessageID, error)) {
+	l.EXPECT().AppendAsync(mock.Anything, mock.Anything, mock.Anything).Run(func(ctx context.Context, mm message.MutableMessage, f func(*wal.AppendResult, error)) {
 		f(nil, errors.New("append error"))
 	})
 

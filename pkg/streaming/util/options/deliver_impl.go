@@ -1,6 +1,9 @@
 package options
 
-import "github.com/milvus-io/milvus/pkg/streaming/util/message"
+import (
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
+	"github.com/milvus-io/milvus/pkg/streaming/util/message"
+)
 
 // deliverPolicyWithoutMessageID is the policy of delivering messages without messageID.
 type deliverPolicyWithoutMessageID struct {
@@ -78,4 +81,26 @@ func (f *deliverFilterVChannel) VChannel() string {
 
 func (f *deliverFilterVChannel) Filter(msg message.ImmutableMessage) bool {
 	return msg.VChannel() == f.vchannel
+}
+
+// deliverFilterMessageType delivers messages by message type.
+type deliverFilterMessageType struct {
+	messageTypes []commonpb.MsgType // it's a small set of message types, so we use slice here, fast than map.
+}
+
+func (f *deliverFilterMessageType) Type() deliverFilterType {
+	return DeliverFilterTypeMessageType
+}
+
+func (f *deliverFilterMessageType) MessageTypes() []commonpb.MsgType {
+	return f.messageTypes
+}
+
+func (f *deliverFilterMessageType) Filter(msg message.ImmutableMessage) bool {
+	for _, t := range f.messageTypes {
+		if msg.MessageType() == message.MessageType(t) {
+			return true
+		}
+	}
+	return false
 }

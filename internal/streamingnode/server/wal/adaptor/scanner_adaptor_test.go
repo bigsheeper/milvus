@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/timetick/inspector"
 	"github.com/milvus-io/milvus/pkg/mocks/streaming/mock_walimpls"
 	"github.com/milvus-io/milvus/pkg/streaming/util/options"
 	"github.com/milvus-io/milvus/pkg/streaming/util/types"
@@ -19,10 +20,14 @@ func TestScannerAdaptorReadError(t *testing.T) {
 	l.EXPECT().Read(mock.Anything, mock.Anything).Return(nil, err)
 	l.EXPECT().Channel().Return(types.PChannelInfo{})
 
-	s := newScannerAdaptor("scanner", l, wal.ReadOption{
-		DeliverPolicy: options.DeliverPolicyAll(),
-		MessageFilter: nil,
-	}, func() {})
+	s := newScannerAdaptor("scanner",
+		l,
+		wal.ReadOption{
+			DeliverPolicy: options.DeliverPolicyAll(),
+			MessageFilter: nil,
+		},
+		inspector.NewTimeTickNotifier(),
+		func() {})
 	defer s.Close()
 
 	<-s.Chan()

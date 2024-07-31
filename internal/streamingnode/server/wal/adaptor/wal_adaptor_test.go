@@ -61,7 +61,7 @@ func TestWALAdaptor(t *testing.T) {
 	assert.NotNil(t, lAdapted.Channel())
 	_, err := lAdapted.Append(context.Background(), nil)
 	assert.NoError(t, err)
-	lAdapted.AppendAsync(context.Background(), nil, func(mi message.MessageID, err error) {
+	lAdapted.AppendAsync(context.Background(), nil, func(mi *wal.AppendResult, err error) {
 		assert.Nil(t, err)
 	})
 
@@ -99,7 +99,7 @@ func TestWALAdaptor(t *testing.T) {
 
 	_, err = lAdapted.Append(context.Background(), nil)
 	assertShutdownError(t, err)
-	lAdapted.AppendAsync(context.Background(), nil, func(mi message.MessageID, err error) {
+	lAdapted.AppendAsync(context.Background(), nil, func(mi *wal.AppendResult, err error) {
 		assertShutdownError(t, err)
 	})
 	_, err = lAdapted.Read(context.Background(), wal.ReadOption{})
@@ -136,7 +136,7 @@ func TestWALWithInterceptor(t *testing.T) {
 
 	b := mock_interceptors.NewMockInterceptorBuilder(t)
 	readyCh := make(chan struct{})
-	b.EXPECT().Build(mock.Anything).RunAndReturn(func(ibp interceptors.InterceptorBuildParam) interceptors.BasicInterceptor {
+	b.EXPECT().Build(mock.Anything).RunAndReturn(func(ibp interceptors.InterceptorBuildParam) interceptors.Interceptor {
 		interceptor := mock_interceptors.NewMockInterceptorWithReady(t)
 		interceptor.EXPECT().Ready().Return(readyCh)
 		interceptor.EXPECT().DoAppend(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(

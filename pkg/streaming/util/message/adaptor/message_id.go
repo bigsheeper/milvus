@@ -35,20 +35,20 @@ func MustGetMessageIDFromMQWrapperID(commonMessageID common.MessageID) message.M
 	return nil
 }
 
-// DeserializeToMQWrapperID deserializes messageID bytes to common.MessageID
-// TODO: should be removed in future after common.MessageID is removed
-func DeserializeToMQWrapperID(msgID []byte, walName string) (common.MessageID, error) {
+func MustGetMessageIDFromMQWrapperIDBytes(walName string, msgIDBytes []byte) message.MessageID {
+	var commonMsgID common.MessageID
 	switch walName {
-	case "pulsar":
-		pulsarID, err := mqpulsar.DeserializePulsarMsgID(msgID)
-		if err != nil {
-			return nil, err
-		}
-		return mqpulsar.NewPulsarID(pulsarID), nil
 	case "rocksmq":
-		rID := server.DeserializeRmqID(msgID)
-		return &server.RmqID{MessageID: rID}, nil
+		id := server.DeserializeRmqID(msgIDBytes)
+		commonMsgID = &server.RmqID{MessageID: id}
+	case "pulsar":
+		msgID, err := mqpulsar.DeserializePulsarMsgID(msgIDBytes)
+		if err != nil {
+			panic(err)
+		}
+		commonMsgID = mqpulsar.NewPulsarID(msgID)
 	default:
-		return nil, fmt.Errorf("unsupported mq type %s", walName)
+		panic("unsupported now")
 	}
+	return MustGetMessageIDFromMQWrapperID(commonMsgID)
 }

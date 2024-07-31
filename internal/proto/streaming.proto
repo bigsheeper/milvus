@@ -4,6 +4,7 @@ package milvus.proto.streaming;
 
 option go_package = "github.com/milvus-io/milvus/internal/proto/streamingpb";
 
+import "common.proto";
 import "milvus.proto";
 import "google/protobuf/empty.proto";
 
@@ -166,6 +167,7 @@ message DeliverFilter {
         DeliverFilterTimeTickGT time_tick_gt   = 1;
         DeliverFilterTimeTickGTE time_tick_gte = 2;
         DeliverFilterVChannel vchannel         = 3;
+        DeliverFilterMessageType message_type  = 4;
     }
 }
 
@@ -186,6 +188,11 @@ message DeliverFilterTimeTickGTE {
 // DeliverFilterVChannel is the filter to deliver message with vchannel name.
 message DeliverFilterVChannel {
     string vchannel = 1;  // deliver message with vchannel name.
+}
+
+message DeliverFilterMessageType {
+    repeated common.MsgType message_types =
+        1;  // deliver message with message type.
 }
 
 // StreamingCode is the error code for log internal component.
@@ -279,6 +286,7 @@ message CreateProducerResponse {
     // call at producer level.
 }
 
+// ProduceMessageResponse is the response of the ProduceMessage RPC.
 message ProduceMessageResponse {
     int64 request_id = 1;
     oneof response {
@@ -290,7 +298,8 @@ message ProduceMessageResponse {
 // ProduceMessageResponseResult is the result of the produce message streaming
 // RPC.
 message ProduceMessageResponseResult {
-    MessageID id = 1;  // the offset of the message in the channel
+    MessageID id    = 1;  // the offset of the message in the channel.
+    uint64 timetick = 2;  // the timetick of that message sent.
 }
 
 // CloseProducerResponse is the result of the CloseProducer RPC.
@@ -390,4 +399,43 @@ message StreamingNodeBalanceAttributes {
 
 message StreamingNodeManagerCollectStatusResponse {
     StreamingNodeBalanceAttributes balance_attributes = 1;
+}
+
+///
+/// SegmentAssignment
+///
+// SegmentAssignmentMeta is the stat of segment assignment.
+// These meta is only used to recover status at streaming node segment
+// assignment, don't use it outside.
+// Used to storage the segment assignment stat
+// at meta-store. The WAL use it to determine when to make the segment sealed.
+message SegmentAssignmentMeta {
+    int64 collection_id          = 1;
+    int64 partition_id           = 2;
+    int64 segment_id             = 3;
+    string vchannel              = 4;
+    SegmentAssignmentState state = 5;
+    SegmentAssignmentStat stat   = 6;
+}
+
+// SegmentAssignmentState is the state of segment assignment.
+// The state machine can be described as following:
+// 1. PENDING -> GROWING -> SEALED -> FLUSHED
+enum SegmentAssignmentState {
+    SEGMENT_ASSIGNMENT_STATE_UNKNOWN = 0;  // should never used.
+    SEGMENT_ASSIGNMENT_STATE_PENDING = 1;
+    SEGMENT_ASSIGNMENT_STATE_GROWING = 2;
+    SEGMENT_ASSIGNMENT_STATE_SEALED  = 3;
+    SEGMENT_ASSIGNMENT_STATE_FLUSHED = 4;  // can never be seen, because it's
+    // removed physically when enter FLUSHED.
+}
+
+// SegmentAssignmentStat is the stat of segment assignment.
+message SegmentAssignmentStat {
+    uint64 max_binary_size                    = 1;
+    uint64 inserted_rows                      = 2;
+    uint64 inserted_binary_size               = 3;
+    int64 create_timestamp_nanoseconds        = 4;
+    int64 last_modified_timestamp_nanoseconds = 5;
+    uint64 binlog_counter                     = 6;
 }

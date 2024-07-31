@@ -18,6 +18,7 @@ func TestMessage(t *testing.T) {
 	mutableMessage, err := b.WithHeader(&message.TimeTickMessageHeader{}).
 		WithProperties(map[string]string{"key": "value"}).
 		WithProperty("key2", "value2").
+		WithVChannel("v1").
 		WithBody(&msgpb.TimeTickMsg{}).BuildMutable()
 	assert.NoError(t, err)
 
@@ -47,7 +48,6 @@ func TestMessage(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, v, "lcMsgID")
 
-	mutableMessage.WithVChannel("v1")
 	v, ok = mutableMessage.Properties().Get("_vc")
 	assert.True(t, ok)
 	assert.Equal(t, "v1", v)

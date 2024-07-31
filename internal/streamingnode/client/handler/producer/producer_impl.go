@@ -69,6 +69,7 @@ func CreateProducer(
 		pendingRequests:  sync.Map{},
 		requestCh:        make(chan *produceRequest),
 		sendExitCh:       make(chan struct{}),
+		recvExitCh:       make(chan struct{}),
 		finishedCh:       make(chan struct{}),
 	}
 
@@ -104,6 +105,7 @@ type producerImpl struct {
 	pendingRequests sync.Map
 	requestCh       chan *produceRequest
 	sendExitCh      chan struct{}
+	recvExitCh      chan struct{}
 	finishedCh      chan struct{}
 }
 
@@ -114,8 +116,8 @@ type produceRequest struct {
 }
 
 type produceResponse struct {
-	id  message.MessageID
-	err error
+	result *ProduceResult
+	err    error
 }
 
 // Assignment returns the assignment of the producer.
@@ -124,7 +126,7 @@ func (p *producerImpl) Assignment() types.PChannelInfoAssigned {
 }
 
 // Produce sends the produce message to server.
-func (p *producerImpl) Produce(ctx context.Context, msg message.MutableMessage) (message.MessageID, error) {
+func (p *producerImpl) Produce(ctx context.Context, msg message.MutableMessage) (*ProduceResult, error) {
 	if p.lifetime.Add(lifetime.IsWorking) != nil {
 		return nil, status.NewOnShutdownError("producer client is shutting down")
 	}
@@ -143,7 +145,9 @@ func (p *producerImpl) Produce(ctx context.Context, msg message.MutableMessage) 
 		return nil, ctx.Err()
 	case p.requestCh <- req:
 	case <-p.sendExitCh:
-		return nil, status.NewInner("producer stream client is closed")
+		return nil, status.NewInner("producer send arm is closed")
+	case <-p.recvExitCh:
+		return nil, status.NewInner("producer recv arm is closed")
 	}
 
 	// Wait for the response from server or context timeout.
@@ -151,7 +155,7 @@ func (p *producerImpl) Produce(ctx context.Context, msg message.MutableMessage) 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case resp := <-respCh:
-		return resp.id, resp.err
+		return resp.result, resp.err
 	}
 }
 
@@ -234,21 +238,28 @@ func (p *producerImpl) sendLoop() (err error) {
 		}
 	}()
 
-	for req := range p.requestCh {
-		requestID := p.idAllocator.Allocate()
-		// Store the request to pending request map.
-		p.pendingRequests.Store(requestID, req)
-		// Send the produce message to server.
-		if err := p.grpcStreamClient.SendProduceMessage(requestID, req.msg); err != nil {
-			// If send failed, remove the request from pending request map and return error to client.
-			p.notifyRequest(requestID, produceResponse{
-				err: err,
-			})
-			return err
+	for {
+		select {
+		case <-p.recvExitCh:
+			return errors.New("recv arm of stream closed")
+		case req, ok := <-p.requestCh:
+			if !ok {
+				// all message has been sent, sent close response.
+				return p.grpcStreamClient.SendClose()
+			}
+			requestID := p.idAllocator.Allocate()
+			// Store the request to pending request map.
+			p.pendingRequests.Store(requestID, req)
+			// Send the produce message to server.
+			if err := p.grpcStreamClient.SendProduceMessage(requestID, req.msg); err != nil {
+				// If send failed, remove the request from pending request map and return error to client.
+				p.notifyRequest(requestID, produceResponse{
+					err: err,
+				})
+				return err
+			}
 		}
 	}
-	// all message has been sent, sent close response.
-	return p.grpcStreamClient.SendClose()
 }
 
 // recvLoop receives the produce response from server.
@@ -259,6 +270,7 @@ func (p *producerImpl) recvLoop() (err error) {
 			return
 		}
 		p.logger.Info("recv arm of stream closed")
+		close(p.recvExitCh)
 	}()
 
 	for {
@@ -283,7 +295,10 @@ func (p *producerImpl) recvLoop() (err error) {
 					return err
 				}
 				result = produceResponse{
-					id: msgID,
+					result: &ProduceResult{
+						MessageID: msgID,
+						TimeTick:  produceResp.Result.GetTimetick(),
+					},
 				}
 			case *streamingpb.ProduceMessageResponse_Error:
 				result = produceResponse{

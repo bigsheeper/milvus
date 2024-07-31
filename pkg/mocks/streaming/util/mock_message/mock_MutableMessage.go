@@ -232,6 +232,88 @@ func (_c *MockMutableMessage_Properties_Call) RunAndReturn(run func() message.RP
 	return _c
 }
 
+// TimeTick provides a mock function with given fields:
+func (_m *MockMutableMessage) TimeTick() uint64 {
+	ret := _m.Called()
+
+	var r0 uint64
+	if rf, ok := ret.Get(0).(func() uint64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	return r0
+}
+
+// MockMutableMessage_TimeTick_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TimeTick'
+type MockMutableMessage_TimeTick_Call struct {
+	*mock.Call
+}
+
+// TimeTick is a helper method to define mock.On call
+func (_e *MockMutableMessage_Expecter) TimeTick() *MockMutableMessage_TimeTick_Call {
+	return &MockMutableMessage_TimeTick_Call{Call: _e.mock.On("TimeTick")}
+}
+
+func (_c *MockMutableMessage_TimeTick_Call) Run(run func()) *MockMutableMessage_TimeTick_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockMutableMessage_TimeTick_Call) Return(_a0 uint64) *MockMutableMessage_TimeTick_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMutableMessage_TimeTick_Call) RunAndReturn(run func() uint64) *MockMutableMessage_TimeTick_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// VChannel provides a mock function with given fields:
+func (_m *MockMutableMessage) VChannel() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// MockMutableMessage_VChannel_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VChannel'
+type MockMutableMessage_VChannel_Call struct {
+	*mock.Call
+}
+
+// VChannel is a helper method to define mock.On call
+func (_e *MockMutableMessage_Expecter) VChannel() *MockMutableMessage_VChannel_Call {
+	return &MockMutableMessage_VChannel_Call{Call: _e.mock.On("VChannel")}
+}
+
+func (_c *MockMutableMessage_VChannel_Call) Run(run func()) *MockMutableMessage_VChannel_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockMutableMessage_VChannel_Call) Return(_a0 string) *MockMutableMessage_VChannel_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMutableMessage_VChannel_Call) RunAndReturn(run func() string) *MockMutableMessage_VChannel_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Version provides a mock function with given fields:
 func (_m *MockMutableMessage) Version() message.Version {
 	ret := _m.Called()
@@ -317,6 +399,49 @@ func (_c *MockMutableMessage_WithLastConfirmed_Call) RunAndReturn(run func(messa
 	return _c
 }
 
+// WithLastConfirmedUseMessageID provides a mock function with given fields:
+func (_m *MockMutableMessage) WithLastConfirmedUseMessageID() message.MutableMessage {
+	ret := _m.Called()
+
+	var r0 message.MutableMessage
+	if rf, ok := ret.Get(0).(func() message.MutableMessage); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(message.MutableMessage)
+		}
+	}
+
+	return r0
+}
+
+// MockMutableMessage_WithLastConfirmedUseMessageID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WithLastConfirmedUseMessageID'
+type MockMutableMessage_WithLastConfirmedUseMessageID_Call struct {
+	*mock.Call
+}
+
+// WithLastConfirmedUseMessageID is a helper method to define mock.On call
+func (_e *MockMutableMessage_Expecter) WithLastConfirmedUseMessageID() *MockMutableMessage_WithLastConfirmedUseMessageID_Call {
+	return &MockMutableMessage_WithLastConfirmedUseMessageID_Call{Call: _e.mock.On("WithLastConfirmedUseMessageID")}
+}
+
+func (_c *MockMutableMessage_WithLastConfirmedUseMessageID_Call) Run(run func()) *MockMutableMessage_WithLastConfirmedUseMessageID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockMutableMessage_WithLastConfirmedUseMessageID_Call) Return(_a0 message.MutableMessage) *MockMutableMessage_WithLastConfirmedUseMessageID_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockMutableMessage_WithLastConfirmedUseMessageID_Call) RunAndReturn(run func() message.MutableMessage) *MockMutableMessage_WithLastConfirmedUseMessageID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // WithTimeTick provides a mock function with given fields: tt
 func (_m *MockMutableMessage) WithTimeTick(tt uint64) message.MutableMessage {
 	ret := _m.Called(tt)
@@ -357,50 +482,6 @@ func (_c *MockMutableMessage_WithTimeTick_Call) Return(_a0 message.MutableMessag
 }
 
 func (_c *MockMutableMessage_WithTimeTick_Call) RunAndReturn(run func(uint64) message.MutableMessage) *MockMutableMessage_WithTimeTick_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// WithVChannel provides a mock function with given fields: vChannel
-func (_m *MockMutableMessage) WithVChannel(vChannel string) message.MutableMessage {
-	ret := _m.Called(vChannel)
-
-	var r0 message.MutableMessage
-	if rf, ok := ret.Get(0).(func(string) message.MutableMessage); ok {
-		r0 = rf(vChannel)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(message.MutableMessage)
-		}
-	}
-
-	return r0
-}
-
-// MockMutableMessage_WithVChannel_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WithVChannel'
-type MockMutableMessage_WithVChannel_Call struct {
-	*mock.Call
-}
-
-// WithVChannel is a helper method to define mock.On call
-//   - vChannel string
-func (_e *MockMutableMessage_Expecter) WithVChannel(vChannel interface{}) *MockMutableMessage_WithVChannel_Call {
-	return &MockMutableMessage_WithVChannel_Call{Call: _e.mock.On("WithVChannel", vChannel)}
-}
-
-func (_c *MockMutableMessage_WithVChannel_Call) Run(run func(vChannel string)) *MockMutableMessage_WithVChannel_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
-	})
-	return _c
-}
-
-func (_c *MockMutableMessage_WithVChannel_Call) Return(_a0 message.MutableMessage) *MockMutableMessage_WithVChannel_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockMutableMessage_WithVChannel_Call) RunAndReturn(run func(string) message.MutableMessage) *MockMutableMessage_WithVChannel_Call {
 	_c.Call.Return(run)
 	return _c
 }

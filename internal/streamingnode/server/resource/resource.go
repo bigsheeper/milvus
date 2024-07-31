@@ -9,7 +9,11 @@ import (
 	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/flusher"
+	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource/idalloc"
+	sinspector "github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/inspector"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/stats"
+	tinspector "github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/timetick/inspector"
 	"github.com/milvus-io/milvus/internal/types"
 )
 
@@ -67,6 +71,13 @@ func OptDataCoordClient(dataCoordClient types.DataCoordClient) optResourceInit {
 	}
 }
 
+// OptStreamingNodeCatalog provides the streaming node catalog to the resource.
+func OptStreamingNodeCatalog(catalog metastore.StreamingNodeCataLog) optResourceInit {
+	return func(r *resourceImpl) {
+		r.streamingNodeCatalog = catalog
+	}
+}
+
 // Init initializes the singleton of resources.
 // Should be call when streaming node startup.
 func Init(opts ...optResourceInit) {
@@ -76,10 +87,17 @@ func Init(opts ...optResourceInit) {
 	}
 	r.timestampAllocator = idalloc.NewTSOAllocator(r.rootCoordClient)
 	r.idAllocator = idalloc.NewIDAllocator(r.rootCoordClient)
+	r.segmentAssignStatsManager = stats.NewStatsManager()
+	r.segmentSealedInspector = sinspector.NewSealedInspector(r.segmentAssignStatsManager.SealNotifier())
+	r.timeTickInspector = tinspector.NewTimeTickSyncInspector()
 
 	assertNotNil(r.TSOAllocator())
 	assertNotNil(r.RootCoordClient())
 	assertNotNil(r.DataCoordClient())
+	assertNotNil(r.StreamingNodeCatalog())
+	assertNotNil(r.SegmentAssignStatsManager())
+	assertNotNil(r.SegmentSealedInspector())
+	assertNotNil(r.TimeTickInspector())
 }
 
 // Resource access the underlying singleton of resources.
@@ -93,13 +111,16 @@ type resourceImpl struct {
 	flusher flusher.Flusher
 	syncMgr syncmgr.SyncManager
 	wbMgr   writebuffer.BufferManager
-
 	timestampAllocator idalloc.Allocator
 	idAllocator        idalloc.Allocator
 	etcdClient         *clientv3.Client
 	chunkManager       storage.ChunkManager
 	rootCoordClient    types.RootCoordClient
 	dataCoordClient    types.DataCoordClient
+	streamingNodeCatalog      metastore.StreamingNodeCataLog
+	segmentAssignStatsManager *stats.StatsManager
+	segmentSealedInspector    sinspector.SealOperationInspector
+	timeTickInspector         tinspector.TimeTickSyncInspector
 }
 
 // Flusher returns the flusher.
@@ -145,6 +166,25 @@ func (r *resourceImpl) RootCoordClient() types.RootCoordClient {
 // DataCoordClient returns the data coordinator client.
 func (r *resourceImpl) DataCoordClient() types.DataCoordClient {
 	return r.dataCoordClient
+}
+
+// StreamingNodeCataLog returns the streaming node catalog.
+func (r *resourceImpl) StreamingNodeCatalog() metastore.StreamingNodeCataLog {
+	return r.streamingNodeCatalog
+}
+
+// SegmentAssignStatManager returns the segment assign stats manager.
+func (r *resourceImpl) SegmentAssignStatsManager() *stats.StatsManager {
+	return r.segmentAssignStatsManager
+}
+
+// SegmentSealedInspector returns the segment sealed inspector.
+func (r *resourceImpl) SegmentSealedInspector() sinspector.SealOperationInspector {
+	return r.segmentSealedInspector
+}
+
+func (r *resourceImpl) TimeTickInspector() tinspector.TimeTickSyncInspector {
+	return r.timeTickInspector
 }
 
 // assertNotNil panics if the resource is nil.

@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/streamingutil"
 	"sync"
 	"time"
 
@@ -328,6 +329,12 @@ func (m *ChannelManagerImpl) Balance() {
 }
 
 func (m *ChannelManagerImpl) Match(nodeID UniqueID, channel string) bool {
+	if streamingutil.IsStreamingServiceEnabled() {
+		// Skip the channel matching check since the
+		// channel manager no longer manages channels in streaming mode.
+		return true
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

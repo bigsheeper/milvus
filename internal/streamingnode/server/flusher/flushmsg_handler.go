@@ -16,6 +16,6 @@
 
 package flusher
 
-// TODO: type FlushMsgHandler = func(vchannel string, msg FlushMsg)
+import "github.com/milvus-io/milvus/pkg/streaming/util/message/adaptor"
 
-type FlushMsgHandler = func(vchannel string, segmentIDs []int64)
+type FlushMsgHandler = func(vchannel string, flushMsg *adaptor.FlushMessageBody)

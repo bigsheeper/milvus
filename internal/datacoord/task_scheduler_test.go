@@ -743,7 +743,7 @@ func (s *taskSchedulerSuite) createAnalyzeMeta(catalog metastore.DataCoordCatalo
 	}
 }
 
-func (s *taskSchedulerSuite) SetupTest() {
+func (s *taskSchedulerSuite) SetupSuite() {
 	paramtable.Init()
 	s.initParams()
 	Params.DataCoordCfg.ClusteringCompactionMinCentroidsNum.SwapTempValue("0")

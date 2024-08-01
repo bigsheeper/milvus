@@ -189,14 +189,10 @@ func initMetaCache(initCtx context.Context, chunkManager storage.ChunkManager, i
 	return metacache, nil
 }
 
-<<<<<<< HEAD
 func getServiceWithChannel(initCtx context.Context, params *util.PipelineParams,
-	info *datapb.ChannelWatchInfo, metacache metacache.MetaCache, storageV2Cache *metacache.StorageV2Cache,
+	info *datapb.ChannelWatchInfo, metacache metacache.MetaCache,
 	unflushed, flushed []*datapb.SegmentInfo, input <-chan *msgstream.MsgPack,
 ) (*DataSyncService, error) {
-=======
-func getServiceWithChannel(initCtx context.Context, params *util.PipelineParams, info *datapb.ChannelWatchInfo, metacache metacache.MetaCache, unflushed, flushed []*datapb.SegmentInfo) (*DataSyncService, error) {
->>>>>>> 7721a28584e05f24eb816a6005935a0ef827997a
 	var (
 		channelName  = info.GetVchan().GetChannelName()
 		collectionID = info.GetVchan().GetCollectionID()
@@ -328,12 +324,12 @@ func NewStreamingNodeDataSyncService(initCtx context.Context, pipelineParams *ut
 	}
 
 	// init metaCache meta
-	metaCache, err := initMetaCache(initCtx, nil, pipelineParams.ChunkManager, info, nil, unflushedSegmentInfos, flushedSegmentInfos)
+	metaCache, err := initMetaCache(initCtx, pipelineParams.ChunkManager, info, nil, unflushedSegmentInfos, flushedSegmentInfos)
 	if err != nil {
 		return nil, err
 	}
 
-	return getServiceWithChannel(initCtx, pipelineParams, info, metaCache, nil, unflushedSegmentInfos, flushedSegmentInfos, input)
+	return getServiceWithChannel(initCtx, pipelineParams, info, metaCache, unflushedSegmentInfos, flushedSegmentInfos, input)
 }
 
 func NewDataSyncServiceWithMetaCache(metaCache metacache.MetaCache) *DataSyncService {

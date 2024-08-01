@@ -30,6 +30,8 @@ func NewMsgPackFromMessage(msgs ...message.ImmutableMessage) (*msgstream.MsgPack
 			tsMsg, err = fromMessageToTsMsgVOld(msg)
 		case message.VersionV1:
 			tsMsg, err = fromMessageToTsMsgV1(msg)
+		case message.VersionV2:
+			tsMsg, err = fromMessageToTsMsgV2(msg)
 		default:
 			panic("unsupported message version")
 		}
@@ -77,6 +79,30 @@ func fromMessageToTsMsgV1(msg message.ImmutableMessage) (msgstream.TsMsg, error)
 	})
 
 	return recoverMessageFromHeader(tsMsg, msg)
+}
+
+// fromMessageToTsMsgV2 converts message to ts message.
+func fromMessageToTsMsgV2(msg message.ImmutableMessage) (msgstream.TsMsg, error) {
+	var tsMsg msgstream.TsMsg
+	var err error
+	switch msg.MessageType() {
+	case message.MessageTypeFlush:
+		tsMsg, err = NewFlushMessageBody(msg)
+	default:
+		panic("unsupported message type")
+	}
+	if err != nil {
+		return nil, err
+	}
+	tsMsg.SetTs(msg.TimeTick())
+	tsMsg.SetPosition(&msgpb.MsgPosition{
+		ChannelName: msg.VChannel(),
+		// from the last confirmed message id, you can read all messages which timetick is greater or equal than current message id.
+		MsgID:     MustGetMQWrapperIDFromMessage(msg.LastConfirmedMessageID()).Serialize(),
+		MsgGroup:  "", // Not important any more.
+		Timestamp: msg.TimeTick(),
+	})
+	return tsMsg, nil
 }
 
 // recoverMessageFromHeader recovers message from header.

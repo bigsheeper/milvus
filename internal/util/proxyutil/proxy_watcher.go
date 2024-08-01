@@ -99,14 +99,16 @@ func (p *ProxyWatcher) WatchProxy(ctx context.Context) error {
 		f(sessions)
 	}
 
+	watchKey := path.Join(paramtable.Get().EtcdCfg.MetaRootPath.GetValue(), sessionutil.DefaultServiceRoot, typeutil.ProxyRole)
 	eventCh := p.etcdCli.Watch(
 		ctx,
-		path.Join(paramtable.Get().EtcdCfg.MetaRootPath.GetValue(), sessionutil.DefaultServiceRoot, typeutil.ProxyRole),
+		watchKey,
 		clientv3.WithPrefix(),
 		clientv3.WithCreatedNotify(),
 		clientv3.WithPrevKV(),
 		clientv3.WithRev(rev+1),
 	)
+	log.Info("proxy watch etcd", zap.String("watchKey", watchKey))
 
 	p.wg.Go(func() error {
 		p.startWatchEtcd(ctx, eventCh)

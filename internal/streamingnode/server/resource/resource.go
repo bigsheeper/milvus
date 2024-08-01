@@ -5,11 +5,9 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 
-	"github.com/milvus-io/milvus/internal/flushcommon/syncmgr"
-	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
+	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/flusher"
-	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource/idalloc"
 	sinspector "github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/inspector"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/stats"
@@ -29,19 +27,20 @@ func OptFlusher(flusher flusher.Flusher) optResourceInit {
 	}
 }
 
-// OptSyncManager provides the sync manager to the resource.
-func OptSyncManager(syncMgr syncmgr.SyncManager) optResourceInit {
-	return func(r *resourceImpl) {
-		r.syncMgr = syncMgr
-	}
-}
-
-// OptBufferManager provides the write buffer manager to the resource.
-func OptBufferManager(wbMgr writebuffer.BufferManager) optResourceInit {
-	return func(r *resourceImpl) {
-		r.wbMgr = wbMgr
-	}
-}
+//
+//// OptSyncManager provides the sync manager to the resource.
+//func OptSyncManager(syncMgr syncmgr.SyncManager) optResourceInit {
+//	return func(r *resourceImpl) {
+//		r.syncMgr = syncMgr
+//	}
+//}
+//
+//// OptBufferManager provides the write buffer manager to the resource.
+//func OptBufferManager(wbMgr writebuffer.BufferManager) optResourceInit {
+//	return func(r *resourceImpl) {
+//		r.wbMgr = wbMgr
+//	}
+//}
 
 // OptETCD provides the etcd client to the resource.
 func OptETCD(etcd *clientv3.Client) optResourceInit {
@@ -109,14 +108,14 @@ func Resource() *resourceImpl {
 // All utility on it is concurrent-safe and singleton.
 type resourceImpl struct {
 	flusher flusher.Flusher
-	syncMgr syncmgr.SyncManager
-	wbMgr   writebuffer.BufferManager
-	timestampAllocator idalloc.Allocator
-	idAllocator        idalloc.Allocator
-	etcdClient         *clientv3.Client
-	chunkManager       storage.ChunkManager
-	rootCoordClient    types.RootCoordClient
-	dataCoordClient    types.DataCoordClient
+	//syncMgr syncmgr.SyncManager
+	//wbMgr   writebuffer.BufferManager
+	timestampAllocator        idalloc.Allocator
+	idAllocator               idalloc.Allocator
+	etcdClient                *clientv3.Client
+	chunkManager              storage.ChunkManager
+	rootCoordClient           types.RootCoordClient
+	dataCoordClient           types.DataCoordClient
 	streamingNodeCatalog      metastore.StreamingNodeCataLog
 	segmentAssignStatsManager *stats.StatsManager
 	segmentSealedInspector    sinspector.SealOperationInspector
@@ -128,15 +127,16 @@ func (r *resourceImpl) Flusher() flusher.Flusher {
 	return r.flusher
 }
 
-// SyncManager returns the sync manager.
-func (r *resourceImpl) SyncManager() syncmgr.SyncManager {
-	return r.syncMgr
-}
-
-// BufferManager returns the write buffer manager.
-func (r *resourceImpl) BufferManager() writebuffer.BufferManager {
-	return r.wbMgr
-}
+//
+//// SyncManager returns the sync manager.
+//func (r *resourceImpl) SyncManager() syncmgr.SyncManager {
+//	return r.syncMgr
+//}
+//
+//// BufferManager returns the write buffer manager.
+//func (r *resourceImpl) BufferManager() writebuffer.BufferManager {
+//	return r.wbMgr
+//}
 
 // TSOAllocator returns the timestamp allocator to allocate timestamp.
 func (r *resourceImpl) TSOAllocator() idalloc.Allocator {

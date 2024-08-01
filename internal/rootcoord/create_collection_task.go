@@ -410,7 +410,7 @@ func (t *createCollectionTask) genCreateCollectionMsg(ctx context.Context, ts ui
 			EndTimestamp:   ts,
 			HashValues:     []uint32{0},
 		},
-		CreateCollectionRequest: *t.genCreateCollectionRequest(),
+		CreateCollectionRequest: t.genCreateCollectionRequest(),
 	}
 	msgPack.Msgs = append(msgPack.Msgs, msg)
 	return &msgPack

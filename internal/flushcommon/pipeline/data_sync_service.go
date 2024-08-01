@@ -61,8 +61,8 @@ type DataSyncService struct {
 	broker  broker.Broker
 	syncMgr syncmgr.SyncManager
 
-	timetickSender *util.TimeTickSender // reference to TimeTickSender
-	compactor      compaction.Executor  // reference to compaction executor
+	timetickSender util.StatsUpdater   // reference to TimeTickSender
+	compactor      compaction.Executor // reference to compaction executor
 
 	dispClient   msgdispatcher.Client
 	chunkManager storage.ChunkManager

@@ -51,7 +51,7 @@ func (dt *deleteTaskByStreamingService) Execute(ctx context.Context) (err error)
 			WithHeader(&message.DeleteMessageHeader{
 				CollectionId: dt.collectionID,
 			}).
-			WithBody(&deleteMsg.DeleteRequest).
+			WithBody(deleteMsg.DeleteRequest).
 			WithVChannel(vchannel).
 			BuildMutable()
 		if err != nil {

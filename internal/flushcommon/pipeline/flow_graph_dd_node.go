@@ -234,9 +234,9 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 			fgMsg.DeleteMessages = append(fgMsg.DeleteMessages, dmsg)
 
 		case commonpb.MsgType_Flush:
-			if ddn.flushMsgHandler != nil {
-				ddn.flushMsgHandler(ddn.vChannelName, nil)
-			}
+			log.Info("receive flush message", zap.String("vchannel", ddn.Name()))
+			msg.()
+			ddn.flushMsgHandler(ddn.vChannelName, nil)
 		}
 	}
 

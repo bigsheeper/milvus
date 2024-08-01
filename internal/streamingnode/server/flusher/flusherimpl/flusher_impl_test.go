@@ -29,7 +29,6 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/internal/flushcommon/syncmgr"
 	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
 	"github.com/milvus-io/milvus/internal/mocks"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/server/mock_wal"
@@ -89,7 +88,7 @@ func (s *FlusherSuite) SetupSuite() {
 			}, nil
 		})
 
-	syncMgr := syncmgr.NewMockSyncManager(s.T())
+	//syncMgr := syncmgr.NewMockSyncManager(s.T())
 	wbMgr := writebuffer.NewMockBufferManager(s.T())
 	wbMgr.EXPECT().Register(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	wbMgr.EXPECT().RemoveChannel(mock.Anything).Return()
@@ -97,8 +96,8 @@ func (s *FlusherSuite) SetupSuite() {
 	wbMgr.EXPECT().Stop().Return()
 
 	resource.Init(
-		resource.OptSyncManager(syncMgr),
-		resource.OptBufferManager(wbMgr),
+		//resource.OptSyncManager(syncMgr),
+		//resource.OptBufferManager(wbMgr),
 		resource.OptRootCoordClient(rootcoord),
 		resource.OptDataCoordClient(datacoord),
 	)
@@ -130,7 +129,7 @@ func (s *FlusherSuite) SetupTest() {
 	})
 
 	s.wal = w
-	s.flusher = NewFlusher()
+	s.flusher = NewFlusher(nil, nil)
 	s.flusher.Start()
 }
 

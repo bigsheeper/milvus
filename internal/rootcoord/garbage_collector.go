@@ -183,7 +183,7 @@ func (c *bgGarbageCollector) notifyCollectionGc(ctx context.Context, coll *model
 			EndTimestamp:   ts,
 			HashValues:     []uint32{0},
 		},
-		DropCollectionRequest: *c.generateDropRequest(coll, ts),
+		DropCollectionRequest: c.generateDropRequest(coll, ts),
 	}
 	msgPack.Msgs = append(msgPack.Msgs, msg)
 	if err := c.s.chanTimeTick.broadcastDmlChannels(coll.PhysicalChannelNames, &msgPack); err != nil {

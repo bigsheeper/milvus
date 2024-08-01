@@ -106,7 +106,7 @@ func repackInsertDataForStreamingService(
 						},
 					},
 				}).
-				WithBody(&msg.(*msgstream.InsertMsg).InsertRequest).
+				WithBody(msg.(*msgstream.InsertMsg).InsertRequest).
 				BuildMutable()
 			if err != nil {
 				return nil, err
@@ -184,7 +184,7 @@ func repackInsertDataWithPartitionKeyForStreamingService(
 							},
 						},
 					}).
-					WithBody(&msg.(*msgstream.InsertMsg).InsertRequest).
+					WithBody(msg.(*msgstream.InsertMsg).InsertRequest).
 					BuildMutable()
 				if err != nil {
 					return nil, err

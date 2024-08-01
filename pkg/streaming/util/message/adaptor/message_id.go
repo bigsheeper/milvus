@@ -1,8 +1,6 @@
 package adaptor
 
 import (
-	"fmt"
-
 	"github.com/apache/pulsar-client-go/pulsar"
 
 	"github.com/milvus-io/milvus/pkg/mq/common"

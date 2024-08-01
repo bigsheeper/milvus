@@ -18,6 +18,10 @@ package flusherimpl
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/flushcommon/broker"
+	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"sync"
 	"time"
 
@@ -47,6 +51,7 @@ var tickDuration = 3 * time.Second
 var _ flusher.Flusher = (*flusherImpl)(nil)
 
 type flusherImpl struct {
+	broker    broker.Broker
 	fgMgr     pipeline.FlowgraphManager
 	syncMgr   syncmgr.SyncManager
 	wbMgr     writebuffer.BufferManager
@@ -59,14 +64,18 @@ type flusherImpl struct {
 	stopChan chan struct{}
 }
 
-func NewFlusher() flusher.Flusher {
-	params := GetPipelineParams()
+func NewFlusher(cm storage.ChunkManager, dc types.DataCoordClient) flusher.Flusher {
+	cb := broker.NewCoordBroker(dc, paramtable.GetNodeID())
 	fgMgr := pipeline.NewFlowgraphManager()
+	syncMgr := syncmgr.NewSyncManager(cm)
+	wbMgr := writebuffer.NewManager(syncMgr)
+	cpUpdater := util.NewChannelCheckpointUpdater(cb)
 	return &flusherImpl{
+		broker:    cb,
 		fgMgr:     fgMgr,
-		syncMgr:   params.SyncMgr,
-		wbMgr:     params.WriteBufferManager,
-		cpUpdater: params.CheckpointUpdater,
+		syncMgr:   syncMgr,
+		wbMgr:     wbMgr,
+		cpUpdater: cpUpdater,
 		tasks:     typeutil.NewConcurrentMap[string, wal.WAL](),
 		scanners:  typeutil.NewConcurrentMap[string, wal.Scanner](),
 		stopOnce:  sync.Once{},
@@ -101,6 +110,7 @@ func (f *flusherImpl) UnregisterPChannel(pchannel string) {
 
 func (f *flusherImpl) RegisterVChannel(vchannel string, wal wal.WAL) {
 	f.tasks.Insert(vchannel, wal)
+	log.Info("flusher register vchannel done", zap.String("vchannel", vchannel))
 }
 
 func (f *flusherImpl) UnregisterVChannel(vchannel string) {
@@ -112,6 +122,7 @@ func (f *flusherImpl) UnregisterVChannel(vchannel string) {
 	}
 	f.fgMgr.RemoveFlowgraph(vchannel)
 	f.wbMgr.RemoveChannel(vchannel)
+	log.Info("flusher unregister vchannel done", zap.String("vchannel", vchannel))
 }
 
 func (f *flusherImpl) Start() {
@@ -123,7 +134,7 @@ func (f *flusherImpl) Start() {
 		for {
 			select {
 			case <-f.stopChan:
-				log.Info("flusher stopped")
+				log.Info("flusher exited")
 				return
 			case <-ticker.C:
 				f.tasks.Range(func(vchannel string, wal wal.WAL) bool {
@@ -173,11 +184,7 @@ func (f *flusherImpl) buildPipeline(vchannel string, w wal.WAL) error {
 	}
 
 	// Convert common.MessageID to message.messageID.
-	mqWrapperID, err := adaptor.DeserializeToMQWrapperID(resp.GetInfo().GetSeekPosition().GetMsgID(), w.WALName())
-	if err != nil {
-		return err
-	}
-	messageID := adaptor.MustGetMessageIDFromMQWrapperID(mqWrapperID)
+	messageID := adaptor.MustGetMessageIDFromMQWrapperIDBytes(w.WALName(), resp.GetInfo().GetSeekPosition().GetMsgID())
 
 	// Create scanner.
 	policy := options.DeliverPolicyStartFrom(messageID)
@@ -194,7 +201,7 @@ func (f *flusherImpl) buildPipeline(vchannel string, w wal.WAL) error {
 	}
 
 	// Build and add pipeline.
-	ds, err := pipeline.NewStreamingNodeDataSyncService(ctx, GetPipelineParams(),
+	ds, err := pipeline.NewStreamingNodeDataSyncService(ctx, GetPipelineParams(f),
 		&datapb.ChannelWatchInfo{Vchan: resp.GetInfo(), Schema: resp.GetSchema()}, handler.Chan())
 	if err != nil {
 		return err

@@ -127,7 +127,7 @@ func (it *upsertTaskByStreamingService) packDeleteMessage(ctx context.Context) (
 			WithHeader(&message.DeleteMessageHeader{
 				CollectionId: it.upsertMsg.DeleteMsg.CollectionID,
 			}).
-			WithBody(&deleteMsg.DeleteRequest).
+			WithBody(deleteMsg.DeleteRequest).
 			WithVChannel(vchannel).
 			BuildMutable()
 		if err != nil {

@@ -246,21 +246,6 @@ func newDeleteMsg(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to allocate MsgID of delete")
 	}
-	sliceRequest := msgpb.DeleteRequest{
-		Base: commonpbutil.NewMsgBase(
-			commonpbutil.WithMsgType(commonpb.MsgType_Delete),
-			// msgid of delete msg must be set
-			// or it will be seen as duplicated msg in mq
-			commonpbutil.WithMsgID(msgid),
-			commonpbutil.WithTimeStamp(ts),
-			commonpbutil.WithSourceID(paramtable.GetNodeID()),
-		),
-		CollectionID:   collectionID,
-		PartitionID:    partitionID,
-		CollectionName: collectionName,
-		PartitionName:  partitionName,
-		PrimaryKeys:    &schemapb.IDs{},
-	}
 	return &msgstream.DeleteMsg{
 		BaseMsg: msgstream.BaseMsg{
 			Ctx: ctx,
@@ -271,13 +256,13 @@ func newDeleteMsg(
 				// msgid of delete msg must be set
 				// or it will be seen as duplicated msg in mq
 				commonpbutil.WithMsgID(msgid),
-				commonpbutil.WithTimeStamp(dt.ts),
+				commonpbutil.WithTimeStamp(ts),
 				commonpbutil.WithSourceID(paramtable.GetNodeID()),
 			),
-			CollectionID:   dt.collectionID,
-			PartitionID:    dt.partitionID,
-			CollectionName: dt.req.GetCollectionName(),
-			PartitionName:  dt.req.GetPartitionName(),
+			CollectionID:   collectionID,
+			PartitionID:    partitionID,
+			CollectionName: collectionName,
+			PartitionName:  partitionName,
 			PrimaryKeys:    &schemapb.IDs{},
 		},
 	}, nil

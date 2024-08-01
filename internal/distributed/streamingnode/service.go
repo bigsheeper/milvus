@@ -19,6 +19,8 @@ package streamingnode
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/util/dependency"
 	"net"
 	"os"
 	"strconv"
@@ -74,17 +76,21 @@ type Server struct {
 	grpcServer *grpc.Server
 	lis        net.Listener
 
+	factory dependency.Factory
+
 	// component client
-	etcdCli   *clientv3.Client
-	tikvCli   *txnkv.Client
-	rootCoord types.RootCoordClient
-	dataCoord types.DataCoordClient
+	etcdCli      *clientv3.Client
+	chunkManager storage.ChunkManager
+	tikvCli      *txnkv.Client
+	rootCoord    types.RootCoordClient
+	dataCoord    types.DataCoordClient
 }
 
 // NewServer create a new StreamingNode server.
-func NewServer() (*Server, error) {
+func NewServer(factory dependency.Factory) (*Server, error) {
 	return &Server{
 		stopOnce:       sync.Once{},
+		factory:        factory,
 		grpcServerChan: make(chan struct{}),
 	}, nil
 }
@@ -171,6 +177,9 @@ func (s *Server) init() (err error) {
 	if err := s.initMeta(); err != nil {
 		return err
 	}
+	if err := s.initChunkManager(); err != nil {
+		return err
+	}
 	if err := s.allocateAddress(); err != nil {
 		return err
 	}
@@ -188,6 +197,7 @@ func (s *Server) init() (err error) {
 	// Create StreamingNode service.
 	s.streamingnode = streamingnodeserver.NewServerBuilder().
 		WithETCD(s.etcdCli).
+		WithChunkManager(s.chunkManager).
 		WithGRPCServer(s.grpcServer).
 		WithRootCoordClient(s.rootCoord).
 		WithDataCoordClient(s.dataCoord).
@@ -257,6 +267,15 @@ func (s *Server) initMeta() error {
 		s.metaKV = etcdkv.NewEtcdKV(s.etcdCli, metaRootPath,
 			etcdkv.WithRequestTimeout(paramtable.Get().ServiceParam.EtcdCfg.RequestTimeout.GetAsDuration(time.Millisecond)))
 	}
+	return nil
+}
+
+func (s *Server) initChunkManager() error {
+	chunkManager, err := s.factory.NewPersistentStorageChunkManager(context.Background())
+	if err != nil {
+		return err
+	}
+	s.chunkManager = chunkManager
 	return nil
 }
 

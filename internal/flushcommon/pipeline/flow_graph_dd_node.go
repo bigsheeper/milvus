@@ -235,7 +235,6 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 
 		case commonpb.MsgType_Flush:
 			log.Info("receive flush message", zap.String("vchannel", ddn.Name()))
-			msg.()
 			ddn.flushMsgHandler(ddn.vChannelName, nil)
 		}
 	}

@@ -11,8 +11,6 @@ import (
 
 var unmashalerDispatcher = (&msgstream.ProtoUDFactory{}).NewUnmarshalDispatcher()
 
-var v1MessageType = map[]
-
 // FromMessageToMsgPack converts message to msgpack.
 // Same TimeTick must be sent with same msgpack.
 // !!! Msgs must be keep same time tick.

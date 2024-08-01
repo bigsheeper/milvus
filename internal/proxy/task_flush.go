@@ -159,7 +159,7 @@ func (t *flushTask) PostExecute(ctx context.Context) error {
 }
 
 func buildFlushMessage(vchannel string, collectionID int64, segmentIDs []int64, flushTs uint64) (message.MutableMessage, error) {
-	newMsg, err := message.NewFlushMessageBuilderV1().
+	newMsg, err := message.NewFlushMessageBuilderV2().
 		WithVChannel(vchannel).
 		WithHeader(&messagepb.FlushMessageHeader{}).
 		WithBody(&messagepb.FlushMessageBody{

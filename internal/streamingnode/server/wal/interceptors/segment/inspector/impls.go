@@ -103,9 +103,15 @@ func (s *sealOperationInspectorImpl) background() {
 			s.tryToSealPartition(s.notifier.Get())
 		case <-backoffCh:
 			// only seal waited segment for backoff.
-			s.tryToSealWaitedSegment()
+			s.managers.Range(func(_ string, pm SealOperator) bool {
+				pm.TryToSealWaitedSegment(s.taskNotifier.Context())
+				return true
+			})
 		case <-sealAllTicker.C:
-			s.tryToSealAll()
+			s.managers.Range(func(_ string, pm SealOperator) bool {
+				pm.TryToSealSegments(s.taskNotifier.Context())
+				return true
+			})
 		}
 	}
 }
@@ -124,49 +130,13 @@ func (s *sealOperationInspectorImpl) shouldEnableBackoff() bool {
 	return enableBackoff
 }
 
-// tryToSealAll tries to seal all segments, return true if there's still some segment wait for sealing.
-func (s *sealOperationInspectorImpl) tryToSealAll() {
-	s.managers.Range(func(_ string, pm SealOperator) bool {
-		pm.TryToSealSegments(s.taskNotifier.Context())
-		if pm.IsNoWaitSeal() {
-			// if there's any pchannel has a segment wait for seal, enable backoff.
-			s.backOffTimer.EnableBackoff()
-		}
-		return true
-	})
-}
-
-// tryToSealWaitedSegment tries to seal the waited segment.
-func (s *sealOperationInspectorImpl) tryToSealWaitedSegment() {
-	disableBackoff := true
-	s.managers.Range(func(_ string, pm SealOperator) bool {
-		pm.TryToSealWaitedSegment(s.taskNotifier.Context())
-		if !pm.IsNoWaitSeal() {
-			disableBackoff = false
-		}
-		return true
-	})
-
-	// All waited segments are sealed in different pchannel, disable backoff into normal timetick.
-	if disableBackoff {
-		s.backOffTimer.DisableBackoff()
-	}
-}
-
 // tryToSealPartition tries to seal the segment with the specified policies.
-func (s *sealOperationInspectorImpl) tryToSealPartition(infos typeutil.Set[stats.SegmentBelongs]) bool {
-	enableBackoff := false
+func (s *sealOperationInspectorImpl) tryToSealPartition(infos typeutil.Set[stats.SegmentBelongs]) {
 	for info := range infos {
 		pm, ok := s.managers.Get(info.PChannel)
 		if !ok {
 			continue
 		}
 		pm.TryToSealSegments(s.taskNotifier.Context(), info)
-		if !pm.IsNoWaitSeal() {
-			// if there's any pchannel has a segment wait for seal, enable backoff
-			enableBackoff = true
-			continue
-		}
 	}
-	return enableBackoff
 }

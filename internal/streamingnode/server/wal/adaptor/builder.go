@@ -33,7 +33,7 @@ func (b builderAdaptorImpl) Build() (wal.Opener, error) {
 	// Add all interceptor here.
 	return adaptImplsToOpener(o, []interceptors.InterceptorBuilder{
 		timetick.NewInterceptorBuilder(),
-		ddl.NewInterceptorBuilder(),
 		segment.NewInterceptorBuilder(),
+		ddl.NewInterceptorBuilder(),
 	}), nil
 }

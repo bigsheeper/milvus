@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/proto/streamingpb"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"

@@ -23,14 +23,18 @@ import (
 
 	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
 	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/streaming/util/message/adaptor"
 )
 
-// TODO: func(vchannel string, msg FlushMsg)
-func flushMsgHandlerImpl(wbMgr writebuffer.BufferManager) func(vchannel string, segmentIDs []int64) {
-	return func(vchannel string, segmentIDs []int64) {
-		err := wbMgr.SealSegments(context.Background(), vchannel, segmentIDs)
+func flushMsgHandlerImpl(wbMgr writebuffer.BufferManager) func(vchannel string, flushMsg *adaptor.FlushMessageBody) {
+	return func(vchannel string, flushMsg *adaptor.FlushMessageBody) {
+		err := wbMgr.SealSegments(context.Background(), vchannel, flushMsg.GetSegmentId())
 		if err != nil {
-			log.Warn("failed to seal segments", zap.Error(err))
+			log.Warn("failed to seal segments", zap.String("vchannel", vchannel), zap.Error(err))
+		}
+		err = wbMgr.FlushChannel(context.Background(), vchannel, flushMsg.GetFlushTs())
+		if err != nil {
+			log.Warn("failed to flush channel", zap.String("vchannel", vchannel), zap.Error(err))
 		}
 	}
 }

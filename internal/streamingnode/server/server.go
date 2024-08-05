@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"
 
 	"google.golang.org/grpc"
 
@@ -48,7 +49,8 @@ func (s *Server) Init(ctx context.Context) (err error) {
 
 // Start starts the streamingnode server.
 func (s *Server) Start() {
-	// Just do nothing now.
+	resource.Resource().Flusher().Start()
+	log.Info("flusher started")
 }
 
 // Stop stops the streamingnode server.
@@ -58,6 +60,9 @@ func (s *Server) Stop() {
 	log.Info("close wal manager...")
 	s.walManager.Close()
 	log.Info("streamingnode server stopped")
+	log.Info("stopping flusher...")
+	resource.Resource().Flusher().Stop()
+	log.Info("flusher stopped")
 }
 
 // Health returns the health status of the streamingnode server.

@@ -19,6 +19,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/streaming/util/message/adaptor"
 	"reflect"
 	"sync/atomic"
 
@@ -234,9 +235,9 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 			fgMsg.DeleteMessages = append(fgMsg.DeleteMessages, dmsg)
 
 		case commonpb.MsgType_Flush:
-			if ddn.flushMsgHandler != nil {
-				ddn.flushMsgHandler(ddn.vChannelName, nil)
-			}
+			log.Info("receive flush message", zap.String("vchannel", ddn.Name()))
+			flushMsg := msg.(*adaptor.FlushMessageBody)
+			ddn.flushMsgHandler(ddn.vChannelName, flushMsg)
 		}
 	}
 

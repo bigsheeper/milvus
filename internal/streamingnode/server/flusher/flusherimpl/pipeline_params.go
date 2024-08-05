@@ -20,11 +20,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/milvus-io/milvus/internal/flushcommon/broker"
 	"github.com/milvus-io/milvus/internal/flushcommon/util"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource/idalloc"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
 )
 
 var (
@@ -32,29 +30,22 @@ var (
 	initOnce       sync.Once
 )
 
-func initPipelineParams() {
+func initPipelineParams(flusher *flusherImpl) {
 	initOnce.Do(func() {
-		var (
-			rsc         = resource.Resource()
-			syncMgr     = rsc.SyncManager()
-			wbMgr       = rsc.BufferManager()
-			coordBroker = broker.NewCoordBroker(rsc.DataCoordClient(), paramtable.GetNodeID())
-			cpUpdater   = util.NewChannelCheckpointUpdater(coordBroker)
-		)
 		pipelineParams = &util.PipelineParams{
 			Ctx:                context.Background(),
-			Broker:             coordBroker,
-			SyncMgr:            syncMgr,
-			ChunkManager:       rsc.ChunkManager(),
-			WriteBufferManager: wbMgr,
-			CheckpointUpdater:  cpUpdater,
-			Allocator:          idalloc.NewMAllocator(rsc.IDAllocator()),
-			FlushMsgHandler:    flushMsgHandlerImpl(wbMgr),
+			Broker:             flusher.broker,
+			SyncMgr:            flusher.syncMgr,
+			ChunkManager:       resource.Resource().ChunkManager(),
+			WriteBufferManager: flusher.wbMgr,
+			CheckpointUpdater:  flusher.cpUpdater,
+			Allocator:          idalloc.NewMAllocator(resource.Resource().IDAllocator()),
+			FlushMsgHandler:    flushMsgHandlerImpl(flusher.wbMgr),
 		}
 	})
 }
 
-func GetPipelineParams() *util.PipelineParams {
-	initPipelineParams()
+func GetPipelineParams(flusher *flusherImpl) *util.PipelineParams {
+	initPipelineParams(flusher)
 	return pipelineParams
 }

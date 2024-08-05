@@ -44,6 +44,7 @@ import (
 	grpcquerynodeclient "github.com/milvus-io/milvus/internal/distributed/querynode/client"
 	grpcrootcoord "github.com/milvus-io/milvus/internal/distributed/rootcoord"
 	grpcrootcoordclient "github.com/milvus-io/milvus/internal/distributed/rootcoord/client"
+	"github.com/milvus-io/milvus/internal/distributed/streamingnode"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/dependency"
@@ -122,12 +123,13 @@ type MiniClusterV2 struct {
 	QueryNode *grpcquerynode.Server
 	IndexNode *grpcindexnode.Server
 
-	MetaWatcher MetaWatcher
-	ptmu        sync.Mutex
-	querynodes  []*grpcquerynode.Server
-	qnid        atomic.Int64
-	datanodes   []*grpcdatanode.Server
-	dnid        atomic.Int64
+	MetaWatcher    MetaWatcher
+	ptmu           sync.Mutex
+	querynodes     []*grpcquerynode.Server
+	qnid           atomic.Int64
+	datanodes      []*grpcdatanode.Server
+	dnid           atomic.Int64
+	streamingnodes []*streamingnode.Server
 
 	Extension *ReportChanExtension
 }
@@ -315,6 +317,22 @@ func (cluster *MiniClusterV2) AddDataNode() *grpcdatanode.Server {
 	return node
 }
 
+func (cluster *MiniClusterV2) AddStreamingNode() {
+	cluster.ptmu.Lock()
+	defer cluster.ptmu.Unlock()
+
+	node, err := streamingnode.NewServer(cluster.factory)
+	if err != nil {
+		panic(err)
+	}
+	err = node.Run()
+	if err != nil {
+		panic(err)
+	}
+
+	cluster.streamingnodes = append(cluster.streamingnodes, node)
+}
+
 func (cluster *MiniClusterV2) Start() error {
 	log.Info("mini cluster start")
 	err := cluster.RootCoord.Run()
@@ -380,6 +398,7 @@ func (cluster *MiniClusterV2) Stop() error {
 
 	cluster.StopAllDataNodes()
 	cluster.StopAllQueryNodes()
+	cluster.StopAllStreamingNodes()
 	cluster.IndexNode.Stop()
 	log.Info("mini cluster indexNode stopped")
 
@@ -427,6 +446,14 @@ func (cluster *MiniClusterV2) StopAllDataNodes() {
 	}
 	cluster.datanodes = nil
 	log.Info(fmt.Sprintf("mini cluster stopped %d extra datanode", numExtraDN))
+}
+
+func (cluster *MiniClusterV2) StopAllStreamingNodes() {
+	for _, node := range cluster.streamingnodes {
+		node.Stop()
+	}
+	log.Info(fmt.Sprintf("mini cluster stopped %d streaming nodes", len(cluster.streamingnodes)))
+	cluster.datanodes = nil
 }
 
 func (cluster *MiniClusterV2) GetContext() context.Context {

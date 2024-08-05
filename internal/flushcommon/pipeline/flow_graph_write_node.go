@@ -98,7 +98,9 @@ func (wNode *writeNode) Operate(in []Msg) []Msg {
 			}, true
 		})
 
-	wNode.updater.Update(wNode.channelName, end.GetTimestamp(), stats)
+	if wNode.updater != nil {
+		wNode.updater.Update(wNode.channelName, end.GetTimestamp(), stats)
+	}
 
 	res := FlowGraphMsg{
 		TimeRange:      fgMsg.TimeRange,

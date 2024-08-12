@@ -18,7 +18,6 @@ package datacoord
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/proto/workerpb"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -26,6 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/milvus-io/milvus/internal/mocks"
+	"github.com/milvus-io/milvus/internal/proto/workerpb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/pkg/util/lock"
 	"github.com/milvus-io/milvus/pkg/util/merr"

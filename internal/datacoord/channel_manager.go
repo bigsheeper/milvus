@@ -160,7 +160,7 @@ func (m *ChannelManagerImpl) Startup(ctx context.Context, legacyNodes, allNodes 
 		m.finishRemoveChannel(info.NodeID, lo.Values(info.Channels)...)
 	}
 
-	if m.balanceCheckLoop != nil {
+	if m.balanceCheckLoop != nil && !streamingutil.IsStreamingServiceEnabled() {
 		log.Info("starting channel balance loop")
 		m.wg.Add(1)
 		go func() {

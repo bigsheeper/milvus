@@ -19,9 +19,6 @@ package streaming
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/distributed/streaming"
-	"github.com/milvus-io/milvus/internal/util/streamingutil"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"testing"
 	"time"
 
@@ -32,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/util/streamingutil"
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
@@ -45,21 +43,8 @@ type HelloStreamingSuite struct {
 }
 
 func (s *HelloStreamingSuite) SetupSuite() {
-	paramtable.Init()
 	s.MiniClusterSuite.SetupSuite()
 	streamingutil.SetStreamingServiceEnabled()
-}
-
-func (s *HelloStreamingSuite) SetupTest() {
-	s.MiniClusterSuite.SetupTest()
-	streaming.Init()
-	s.Cluster.StopAllDataNodes()
-	s.Cluster.AddStreamingNode()
-}
-
-func (s *HelloStreamingSuite) TearDownTest() {
-	s.MiniClusterSuite.TearDownTest()
-	streaming.Release()
 }
 
 func (s *HelloStreamingSuite) TestHelloStreaming() {
@@ -116,6 +101,15 @@ func (s *HelloStreamingSuite) TestHelloStreaming() {
 	s.NoError(err)
 	s.Equal(int64(rowNum), insertResult.GetInsertCnt())
 
+	// delete
+	deleteResult, err := c.Proxy.Delete(ctx, &milvuspb.DeleteRequest{
+		DbName:         dbName,
+		CollectionName: collectionName,
+		Expr:           integration.Int64Field + " in [1, 2]",
+	})
+	err = merr.CheckRPCCall(deleteResult, err)
+	s.NoError(err)
+
 	// flush
 	flushResp, err := c.Proxy.Flush(ctx, &milvuspb.FlushRequest{
 		DbName:          dbName,
@@ -146,7 +140,7 @@ func (s *HelloStreamingSuite) TestHelloStreaming() {
 	segments, err := c.MetaWatcher.ShowSegments()
 	s.NoError(err)
 	s.NotEmpty(segments)
-	s.Equal(1, len(segments))
+	s.Equal(2, len(segments))
 	s.Equal(int64(rowNum), segments[0].GetNumOfRows())
 
 	// load
@@ -157,17 +151,6 @@ func (s *HelloStreamingSuite) TestHelloStreaming() {
 	err = merr.CheckRPCCall(loadStatus, err)
 	s.NoError(err)
 	s.WaitForLoad(ctx, collectionName)
-
-	// query
-	queryResult, err := c.Proxy.Query(ctx, &milvuspb.QueryRequest{
-		DbName:         dbName,
-		CollectionName: collectionName,
-		Expr:           "",
-		OutputFields:   []string{"count(*)"},
-	})
-	err = merr.CheckRPCCall(queryResult, err)
-	s.NoError(err)
-	s.Equal(int64(rowNum), queryResult.GetFieldsData()[0].GetScalars().GetLongData().GetData()[0])
 
 	// search
 	expr := fmt.Sprintf("%s > 0", integration.Int64Field)
@@ -184,7 +167,7 @@ func (s *HelloStreamingSuite) TestHelloStreaming() {
 	s.Equal(nq*topk, len(searchResult.GetResults().GetScores()))
 
 	// query
-	queryResult, err = c.Proxy.Query(ctx, &milvuspb.QueryRequest{
+	queryResult, err := c.Proxy.Query(ctx, &milvuspb.QueryRequest{
 		DbName:         dbName,
 		CollectionName: collectionName,
 		Expr:           "",
@@ -192,7 +175,7 @@ func (s *HelloStreamingSuite) TestHelloStreaming() {
 	})
 	err = merr.CheckRPCCall(queryResult, err)
 	s.NoError(err)
-	s.Equal(int64(rowNum), queryResult.GetFieldsData()[0].GetScalars().GetLongData().GetData()[0])
+	s.Equal(int64(rowNum-2), queryResult.GetFieldsData()[0].GetScalars().GetLongData().GetData()[0])
 
 	// release collection
 	status, err := c.Proxy.ReleaseCollection(ctx, &milvuspb.ReleaseCollectionRequest{

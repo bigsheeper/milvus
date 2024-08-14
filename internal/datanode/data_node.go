@@ -311,12 +311,13 @@ func (node *DataNode) Start() error {
 
 		if !streamingutil.IsStreamingServiceEnabled() {
 			node.writeBufferManager.Start()
-			node.channelManager = channel.NewChannelManager(getPipelineParams(node), node.flowgraphManager)
-			node.channelManager.Start()
 
 			node.timeTickSender = util2.NewTimeTickSender(node.broker, node.session.ServerID,
 				retry.Attempts(20), retry.Sleep(time.Millisecond*100))
 			node.timeTickSender.Start()
+
+			node.channelManager = channel.NewChannelManager(getPipelineParams(node), node.flowgraphManager)
+			node.channelManager.Start()
 
 			go node.channelCheckpointUpdater.Start()
 		}

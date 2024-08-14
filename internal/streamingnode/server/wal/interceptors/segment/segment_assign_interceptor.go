@@ -198,6 +198,7 @@ func (impl *segmentInterceptor) handleManualFlushMessage(ctx context.Context, ms
 
 // Close closes the segment interceptor.
 func (impl *segmentInterceptor) Close() {
+	impl.cancel()
 	assignManager := impl.assignManager.Get()
 	if assignManager != nil {
 		// unregister the pchannels

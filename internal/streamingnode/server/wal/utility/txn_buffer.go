@@ -1,10 +1,11 @@
 package utility
 
 import (
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
-	"go.uber.org/zap"
 )
 
 // NewTxnBuffer creates a new txn buffer.

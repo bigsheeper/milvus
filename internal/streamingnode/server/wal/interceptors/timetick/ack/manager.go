@@ -4,11 +4,12 @@ import (
 	"context"
 	"sync"
 
+	"go.uber.org/atomic"
+
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/util/syncutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
-	"go.uber.org/atomic"
 )
 
 // AckManager manages the timestampAck.

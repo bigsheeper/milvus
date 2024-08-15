@@ -7,8 +7,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/inspector"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/manager"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/segment/stats"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/txn"
@@ -142,7 +142,7 @@ func (impl *segmentInterceptor) handleInsertMessage(ctx context.Context, msg mes
 			PartitionID:  partition.GetPartitionId(),
 			InsertMetrics: stats.InsertMetrics{
 				Rows:       partition.GetRows(),
-				BinarySize: partition.GetBinarySize(),
+				BinarySize: uint64(msg.EstimateSize()),
 			},
 			TimeTick:   msg.TimeTick(),
 			TxnSession: txn.GetTxnSessionFromContext(ctx),
@@ -202,7 +202,7 @@ func (impl *segmentInterceptor) Close() {
 	assignManager := impl.assignManager.Get()
 	if assignManager != nil {
 		// unregister the pchannels
-		resource.Resource().SegmentSealedInspector().UnregisterPChannelManager(assignManager)
+		inspector.GetSegmentSealedInspector().UnregisterPChannelManager(assignManager)
 		assignManager.Close(context.Background())
 	}
 }
@@ -234,7 +234,7 @@ func (impl *segmentInterceptor) recoverPChannelManager(param interceptors.Interc
 		}
 
 		// register the manager into inspector, to do the seal asynchronously
-		resource.Resource().SegmentSealedInspector().RegsiterPChannelManager(pm)
+		inspector.GetSegmentSealedInspector().RegsiterPChannelManager(pm)
 		impl.assignManager.Set(pm)
 		impl.logger.Info("recover PChannel Assignment Manager success")
 		return

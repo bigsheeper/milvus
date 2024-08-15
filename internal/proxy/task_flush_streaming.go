@@ -20,6 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
@@ -30,8 +33,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/pingcap/log"
-	"go.uber.org/zap"
 )
 
 type flushTaskByStreamingService struct {

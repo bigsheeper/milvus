@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/milvus-io/milvus/internal/streamingnode/server/resource"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -115,5 +116,8 @@ func (m *TxnManager) GracefulClose() {
 	}
 	m.mu.Unlock()
 
-	<-m.closed
+	select {
+	case <-m.closed:
+	case <-time.After(5 * time.Second):
+	}
 }

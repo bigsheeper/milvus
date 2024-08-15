@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus/internal/distributed/streaming"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/timerecord"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
-	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 )
 
 type deleteTaskByStreamingService struct {

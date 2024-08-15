@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+
 	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
 	"github.com/milvus-io/milvus/pkg/streaming/util/message"
 )

@@ -1,6 +1,9 @@
 package server
 
 import (
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
+
 	"github.com/milvus-io/milvus/internal/metastore/kv/streamingnode"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/flusher/flusherimpl"
@@ -10,8 +13,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/pkg/kv"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc"
 )
 
 // ServerBuilder is used to build a server.

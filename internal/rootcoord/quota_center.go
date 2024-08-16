@@ -1469,9 +1469,9 @@ func (q *QuotaCenter) toRequestLimiter(limiter *rlinternal.RateLimiterNode) *pro
 			return nil
 		}
 		limiter.GetLimiters().Range(func(rt internalpb.RateType, limiter *ratelimitutil.Limiter) bool {
-			if !limiter.HasUpdated() {
-				return true
-			}
+			//if !limiter.HasUpdated() {
+			//	return true
+			//}
 			r := limiter.Limit()
 			if r != Inf {
 				rates = append(rates, &internalpb.Rate{Rt: rt, R: float64(r) / float64(proxyNum)})

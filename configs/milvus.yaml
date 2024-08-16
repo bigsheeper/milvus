@@ -485,7 +485,7 @@ dataCoord:
       # buffer between (preferSegmentSize, maxSegmentSize) is left for new data in the same cluster(range), to avoid globally redistribute too often
       preferSegmentSizeRatio: 0.8
       maxSegmentSizeRatio: 1
-      
+
       # vector clustering related
       maxTrainSizeRatio: 0.8 # max data size ratio in Kmeans train, if larger than it, will down sampling to meet this limit
       maxCentroidsNum: 10240 # maximum centroids number in Kmeans train
@@ -529,7 +529,7 @@ dataCoord:
     clientMaxSendSize: 268435456
     clientMaxRecvSize: 536870912
   syncSegmentsInterval: 300
-  slot:  
+  slot:
     clusteringCompactionUsage: 16
     mixCompactionUsage: 8
     l0DeleteCompactionUsage: 8
@@ -650,7 +650,7 @@ common:
     authorizationEnabled: false
     # The superusers will ignore some system check processes,
     # like the old password verification when updating the credential
-    superUsers: 
+    superUsers:
     tlsMode: 0
     defaultRootPassword: Milvus
   session:
@@ -716,11 +716,12 @@ quotaAndLimits:
     db:
       max: -1 # qps of db level, default no limit, rate for manualCompaction
   dml:
-    # dml limit rates, default no limit.
-    # The maximum rate will not be greater than max.
-    enabled: false
+    enabled: true # Whether DML request throttling is enabled.
     insertRate:
-      max: -1 # MB/s, default no limit
+      # Highest data insertion rate per second.
+      # Setting this item to 5 indicates that Milvus only allows data insertion at the rate of 5 MB/s.
+      # To use this setting, set quotaAndLimits.dml.enabled to true at the same time.
+      max: 4
       db:
         max: -1 # MB/s, default no limit
       collection:

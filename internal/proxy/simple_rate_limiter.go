@@ -138,7 +138,9 @@ func (m *SimpleLimiter) Check(dbID int64, collectionIDToPartIDs map[int64][]int6
 			}
 		}
 	}
-
+	log.Info("sheep debug, check", zap.Bool("enable", Params.QuotaConfig.QuotaAndLimitsEnabled.GetAsBool()),
+		zap.Float64("insertRate", Params.QuotaConfig.DMLMaxInsertRate.GetAsFloat()),
+		zap.String("rateType", rt.String()), zap.Int("n", n))
 	return ret
 }
 
@@ -267,6 +269,9 @@ func (m *SimpleLimiter) updateLimiterNode(req *proxypb.Limiter, node *rlinternal
 		if !ok {
 			return fmt.Errorf("unregister rateLimiter for rateType %s", rate.GetRt().String())
 		}
+		log.Info("sheep debug, set rate", zap.String("source", sourceID),
+			zap.String("rateType", rate.GetRt().String()),
+			zap.Float64("rate", rate.GetR()))
 		limit.SetLimit(ratelimitutil.Limit(rate.GetR()))
 		setRateGaugeByRateType(rate.GetRt(), paramtable.GetNodeID(), sourceID, rate.GetR())
 	}

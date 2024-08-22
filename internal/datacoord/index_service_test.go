@@ -30,6 +30,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/broker"
 	mockkv "github.com/milvus-io/milvus/internal/kv/mocks"
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
@@ -84,6 +85,8 @@ func TestServer_CreateIndex(t *testing.T) {
 	catalog := catalogmocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().CreateIndex(mock.Anything, mock.Anything).Return(nil).Maybe()
 
+	mock0Allocator := newMockAllocator(t)
+
 	indexMeta := newSegmentIndexMeta(catalog)
 	s := &Server{
 		meta: &meta{
@@ -100,7 +103,7 @@ func TestServer_CreateIndex(t *testing.T) {
 			},
 			indexMeta: indexMeta,
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -194,14 +197,17 @@ func TestServer_CreateIndex(t *testing.T) {
 
 	t.Run("alloc ID fail", func(t *testing.T) {
 		req.FieldID = fieldID
-		s.allocator = &FailsAllocator{allocIDSucceed: false}
+		alloc := allocator.NewMockAllocator(t)
+		alloc.EXPECT().AllocID(mock.Anything).Return(0, errors.New("mock")).Maybe()
+		alloc.EXPECT().AllocTimestamp(mock.Anything).Return(0, nil).Maybe()
+		s.allocator = alloc
 		s.meta.indexMeta.indexes = map[UniqueID]map[UniqueID]*model.Index{}
 		resp, err := s.CreateIndex(ctx, req)
 		assert.Error(t, merr.CheckRPCCall(resp, err))
 	})
 
 	t.Run("not support disk index", func(t *testing.T) {
-		s.allocator = newMockAllocator()
+		s.allocator = mock0Allocator
 		s.meta.indexMeta.indexes = map[UniqueID]map[UniqueID]*model.Index{}
 		req.IndexParams = []*commonpb.KeyValuePair{
 			{
@@ -215,7 +221,7 @@ func TestServer_CreateIndex(t *testing.T) {
 	})
 
 	t.Run("disk index with mmap", func(t *testing.T) {
-		s.allocator = newMockAllocator()
+		s.allocator = mock0Allocator
 		s.meta.indexMeta.indexes = map[UniqueID]map[UniqueID]*model.Index{}
 		req.IndexParams = []*commonpb.KeyValuePair{
 			{
@@ -299,6 +305,8 @@ func TestServer_AlterIndex(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 	).Return(nil)
+
+	mock0Allocator := newMockAllocator(t)
 
 	indexMeta := &indexMeta{
 		catalog: catalog,
@@ -599,7 +607,7 @@ func TestServer_AlterIndex(t *testing.T) {
 				},
 			},
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -673,12 +681,13 @@ func TestServer_GetIndexState(t *testing.T) {
 			IndexName:    "",
 		}
 	)
+	mock0Allocator := newMockAllocator(t)
 	s := &Server{
 		meta: &meta{
 			catalog:   &datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)},
 			indexMeta: newSegmentIndexMeta(&datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)}),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -881,6 +890,7 @@ func TestServer_GetSegmentIndexState(t *testing.T) {
 		}
 	)
 
+	mock0Allocator := newMockAllocator(t)
 	indexMeta := newSegmentIndexMeta(&datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)})
 
 	s := &Server{
@@ -889,7 +899,7 @@ func TestServer_GetSegmentIndexState(t *testing.T) {
 			indexMeta: indexMeta,
 			segments:  NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -1011,13 +1021,15 @@ func TestServer_GetIndexBuildProgress(t *testing.T) {
 		}
 	)
 
+	mock0Allocator := newMockAllocator(t)
+
 	s := &Server{
 		meta: &meta{
 			catalog:   &datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)},
 			indexMeta: newSegmentIndexMeta(&datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)}),
 			segments:  NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 	t.Run("server not available", func(t *testing.T) {
@@ -1197,6 +1209,8 @@ func TestServer_DescribeIndex(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 	).Return(nil)
+
+	mock0Allocator := newMockAllocator(t)
 
 	segments := map[UniqueID]*SegmentInfo{
 		invalidSegID: {
@@ -1494,7 +1508,7 @@ func TestServer_DescribeIndex(t *testing.T) {
 
 			segments: NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 	for id, segment := range segments {
@@ -1557,6 +1571,8 @@ func TestServer_ListIndexes(t *testing.T) {
 			CollectionID: collID,
 		}
 	)
+
+	mock0Allocator := newMockAllocator(t)
 
 	catalog := catalogmocks.NewDataCoordCatalog(t)
 	s := &Server{
@@ -1657,7 +1673,7 @@ func TestServer_ListIndexes(t *testing.T) {
 
 			segments: NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -1714,6 +1730,8 @@ func TestServer_GetIndexStatistics(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 	).Return(nil)
+
+	mock0Allocator := newMockAllocator(t)
 
 	segments := map[UniqueID]*SegmentInfo{
 		invalidSegID: {
@@ -1932,7 +1950,7 @@ func TestServer_GetIndexStatistics(t *testing.T) {
 
 			segments: NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 	for id, segment := range segments {
@@ -2004,6 +2022,8 @@ func TestServer_DropIndex(t *testing.T) {
 		mock.Anything,
 		mock.Anything,
 	).Return(nil)
+
+	mock0Allocator := newMockAllocator(t)
 
 	s := &Server{
 		meta: &meta{
@@ -2089,7 +2109,7 @@ func TestServer_DropIndex(t *testing.T) {
 
 			segments: NewSegmentsInfo(),
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 
@@ -2204,6 +2224,8 @@ func TestServer_GetIndexInfos(t *testing.T) {
 	cli, err := chunkManagerFactory.NewPersistentStorageChunkManager(ctx)
 	assert.NoError(t, err)
 
+	mock0Allocator := newMockAllocator(t)
+
 	s := &Server{
 		meta: &meta{
 			catalog: &datacoord.Catalog{MetaKv: mockkv.NewMetaKv(t)},
@@ -2253,7 +2275,7 @@ func TestServer_GetIndexInfos(t *testing.T) {
 			segments:     NewSegmentsInfo(),
 			chunkManager: cli,
 		},
-		allocator:       newMockAllocator(),
+		allocator:       mock0Allocator,
 		notifyIndexChan: make(chan UniqueID, 1),
 	}
 	s.meta.segments.SetSegment(segID, &SegmentInfo{

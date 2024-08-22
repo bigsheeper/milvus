@@ -30,6 +30,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/internal/metastore"
 	catalogmocks "github.com/milvus-io/milvus/internal/metastore/mocks"
 	"github.com/milvus-io/milvus/internal/metastore/model"
@@ -828,7 +829,7 @@ func (s *taskSchedulerSuite) scheduler(handler Handler) {
 		})
 	in.EXPECT().DropJobsV2(mock.Anything, mock.Anything).Return(merr.Success(), nil)
 
-	workerManager := NewMockWorkerManager(s.T())
+	workerManager := session.NewMockWorkerManager(s.T())
 	workerManager.EXPECT().PickClient().Return(s.nodeID, in)
 	workerManager.EXPECT().GetClientByID(mock.Anything).Return(in, true)
 
@@ -956,7 +957,7 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 		ctx := context.Background()
 
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
-		workerManager := NewMockWorkerManager(s.T())
+		workerManager := session.NewMockWorkerManager(s.T())
 
 		mt := createMeta(catalog,
 			withAnalyzeMeta(&analyzeMeta{
@@ -1013,7 +1014,7 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 
 		in := mocks.NewMockIndexNodeClient(s.T())
 
-		workerManager := NewMockWorkerManager(s.T())
+		workerManager := session.NewMockWorkerManager(s.T())
 
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(&indexMeta{
 			RWMutex: sync.RWMutex{},
@@ -1247,7 +1248,7 @@ func (s *taskSchedulerSuite) Test_indexTaskFailCase() {
 
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		in := mocks.NewMockIndexNodeClient(s.T())
-		workerManager := NewMockWorkerManager(s.T())
+		workerManager := session.NewMockWorkerManager(s.T())
 
 		mt := createMeta(catalog,
 			withAnalyzeMeta(&analyzeMeta{
@@ -1408,7 +1409,7 @@ func (s *taskSchedulerSuite) Test_indexTaskWithMvOptionalScalarField() {
 	catalog.EXPECT().AlterSegmentIndexes(mock.Anything, mock.Anything).Return(nil)
 	in := mocks.NewMockIndexNodeClient(s.T())
 
-	workerManager := NewMockWorkerManager(s.T())
+	workerManager := session.NewMockWorkerManager(s.T())
 	workerManager.EXPECT().PickClient().Return(s.nodeID, in)
 	workerManager.EXPECT().GetClientByID(mock.Anything).Return(in, true)
 

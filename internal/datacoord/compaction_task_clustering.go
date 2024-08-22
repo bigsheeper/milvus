@@ -56,7 +56,7 @@ type clusteringCompactionTask struct {
 	maxRetryTimes int32
 }
 
-func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, session SessionManager, handler Handler, analyzeScheduler *taskScheduler) *clusteringCompactionTask {
+func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, session SessionManager, handler Handler, analyzeScheduler TaskScheduler) *clusteringCompactionTask {
 	return &clusteringCompactionTask{
 		CompactionTask:   t,
 		allocator:        allocator,

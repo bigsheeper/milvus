@@ -210,7 +210,7 @@ func (s *ImportCheckerSuite) TestCheckJob() {
 	s.Equal(internalpb.ImportJobState_Stats, s.imeta.GetJob(job.GetJobID()).GetState())
 
 	// test check stats job
-	alloc.EXPECT().allocID(mock.Anything).Return(rand.Int63(), nil).Maybe()
+	alloc.EXPECT().AllocID(mock.Anything).Return(rand.Int63(), nil).Maybe()
 	mts := s.checker.taskScheduler.(*MockTaskScheduler)
 	mts.EXPECT().Submit(mock.Anything).Return().Maybe()
 	catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil)

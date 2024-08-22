@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
+	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/workerpb"
 	"github.com/milvus-io/milvus/internal/storage"
@@ -64,7 +65,7 @@ type taskScheduler struct {
 	chunkManager              storage.ChunkManager
 	indexEngineVersionManager IndexEngineVersionManager
 	handler                   Handler
-	allocator                 allocator
+	allocator                 allocator.Allocator
 }
 
 func newTaskScheduler(
@@ -73,7 +74,7 @@ func newTaskScheduler(
 	chunkManager storage.ChunkManager,
 	indexEngineVersionManager IndexEngineVersionManager,
 	handler Handler,
-	allocator allocator,
+	allocator allocator.Allocator,
 ) *taskScheduler {
 	ctx, cancel := context.WithCancel(ctx)
 

@@ -23,6 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/workerpb"
@@ -64,11 +65,11 @@ func (s *Server) checkStatsTaskLoop(ctx context.Context) {
 	}
 }
 
-func CreateStatsSegmentTask(segment *SegmentInfo, allocator allocator, meta *meta, ts TaskScheduler) error {
+func CreateStatsSegmentTask(segment *SegmentInfo, allocator allocator.Allocator, meta *meta, ts TaskScheduler) error {
 	if meta.statsTaskMeta.HasStatsTask(segment.GetID()) {
 		return nil
 	}
-	start, _, err := allocator.allocN(2)
+	start, _, err := allocator.AllocN(2)
 	if err != nil {
 		return err
 	}
@@ -232,7 +233,7 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) bo
 		return false
 	}
 
-	start, end, err := dependency.allocator.allocN(segment.getSegmentSize() / Params.DataNodeCfg.BinLogMaxSize.GetAsInt64() * int64(len(collInfo.Schema.GetFields())) * 2)
+	start, end, err := dependency.allocator.AllocN(segment.getSegmentSize() / Params.DataNodeCfg.BinLogMaxSize.GetAsInt64() * int64(len(collInfo.Schema.GetFields())) * 2)
 	if err != nil {
 		log.Warn("stats task alloc logID failed", zap.Int64("collectionID", segment.GetCollectionID()), zap.Error(err))
 		st.SetState(indexpb.JobState_JobStateInit, err.Error())

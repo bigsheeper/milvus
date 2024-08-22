@@ -167,9 +167,9 @@ func (s *taskScheduler) Submit(task Task) {
 	taskID := task.GetTaskID()
 	if _, ok := s.tasks[taskID]; !ok {
 		s.tasks[taskID] = task
+		task.SetQueueTime(time.Now())
+		log.Info("taskScheduler submit task", zap.Int64("taskID", taskID))
 	}
-	task.SetQueueTime(time.Now())
-	log.Info("taskScheduler submit task", zap.Int64("taskID", taskID))
 }
 
 func (s *taskScheduler) schedule() {

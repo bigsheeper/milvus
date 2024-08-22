@@ -102,9 +102,9 @@ func (c *importChecker) Start() {
 				case internalpb.ImportJobState_Importing:
 					c.checkImportingJob(job)
 				case internalpb.ImportJobState_Stats:
-
+					c.checkStatsJob(job)
 				case internalpb.ImportJobState_IndexBuilding:
-
+					c.checkIndexBuildingJob(job)
 				case internalpb.ImportJobState_Failed:
 					c.tryFailingTasks(job)
 				}
@@ -268,39 +268,36 @@ func (c *importChecker) checkImportingJob(job ImportJob) {
 }
 
 func (c *importChecker) checkStatsJob(job ImportJob) {
-	tasks := c.imeta.GetTaskBy(WithType(ImportTaskType), WithJob(job.GetJobID()))
-	originalSegmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
-		return t.(*importTask).GetSegmentIDs()
-	})
-
-	statsedSegments := make([]int64, 0, len(originalSegmentIDs))
-	if Params.DataCoordCfg.EnableStatsTask.GetAsBool() && !importutilv2.IsL0Import(job.GetOptions()) {
-		for _, segmentID := range originalSegmentIDs {
-			segment := c.meta.GetSegment(segmentID)
-			if segment == nil {
-				log.Warn("cannot find segment", zap.Int64("segmentID", segmentID))
-				continue
-			}
-			compactTo, ok := c.meta.GetCompactionTo(segmentID)
-			if ok && compactTo != nil && compactTo.GetIsSorted() {
-				statsedSegments = append(statsedSegments, compactTo.GetID())
-				continue
-			}
-			if err := CreateStatsSegmentTask(segment, c.alloc, c.meta, c.taskScheduler); err != nil {
-				log.Warn("create stats task for segment fail", zap.Int64("jobID", job.GetJobID()),
-					zap.Int64("segmentID", segment.GetID()), zap.Error(err))
-			}
-			log.Debug("waiting for stats task...", zap.Int64("jobID", job.GetJobID()), zap.Int64("segmentID", segment.GetID()))
-		}
-	}
-
-	if !Params.DataCoordCfg.EnableStatsTask.GetAsBool() || len(statsedSegments) == len(originalSegmentIDs) {
+	updateJobState := func() {
 		err := c.imeta.UpdateJob(job.GetJobID(), UpdateJobState(internalpb.ImportJobState_IndexBuilding))
 		if err != nil {
 			log.Warn("failed to update job state to IndexBuilding", zap.Error(err))
 			return
 		}
 		log.Info("update import job state to IndexBuilding", zap.Int64("jobID", job.GetJobID()))
+	}
+
+	if !Params.DataCoordCfg.EnableStatsTask.GetAsBool() || importutilv2.IsL0Import(job.GetOptions()) {
+		updateJobState()
+		return
+	}
+
+	tasks := c.imeta.GetTaskBy(WithType(ImportTaskType), WithJob(job.GetJobID()))
+	originalSegmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
+		return t.(*importTask).GetSegmentIDs()
+	})
+	targetStatsSegmentIDs, originalUnstatsSegments := GetSegmentsStatsInfo(c.meta, originalSegmentIDs...)
+	for _, segment := range originalUnstatsSegments {
+		if err := CreateStatsSegmentTask(segment, c.alloc, c.meta, c.taskScheduler); err != nil {
+			log.Warn("create stats task for segment fail", zap.Int64("jobID", job.GetJobID()),
+				zap.Int64("segmentID", segment.GetID()), zap.Error(err))
+		}
+		log.Debug("waiting for stats task...", zap.Int64("jobID", job.GetJobID()), zap.Int64("segmentID", segment.GetID()))
+	}
+
+	// All segments are stats-ed. Update job state to IndexBuilding.
+	if len(targetStatsSegmentIDs) == len(originalSegmentIDs) {
+		updateJobState()
 	}
 }
 
@@ -309,23 +306,9 @@ func (c *importChecker) checkIndexBuildingJob(job ImportJob) {
 	originalSegmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
 		return t.(*importTask).GetSegmentIDs()
 	})
-	statsedSegmentIDs := lo.FilterMap(originalSegmentIDs, func(segmentID int64, _ int) (int64, bool) {
-		if !Params.DataCoordCfg.EnableStatsTask.GetAsBool() {
-			return 0, false
-		}
-		segment := c.meta.GetSegment(segmentID)
-		if segment == nil {
-			log.Warn("cannot find segment", zap.Int64("segmentID", segmentID))
-			return 0, false
-		}
-		compactTo, ok := c.meta.GetCompactionTo(segmentID)
-		if ok && compactTo != nil && compactTo.GetIsSorted() {
-			return compactTo.GetID(), true
-		}
-		return 0, false
-	})
+	targetStatsSegmentIDs, _ := GetSegmentsStatsInfo(c.meta, originalSegmentIDs...)
 
-	targetSegments := statsedSegmentIDs
+	targetSegments := targetStatsSegmentIDs
 	if !Params.DataCoordCfg.EnableStatsTask.GetAsBool() {
 		targetSegments = originalSegmentIDs
 	}

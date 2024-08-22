@@ -50,12 +50,12 @@ type clusteringCompactionTask struct {
 	meta             CompactionMeta
 	sessions         SessionManager
 	handler          Handler
-	analyzeScheduler *taskScheduler
+	analyzeScheduler TaskScheduler
 
 	maxRetryTimes int32
 }
 
-func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator, meta CompactionMeta, session SessionManager, handler Handler, analyzeScheduler *taskScheduler) *clusteringCompactionTask {
+func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator, meta CompactionMeta, session SessionManager, handler Handler, analyzeScheduler TaskScheduler) *clusteringCompactionTask {
 	return &clusteringCompactionTask{
 		CompactionTask:   t,
 		allocator:        allocator,
@@ -427,7 +427,7 @@ func (t *clusteringCompactionTask) doAnalyze() error {
 		return err
 	}
 
-	t.analyzeScheduler.enqueue(newAnalyzeTask(t.GetAnalyzeTaskID()))
+	t.analyzeScheduler.Submit(newAnalyzeTask(t.GetAnalyzeTaskID()))
 
 	log.Info("submit analyze task", zap.Int64("planID", t.GetPlanID()), zap.Int64("triggerID", t.GetTriggerID()), zap.Int64("collectionID", t.GetCollectionID()), zap.Int64("id", t.GetAnalyzeTaskID()))
 	return t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_analyzing))

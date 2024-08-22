@@ -98,6 +98,14 @@ func (stm *statsTaskMeta) updateMetrics() {
 	}
 }
 
+func (stm *statsTaskMeta) HasStatsTask(segmentID int64) bool {
+	stm.RLock()
+	defer stm.RUnlock()
+
+	_, ok := stm.segmentStatsTaskIndex[segmentID]
+	return ok
+}
+
 func (stm *statsTaskMeta) AddStatsTask(t *indexpb.StatsTask) error {
 	stm.Lock()
 	defer stm.Unlock()

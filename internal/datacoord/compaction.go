@@ -83,7 +83,7 @@ type compactionPlanHandler struct {
 	chManager        ChannelManager
 	sessions         SessionManager
 	cluster          Cluster
-	analyzeScheduler *taskScheduler
+	analyzeScheduler TaskScheduler
 	handler          Handler
 
 	stopCh   chan struct{}
@@ -176,7 +176,7 @@ func (c *compactionPlanHandler) getCompactionTasksNumBySignalID(triggerID int64)
 	return cnt
 }
 
-func newCompactionPlanHandler(cluster Cluster, sessions SessionManager, cm ChannelManager, meta CompactionMeta, allocator allocator, analyzeScheduler *taskScheduler, handler Handler,
+func newCompactionPlanHandler(cluster Cluster, sessions SessionManager, cm ChannelManager, meta CompactionMeta, allocator allocator, analyzeScheduler TaskScheduler, handler Handler,
 ) *compactionPlanHandler {
 	return &compactionPlanHandler{
 		queueTasks:       make(map[int64]CompactionTask),

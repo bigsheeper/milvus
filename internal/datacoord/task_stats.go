@@ -54,8 +54,8 @@ func (s *Server) checkStatsTaskLoop(ctx context.Context) {
 					return isFlush(seg) && seg.GetLevel() != datapb.SegmentLevel_L0 && !seg.GetIsSorted() && !seg.isCompacting
 				}))
 				for _, segment := range segments {
-					if err := s.createStatsSegmentTask(segment); err != nil {
-						log.Warn("create stats task for segment fail, wait for retry", zap.Int64("segmentID", segment.GetID()))
+					if err := CreateStatsSegmentTask(segment, s.allocator, s.meta, s.taskScheduler); err != nil {
+						log.Warn("create stats task for segment fail, wait for retry", zap.Int64("segmentID", segment.GetID()), zap.Error(err))
 						continue
 					}
 				}
@@ -64,8 +64,11 @@ func (s *Server) checkStatsTaskLoop(ctx context.Context) {
 	}
 }
 
-func (s *Server) createStatsSegmentTask(segment *SegmentInfo) error {
-	taskID, err := s.allocator.allocID(context.Background())
+func CreateStatsSegmentTask(segment *SegmentInfo, allocator allocator, meta *meta, ts TaskScheduler) error {
+	if meta.statsTaskMeta.HasStatsTask(segment.GetID()) {
+		return nil
+	}
+	taskID, err := allocator.allocID(context.Background())
 	if err != nil {
 		return err
 	}
@@ -80,10 +83,10 @@ func (s *Server) createStatsSegmentTask(segment *SegmentInfo) error {
 		State:         indexpb.JobState_JobStateInit,
 		FailReason:    "",
 	}
-	if err = s.meta.statsTaskMeta.AddStatsTask(t); err != nil {
+	if err = meta.statsTaskMeta.AddStatsTask(t); err != nil {
 		return err
 	}
-	s.taskScheduler.enqueue(newStatsTask(taskID, segment.GetID()))
+	ts.Submit(newStatsTask(taskID, segment.GetID()))
 	return nil
 }
 

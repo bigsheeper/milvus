@@ -49,8 +49,6 @@ type importScheduler struct {
 	alloc   allocator
 	imeta   ImportMeta
 
-	buildIndexCh chan UniqueID
-
 	closeOnce sync.Once
 	closeChan chan struct{}
 }
@@ -59,15 +57,13 @@ func NewImportScheduler(meta *meta,
 	cluster Cluster,
 	alloc allocator,
 	imeta ImportMeta,
-	buildIndexCh chan UniqueID,
 ) ImportScheduler {
 	return &importScheduler{
-		meta:         meta,
-		cluster:      cluster,
-		alloc:        alloc,
-		imeta:        imeta,
-		buildIndexCh: buildIndexCh,
-		closeChan:    make(chan struct{}),
+		meta:      meta,
+		cluster:   cluster,
+		alloc:     alloc,
+		imeta:     imeta,
+		closeChan: make(chan struct{}),
 	}
 }
 
@@ -316,10 +312,6 @@ func (s *importScheduler) processInProgressImport(task ImportTask) {
 			if err != nil {
 				log.Warn("update import segment binlogs failed", WrapTaskLog(task, zap.Error(err))...)
 				return
-			}
-			select {
-			case s.buildIndexCh <- info.GetSegmentID(): // accelerate index building:
-			default:
 			}
 		}
 		completeTime := time.Now().Format("2006-01-02T15:04:05Z07:00")

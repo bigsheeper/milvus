@@ -198,12 +198,12 @@ func (m *SimpleLimiter) SetRates(rootLimiter *proxypb.LimiterNode) error {
 
 	// Reset the limiter rates due to potential changes in configurations.
 	var (
-		//clusterConfigs    = getDefaultLimiterConfig(internalpb.RateScope_Cluster)
+		clusterConfigs    = getDefaultLimiterConfig(internalpb.RateScope_Cluster)
 		databaseConfigs   = getDefaultLimiterConfig(internalpb.RateScope_Database)
 		collectionConfigs = getDefaultLimiterConfig(internalpb.RateScope_Collection)
 		partitionConfigs  = getDefaultLimiterConfig(internalpb.RateScope_Partition)
 	)
-	//initLimiter("clu", m.rateLimiter.GetRootLimiters(), clusterConfigs)
+	initLimiter("clu", m.rateLimiter.GetRootLimiters(), clusterConfigs)
 	m.rateLimiter.GetRootLimiters().GetChildren().Range(func(_ int64, dbLimiter *rlinternal.RateLimiterNode) bool {
 		initLimiter("d.b", dbLimiter, databaseConfigs)
 		dbLimiter.GetChildren().Range(func(_ int64, collLimiter *rlinternal.RateLimiterNode) bool {
@@ -228,9 +228,16 @@ func (m *SimpleLimiter) SetRates(rootLimiter *proxypb.LimiterNode) error {
 func initLimiter(source string, rln *rlinternal.RateLimiterNode, rateLimiterConfigs map[internalpb.RateType]*paramtable.ParamItem) {
 	log := log.Ctx(context.TODO()).WithRateGroup("proxy.rateLimiter", 1.0, 60.0)
 	for rt, p := range rateLimiterConfigs {
-		limit := ratelimitutil.Limit(p.GetAsFloat())
+		newLimit := ratelimitutil.Limit(p.GetAsFloat())
 		burst := p.GetAsFloat() // use rate as burst, because SimpleLimiter is with punishment mechanism, burst is insignificant.
-		rln.GetLimiters().Insert(rt, ratelimitutil.NewLimiter(limit, burst))
+		old, ok := rln.GetLimiters().Get(rt)
+		if ok {
+			if old.Limit() != newLimit {
+				old.SetLimit(newLimit)
+			}
+		} else {
+			rln.GetLimiters().Insert(rt, ratelimitutil.NewLimiter(newLimit, burst))
+		}
 		if rt == internalpb.RateType_DMLInsert {
 			log.Info("sheep debug, RateLimiter register for rateType",
 				zap.String("source", source),

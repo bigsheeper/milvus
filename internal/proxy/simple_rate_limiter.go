@@ -81,12 +81,15 @@ func (m *SimpleLimiter) Check(dbID int64, collectionIDToPartIDs map[int64][]int6
 		return ret
 	}
 
+	log.Info("sheep debug, check cluster done", zap.String("rt", rt.String()), zap.Int("n", n))
+
 	// store done limiters to cancel them when error occurs.
 	doneLimiters := make([]*rlinternal.RateLimiterNode, 0)
 	doneLimiters = append(doneLimiters, clusterRateLimiters)
 
 	cancelAllLimiters := func() {
 		for _, limiter := range doneLimiters {
+			log.Info("sheep debug, cancel", zap.String("rt", rt.String()), zap.Int("n", n))
 			limiter.Cancel(rt, n)
 		}
 	}
@@ -99,6 +102,8 @@ func (m *SimpleLimiter) Check(dbID int64, collectionIDToPartIDs map[int64][]int6
 			cancelAllLimiters()
 			return ret
 		}
+		log.Info("sheep debug, check db done", zap.String("rt", rt.String()), zap.Int("n", n),
+			zap.Int64("dbID", dbID))
 		doneLimiters = append(doneLimiters, dbRateLimiters)
 	}
 
@@ -116,6 +121,8 @@ func (m *SimpleLimiter) Check(dbID int64, collectionIDToPartIDs map[int64][]int6
 				cancelAllLimiters()
 				return ret
 			}
+			log.Info("sheep debug, check collection done", zap.String("rt", rt.String()), zap.Int("n", n),
+				zap.Int64("dbID", dbID), zap.Int64("collectionID", collectionID))
 			doneLimiters = append(doneLimiters, collectionRateLimiters)
 		}
 	}
@@ -134,6 +141,8 @@ func (m *SimpleLimiter) Check(dbID int64, collectionIDToPartIDs map[int64][]int6
 					cancelAllLimiters()
 					return ret
 				}
+				log.Info("sheep debug, check partition done", zap.String("rt", rt.String()), zap.Int("n", n),
+					zap.Int64("dbID", dbID), zap.Int64("collectionID", collectionID), zap.Int64("partitionID", partID))
 				doneLimiters = append(doneLimiters, partitionRateLimiters)
 			}
 		}
@@ -189,18 +198,18 @@ func (m *SimpleLimiter) SetRates(rootLimiter *proxypb.LimiterNode) error {
 
 	// Reset the limiter rates due to potential changes in configurations.
 	var (
-		clusterConfigs    = getDefaultLimiterConfig(internalpb.RateScope_Cluster)
+		//clusterConfigs    = getDefaultLimiterConfig(internalpb.RateScope_Cluster)
 		databaseConfigs   = getDefaultLimiterConfig(internalpb.RateScope_Database)
 		collectionConfigs = getDefaultLimiterConfig(internalpb.RateScope_Collection)
 		partitionConfigs  = getDefaultLimiterConfig(internalpb.RateScope_Partition)
 	)
-	initLimiter(m.rateLimiter.GetRootLimiters(), clusterConfigs)
+	//initLimiter("clu", m.rateLimiter.GetRootLimiters(), clusterConfigs)
 	m.rateLimiter.GetRootLimiters().GetChildren().Range(func(_ int64, dbLimiter *rlinternal.RateLimiterNode) bool {
-		initLimiter(dbLimiter, databaseConfigs)
+		initLimiter("d.b", dbLimiter, databaseConfigs)
 		dbLimiter.GetChildren().Range(func(_ int64, collLimiter *rlinternal.RateLimiterNode) bool {
-			initLimiter(collLimiter, collectionConfigs)
+			initLimiter("col", collLimiter, collectionConfigs)
 			collLimiter.GetChildren().Range(func(_ int64, partitionLimiter *rlinternal.RateLimiterNode) bool {
-				initLimiter(partitionLimiter, partitionConfigs)
+				initLimiter("par", partitionLimiter, partitionConfigs)
 				return true
 			})
 			return true
@@ -216,16 +225,19 @@ func (m *SimpleLimiter) SetRates(rootLimiter *proxypb.LimiterNode) error {
 	return nil
 }
 
-func initLimiter(rln *rlinternal.RateLimiterNode, rateLimiterConfigs map[internalpb.RateType]*paramtable.ParamItem) {
+func initLimiter(source string, rln *rlinternal.RateLimiterNode, rateLimiterConfigs map[internalpb.RateType]*paramtable.ParamItem) {
 	log := log.Ctx(context.TODO()).WithRateGroup("proxy.rateLimiter", 1.0, 60.0)
 	for rt, p := range rateLimiterConfigs {
 		limit := ratelimitutil.Limit(p.GetAsFloat())
 		burst := p.GetAsFloat() // use rate as burst, because SimpleLimiter is with punishment mechanism, burst is insignificant.
 		rln.GetLimiters().Insert(rt, ratelimitutil.NewLimiter(limit, burst))
-		log.RatedDebug(30, "RateLimiter register for rateType",
-			zap.String("rateType", internalpb.RateType_name[(int32(rt))]),
-			zap.String("rateLimit", ratelimitutil.Limit(p.GetAsFloat()).String()),
-			zap.String("burst", fmt.Sprintf("%v", burst)))
+		if rt == internalpb.RateType_DMLInsert {
+			log.Info("sheep debug, RateLimiter register for rateType",
+				zap.String("source", source),
+				zap.String("rateType", internalpb.RateType_name[(int32(rt))]),
+				zap.String("rateLimit", ratelimitutil.Limit(p.GetAsFloat()).String()),
+				zap.String("burst", fmt.Sprintf("%v", burst)))
+		}
 	}
 }
 
@@ -235,28 +247,28 @@ func initLimiter(rln *rlinternal.RateLimiterNode, rateLimiterConfigs map[interna
 func newClusterLimiter() *rlinternal.RateLimiterNode {
 	clusterRateLimiters := rlinternal.NewRateLimiterNode(internalpb.RateScope_Cluster)
 	clusterLimiterConfigs := getDefaultLimiterConfig(internalpb.RateScope_Cluster)
-	initLimiter(clusterRateLimiters, clusterLimiterConfigs)
+	initLimiter("cluster", clusterRateLimiters, clusterLimiterConfigs)
 	return clusterRateLimiters
 }
 
 func newDatabaseLimiter() *rlinternal.RateLimiterNode {
 	dbRateLimiters := rlinternal.NewRateLimiterNode(internalpb.RateScope_Database)
 	databaseLimiterConfigs := getDefaultLimiterConfig(internalpb.RateScope_Database)
-	initLimiter(dbRateLimiters, databaseLimiterConfigs)
+	initLimiter("db", dbRateLimiters, databaseLimiterConfigs)
 	return dbRateLimiters
 }
 
 func newCollectionLimiters() *rlinternal.RateLimiterNode {
 	collectionRateLimiters := rlinternal.NewRateLimiterNode(internalpb.RateScope_Collection)
 	collectionLimiterConfigs := getDefaultLimiterConfig(internalpb.RateScope_Collection)
-	initLimiter(collectionRateLimiters, collectionLimiterConfigs)
+	initLimiter("collection", collectionRateLimiters, collectionLimiterConfigs)
 	return collectionRateLimiters
 }
 
 func newPartitionLimiters() *rlinternal.RateLimiterNode {
 	partRateLimiters := rlinternal.NewRateLimiterNode(internalpb.RateScope_Partition)
 	partitionLimiterConfigs := getDefaultLimiterConfig(internalpb.RateScope_Partition)
-	initLimiter(partRateLimiters, partitionLimiterConfigs)
+	initLimiter("partition", partRateLimiters, partitionLimiterConfigs)
 	return partRateLimiters
 }
 
@@ -267,6 +279,7 @@ func (m *SimpleLimiter) updateLimiterNode(req *proxypb.Limiter, node *rlinternal
 		if !ok {
 			return fmt.Errorf("unregister rateLimiter for rateType %s", rate.GetRt().String())
 		}
+		log.Info("sheep debug, set rate", zap.String("source", sourceID), zap.String("rt", rate.GetRt().String()), zap.Float64("r", rate.GetR()))
 		limit.SetLimit(ratelimitutil.Limit(rate.GetR()))
 		setRateGaugeByRateType(rate.GetRt(), paramtable.GetNodeID(), sourceID, rate.GetR())
 	}

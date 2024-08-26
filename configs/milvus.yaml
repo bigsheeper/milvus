@@ -866,12 +866,12 @@ quotaAndLimits:
     db:
       max: -1 # qps of db level, default no limit, rate for manualCompaction
   dml:
-    enabled: false # Whether DML request throttling is enabled.
+    enabled: true # Whether DML request throttling is enabled.
     insertRate:
       # Highest data insertion rate per second.
       # Setting this item to 5 indicates that Milvus only allows data insertion at the rate of 5 MB/s.
       # To use this setting, set quotaAndLimits.dml.enabled to true at the same time.
-      max: -1
+      max: 4
       db:
         max: -1 # MB/s, default no limit
       collection:

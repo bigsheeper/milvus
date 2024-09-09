@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/samber/lo"
+
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -251,14 +253,6 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		return err
 	}
 
-	log.Debug("send insert request to virtual channels",
-		zap.String("partition", it.insertMsg.GetPartitionName()),
-		zap.Int64("collectionID", collID),
-		zap.Strings("virtual_channels", channelNames),
-		zap.Int64("task_id", it.ID()),
-		zap.Duration("get cache duration", getCacheDur),
-		zap.Duration("get msgStream duration", getMsgStreamDur))
-
 	// assign segmentID for insert data and repack data by segmentID
 	var msgPack *msgstream.MsgPack
 	if it.partitionKeys == nil {
@@ -281,6 +275,18 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		it.result.Status = merr.Status(err)
 		return err
 	}
+
+	log.Debug("send insert request to virtual channels",
+		zap.String("partition", it.insertMsg.GetPartitionName()),
+		zap.Int64("collectionID", collID),
+		zap.Strings("virtual_channels", channelNames),
+		zap.Any("numRows", lo.SliceToMap(msgPack.Msgs, func(t msgstream.TsMsg) (int64, uint64) {
+			return t.(*msgstream.InsertMsg).GetSegmentID(), t.(*msgstream.InsertMsg).GetNumRows()
+		})),
+		zap.Int64("task_id", it.ID()),
+		zap.Duration("get cache duration", getCacheDur),
+		zap.Duration("get msgStream duration", getMsgStreamDur))
+
 	sendMsgDur := tr.RecordSpan()
 	metrics.ProxySendMutationReqLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.InsertLabel).Observe(float64(sendMsgDur.Milliseconds()))
 	totalExecDur := tr.ElapseSpan()

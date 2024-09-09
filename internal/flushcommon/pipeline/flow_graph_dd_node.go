@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"sync/atomic"
 
+	"github.com/milvus-io/milvus/pkg/util/tsoutil"
+
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -206,8 +208,14 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Int64("segmentID", imsg.GetSegmentID()),
 				zap.String("channel", ddn.vChannelName),
 				zap.Int("numRows", len(imsg.GetRowIDs())),
+				zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+				zap.Uint64("ts", msg.EndTs()),
 				zap.Uint64("startPosTs", msMsg.StartPositions()[0].GetTimestamp()),
-				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()))
+				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()),
+				zap.Time("startPosTime", tsoutil.PhysicalTime(msMsg.StartPositions()[0].GetTimestamp())),
+				zap.Time("endPosTime", tsoutil.PhysicalTime(msMsg.EndPositions()[0].GetTimestamp())),
+				zap.String("startPos", string(msMsg.StartPositions()[0].GetMsgID())),
+				zap.String("endPos", string(msMsg.EndPositions()[0].GetMsgID())))
 			fgMsg.InsertMessages = append(fgMsg.InsertMessages, imsg)
 
 		case commonpb.MsgType_Delete:
@@ -221,7 +229,13 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				continue
 			}
 
-			log.Debug("DDNode receive delete messages", zap.String("channel", ddn.vChannelName), zap.Int64("numRows", dmsg.NumRows))
+			log.Debug("DDNode receive delete messages",
+				zap.String("channel", ddn.vChannelName),
+				zap.Int64("numRows", dmsg.NumRows),
+				zap.Int64("msgID", dmsg.GetBase().GetMsgID()),
+				zap.Uint64("ts", msg.EndTs()),
+				zap.Uint64("startPosTs", msMsg.StartPositions()[0].GetTimestamp()),
+				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()))
 			util.GetRateCollector().Add(metricsinfo.DeleteConsumeThroughput, float64(proto.Size(dmsg.DeleteRequest)))
 
 			metrics.DataNodeConsumeBytesCount.

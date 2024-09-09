@@ -17,23 +17,25 @@
 package tsoutil
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-
-	"github.com/milvus-io/milvus/pkg/log"
 )
 
 func TestParseHybridTs(t *testing.T) {
-	var ts uint64 = 426152581543231492
-	physical, logical := ParseHybridTs(ts)
-	physicalTime := time.Unix(physical/1000, physical%1000*time.Millisecond.Nanoseconds())
-	log.Debug("TestParseHybridTs",
-		zap.Int64("physical", physical),
-		zap.Int64("logical", logical),
-		zap.Any("physical time", physicalTime))
+	var tss = []uint64{
+		452246635728076803, // msg1 start
+		452246637405798401, // msg1 end
+
+		452246649005932546, // msg2 start
+		452246649058885634, // msg2 end
+	}
+
+	for _, ts := range tss {
+		fmt.Println(PhysicalTime(ts))
+	}
 }
 
 func Test_Tso(t *testing.T) {

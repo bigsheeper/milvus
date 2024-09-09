@@ -73,7 +73,7 @@ func (t *target) send(pack *MsgPack) error {
 		log.Info("target closed", zap.String("vchannel", t.vchannel))
 		return nil
 	case <-time.After(maxTolerantLag):
-		return fmt.Errorf("send target timeout, vchannel=%s, timeout=%s", t.vchannel, maxTolerantLag)
+		return fmt.Errorf("send target timeout, vchannel=%s, timeout=%s, position=%v", t.vchannel, maxTolerantLag, pack.StartPositions)
 	case t.ch <- pack:
 		return nil
 	}

@@ -82,8 +82,8 @@ func (info *segInfo) Capacity(ts Timestamp) uint32 {
 
 func (info *segInfo) Assign(ts Timestamp, count uint32) uint32 {
 	if info.IsExpired(ts) {
-		log.Debug("segInfo Assign IsExpired", zap.Uint64("ts", ts),
-			zap.Uint32("count", count))
+		log.Debug("segInfo Assign IsExpired", zap.Int64("segmentID", info.segID),
+			zap.Uint64("ts", ts), zap.Uint32("count", count))
 		return 0
 	}
 	ret := uint32(0)

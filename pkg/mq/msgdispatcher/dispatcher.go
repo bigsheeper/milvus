@@ -112,7 +112,7 @@ func NewDispatcher(ctx context.Context,
 		}
 		posTime := tsoutil.PhysicalTime(position.GetTimestamp())
 		log.Info("seek successfully", zap.Uint64("posTs", position.GetTimestamp()),
-			zap.Time("posTime", posTime), zap.Duration("tsLag", time.Since(posTime)))
+			zap.Time("posTime", posTime), zap.Duration("tsLag", time.Since(posTime)), zap.Any("seekPosition", position))
 	} else {
 		err := stream.AsConsumer(ctx, []string{pchannel}, subName, subPos)
 		if err != nil {

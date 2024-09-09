@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"strconv"
 
 	"github.com/samber/lo"
@@ -280,9 +281,11 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		zap.String("partition", it.insertMsg.GetPartitionName()),
 		zap.Int64("collectionID", collID),
 		zap.Strings("virtual_channels", channelNames),
-		zap.Any("numRows", lo.SliceToMap(msgPack.Msgs, func(t msgstream.TsMsg) (int64, uint64) {
+		zap.Any("segmentToNumRows", lo.SliceToMap(msgPack.Msgs, func(t msgstream.TsMsg) (int64, uint64) {
 			return t.(*msgstream.InsertMsg).GetSegmentID(), t.(*msgstream.InsertMsg).GetNumRows()
 		})),
+		zap.Uint64("ts", it.insertMsg.BeginTs()),
+		zap.Time("time", tsoutil.PhysicalTime(it.insertMsg.BeginTs())),
 		zap.Int64("task_id", it.ID()),
 		zap.Duration("get cache duration", getCacheDur),
 		zap.Duration("get msgStream duration", getMsgStreamDur))

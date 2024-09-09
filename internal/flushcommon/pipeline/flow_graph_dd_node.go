@@ -214,8 +214,8 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()),
 				zap.Time("startPosTime", tsoutil.PhysicalTime(msMsg.StartPositions()[0].GetTimestamp())),
 				zap.Time("endPosTime", tsoutil.PhysicalTime(msMsg.EndPositions()[0].GetTimestamp())),
-				zap.String("startPos", string(msMsg.StartPositions()[0].GetMsgID())),
-				zap.String("endPos", string(msMsg.EndPositions()[0].GetMsgID())))
+				zap.Any("startPos", msMsg.StartPositions()),
+				zap.Any("endPos", msMsg.EndPositions()))
 			fgMsg.InsertMessages = append(fgMsg.InsertMessages, imsg)
 
 		case commonpb.MsgType_Delete:

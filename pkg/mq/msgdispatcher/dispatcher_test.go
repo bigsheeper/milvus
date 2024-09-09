@@ -17,9 +17,12 @@
 package msgdispatcher
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
@@ -130,6 +133,24 @@ func TestDispatcher(t *testing.T) {
 			wg.Wait()
 		}
 	})
+}
+
+func TestAAA(*testing.T) {
+	output := make(chan *msgstream.MsgPack)
+	target := &target{
+		vchannel: "mock_vchannel_0",
+		pos:      nil,
+		ch:       output,
+		cancelCh: lifetime.NewSafeChan(),
+	}
+	err := target.send(&MsgPack{
+		StartPositions: []*msgpb.MsgPosition{{
+			Timestamp:   1000,
+			ChannelName: "aaa",
+			MsgID:       []byte{1, 2, 3, 4},
+		}},
+	})
+	fmt.Println(err)
 }
 
 func BenchmarkDispatcher_handle(b *testing.B) {

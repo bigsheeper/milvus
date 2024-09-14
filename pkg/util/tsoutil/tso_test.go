@@ -26,11 +26,7 @@ import (
 
 func TestParseHybridTs(t *testing.T) {
 	var tss = []uint64{
-		452246635728076803, // msg1 start
-		452246637405798401, // msg1 end
-
-		452246649005932546, // msg2 start
-		452246649058885634, // msg2 end
+		452470657037893633,
 	}
 
 	for _, ts := range tss {

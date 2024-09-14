@@ -215,6 +215,23 @@ func (d *Dispatcher) work() {
 				log.Error("consumed invalid msgPack")
 				continue
 			}
+			for _, msg := range pack.Msgs {
+				switch msg.Type() {
+				case commonpb.MsgType_Insert:
+					imsg := msg.(*msgstream.InsertMsg)
+					log.Debug("Dispatcher receive insert messages aaa",
+						zap.Int64("segmentID", imsg.GetSegmentID()),
+						zap.String("channel", imsg.GetShardName()),
+						zap.Int("numRows", len(imsg.GetRowIDs())),
+						zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+						zap.Uint64("ts", msg.EndTs()),
+						zap.Time("tsTime", tsoutil.PhysicalTime(msg.EndTs())),
+						zap.Time("startPosTime", tsoutil.PhysicalTime(pack.StartPositions[0].GetTimestamp())),
+						zap.Time("endPosTime", tsoutil.PhysicalTime(pack.EndPositions[0].GetTimestamp())),
+						zap.Any("startPos", pack.StartPositions),
+						zap.Any("endPos", pack.EndPositions))
+				}
+			}
 			d.curTs.Store(pack.EndPositions[0].GetTimestamp())
 
 			targetPacks := d.groupingMsgs(pack)
@@ -242,6 +259,24 @@ func (d *Dispatcher) work() {
 					d.nonBlockingNotify()
 					delete(d.targets, vchannel)
 					log.Warn("lag target notified", zap.Error(err))
+				} else {
+					for _, msg := range p.Msgs {
+						switch msg.Type() {
+						case commonpb.MsgType_Insert:
+							imsg := msg.(*msgstream.InsertMsg)
+							log.Debug("Dispatcher receive insert messages bbb",
+								zap.Int64("segmentID", imsg.GetSegmentID()),
+								zap.String("channel", imsg.GetShardName()),
+								zap.Int("numRows", len(imsg.GetRowIDs())),
+								zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+								zap.Uint64("ts", msg.EndTs()),
+								zap.Time("tsTime", tsoutil.PhysicalTime(msg.EndTs())),
+								zap.Time("startPosTime", tsoutil.PhysicalTime(p.StartPositions[0].GetTimestamp())),
+								zap.Time("endPosTime", tsoutil.PhysicalTime(p.EndPositions[0].GetTimestamp())),
+								zap.Any("startPos", p.StartPositions),
+								zap.Any("endPos", p.EndPositions))
+						}
+					}
 				}
 			}
 		}

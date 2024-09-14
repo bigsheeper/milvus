@@ -1724,6 +1724,7 @@ func (m *meta) UpdateChannelCheckpoints(positions []*msgpb.MsgPosition) error {
 		m.channelCPs.checkpoints[channel] = pos
 		log.Info("UpdateChannelCheckpoint done", zap.String("channel", channel),
 			zap.Uint64("ts", pos.GetTimestamp()),
+			zap.ByteString("msgID", pos.GetMsgID()),
 			zap.Time("time", tsoutil.PhysicalTime(pos.GetTimestamp())))
 		ts, _ := tsoutil.ParseTS(pos.Timestamp)
 		metrics.DataCoordCheckpointUnixSeconds.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), channel).Set(float64(ts.Unix()))

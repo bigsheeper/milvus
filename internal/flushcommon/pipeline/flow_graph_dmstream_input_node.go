@@ -52,6 +52,7 @@ func newDmInputNode(initCtx context.Context, dispatcherClient msgdispatcher.Clie
 			}
 			log.Info("datanode seek successfully when register to msgDispatcher",
 				zap.ByteString("msgID", seekPos.GetMsgID()),
+				zap.Uint64("ts", seekPos.GetTimestamp()),
 				zap.Time("tsTime", tsoutil.PhysicalTime(seekPos.GetTimestamp())),
 				zap.Duration("tsLag", time.Since(tsoutil.PhysicalTime(seekPos.GetTimestamp()))))
 		} else {

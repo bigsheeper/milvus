@@ -27,6 +27,10 @@ type writeNode struct {
 	wbManager   writebuffer.BufferManager
 	updater     util.StatsUpdater
 	metacache   metacache.MetaCache
+	//
+	//begin int
+	//once  sync.Once
+	//sleep time.Duration
 }
 
 // Name returns node name, implementing flowgraph.Node
@@ -35,6 +39,13 @@ func (wNode *writeNode) Name() string {
 }
 
 func (wNode *writeNode) Operate(in []Msg) []Msg {
+	//if wNode.begin <= 0 {
+	//	wNode.once.Do(func() {
+	//		log.Info("sleep...", zap.String("channel", wNode.channelName))
+	//		time.Sleep(wNode.sleep)
+	//	})
+	//}
+	//wNode.begin--
 	fgMsg := in[0].(*FlowGraphMsg)
 
 	// close msg, ignore all data
@@ -138,5 +149,7 @@ func newWriteNode(
 		wbManager:   writeBufferManager,
 		updater:     updater,
 		metacache:   config.metacache,
+		//begin:       300,
+		//sleep:       120 * time.Second,
 	}
 }

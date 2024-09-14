@@ -79,6 +79,8 @@ type ddNode struct {
 	growingSegInfo    map[typeutil.UniqueID]*datapb.SegmentInfo // segmentID
 	sealedSegInfo     map[typeutil.UniqueID]*datapb.SegmentInfo // segmentID
 	droppedSegmentIDs []int64
+
+	consumedInsertMsgs map[int64]struct{}
 }
 
 // Name returns node name, implementing flowgraph.Node
@@ -204,14 +206,28 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel).
 				Add(float64(imsg.GetNumRows()))
 
+			if _, ok = ddn.consumedInsertMsgs[imsg.GetBase().GetMsgID()]; ok {
+				log.Warn("sheep debug, consume dup insert message",
+					zap.Int64("segmentID", imsg.GetSegmentID()),
+					zap.String("channel", ddn.vChannelName),
+					zap.Int("numRows", len(imsg.GetRowIDs())),
+					zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+					zap.Uint64("ts", msg.EndTs()),
+					zap.Time("tsTime", tsoutil.PhysicalTime(msg.EndTs())),
+					zap.Time("startPosTime", tsoutil.PhysicalTime(msMsg.StartPositions()[0].GetTimestamp())),
+					zap.Time("endPosTime", tsoutil.PhysicalTime(msMsg.EndPositions()[0].GetTimestamp())),
+					zap.Any("startPos", msMsg.StartPositions()),
+					zap.Any("endPos", msMsg.EndPositions()))
+			}
+			ddn.consumedInsertMsgs[imsg.GetBase().GetMsgID()] = struct{}{}
+
 			log.Debug("DDNode receive insert messages",
 				zap.Int64("segmentID", imsg.GetSegmentID()),
 				zap.String("channel", ddn.vChannelName),
 				zap.Int("numRows", len(imsg.GetRowIDs())),
 				zap.Int64("msgID", imsg.GetBase().GetMsgID()),
 				zap.Uint64("ts", msg.EndTs()),
-				zap.Uint64("startPosTs", msMsg.StartPositions()[0].GetTimestamp()),
-				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()),
+				zap.Time("tsTime", tsoutil.PhysicalTime(msg.EndTs())),
 				zap.Time("startPosTime", tsoutil.PhysicalTime(msMsg.StartPositions()[0].GetTimestamp())),
 				zap.Time("endPosTime", tsoutil.PhysicalTime(msMsg.EndPositions()[0].GetTimestamp())),
 				zap.Any("startPos", msMsg.StartPositions()),
@@ -234,8 +250,11 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Int64("numRows", dmsg.NumRows),
 				zap.Int64("msgID", dmsg.GetBase().GetMsgID()),
 				zap.Uint64("ts", msg.EndTs()),
-				zap.Uint64("startPosTs", msMsg.StartPositions()[0].GetTimestamp()),
-				zap.Uint64("endPosTs", msMsg.EndPositions()[0].GetTimestamp()))
+				zap.Time("tsTime", tsoutil.PhysicalTime(msg.EndTs())),
+				zap.Time("startPosTime", tsoutil.PhysicalTime(msMsg.StartPositions()[0].GetTimestamp())),
+				zap.Time("endPosTime", tsoutil.PhysicalTime(msMsg.EndPositions()[0].GetTimestamp())),
+				zap.Any("startPos", msMsg.StartPositions()),
+				zap.Any("endPos", msMsg.EndPositions()))
 			util.GetRateCollector().Add(metricsinfo.DeleteConsumeThroughput, float64(proto.Size(dmsg.DeleteRequest)))
 
 			metrics.DataNodeConsumeBytesCount.
@@ -348,6 +367,7 @@ func newDDNode(ctx context.Context, collID typeutil.UniqueID, vChannelName strin
 		vChannelName:       vChannelName,
 		compactionExecutor: executor,
 		flushMsgHandler:    handler,
+		consumedInsertMsgs: map[int64]struct{}{},
 	}
 
 	dd.dropMode.Store(false)

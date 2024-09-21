@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -41,13 +42,17 @@ func (wNode *writeNode) Name() string {
 }
 
 func (wNode *writeNode) Operate(in []Msg) []Msg {
-	if wNode.begin <= 0 {
-		wNode.once.Do(func() {
-			log.Info("sleep...", zap.String("channel", wNode.channelName))
-			time.Sleep(wNode.sleep)
-		})
+	if rand.Intn(10) == 0 {
+		log.Info("sleep...", zap.String("channel", wNode.channelName))
+		time.Sleep(wNode.sleep)
 	}
-	wNode.begin--
+	// if wNode.begin <= 0 {
+	// 	wNode.once.Do(func() {
+	// 		log.Info("sleep...", zap.String("channel", wNode.channelName))
+	// 		time.Sleep(wNode.sleep)
+	// 	})
+	// }
+	// wNode.begin--
 	fgMsg := in[0].(*FlowGraphMsg)
 
 	// close msg, ignore all data

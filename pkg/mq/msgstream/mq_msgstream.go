@@ -843,6 +843,15 @@ func (ms *MqTtMsgStream) consumeToTtMsg(consumer mqwrapper.Consumer) {
 					zap.Any("position", tsMsg.Position()))
 			}
 
+			if tsMsg.Type() == commonpb.MsgType_TimeTick {
+				imsg := tsMsg.(*TimeTickMsg)
+				log.Debug("sheep debug, ConsumeToTtMsg receive tt messages",
+					zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+					zap.Uint64("ts", tsMsg.EndTs()),
+					zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
+					zap.Any("position", tsMsg.Position()))
+			}
+
 			ms.chanMsgBufMutex.Lock()
 			ms.chanMsgBuf[consumer] = append(ms.chanMsgBuf[consumer], tsMsg)
 			ms.chanMsgBufMutex.Unlock()

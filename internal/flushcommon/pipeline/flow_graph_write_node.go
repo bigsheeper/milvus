@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/samber/lo"
 	"go.opentelemetry.io/otel/trace"
@@ -27,7 +29,7 @@ type writeNode struct {
 	wbManager   writebuffer.BufferManager
 	updater     util.StatsUpdater
 	metacache   metacache.MetaCache
-	
+
 	begin int
 	once  sync.Once
 	sleep time.Duration

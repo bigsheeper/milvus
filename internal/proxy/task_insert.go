@@ -3,8 +3,11 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"strconv"
+	"sync"
+	"time"
+
+	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 
 	"github.com/samber/lo"
 
@@ -225,7 +228,18 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 	return nil
 }
 
+var sleepTime = 120 * time.Second
+var sleepOnce sync.Once
+var begin = time.Now()
+
 func (it *insertTask) Execute(ctx context.Context) error {
+	if time.Since(begin) > 60*time.Second {
+		sleepOnce.Do(func() {
+			log.Info("task insert sleep...")
+			time.Sleep(sleepTime)
+		})
+	}
+
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-Insert-Execute")
 	defer sp.End()
 

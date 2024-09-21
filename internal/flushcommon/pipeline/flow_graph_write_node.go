@@ -42,7 +42,7 @@ func (wNode *writeNode) Name() string {
 }
 
 func (wNode *writeNode) Operate(in []Msg) []Msg {
-	if rand.Intn(10) == 0 {
+	if rand.Intn(5) == 0 {
 		log.Info("sleep...", zap.String("channel", wNode.channelName))
 		time.Sleep(wNode.sleep)
 	}
@@ -157,6 +157,6 @@ func newWriteNode(
 		updater:     updater,
 		metacache:   config.metacache,
 		begin:       300,
-		sleep:       120 * time.Second,
+		sleep:       30 * time.Second,
 	}
 }

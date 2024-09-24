@@ -26,7 +26,7 @@ import (
 
 func TestParseHybridTs(t *testing.T) {
 	var tss = []uint64{
-		452470657037893633,
+		452470653131948035,
 	}
 
 	for _, ts := range tss {

@@ -239,7 +239,7 @@ natsmq:
 
 # Related configuration of rootCoord, used to handle data definition language (DDL) and data control language (DCL) requests
 rootCoord:
-  dmlChannelNum: 16 # The number of DML-Channels to create at the root coord startup.
+  dmlChannelNum: 1 # The number of DML-Channels to create at the root coord startup.
   # The maximum number of partitions in each collection.
   # New partitions cannot be created if this parameter is set as 0 or 1.
   # Range: [0, INT64MAX]

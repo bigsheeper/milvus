@@ -228,10 +228,10 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 	return nil
 }
 
-var sleepTime = 30 * time.Second
+var sleepTime = 120 * time.Second
 
 func (it *insertTask) Execute(ctx context.Context) error {
-	if rand.Intn(5) == 0 {
+	if rand.Intn(100) == 0 {
 		log.Info("task insert sleep...")
 		time.Sleep(sleepTime)
 	}

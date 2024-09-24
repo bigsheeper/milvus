@@ -19,6 +19,7 @@ package msgdispatcher
 import (
 	"context"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"sync"
 	"time"
 
@@ -188,6 +189,12 @@ func (c *dispatcherManager) tryMerge() {
 	for vchannel, sd := range c.soloDispatchers {
 		if sd.CurTs() == c.mainDispatcher.CurTs() {
 			candidates[vchannel] = struct{}{}
+			log.Info("merge info", zap.Any("vchannel", vchannel), zap.Any("ts", sd.CurTs()),
+				zap.Any("sdPos", sd.CurPos().GetMsgID()), zap.Any("mainPos", c.mainDispatcher.CurPos().GetMsgID()))
+			if !slices.Equal(sd.CurPos().GetMsgID(), c.mainDispatcher.CurPos().GetMsgID()) {
+				log.Warn("merge wrong!", zap.Any("vchannel", vchannel), zap.Any("ts", sd.CurTs()),
+					zap.Any("sdPos", sd.CurPos().GetMsgID()), zap.Any("mainPos", c.mainDispatcher.CurPos().GetMsgID()))
+			}
 		}
 	}
 	if len(candidates) == 0 {

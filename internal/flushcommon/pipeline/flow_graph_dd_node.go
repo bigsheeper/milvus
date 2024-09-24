@@ -19,8 +19,10 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"sync/atomic"
+	"time"
 
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 
@@ -102,6 +104,10 @@ func (ddn *ddNode) IsValidInMsg(in []Msg) bool {
 
 // Operate handles input messages, implementing flowgrpah.Node
 func (ddn *ddNode) Operate(in []Msg) []Msg {
+	if rand.Intn(5) == 0 {
+		log.Info("sleep...", zap.String("channel", ddn.vChannelName))
+		time.Sleep(300 * time.Second)
+	}
 	msMsg, ok := in[0].(*MsgStreamMsg)
 	if !ok {
 		log.Warn("type assertion failed for MsgStreamMsg", zap.String("channel", ddn.vChannelName), zap.String("name", reflect.TypeOf(in[0]).Name()))

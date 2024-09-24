@@ -713,32 +713,32 @@ func (ms *MqTtMsgStream) bufMsgPackToChannel() {
 							size += uint64(v.Size())
 							timeTickBuf = append(timeTickBuf, v)
 							if v.Type() == commonpb.MsgType_Insert {
-								imsg := v.(*InsertMsg)
-								log.Debug("TtMsgStream receive insert messages, timeTick",
-									zap.Int64("segmentID", imsg.GetSegmentID()),
-									zap.String("channel", imsg.GetShardName()),
-									zap.Int("numRows", len(imsg.GetRowIDs())),
-									zap.Int64("msgID", imsg.GetBase().GetMsgID()),
-									zap.Uint64("ts", v.EndTs()),
-									zap.Time("tsTime", tsoutil.PhysicalTime(v.EndTs())),
-									zap.Uint64("currTs", currTs),
-									zap.Time("currTsTime", tsoutil.PhysicalTime(currTs)),
-									zap.Any("position", v.Position()))
+								//imsg := v.(*InsertMsg)
+								//log.Debug("TtMsgStream receive insert messages, timeTick",
+								//	zap.Int64("segmentID", imsg.GetSegmentID()),
+								//	zap.String("channel", imsg.GetShardName()),
+								//	zap.Int("numRows", len(imsg.GetRowIDs())),
+								//	zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+								//	zap.Uint64("ts", v.EndTs()),
+								//	zap.Time("tsTime", tsoutil.PhysicalTime(v.EndTs())),
+								//	zap.Uint64("currTs", currTs),
+								//	zap.Time("currTsTime", tsoutil.PhysicalTime(currTs)),
+								//	zap.Any("position", v.Position()))
 							}
 						} else {
 							tempBuffer = append(tempBuffer, v)
 							if v.Type() == commonpb.MsgType_Insert {
-								imsg := v.(*InsertMsg)
-								log.Debug("TtMsgStream receive insert messages, tmpBuffer",
-									zap.Int64("segmentID", imsg.GetSegmentID()),
-									zap.String("channel", imsg.GetShardName()),
-									zap.Int("numRows", len(imsg.GetRowIDs())),
-									zap.Int64("msgID", imsg.GetBase().GetMsgID()),
-									zap.Uint64("ts", v.EndTs()),
-									zap.Time("tsTime", tsoutil.PhysicalTime(v.EndTs())),
-									zap.Uint64("currTs", currTs),
-									zap.Time("currTsTime", tsoutil.PhysicalTime(currTs)),
-									zap.Any("position", v.Position()))
+								//imsg := v.(*InsertMsg)
+								//log.Debug("TtMsgStream receive insert messages, tmpBuffer",
+								//	zap.Int64("segmentID", imsg.GetSegmentID()),
+								//	zap.String("channel", imsg.GetShardName()),
+								//	zap.Int("numRows", len(imsg.GetRowIDs())),
+								//	zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+								//	zap.Uint64("ts", v.EndTs()),
+								//	zap.Time("tsTime", tsoutil.PhysicalTime(v.EndTs())),
+								//	zap.Uint64("currTs", currTs),
+								//	zap.Time("currTsTime", tsoutil.PhysicalTime(currTs)),
+								//	zap.Any("position", v.Position()))
 							}
 						}
 					}
@@ -805,6 +805,7 @@ func (ms *MqTtMsgStream) bufMsgPackToChannel() {
 
 // Save all msgs into chanMsgBuf[] till receive one ttMsg
 func (ms *MqTtMsgStream) consumeToTtMsg(consumer mqwrapper.Consumer) {
+	var lastTt uint64
 	defer ms.chanWaitGroup.Done()
 	for {
 		select {
@@ -850,6 +851,14 @@ func (ms *MqTtMsgStream) consumeToTtMsg(consumer mqwrapper.Consumer) {
 					zap.Uint64("ts", tsMsg.EndTs()),
 					zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
 					zap.Any("position", tsMsg.Position()))
+				if lastTt == tsMsg.EndTs() {
+					log.Warn("sheep debug, ConsumeToTtMsg receive dup tt messages",
+						zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+						zap.Uint64("ts", tsMsg.EndTs()),
+						zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
+						zap.Any("position", tsMsg.Position()))
+				}
+				lastTt = tsMsg.EndTs()
 			}
 
 			ms.chanMsgBufMutex.Lock()

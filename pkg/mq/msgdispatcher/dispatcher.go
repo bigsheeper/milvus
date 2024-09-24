@@ -19,6 +19,7 @@ package msgdispatcher
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,6 +70,7 @@ type Dispatcher struct {
 	isMain   bool // indicates if it's a main dispatcher
 	pchannel string
 	curTs    atomic.Uint64
+	curPos   atomic.Pointer[msgpb.MsgPosition]
 
 	lagNotifyChan chan struct{}
 	lagTargets    *typeutil.ConcurrentMap[string, *target] // vchannel -> *target
@@ -78,6 +80,8 @@ type Dispatcher struct {
 	targets map[string]*target
 
 	stream msgstream.MsgStream
+
+	consumedMsgs map[int64]struct{}
 }
 
 func NewDispatcher(ctx context.Context,
@@ -130,6 +134,7 @@ func NewDispatcher(ctx context.Context,
 		lagTargets:    lagTargets,
 		targets:       make(map[string]*target),
 		stream:        stream,
+		consumedMsgs:  map[int64]struct{}{},
 	}
 
 	metrics.NumConsumers.WithLabelValues(paramtable.GetRole(), fmt.Sprint(paramtable.GetNodeID())).Inc()
@@ -138,6 +143,10 @@ func NewDispatcher(ctx context.Context,
 
 func (d *Dispatcher) CurTs() typeutil.Timestamp {
 	return d.curTs.Load()
+}
+
+func (d *Dispatcher) CurPos() *msgpb.MsgPosition {
+	return d.curPos.Load()
 }
 
 func (d *Dispatcher) AddTarget(t *target) {
@@ -216,6 +225,15 @@ func (d *Dispatcher) work() {
 				continue
 			}
 			for _, msg := range pack.Msgs {
+				if _, ok := d.consumedMsgs[msg.ID()]; ok && msg.ID() != 0 {
+					log.Warn("sheep debug, consume dup message, dispatcher",
+						zap.Int64("msg.ID()", msg.ID()),
+						zap.String("msgType", msg.Type().String()),
+						zap.Uint64("msg.EndTs()", msg.EndTs()),
+						zap.Any("msgPosition", msg.Position()))
+				}
+				d.consumedMsgs[msg.ID()] = struct{}{}
+
 				switch msg.Type() {
 				case commonpb.MsgType_Insert:
 					imsg := msg.(*msgstream.InsertMsg)
@@ -233,6 +251,7 @@ func (d *Dispatcher) work() {
 				}
 			}
 			d.curTs.Store(pack.EndPositions[0].GetTimestamp())
+			d.curPos.Store(pack.EndPositions[0])
 
 			targetPacks := d.groupingMsgs(pack)
 			for vchannel, p := range targetPacks {

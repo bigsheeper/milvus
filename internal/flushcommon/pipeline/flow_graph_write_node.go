@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -42,10 +41,10 @@ func (wNode *writeNode) Name() string {
 }
 
 func (wNode *writeNode) Operate(in []Msg) []Msg {
-	if rand.Intn(5) == 0 {
-		log.Info("sleep...", zap.String("channel", wNode.channelName))
-		time.Sleep(wNode.sleep)
-	}
+	//if rand.Intn(5) == 0 {
+	//	log.Info("sleep...", zap.String("channel", wNode.channelName))
+	//	time.Sleep(wNode.sleep)
+	//}
 	// if wNode.begin <= 0 {
 	// 	wNode.once.Do(func() {
 	// 		log.Info("sleep...", zap.String("channel", wNode.channelName))
@@ -157,6 +156,6 @@ func newWriteNode(
 		updater:     updater,
 		metacache:   config.metacache,
 		begin:       300,
-		sleep:       30 * time.Second,
+		sleep:       120 * time.Second,
 	}
 }

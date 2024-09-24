@@ -833,10 +833,19 @@ func (ms *MqTtMsgStream) consumeToTtMsg(consumer mqwrapper.Consumer) {
 
 			if tsMsg.Type() == commonpb.MsgType_Insert {
 				imsg := tsMsg.(*InsertMsg)
-				log.Debug("ConsumeToTtMsg receive insert messages, tmpBuffer",
+				log.Debug("ConsumeToTtMsg receive insert messages",
 					zap.Int64("segmentID", imsg.GetSegmentID()),
 					zap.String("channel", imsg.GetShardName()),
 					zap.Int("numRows", len(imsg.GetRowIDs())),
+					zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+					zap.Uint64("ts", tsMsg.EndTs()),
+					zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
+					zap.Any("position", tsMsg.Position()))
+			}
+			if tsMsg.Type() == commonpb.MsgType_Delete {
+				imsg := tsMsg.(*DeleteMsg)
+				log.Debug("ConsumeToTtMsg receive delete messages",
+					zap.String("channel", imsg.GetShardName()),
 					zap.Int64("msgID", imsg.GetBase().GetMsgID()),
 					zap.Uint64("ts", tsMsg.EndTs()),
 					zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
@@ -848,6 +857,12 @@ func (ms *MqTtMsgStream) consumeToTtMsg(consumer mqwrapper.Consumer) {
 			ms.chanMsgBufMutex.Unlock()
 
 			if tsMsg.Type() == commonpb.MsgType_TimeTick {
+				imsg := tsMsg.(*TimeTickMsg)
+				log.Debug("ConsumeToTtMsg receive tt messages",
+					zap.Int64("msgID", imsg.GetBase().GetMsgID()),
+					zap.Uint64("ts", tsMsg.EndTs()),
+					zap.Time("tsTime", tsoutil.PhysicalTime(tsMsg.EndTs())),
+					zap.Any("position", tsMsg.Position()))
 				ms.chanTtMsgTimeMutex.Lock()
 				ms.chanTtMsgTime[consumer] = tsMsg.(*TimeTickMsg).Base.Timestamp
 				ms.chanTtMsgTimeMutex.Unlock()

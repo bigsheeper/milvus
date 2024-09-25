@@ -47,6 +47,7 @@ type SyncPack struct {
 	startPosition *msgpb.MsgPosition
 	checkpoint    *msgpb.MsgPosition
 	batchSize     int64 // batchSize is the row number of this sync task,not the total num of rows of segemnt
+	dataSource    string
 	isFlush       bool
 	isDrop        bool
 	// metadata

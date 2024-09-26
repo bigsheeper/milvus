@@ -96,10 +96,21 @@ type ImportJob interface {
 
 type importJob struct {
 	*datapb.ImportJob
+
+	startTime          time.Time
+	startExecTime      time.Time
+	preImportDoneTime  time.Time
+	importDoneTime     time.Time
+	buildIndexDoneTime time.Time
 }
 
 func (j *importJob) Clone() ImportJob {
 	return &importJob{
-		ImportJob: proto.Clone(j.ImportJob).(*datapb.ImportJob),
+		ImportJob:          proto.Clone(j.ImportJob).(*datapb.ImportJob),
+		startTime:          j.startTime,
+		startExecTime:      j.startExecTime,
+		preImportDoneTime:  j.preImportDoneTime,
+		importDoneTime:     j.importDoneTime,
+		buildIndexDoneTime: j.buildIndexDoneTime,
 	}
 }

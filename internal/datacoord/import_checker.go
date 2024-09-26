@@ -199,7 +199,13 @@ func (c *importChecker) checkPendingJob(job ImportJob) {
 	err = c.imeta.UpdateJob(job.GetJobID(), UpdateJobState(internalpb.ImportJobState_PreImporting))
 	if err != nil {
 		log.Warn("failed to update job state to PreImporting", zap.Int64("jobID", job.GetJobID()), zap.Error(err))
+		return
 	}
+
+	job.(*importJob).startExecTime = time.Now()
+	pendingDuration := job.(*importJob).startExecTime.Sub(job.(*importJob).startTime)
+	metrics.DataCoordImportLatency.WithLabelValues(metrics.ImportStagePending).Observe(float64(pendingDuration.Milliseconds()))
+	log.Info("import job start to execute", zap.Int64("jobID", job.GetJobID()), zap.Duration("timeCost/pending", pendingDuration))
 }
 
 func (c *importChecker) checkPreImportingJob(job ImportJob) {
@@ -236,7 +242,13 @@ func (c *importChecker) checkPreImportingJob(job ImportJob) {
 	err = c.imeta.UpdateJob(job.GetJobID(), UpdateJobState(internalpb.ImportJobState_Importing), UpdateRequestedDiskSize(requestSize))
 	if err != nil {
 		log.Warn("failed to update job state to Importing", zap.Int64("jobID", job.GetJobID()), zap.Error(err))
+		return
 	}
+
+	job.(*importJob).preImportDoneTime = time.Now()
+	preImportDuration := job.(*importJob).preImportDoneTime.Sub(job.(*importJob).startExecTime)
+	metrics.DataCoordImportLatency.WithLabelValues(metrics.ImportStagePreImport).Observe(float64(preImportDuration.Milliseconds()))
+	log.Info("import job preimport done", zap.Int64("jobID", job.GetJobID()), zap.Duration("timeCost/preimport", preImportDuration))
 }
 
 func (c *importChecker) checkImportingJob(job ImportJob) {
@@ -248,6 +260,11 @@ func (c *importChecker) checkImportingJob(job ImportJob) {
 			return
 		}
 	}
+
+	job.(*importJob).importDoneTime = time.Now()
+	importDuration := job.(*importJob).importDoneTime.Sub(job.(*importJob).preImportDoneTime)
+	metrics.DataCoordImportLatency.WithLabelValues(metrics.ImportStageImport).Observe(float64(importDuration.Milliseconds()))
+	log.Info("import job import done", zap.Int64("jobID", job.GetJobID()), zap.Duration("timeCost/import", importDuration))
 
 	segmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
 		return t.(*importTask).GetSegmentIDs()
@@ -296,7 +313,11 @@ func (c *importChecker) checkImportingJob(job ImportJob) {
 		log.Warn("failed to update job state to Completed", zap.Error(err))
 		return
 	}
-	log.Info("import job completed")
+
+	job.(*importJob).buildIndexDoneTime = time.Now()
+	buildIndexDuration := job.(*importJob).buildIndexDoneTime.Sub(job.(*importJob).importDoneTime)
+	metrics.DataCoordImportLatency.WithLabelValues(metrics.ImportStageBuildIndex).Observe(float64(buildIndexDuration.Milliseconds()))
+	log.Info("import job all done", zap.Int64("jobID", job.GetJobID()), zap.Duration("timeCost/buildIndex", buildIndexDuration))
 }
 
 func (c *importChecker) tryFailingTasks(job ImportJob) {

@@ -124,3 +124,8 @@ func (p *SyncPack) WithLevel(level datapb.SegmentLevel) *SyncPack {
 	p.level = level
 	return p
 }
+
+func (p *SyncPack) WithDataSource(source string) *SyncPack {
+	p.dataSource = source
+	return p
+}

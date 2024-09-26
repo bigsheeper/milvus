@@ -17,6 +17,7 @@
 package datacoord
 
 import (
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -97,11 +98,16 @@ type ImportJob interface {
 type importJob struct {
 	*datapb.ImportJob
 
-	startTime          time.Time
-	startExecTime      time.Time
-	preImportDoneTime  time.Time
-	importDoneTime     time.Time
-	buildIndexDoneTime time.Time
+	startTime              time.Time
+	startTimeOnce          sync.Once
+	startExecTime          time.Time
+	startExecTimeOnce      sync.Once
+	preImportDoneTime      time.Time
+	preImportDoneTimeOnce  sync.Once
+	importDoneTime         time.Time
+	importDoneTimeOnce     sync.Once
+	buildIndexDoneTime     time.Time
+	buildIndexDoneTimeOnce sync.Once
 }
 
 func (j *importJob) Clone() ImportJob {

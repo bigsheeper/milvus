@@ -321,9 +321,14 @@ func (c *importChecker) checkImportingJob(job ImportJob) {
 	job.(*importJob).buildIndexDoneTimeOnce.Do(func() {
 		job.(*importJob).buildIndexDoneTime = time.Now()
 		buildIndexDuration := job.(*importJob).buildIndexDoneTime.Sub(job.(*importJob).importDoneTime)
+		totalDuration := job.(*importJob).buildIndexDoneTime.Sub(job.(*importJob).startTime)
 		metrics.DataCoordImportLatency.WithLabelValues(metrics.ImportStageBuildIndex).Observe(float64(buildIndexDuration.Milliseconds()))
+		metrics.DataCoordImportLatency.WithLabelValues(metrics.TotalLabel).Observe(float64(totalDuration.Milliseconds()))
 		log.Info("import job all done", zap.Int64("jobID", job.GetJobID()),
-			zap.Duration("timeCost/buildIndex", buildIndexDuration), zap.Time("importDoneTime", job.(*importJob).importDoneTime), zap.Time("buildIndexDoneTime", job.(*importJob).buildIndexDoneTime))
+			zap.Duration("timeCost/buildIndex", buildIndexDuration),
+			zap.Duration("timeCost/total", totalDuration),
+			zap.Time("importDoneTime", job.(*importJob).importDoneTime),
+			zap.Time("buildIndexDoneTime", job.(*importJob).buildIndexDoneTime))
 	})
 
 	completeTime := time.Now().Format("2006-01-02T15:04:05Z07:00")

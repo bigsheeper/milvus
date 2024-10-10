@@ -163,6 +163,7 @@ func (t *clusteringCompactionTask) BuildCompactionRequest() (*datapb.CompactionP
 		PreferSegmentRows:  t.GetPreferSegmentRows(),
 		AnalyzeResultPath:  path.Join(t.meta.(*meta).chunkManager.RootPath(), common.AnalyzeStatsPath, metautil.JoinIDPath(t.AnalyzeTaskID, t.AnalyzeVersion)),
 		AnalyzeSegmentIds:  t.GetInputSegments(), // todo: if need
+		PreAllocatedSegmentIDs: t.GetPreAllocatedSegmentIDs(),
 		SlotUsage:          Params.DataCoordCfg.ClusteringCompactionSlotUsage.GetAsInt64(),
 	}
 	log := log.With(zap.Int64("taskID", t.GetTriggerID()), zap.Int64("planID", plan.GetPlanID()))

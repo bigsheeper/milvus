@@ -325,11 +325,16 @@ func (m *CompactionTriggerManager) SubmitClusteringViewToScheduler(ctx context.C
 		Schema:             collection.Schema,
 		ClusteringKeyField: view.(*ClusteringSegmentsView).clusteringKeyField,
 		InputSegments:      lo.Map(view.GetSegmentsView(), func(segmentView *SegmentView, _ int) int64 { return segmentView.ID }),
+		ResultSegments:     []int64{},
 		MaxSegmentRows:     maxSegmentRows,
 		PreferSegmentRows:  preferSegmentRows,
 		TotalRows:          totalRows,
 		AnalyzeTaskID:      taskID + 1,
 		LastStateStartTime: time.Now().Unix(),
+		PreAllocatedSegmentIDs: &datapb.IDRange{
+			Begin: start,
+			End:   end,
+		},
 	}
 	err = m.compactionHandler.enqueueCompaction(task)
 	if err != nil {
@@ -376,9 +381,14 @@ func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Conte
 		Channel:            view.GetGroupLabel().Channel,
 		Schema:             collection.Schema,
 		InputSegments:      lo.Map(view.GetSegmentsView(), func(segmentView *SegmentView, _ int) int64 { return segmentView.ID }),
+		ResultSegments:     []int64{},
 		TotalRows:          totalRows,
 		LastStateStartTime: time.Now().Unix(),
 		MaxSize:            getExpandedSize(expectedSize),
+		PreAllocatedSegmentIDs: &datapb.IDRange{
+			Begin: startID + 1,
+			End:   endID,
+		},
 	}
 	err = m.compactionHandler.enqueueCompaction(task)
 	if err != nil {

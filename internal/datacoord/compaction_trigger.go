@@ -383,9 +383,14 @@ func (t *compactionTrigger) handleGlobalSignal(signal *compactionSignal) error {
 				PartitionID:      group.partitionID,
 				Channel:          group.channelName,
 				InputSegments:    segIDs,
+				ResultSegments:   []int64{},
 				TotalRows:        totalRows,
 				Schema:           coll.Schema,
 				MaxSize:          getExpandedSize(expectedSize),
+				PreAllocatedSegmentIDs: &datapb.IDRange{
+					Begin: startID + 1,
+					End:   endID,
+				},
 			}
 			err := t.compactionHandler.enqueueCompaction(task)
 			if err != nil {
@@ -485,9 +490,14 @@ func (t *compactionTrigger) handleSignal(signal *compactionSignal) {
 			PartitionID:      partitionID,
 			Channel:          channel,
 			InputSegments:    segmentIDS,
+			ResultSegments:   []int64{},
 			TotalRows:        totalRows,
 			Schema:           coll.Schema,
 			MaxSize:          getExpandedSize(expectedSize),
+			PreAllocatedSegmentIDs: &datapb.IDRange{
+				Begin: startID + 1,
+				End:   endID,
+			},
 		}); err != nil {
 			log.Warn("failed to execute compaction task",
 				zap.Int64("collection", collectionID),

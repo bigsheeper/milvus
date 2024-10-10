@@ -365,6 +365,7 @@ func (t *mixCompactionTask) BuildCompactionRequest() (*datapb.CompactionPlan, er
 		CollectionTtl:    t.GetCollectionTtl(),
 		TotalRows:        t.GetTotalRows(),
 		Schema:           t.GetSchema(),
+		PreAllocatedSegmentIDs: t.GetPreAllocatedSegmentIDs(),
 		SlotUsage:        Params.DataCoordCfg.MixCompactionSlotUsage.GetAsInt64(),
 		MaxSize:          t.GetMaxSize(),
 	}

@@ -102,7 +102,7 @@ func (b *BinlogIoImpl) Upload(ctx context.Context, kvs map[string][]byte) error 
 				}
 				return err
 			})
-			log.Debug("BinlogIO upload success", zap.String("paths", innerK), zap.Int64("cost", time.Since(start).Milliseconds()), zap.Error(err))
+			log.Debug("BinlogIO upload success", zap.String("paths", innerK), zap.Duration("cost", time.Since(start)), zap.Error(err))
 			return struct{}{}, err
 		})
 		futures = append(futures, future)

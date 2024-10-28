@@ -517,6 +517,6 @@ func newBinlogWriter(collID, partID, segID int64, schema *schemapb.CollectionSch
 	for _, w := range fieldWriters {
 		closers = append(closers, w.Finalize)
 	}
-	writer, err = storage.NewBinlogSerializeWriter(schema, partID, segID, fieldWriters, 100)
+	writer, err = storage.NewBinlogSerializeWriter(schema, partID, segID, fieldWriters, 10000)
 	return
 }

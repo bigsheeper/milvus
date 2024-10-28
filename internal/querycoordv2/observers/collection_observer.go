@@ -175,7 +175,7 @@ func (ob *CollectionObserver) observeTimeout() {
 		case querypb.LoadType_LoadCollection:
 			if collection.GetStatus() == querypb.LoadStatus_Loading &&
 				time.Now().After(collection.UpdatedAt.Add(Params.QueryCoordCfg.LoadTimeoutSeconds.GetAsDuration(time.Second))) {
-				log.Info("load collection timeout, cancel it",
+				log.Warn("load collection timeout, cancel it",
 					zap.Int64("collectionID", collection.GetCollectionID()),
 					zap.Duration("loadTime", time.Since(collection.CreatedAt)))
 				ob.meta.CollectionManager.RemoveCollection(collection.GetCollectionID())

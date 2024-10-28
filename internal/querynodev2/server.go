@@ -402,7 +402,7 @@ func (node *QueryNode) Start() error {
 // Stop mainly stop QueryNode's query service, historical loop and streaming loop.
 func (node *QueryNode) Stop() error {
 	node.stopOnce.Do(func() {
-		log.Info("Query node stop...")
+		log.Info("Query node stop...", zap.Int64("nodeID", node.GetNodeID()))
 		err := node.session.GoingStop()
 		if err != nil {
 			log.Warn("session fail to go stopping state", zap.Error(err))

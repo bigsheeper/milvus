@@ -188,15 +188,19 @@ func (st *statsTask) sortSegment(ctx context.Context) ([]*datapb.FieldBinlog, er
 	})
 	sortTimeCost += time.Since(sortStart)
 
+	writeCost := time.Duration(0)
+	debug1 := time.Now()
 	for _, v := range values {
+		writeStart := time.Now()
 		err := writer.Write(v)
 		if err != nil {
 			log.Warn("write value wrong, failed to writer row", zap.Int64("taskID", st.req.GetTaskID()), zap.Error(err))
 			return nil, err
 		}
+		writeCost += time.Since(writeStart)
 		unFlushedRowCount++
 
-		if (unFlushedRowCount+1)%100 == 0 && writer.FlushAndIsFullWithBinlogMaxSize(st.req.GetBinlogMaxSize()) {
+		if (unFlushedRowCount+1)%10000 == 0 && writer.FlushAndIsFullWithBinlogMaxSize(st.req.GetBinlogMaxSize()) {
 			serWriteStart := time.Now()
 			binlogNum, kvs, partialBinlogs, err := serializeWrite(ctx, st.req.GetStartLogID()+st.logIDOffset, writer)
 			if err != nil {
@@ -225,6 +229,8 @@ func (st *statsTask) sortSegment(ctx context.Context) ([]*datapb.FieldBinlog, er
 			}
 		}
 	}
+
+	log.Info("sheep debug", zap.Any("len", len(values)), zap.Duration("processCost", time.Since(debug1)))
 
 	if !writer.FlushAndIsEmpty() {
 		serWriteStart := time.Now()
@@ -305,6 +311,7 @@ func (st *statsTask) sortSegment(ctx context.Context) ([]*datapb.FieldBinlog, er
 		zap.Duration("upload binlogs elapse", uploadTimeCost),
 		zap.Duration("sort elapse", sortTimeCost),
 		zap.Duration("serWrite elapse", serWriteTimeCost),
+		zap.Duration("writeCost elapse", writeCost),
 		zap.Duration("total elapse", totalElapse))
 	return insertLogs, nil
 }

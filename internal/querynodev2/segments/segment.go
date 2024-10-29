@@ -594,7 +594,7 @@ func (s *LocalSegment) Retrieve(ctx context.Context, plan *RetrievePlan) (*segco
 	defer future.Release()
 	result, err := future.BlockAndLeakyGet()
 	if err != nil {
-		log.Warn("Retrieve failed")
+		log.Warn("Retrieve failed", zap.Error(err))
 		return nil, err
 	}
 	defer C.DeleteRetrieveResult((*C.CRetrieveResult)(result))

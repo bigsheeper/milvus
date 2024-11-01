@@ -21,13 +21,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
-	"sort"
-	"strconv"
-
 	"github.com/apache/arrow/go/v12/arrow"
 	"github.com/apache/arrow/go/v12/arrow/array"
 	"github.com/apache/arrow/go/v12/arrow/memory"
+	"io"
+	"sort"
+	"strconv"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/pkg/common"
@@ -369,6 +368,10 @@ func NewBinlogSerializeWriter(schema *schemapb.CollectionSchema, partitionID, se
 	}
 	compositeRecordWriter := newCompositeRecordWriter(rws)
 	return NewSerializeRecordWriter[*Value](compositeRecordWriter, func(v []*Value) (Record, uint64, error) {
+		//start := time.Now()
+		//defer func() {
+		//	log.Info("sheep test ---", zap.Int("len", len(v)), zap.Duration("dur", time.Since(start)))
+		//}()
 		builders := make(map[FieldID]array.Builder, len(schema.Fields))
 		types := make(map[FieldID]schemapb.DataType, len(schema.Fields))
 		for _, f := range schema.Fields {
@@ -377,7 +380,10 @@ func NewBinlogSerializeWriter(schema *schemapb.CollectionSchema, partitionID, se
 			types[f.FieldID] = f.DataType
 		}
 
+		//log.Info("sheep test ddd", zap.Any("schema", schema), zap.Int("len", len(v)), zap.Duration("dur", time.Since(start)))
+
 		var memorySize uint64
+		//var fuck time.Time
 		for _, vv := range v {
 			m := vv.Value.(map[FieldID]any)
 
@@ -386,14 +392,23 @@ func NewBinlogSerializeWriter(schema *schemapb.CollectionSchema, partitionID, se
 				if !ok {
 					panic("unknown type")
 				}
+				//if i == 0 && fid == 102 {
+				//	fuck = time.Now()
+				//}
 				ok = typeEntry.serialize(builders[fid], e)
 				if !ok {
 					return nil, 0, merr.WrapErrServiceInternal(fmt.Sprintf("serialize error on type %s", types[fid]))
 				}
+				//if i == 0 && fid == 102 {
+				//	log.Info("sheep test ???", zap.Duration("dur", time.Since(fuck)), zap.Int("len", len(m)), zap.Any("m", m))
+				//}
 				eventWriters[fid].memorySize += int(typeEntry.sizeof(e))
 				memorySize += typeEntry.sizeof(e)
 			}
 		}
+
+		//log.Info("sheep test aaa", zap.Int("len", len(v)), zap.Duration("dur", time.Since(start)))
+
 		arrays := make([]arrow.Array, len(types))
 		fields := make([]arrow.Field, len(types))
 		field2Col := make(map[FieldID]int, len(types))
@@ -409,6 +424,8 @@ func NewBinlogSerializeWriter(schema *schemapb.CollectionSchema, partitionID, se
 			field2Col[fid] = i
 			i++
 		}
+
+		//log.Info("sheep test bbb", zap.Int("len", len(v)), zap.Duration("dur", time.Since(start)))
 		return newSimpleArrowRecord(array.NewRecord(arrow.NewSchema(fields, nil), arrays, int64(len(v))), types, field2Col), memorySize, nil
 	}, batchSize), nil
 }

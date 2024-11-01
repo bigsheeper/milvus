@@ -19,10 +19,19 @@ package indexnode
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -37,6 +46,78 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
+
+func Benchmark_SegmentWriter(b *testing.B) {
+	log.SetLevel(zapcore.InfoLevel)
+	paramtable.Init()
+
+	const (
+		dim     = 128
+		numRows = 1000000
+	)
+
+	var (
+		rId  = &schemapb.FieldSchema{FieldID: common.RowIDField, Name: common.RowIDFieldName, DataType: schemapb.DataType_Int64}
+		ts   = &schemapb.FieldSchema{FieldID: common.TimeStampField, Name: common.TimeStampFieldName, DataType: schemapb.DataType_Int64}
+		pk   = &schemapb.FieldSchema{FieldID: 100, Name: "pk", IsPrimaryKey: true, DataType: schemapb.DataType_VarChar, TypeParams: []*commonpb.KeyValuePair{{Key: common.MaxLengthKey, Value: "100"}}}
+		f    = &schemapb.FieldSchema{FieldID: 101, Name: "random", DataType: schemapb.DataType_Double}
+		fVec = &schemapb.FieldSchema{FieldID: 102, Name: "vec", DataType: schemapb.DataType_FloatVector, TypeParams: []*commonpb.KeyValuePair{{Key: common.DimKey, Value: strconv.Itoa(dim)}}}
+	)
+	schema := &schemapb.CollectionSchema{Name: "test-aaa", Fields: []*schemapb.FieldSchema{rId, ts, pk, f, fVec}}
+
+	// prepare data values
+	start := time.Now()
+	vec := make([]float32, dim)
+	for j := 0; j < dim; j++ {
+		vec[j] = rand.Float32()
+	}
+	values := make([]*storage.Value, numRows)
+	for i := 0; i < numRows; i++ {
+		value := &storage.Value{}
+		value.Value = make(map[int64]interface{}, len(schema.GetFields()))
+		m := value.Value.(map[int64]interface{})
+		for _, field := range schema.GetFields() {
+			switch field.GetDataType() {
+			case schemapb.DataType_Int64:
+				m[field.GetFieldID()] = int64(i)
+			case schemapb.DataType_VarChar:
+				k := fmt.Sprintf("test_pk_%d", i)
+				m[field.GetFieldID()] = k
+				value.PK = &storage.VarCharPrimaryKey{
+					Value: k,
+				}
+			case schemapb.DataType_Double:
+				m[field.GetFieldID()] = float64(i)
+			case schemapb.DataType_FloatVector:
+				m[field.GetFieldID()] = vec
+			}
+		}
+		value.ID = int64(i)
+		value.Timestamp = int64(0)
+		value.IsDeleted = false
+		value.Value = m
+		values[i] = value
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].PK.LT(values[j].PK)
+	})
+	log.Info("prepare data done", zap.Int("len", len(values)), zap.Duration("dur", time.Since(start)))
+
+	writer, err := compaction.NewSegmentWriter(schema, numRows, 100, 200, 300, nil)
+	assert.NoError(b, err)
+
+	b.N = 10
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		start = time.Now()
+		for _, v := range values {
+			_ = writer.Write(v)
+			assert.NoError(b, err)
+		}
+		log.Info("write done", zap.Int("len", len(values)), zap.Duration("dur", time.Since(start)))
+	}
+	b.StopTimer()
+}
 
 func TestTaskStatsSuite(t *testing.T) {
 	suite.Run(t, new(TaskStatsSuite))

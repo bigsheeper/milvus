@@ -778,7 +778,7 @@ def gen_default_collection_schema(description=ct.default_desc, primary_field=ct.
 def gen_all_datatype_collection_schema(description=ct.default_desc, primary_field=ct.default_int64_field_name,
                                        auto_id=False, dim=ct.default_dim, enable_dynamic_field=True, **kwargs):
     tokenizer_params = {
-        "tokenizer": "default",
+        "tokenizer": "standard",
     }
     fields = [
         gen_int64_field(),
@@ -3021,6 +3021,8 @@ def get_activate_func_from_metric_type(metric_type):
         activate_function = lambda x: (1 + x) * 0.5
     elif metric_type == "IP":
         activate_function = lambda x: 0.5 + math.atan(x)/ math.pi
+    elif metric_type == "BM25":
+        activate_function = lambda x: 2 * math.atan(x) / math.pi
     else:
         activate_function  = lambda x: 1.0 - 2*math.atan(x) / math.pi
     return activate_function

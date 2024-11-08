@@ -6,14 +6,13 @@ require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/cockroachdb/errors v1.9.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/milvus-io/milvus-proto/go-api/v2 v2.3.4-0.20240815123953-6dab6fcd6454
+	github.com/milvus-io/milvus-proto/go-api/v2 v2.3.4-0.20241106120618-7a378d4ddca5
 	github.com/milvus-io/milvus/pkg v0.0.2-0.20240801085213-a642a26ed4c6
 	github.com/quasilyte/go-ruleguard/dsl v0.3.22
 	github.com/samber/lo v1.27.0
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/gjson v1.17.1
 	go.uber.org/atomic v1.10.0
-	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 )
@@ -109,6 +108,7 @@ require (
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.20.0 // indirect
 	golang.org/x/crypto v0.25.0 // indirect
+	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
 	golang.org/x/net v0.27.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.22.0 // indirect

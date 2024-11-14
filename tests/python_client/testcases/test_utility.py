@@ -338,7 +338,7 @@ class TestUtilityParams(TestcaseBase):
         self.utility_wrap.wait_for_loading_complete(
             collection_w.name, partition_names=[ct.default_tag],
             check_task=CheckTasks.err_res,
-            check_items={ct.err_code: 200, ct.err_msg: f'partition={ct.default_tag}: partition not found'})
+            check_items={ct.err_code: 200, ct.err_msg: f'partition not found[partition={ct.default_tag}]'})
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_drop_collection_not_existed(self):
@@ -491,10 +491,11 @@ class TestUtilityParams(TestcaseBase):
         collection_w, vectors, _, insert_ids, _ = self.init_collection_general(prefix)
         old_collection_name = collection_w.name
         new_collection_name = get_invalid_value_collection_name
-        error = {"err_code": 1100, "err_msg": "Invalid collection name: %s. the first character of a collection name mu"
-                                              "st be an underscore or letter: invalid parameter" % new_collection_name}
+        error = {"err_code": 1100, "err_msg": "Invalid collection name"}
         if new_collection_name in [None, ""]:
             error = {"err_code": 999, "err_msg": f"`collection_name` value {new_collection_name} is illegal"}
+        if new_collection_name == " ":
+            error = {"err_code": 999, "err_msg": "collection name should not be empty"}
         self.utility_wrap.rename_collection(old_collection_name, new_collection_name,
                                             check_task=CheckTasks.err_res, check_items=error)
 
@@ -547,8 +548,7 @@ class TestUtilityParams(TestcaseBase):
         self.utility_wrap.rename_collection(old_collection_name, alias,
                                             check_task=CheckTasks.err_res,
                                             check_items={"err_code": 65535,
-                                                         "err_msg": "duplicated new collection name default:{} with "
-                                                                    "other collection name or alias".format(alias)})
+                                                         "err_msg": f"cannot rename collection to an existing alias: {alias}"})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_rename_collection_using_alias(self):
@@ -747,7 +747,7 @@ class TestUtilityBase(TestcaseBase):
         cw = self.init_collection_wrap(name=c_name)
         data = cf.gen_default_list_data(nb)
         cw.insert(data=data)
-        error = {ct.err_code: 700, ct.err_msg: f"{c_name}: index not found"}
+        error = {ct.err_code: 999, ct.err_msg: f"index not found[collection={c_name}]"}
         self.utility_wrap.index_building_progress(c_name, check_task=CheckTasks.err_res, check_items=error)
 
     @pytest.mark.tags(CaseLabel.L1)
@@ -1621,7 +1621,7 @@ class TestUtilityAdvanced(TestcaseBase):
         df = cf.gen_default_dataframe_data(nb)
         collection_w.insert(df)
         # get sealed segments
-        collection_w.num_entities
+        collection_w.flush()
         # get growing segments
         collection_w.insert(df)
         collection_w.load()
@@ -1635,8 +1635,11 @@ class TestUtilityAdvanced(TestcaseBase):
         src_node_id = all_querynodes[0]
         dst_node_ids = all_querynodes[1:]
         sealed_segment_ids = segment_distribution[src_node_id]["sealed"]
-        # add a segment id which is not exist
-        sealed_segment_ids.append(max(segment_distribution[src_node_id]["sealed"]) + 1)
+        if len(segment_distribution[src_node_id]["sealed"]) == 0:
+            sealed_segment_ids = [0] # add a segment id which is not exist
+        else:
+            # add a segment id which is not exist
+            sealed_segment_ids.append(max(segment_distribution[src_node_id]["sealed"]) + 1)
         # load balance
         self.utility_wrap.load_balance(collection_w.name, src_node_id, dst_node_ids, sealed_segment_ids,
                                        check_task=CheckTasks.err_res,
@@ -3882,7 +3885,7 @@ class TestUtilityRBAC(TestcaseBase):
         self.database_wrap.using_database(ct.default_db)
         self.utility_wrap.describe_resource_group(ct.default_resource_group_name,
                                                   check_task=CheckTasks.check_permission_deny)
-        
+
         # set using db to db_name and verify grants
         self.database_wrap.using_database(db_name)
         self.utility_wrap.role_list_grants()

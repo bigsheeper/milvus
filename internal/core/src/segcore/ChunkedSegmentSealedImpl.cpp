@@ -1516,13 +1516,13 @@ ChunkedSegmentSealedImpl::CreateTextIndex(FieldId field_id) {
         index = std::make_unique<index::TextMatchIndex>(
             std::numeric_limits<int64_t>::max(),
             "milvus_tokenizer",
-            field_meta.get_tokenizer_params().c_str());
+            field_meta.get_analyzer_params().c_str());
     } else {
         // build text index using mmap.
         index = std::make_unique<index::TextMatchIndex>(
             cfg.GetMmapPath(),
             "milvus_tokenizer",
-            field_meta.get_tokenizer_params().c_str());
+            field_meta.get_analyzer_params().c_str());
     }
 
     {
@@ -1538,7 +1538,8 @@ ChunkedSegmentSealedImpl::CreateTextIndex(FieldId field_id) {
                 field_id.get());
             auto n = column->NumRows();
             for (size_t i = 0; i < n; i++) {
-                index->AddText(std::string(column->RawAt(i)), i);
+                index->AddText(
+                    std::string(column->RawAt(i)), column->IsValid(i), i);
             }
         } else {  // fetch raw data from index.
             auto field_index_iter = scalar_indexings_.find(field_id);
@@ -1557,9 +1558,9 @@ ChunkedSegmentSealedImpl::CreateTextIndex(FieldId field_id) {
             for (size_t i = 0; i < n; i++) {
                 auto raw = impl->Reverse_Lookup(i);
                 if (!raw.has_value()) {
-                    continue;
+                    index->AddNull(i);
                 }
-                index->AddText(raw.value(), i);
+                index->AddText(raw.value(), true, i);
             }
         }
     }
@@ -1572,7 +1573,7 @@ ChunkedSegmentSealedImpl::CreateTextIndex(FieldId field_id) {
     index->Reload();
 
     index->RegisterTokenizer("milvus_tokenizer",
-                             field_meta.get_tokenizer_params().c_str());
+                             field_meta.get_analyzer_params().c_str());
 
     text_indexes_[field_id] = std::move(index);
 }
@@ -1583,7 +1584,7 @@ ChunkedSegmentSealedImpl::LoadTextIndex(
     std::unique_lock lck(mutex_);
     const auto& field_meta = schema_->operator[](field_id);
     index->RegisterTokenizer("milvus_tokenizer",
-                             field_meta.get_tokenizer_params().c_str());
+                             field_meta.get_analyzer_params().c_str());
     text_indexes_[field_id] = std::move(index);
 }
 
@@ -2105,7 +2106,7 @@ ChunkedSegmentSealedImpl::generate_interim_index(const FieldId field_id) {
             field_binlog_config->GetIndexType(),
             index_metric,
             knowhere::Version::GetCurrentVersion().VersionNumber());
-        auto num_chunk = fields_.at(field_id)->num_chunks();
+        auto num_chunk = vec_data->num_chunks();
         for (int i = 0; i < num_chunk; ++i) {
             auto dataset = knowhere::GenDataSet(
                 vec_data->chunk_row_nums(i), dim, vec_data->Data(i));

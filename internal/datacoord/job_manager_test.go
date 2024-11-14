@@ -58,7 +58,7 @@ func (s *jobManagerSuite) TestJobManager_triggerStatsTaskLoop() {
 									Key: "enable_match", Value: "true",
 								},
 								{
-									Key: "enable_tokenizer", Value: "true",
+									Key: "enable_analyzer", Value: "true",
 								},
 							},
 						},
@@ -104,7 +104,7 @@ func (s *jobManagerSuite) TestJobManager_triggerStatsTaskLoop() {
 			allocator: alloc,
 			tasks:     make(map[int64]Task),
 			meta:      mt,
-			taskStats: expirable.NewLRU[UniqueID, Task](1024, nil, time.Minute*5),
+			taskStats: expirable.NewLRU[UniqueID, Task](64, nil, time.Minute*5),
 		},
 		allocator: alloc,
 	}

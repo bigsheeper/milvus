@@ -18,6 +18,7 @@ package msgdispatcher
 
 import (
 	"context"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -26,8 +27,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/mq/common"
 	"github.com/milvus-io/milvus/pkg/mq/msgstream"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/lock"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
 type (
@@ -47,18 +46,17 @@ var _ Client = (*client)(nil)
 type client struct {
 	role       string
 	nodeID     int64
-	managers   *typeutil.ConcurrentMap[string, DispatcherManager]
-	managerMut *lock.KeyLock[string]
+	managers   map[string]DispatcherManager
+	managerMut sync.Mutex
 	factory    msgstream.Factory
 }
 
 func NewClient(factory msgstream.Factory, role string, nodeID int64) Client {
 	return &client{
-		role:       role,
-		nodeID:     nodeID,
-		factory:    factory,
-		managers:   typeutil.NewConcurrentMap[string, DispatcherManager](),
-		managerMut: lock.NewKeyLock[string](),
+		role:     role,
+		nodeID:   nodeID,
+		factory:  factory,
+		managers: make(map[string]DispatcherManager),
 	}
 }
 
@@ -66,20 +64,20 @@ func (c *client) Register(ctx context.Context, vchannel string, pos *Pos, subPos
 	log := log.With(zap.String("role", c.role),
 		zap.Int64("nodeID", c.nodeID), zap.String("vchannel", vchannel))
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
-	c.managerMut.Lock(pchannel)
-	defer c.managerMut.Unlock(pchannel)
+	c.managerMut.Lock()
+	defer c.managerMut.Unlock()
 	var manager DispatcherManager
-	manager, ok := c.managers.Get(pchannel)
+	manager, ok := c.managers[pchannel]
 	if !ok {
 		manager = NewDispatcherManager(pchannel, c.role, c.nodeID, c.factory)
-		c.managers.Insert(pchannel, manager)
+		c.managers[pchannel] = manager
 		go manager.Run()
 	}
 	ch, err := manager.Add(ctx, vchannel, pos, subPos)
 	if err != nil {
 		if manager.Num() == 0 {
 			manager.Close()
-			c.managers.Remove(pchannel)
+			delete(c.managers, pchannel)
 		}
 		log.Error("register failed", zap.Error(err))
 		return nil, err
@@ -90,13 +88,13 @@ func (c *client) Register(ctx context.Context, vchannel string, pos *Pos, subPos
 
 func (c *client) Deregister(vchannel string) {
 	pchannel := funcutil.ToPhysicalChannel(vchannel)
-	c.managerMut.Lock(pchannel)
-	defer c.managerMut.Unlock(pchannel)
-	if manager, ok := c.managers.Get(pchannel); ok {
+	c.managerMut.Lock()
+	defer c.managerMut.Unlock()
+	if manager, ok := c.managers[pchannel]; ok {
 		manager.Remove(vchannel)
 		if manager.Num() == 0 {
 			manager.Close()
-			c.managers.Remove(pchannel)
+			delete(c.managers, pchannel)
 		}
 		log.Info("deregister done", zap.String("role", c.role),
 			zap.Int64("nodeID", c.nodeID), zap.String("vchannel", vchannel))
@@ -106,14 +104,12 @@ func (c *client) Deregister(vchannel string) {
 func (c *client) Close() {
 	log := log.With(zap.String("role", c.role),
 		zap.Int64("nodeID", c.nodeID))
-
-	c.managers.Range(func(pchannel string, manager DispatcherManager) bool {
-		c.managerMut.Lock(pchannel)
-		defer c.managerMut.Unlock(pchannel)
+	c.managerMut.Lock()
+	defer c.managerMut.Unlock()
+	for pchannel, manager := range c.managers {
 		log.Info("close manager", zap.String("channel", pchannel))
-		c.managers.Remove(pchannel)
+		delete(c.managers, pchannel)
 		manager.Close()
-		return true
-	})
+	}
 	log.Info("dispatcher client closed")
 }

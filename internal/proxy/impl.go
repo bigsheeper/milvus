@@ -6600,6 +6600,14 @@ func (node *Proxy) RegisterRestRouter(router gin.IRouter) {
 	router.GET(http.DNSyncTasksPath, getDataComponentMetrics(node, metricsinfo.SyncTasks))
 	router.GET(http.DNSegmentsPath, getDataComponentMetrics(node, metricsinfo.DataSegments))
 	router.GET(http.DNChannelsPath, getDataComponentMetrics(node, metricsinfo.DataChannels))
+
+	// Database requests
+	router.GET(http.DatabaseListPath, listDatabase(node))
+	router.GET(http.DatabaseDescPath, describeDatabase(node))
+
+	// Collection requests
+	router.GET(http.CollectionListPath, listCollection(node.rootCoord, node.queryCoord))
+	router.GET(http.CollectionDescPath, describeCollection(node, node.rootCoord))
 }
 
 func (node *Proxy) CreatePrivilegeGroup(ctx context.Context, req *milvuspb.CreatePrivilegeGroupRequest) (*commonpb.Status, error) {

@@ -31,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/json"
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/metastore/kv/querycoord"
@@ -45,6 +46,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/kv"
 	"github.com/milvus-io/milvus/pkg/util/etcd"
 	"github.com/milvus-io/milvus/pkg/util/merr"
+	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/testutils"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -476,6 +478,7 @@ func (suite *TaskSuite) TestLoadSegmentTask() {
 		ID:           targetNode,
 		CollectionID: suite.collection,
 		Segments:     map[int64]*querypb.SegmentDist{},
+		Channel:      channel.ChannelName,
 	}
 	for _, segment := range suite.loadSegments {
 		view.Segments[segment] = &querypb.SegmentDist{NodeID: targetNode, Version: 0}
@@ -575,6 +578,7 @@ func (suite *TaskSuite) TestLoadSegmentTaskNotIndex() {
 		ID:           targetNode,
 		CollectionID: suite.collection,
 		Segments:     map[int64]*querypb.SegmentDist{},
+		Channel:      channel.ChannelName,
 	}
 	for _, segment := range suite.loadSegments {
 		view.Segments[segment] = &querypb.SegmentDist{NodeID: targetNode, Version: 0}
@@ -1139,6 +1143,7 @@ func (suite *TaskSuite) TestSegmentTaskStale() {
 		ID:           targetNode,
 		CollectionID: suite.collection,
 		Segments:     map[int64]*querypb.SegmentDist{},
+		Channel:      channel.ChannelName,
 	}
 	for _, segment := range suite.loadSegments[1:] {
 		view.Segments[segment] = &querypb.SegmentDist{NodeID: targetNode, Version: 0}
@@ -1837,8 +1842,11 @@ func (suite *TaskSuite) TestGetTasksJSON() {
 	suite.NoError(err)
 
 	actualJSON := scheduler.GetTasksJSON()
-	suite.Contains(actualJSON, "SegmentTask")
-	suite.Contains(actualJSON, "ChannelTask")
+
+	var tasks []*metricsinfo.QueryCoordTask
+	err = json.Unmarshal([]byte(actualJSON), &tasks)
+	suite.NoError(err)
+	suite.Equal(2, len(tasks))
 }
 
 func TestTask(t *testing.T) {

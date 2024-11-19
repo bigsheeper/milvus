@@ -80,6 +80,7 @@ type ComponentParam struct {
 	HTTPCfg        httpConfig
 	LogCfg         logConfig
 	RoleCfg        roleConfig
+	RbacConfig     rbacConfig
 	StreamingCfg   streamingConfig
 
 	RootCoordGrpcServerCfg     GrpcServerConfig
@@ -134,6 +135,7 @@ func (p *ComponentParam) init(bt *BaseTable) {
 	p.HTTPCfg.init(bt)
 	p.LogCfg.init(bt)
 	p.RoleCfg.init(bt)
+	p.RbacConfig.init(bt)
 	p.GpuConfig.init(bt)
 	p.KnowhereConfig.init(bt)
 
@@ -1241,6 +1243,8 @@ type proxyConfig struct {
 	MaxUserNum                   ParamItem `refreshable:"true"`
 	MaxRoleNum                   ParamItem `refreshable:"true"`
 	MaxTaskNum                   ParamItem `refreshable:"false"`
+	DDLConcurrency               ParamItem `refreshable:"true"`
+	DCLConcurrency               ParamItem `refreshable:"true"`
 	ShardLeaderCacheInterval     ParamItem `refreshable:"false"`
 	ReplicaSelectionPolicy       ParamItem `refreshable:"false"`
 	CheckQueryNodeHealthInterval ParamItem `refreshable:"false"`
@@ -1386,6 +1390,24 @@ func (p *proxyConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.MaxTaskNum.Init(base.mgr)
+
+	p.DDLConcurrency = ParamItem{
+		Key:          "proxy.ddlConcurrency",
+		Version:      "2.5.0",
+		DefaultValue: "16",
+		Doc:          "The concurrent execution number of DDL at proxy.",
+		Export:       true,
+	}
+	p.DDLConcurrency.Init(base.mgr)
+
+	p.DCLConcurrency = ParamItem{
+		Key:          "proxy.dclConcurrency",
+		Version:      "2.5.0",
+		DefaultValue: "16",
+		Doc:          "The concurrent execution number of DCL at proxy.",
+		Export:       true,
+	}
+	p.DCLConcurrency.Init(base.mgr)
 
 	p.GinLogging = ParamItem{
 		Key:          "proxy.ginLogging",
@@ -2997,7 +3019,7 @@ Max read concurrency must greater than or equal to 1, and less than or equal to 
 		Key:          "queryNode.levelZeroForwardPolicy",
 		Version:      "2.4.12",
 		Doc:          "delegator level zero deletion forward policy, possible option[\"FilterByBF\", \"RemoteLoad\"]",
-		DefaultValue: "FilterByBF",
+		DefaultValue: "RemoteLoad",
 		Export:       true,
 	}
 	p.LevelZeroForwardPolicy.Init(base.mgr)
@@ -3173,12 +3195,13 @@ user-task-polling:
 // --- datacoord ---
 type dataCoordConfig struct {
 	// --- CHANNEL ---
-	WatchTimeoutInterval         ParamItem `refreshable:"false"`
-	LegacyVersionWithoutRPCWatch ParamItem `refreshable:"false"`
-	ChannelBalanceSilentDuration ParamItem `refreshable:"true"`
-	ChannelBalanceInterval       ParamItem `refreshable:"true"`
-	ChannelCheckInterval         ParamItem `refreshable:"true"`
-	ChannelOperationRPCTimeout   ParamItem `refreshable:"true"`
+	WatchTimeoutInterval             ParamItem `refreshable:"false"`
+	LegacyVersionWithoutRPCWatch     ParamItem `refreshable:"false"`
+	ChannelBalanceSilentDuration     ParamItem `refreshable:"true"`
+	ChannelBalanceInterval           ParamItem `refreshable:"true"`
+	ChannelCheckInterval             ParamItem `refreshable:"true"`
+	ChannelOperationRPCTimeout       ParamItem `refreshable:"true"`
+	MaxConcurrentChannelTaskNumPerDN ParamItem `refreshable:"true"`
 
 	// --- SEGMENTS ---
 	SegmentMaxSize                 ParamItem `refreshable:"false"`
@@ -3347,6 +3370,15 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.ChannelOperationRPCTimeout.Init(base.mgr)
+
+	p.MaxConcurrentChannelTaskNumPerDN = ParamItem{
+		Key:          "dataCoord.channel.maxConcurrentChannelTaskNumPerDN",
+		Version:      "2.5",
+		DefaultValue: "32",
+		Doc:          "The maximum concurrency for each DataNode executing channel tasks (watch, release).",
+		Export:       true,
+	}
+	p.MaxConcurrentChannelTaskNumPerDN.Init(base.mgr)
 
 	p.SegmentMaxSize = ParamItem{
 		Key:          "dataCoord.segment.maxSize",

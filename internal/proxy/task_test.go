@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -37,6 +36,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/allocator"
+	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/mocks"
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
@@ -2369,7 +2369,7 @@ func Test_checkTrain(t *testing.T) {
 		assert.Error(t, checkTrain(f, m))
 	})
 
-	t.Run("invalid params", func(t *testing.T) {
+	t.Run("nlist test", func(t *testing.T) {
 		f := &schemapb.FieldSchema{
 			DataType: schemapb.DataType_FloatVector,
 			IndexParams: []*commonpb.KeyValuePair{
@@ -2383,7 +2383,7 @@ func Test_checkTrain(t *testing.T) {
 			common.IndexTypeKey:  "IVF_FLAT",
 			common.MetricTypeKey: "L2",
 		}
-		assert.Error(t, checkTrain(f, m))
+		assert.NoError(t, checkTrain(f, m))
 	})
 }
 

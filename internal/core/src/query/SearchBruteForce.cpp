@@ -42,7 +42,8 @@ CheckBruteForceSearchParam(const FieldMeta& field,
 }
 
 knowhere::Json
-PrepareBFSearchParams(const SearchInfo& search_info) {
+PrepareBFSearchParams(const SearchInfo& search_info,
+                      const std::map<std::string, std::string>& index_info) {
     knowhere::Json search_cfg = search_info.search_params_;
 
     search_cfg[knowhere::meta::METRIC_TYPE] = search_info.metric_type_;
@@ -59,6 +60,14 @@ PrepareBFSearchParams(const SearchInfo& search_info) {
             search_info.trace_ctx_.traceFlags;
     }
 
+    if (search_info.metric_type_ == knowhere::metric::BM25) {
+        search_cfg[knowhere::meta::BM25_AVGDL] =
+            search_info.search_params_[knowhere::meta::BM25_AVGDL];
+        search_cfg[knowhere::meta::BM25_K1] =
+            std::stof(index_info.at(knowhere::meta::BM25_K1));
+        search_cfg[knowhere::meta::BM25_B] =
+            std::stof(index_info.at(knowhere::meta::BM25_B));
+    }
     return search_cfg;
 }
 
@@ -67,6 +76,7 @@ BruteForceSearch(const dataset::SearchDataset& dataset,
                  const void* chunk_data_raw,
                  int64_t chunk_rows,
                  const SearchInfo& search_info,
+                 const std::map<std::string, std::string>& index_info,
                  const BitsetView& bitset,
                  DataType data_type) {
     SubSearchResult sub_result(dataset.num_queries,
@@ -83,12 +93,11 @@ BruteForceSearch(const dataset::SearchDataset& dataset,
         base_dataset->SetIsSparse(true);
         query_dataset->SetIsSparse(true);
     }
-    auto search_cfg = PrepareBFSearchParams(search_info);
+    auto search_cfg = PrepareBFSearchParams(search_info, index_info);
     // `range_search_k` is only used as one of the conditions for iterator early termination.
     // not gurantee to return exactly `range_search_k` results, which may be more or less.
     // set it to -1 will return all results in the range.
     search_cfg[knowhere::meta::RANGE_SEARCH_K] = topk;
-
     sub_result.mutable_seg_offsets().resize(nq * topk);
     sub_result.mutable_distances().resize(nq * topk);
 
@@ -197,6 +206,7 @@ BruteForceSearchIterators(const dataset::SearchDataset& dataset,
                           const void* chunk_data_raw,
                           int64_t chunk_rows,
                           const SearchInfo& search_info,
+                          const std::map<std::string, std::string>& index_info,
                           const BitsetView& bitset,
                           DataType data_type) {
     auto nq = dataset.num_queries;
@@ -207,7 +217,7 @@ BruteForceSearchIterators(const dataset::SearchDataset& dataset,
         base_dataset->SetIsSparse(true);
         query_dataset->SetIsSparse(true);
     }
-    auto search_cfg = PrepareBFSearchParams(search_info);
+    auto search_cfg = PrepareBFSearchParams(search_info, index_info);
 
     knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>>
         iterators_val;

@@ -18,12 +18,12 @@ package querynodev2
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/pipeline"
@@ -32,6 +32,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/mq/msgdispatcher"
 	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
@@ -65,7 +66,7 @@ func TestGetPipelineJSON(t *testing.T) {
 		{
 			Name:           ch,
 			WatchState:     "Healthy",
-			LatestTimeTick: typeutil.TimestampToString(0),
+			LatestTimeTick: tsoutil.PhysicalTimeFormat(0),
 			NodeID:         paramtable.GetNodeID(),
 			CollectionID:   1,
 		},

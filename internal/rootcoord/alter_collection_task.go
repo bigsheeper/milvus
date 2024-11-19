@@ -92,11 +92,11 @@ func (a *alterCollectionTask) Execute(ctx context.Context) error {
 	})
 
 	// properties needs to be refreshed in the cache
-	aliases := a.core.meta.ListAliasesByID(oldColl.CollectionID)
+	collectionNames := []string{}
 	redoTask.AddSyncStep(&expireCacheStep{
 		baseStep:        baseStep{core: a.core},
 		dbName:          a.Req.GetDbName(),
-		collectionNames: append(aliases, a.Req.GetCollectionName()),
+		collectionNames: append(collectionNames, a.Req.GetCollectionName()),
 		collectionID:    InvalidCollectionID,
 		opts:            []proxyutil.ExpireCacheOpt{proxyutil.SetMsgType(commonpb.MsgType_AlterCollection)},
 	})
@@ -214,7 +214,7 @@ func (a *alterCollectionFieldTask) Execute(ctx context.Context) error {
 		baseStep:        baseStep{core: a.core},
 		dbName:          a.Req.GetDbName(),
 		collectionNames: append(collectionNames, a.Req.GetCollectionName()),
-		collectionID:    oldColl.CollectionID,
+		collectionID:    InvalidCollectionID,
 		opts:            []proxyutil.ExpireCacheOpt{proxyutil.SetMsgType(commonpb.MsgType_AlterCollection)},
 	})
 

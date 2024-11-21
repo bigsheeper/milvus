@@ -206,10 +206,6 @@ func (_c *MockBroker_GetCollectionLoadInfo_Call) RunAndReturn(run func(context.C
 func (_m *MockBroker) GetDataViewVersions(ctx context.Context, collectionIDs []int64) (map[int64]int64, error) {
 	ret := _m.Called(ctx, collectionIDs)
 
-	if len(ret) == 0 {
-		panic("no return value specified for GetDataViewVersions")
-	}
-
 	var r0 map[int64]int64
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, []int64) (map[int64]int64, error)); ok {
@@ -261,16 +257,9 @@ func (_c *MockBroker_GetDataViewVersions_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
-// GetIndexInfo provides a mock function with given fields: ctx, collectionID, segmentIDs
-func (_m *MockBroker) GetIndexInfo(ctx context.Context, collectionID int64, segmentIDs ...int64) (map[int64][]*querypb.FieldIndexInfo, error) {
-	_va := make([]interface{}, len(segmentIDs))
-	for _i := range segmentIDs {
-		_va[_i] = segmentIDs[_i]
-	}
-	var _ca []interface{}
-	_ca = append(_ca, ctx, collectionID)
-	_ca = append(_ca, _va...)
-	ret := _m.Called(_ca...)
+// GetIndexInfo provides a mock function with given fields: ctx, collectionID, segmentID
+func (_m *MockBroker) GetIndexInfo(ctx context.Context, collectionID int64, segmentID int64) ([]*querypb.FieldIndexInfo, error) {
+	ret := _m.Called(ctx, collectionID, segmentID)
 
 	var r0 []*querypb.FieldIndexInfo
 	var r1 error

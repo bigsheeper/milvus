@@ -83,6 +83,8 @@ type ComponentParam struct {
 	RbacConfig     rbacConfig
 	StreamingCfg   streamingConfig
 
+	InternalTLSCfg InternalTLSConfig
+
 	RootCoordGrpcServerCfg     GrpcServerConfig
 	ProxyGrpcServerCfg         GrpcServerConfig
 	QueryCoordGrpcServerCfg    GrpcServerConfig
@@ -138,6 +140,8 @@ func (p *ComponentParam) init(bt *BaseTable) {
 	p.RbacConfig.init(bt)
 	p.GpuConfig.init(bt)
 	p.KnowhereConfig.init(bt)
+
+	p.InternalTLSCfg.Init(bt)
 
 	p.RootCoordGrpcServerCfg.Init("rootCoord", bt)
 	p.ProxyGrpcServerCfg.Init("proxy", bt)
@@ -1116,7 +1120,7 @@ type rootCoordConfig struct {
 	MaxPartitionNum             ParamItem `refreshable:"true"`
 	MinSegmentSizeToEnableIndex ParamItem `refreshable:"true"`
 	EnableActiveStandby         ParamItem `refreshable:"false"`
-	MaxDatabaseNum              ParamItem `refreshable:"false"`
+	MaxDatabaseNum              ParamItem `refreshable:"true"`
 	MaxGeneralCapacity          ParamItem `refreshable:"true"`
 	GracefulStopTimeout         ParamItem `refreshable:"true"`
 	UseLockScheduler            ParamItem `refreshable:"true"`
@@ -3019,7 +3023,7 @@ Max read concurrency must greater than or equal to 1, and less than or equal to 
 		Key:          "queryNode.levelZeroForwardPolicy",
 		Version:      "2.4.12",
 		Doc:          "delegator level zero deletion forward policy, possible option[\"FilterByBF\", \"RemoteLoad\"]",
-		DefaultValue: "RemoteLoad",
+		DefaultValue: "FilterByBF",
 		Export:       true,
 	}
 	p.LevelZeroForwardPolicy.Init(base.mgr)
@@ -3526,7 +3530,7 @@ mix is prioritized by level: mix compactions first, then L0 compactions, then cl
 	p.CompactionTaskQueueCapacity = ParamItem{
 		Key:          "dataCoord.compaction.taskQueueCapacity",
 		Version:      "2.5.0",
-		DefaultValue: "256",
+		DefaultValue: "100000",
 		Doc:          `compaction task queue size`,
 		Export:       true,
 	}

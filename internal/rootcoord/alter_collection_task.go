@@ -275,10 +275,10 @@ func UpdateFieldPropertyParams(oldProps, updatedProps []*commonpb.KeyValuePair) 
 }
 
 func (a *alterCollectionTask) GetLockerKey() LockerKey {
-	collectionName := a.core.getRealCollectionName(a.ctx, a.Req.GetDbName(), a.Req.GetCollectionName())
+	collection := a.core.getCollectionIDStr(a.ctx, a.Req.GetDbName(), a.Req.GetCollectionName(), a.Req.GetCollectionID())
 	return NewLockerKeyChain(
 		NewClusterLockerKey(false),
 		NewDatabaseLockerKey(a.Req.GetDbName(), false),
-		NewCollectionLockerKey(collectionName, true),
+		NewCollectionLockerKey(collection, true),
 	)
 }

@@ -539,9 +539,7 @@ func (wb *writeBufferBase) bufferInsert(inData *inData, startPos, endPos *msgpb.
 			InsertChannel: wb.channelName,
 			StartPosition: startPos,
 			State:         commonpb.SegmentState_Growing,
-		}, func(_ *datapb.SegmentInfo) *metacache.BloomFilterSet {
-			return metacache.NewBloomFilterSetWithBatchSize(wb.getEstBatchSize())
-		}, metacache.SetStartPosRecorded(false))
+		}, nil, metacache.SetStartPosRecorded(false))
 		log.Info("add growing segment", zap.Int64("segmentID", inData.segmentID), zap.String("channel", wb.channelName))
 	}
 

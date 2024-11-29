@@ -112,6 +112,6 @@ func NewSegmentInfo(info *datapb.SegmentInfo, bfs *BloomFilterSet) *SegmentInfo 
 		checkpoint:       info.GetDmlPosition(),
 		startPosRecorded: true,
 		level:            level,
-		bfs:              bfs,
+		bfs:              nil,
 	}
 }

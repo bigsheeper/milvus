@@ -105,7 +105,7 @@ func (c *metaCacheImpl) Schema() *schemapb.CollectionSchema {
 
 // AddSegment adds a segment from segment info.
 func (c *metaCacheImpl) AddSegment(segInfo *datapb.SegmentInfo, factory PkStatsFactory, actions ...SegmentAction) {
-	segment := NewSegmentInfo(segInfo, factory(segInfo))
+	segment := NewSegmentInfo(segInfo, nil)
 
 	for _, action := range actions {
 		action(segment)

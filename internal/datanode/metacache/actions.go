@@ -127,6 +127,9 @@ func UpdateBufferedRows(bufferedRows int64) SegmentAction {
 
 func RollStats(newStats ...*storage.PrimaryKeyStats) SegmentAction {
 	return func(info *SegmentInfo) {
+		if info.bfs == nil {
+			info.bfs = NewBloomFilterSet()
+		}
 		info.bfs.Roll(newStats...)
 	}
 }

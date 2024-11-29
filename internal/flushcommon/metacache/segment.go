@@ -127,7 +127,7 @@ func NewSegmentInfo(info *datapb.SegmentInfo, bfs pkoracle.PkStat, bm25Stats *Se
 		checkpoint:       info.GetDmlPosition(),
 		startPosRecorded: true,
 		level:            level,
-		bfs:              bfs,
+		bfs:              nil,
 		bm25stats:        bm25Stats,
 	}
 }

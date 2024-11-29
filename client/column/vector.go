@@ -40,6 +40,13 @@ func (b *vectorBase[T]) FieldData() *schemapb.FieldData {
 	return fd
 }
 
+func (b *vectorBase[T]) slice(start, end int) *vectorBase[T] {
+	return &vectorBase[T]{
+		genericColumnBase: b.genericColumnBase.slice(start, end),
+		dim:               b.dim,
+	}
+}
+
 func newVectorBase[T entity.Vector](fieldName string, dim int, vectors []T, fieldType entity.FieldType) *vectorBase[T] {
 	return &vectorBase[T]{
 		genericColumnBase: &genericColumnBase[T]{
@@ -78,6 +85,12 @@ func (c *ColumnFloatVector) AppendValue(i interface{}) error {
 	return nil
 }
 
+func (c *ColumnFloatVector) Slice(start, end int) Column {
+	return &ColumnFloatVector{
+		vectorBase: c.vectorBase.slice(start, end),
+	}
+}
+
 /* binary vector */
 
 type ColumnBinaryVector struct {
@@ -105,6 +118,12 @@ func (c *ColumnBinaryVector) AppendValue(i interface{}) error {
 	return nil
 }
 
+func (c *ColumnBinaryVector) Slice(start, end int) Column {
+	return &ColumnBinaryVector{
+		vectorBase: c.vectorBase.slice(start, end),
+	}
+}
+
 /* fp16 vector */
 
 type ColumnFloat16Vector struct {
@@ -118,19 +137,39 @@ func NewColumnFloat16Vector(fieldName string, dim int, data [][]byte) *ColumnFlo
 	}
 }
 
+func NewColumnFloat16VectorFromFp32Vector(fieldName string, dim int, data [][]float32) *ColumnFloat16Vector {
+	vectors := lo.Map(data, func(row []float32, _ int) entity.Float16Vector { return entity.FloatVector(row).ToFloat16Vector() })
+	return &ColumnFloat16Vector{
+		vectorBase: newVectorBase(fieldName, dim, vectors, entity.FieldTypeFloat16Vector),
+	}
+}
+
 // AppendValue appends vector value into values.
-// override default type constrains, add `[]byte` conversion
+// Override default type constrains, add `[]byte`, `entity.FloatVector` and
+// `[]float32` conversion.
 func (c *ColumnFloat16Vector) AppendValue(i interface{}) error {
 	switch vector := i.(type) {
 	case entity.Float16Vector:
 		c.values = append(c.values, vector)
 	case []byte:
 		c.values = append(c.values, vector)
+	case entity.FloatVector:
+		c.values = append(c.values, vector.ToFloat16Vector())
+	case []float32:
+		c.values = append(c.values, entity.FloatVector(vector).ToFloat16Vector())
 	default:
 		return errors.Newf("unexpected append value type %T, field type %v", vector, c.fieldType)
 	}
 	return nil
 }
+
+func (c *ColumnFloat16Vector) Slice(start, end int) Column {
+	return &ColumnFloat16Vector{
+		vectorBase: c.vectorBase.slice(start, end),
+	}
+}
+
+/* bf16 vector */
 
 type ColumnBFloat16Vector struct {
 	*vectorBase[entity.BFloat16Vector]
@@ -143,16 +182,34 @@ func NewColumnBFloat16Vector(fieldName string, dim int, data [][]byte) *ColumnBF
 	}
 }
 
+func NewColumnBFloat16VectorFromFp32Vector(fieldName string, dim int, data [][]float32) *ColumnBFloat16Vector {
+	vectors := lo.Map(data, func(row []float32, _ int) entity.BFloat16Vector { return entity.FloatVector(row).ToBFloat16Vector() })
+	return &ColumnBFloat16Vector{
+		vectorBase: newVectorBase(fieldName, dim, vectors, entity.FieldTypeBFloat16Vector),
+	}
+}
+
 // AppendValue appends vector value into values.
-// override default type constrains, add `[]byte` conversion
+// Override default type constrains, add `[]byte`, `entity.FloatVector` and
+// `[]float32` conversion.
 func (c *ColumnBFloat16Vector) AppendValue(i interface{}) error {
 	switch vector := i.(type) {
 	case entity.BFloat16Vector:
 		c.values = append(c.values, vector)
 	case []byte:
 		c.values = append(c.values, vector)
+	case entity.FloatVector:
+		c.values = append(c.values, vector.ToBFloat16Vector())
+	case []float32:
+		c.values = append(c.values, entity.FloatVector(vector).ToBFloat16Vector())
 	default:
 		return errors.Newf("unexpected append value type %T, field type %v", vector, c.fieldType)
 	}
 	return nil
+}
+
+func (c *ColumnBFloat16Vector) Slice(start, end int) Column {
+	return &ColumnBFloat16Vector{
+		vectorBase: c.vectorBase.slice(start, end),
+	}
 }

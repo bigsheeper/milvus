@@ -5,8 +5,8 @@ go 1.21
 toolchain go1.21.11
 
 require (
-	github.com/milvus-io/milvus/client/v2 v2.0.0-20241111031027-fca946dee181
-	github.com/milvus-io/milvus/pkg v0.0.2-0.20241111021426-5e90f348fcbb
+	github.com/milvus-io/milvus/client/v2 v2.0.0-20241125024034-0b9edb62a92d
+	github.com/milvus-io/milvus/pkg v0.0.2-0.20241126032235-cb6542339e84
 	github.com/quasilyte/go-ruleguard/dsl v0.3.22
 	github.com/stretchr/testify v1.9.0
 	github.com/x448/float16 v0.8.4
@@ -14,7 +14,7 @@ require (
 	google.golang.org/grpc v1.65.0
 )
 
-replace github.com/milvus-io/milvus/client/v2 v2.0.0-20240805024817-4b553b0333f4 => ../../../milvus/client
+replace github.com/milvus-io/milvus/client/v2 => ../../../milvus/client
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -52,7 +52,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/milvus-io/milvus-proto/go-api/v2 v2.3.4-0.20241111025219-806678b2806e // indirect
+	github.com/milvus-io/milvus-proto/go-api/v2 v2.3.4-0.20241120015424-93892e628c69 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
@@ -70,6 +70,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tidwall/gjson v1.17.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

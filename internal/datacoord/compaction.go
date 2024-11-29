@@ -58,7 +58,7 @@ type compactionPlanContext interface {
 	isFull() bool
 	// get compaction tasks by signal id
 	getCompactionTasksNumBySignalID(signalID int64) int
-	getCompactionInfo(signalID int64) *compactionInfo
+	getCompactionInfo(ctx context.Context, signalID int64) *compactionInfo
 	removeTasksByChannel(channel string)
 }
 
@@ -96,8 +96,8 @@ type compactionPlanHandler struct {
 	stopWg   sync.WaitGroup
 }
 
-func (c *compactionPlanHandler) getCompactionInfo(triggerID int64) *compactionInfo {
-	tasks := c.meta.GetCompactionTasksByTriggerID(triggerID)
+func (c *compactionPlanHandler) getCompactionInfo(ctx context.Context, triggerID int64) *compactionInfo {
+	tasks := c.meta.GetCompactionTasksByTriggerID(ctx, triggerID)
 	return summaryCompactionState(tasks)
 }
 
@@ -323,7 +323,7 @@ func (c *compactionPlanHandler) start() {
 
 func (c *compactionPlanHandler) loadMeta() {
 	// TODO: make it compatible to all types of compaction with persist meta
-	triggers := c.meta.GetCompactionTasks()
+	triggers := c.meta.GetCompactionTasks(context.TODO())
 	for _, tasks := range triggers {
 		for _, task := range tasks {
 			state := task.GetState()
@@ -346,11 +346,21 @@ func (c *compactionPlanHandler) loadMeta() {
 						zap.Error(err),
 					)
 					// ignore the drop error
-					c.meta.DropCompactionTask(task)
+					c.meta.DropCompactionTask(context.TODO(), task)
 					continue
 				}
 				if t.NeedReAssignNodeID() {
-					c.submitTask(t)
+					if err = c.submitTask(t); err != nil {
+						log.Info("compactionPlanHandler loadMeta submit task failed, try to clean it",
+							zap.Int64("planID", task.GetPlanID()),
+							zap.String("type", task.GetType().String()),
+							zap.String("state", task.GetState().String()),
+							zap.Error(err),
+						)
+						// ignore the drop error
+						c.meta.DropCompactionTask(task)
+						continue
+					}
 					log.Info("compactionPlanHandler loadMeta submitTask",
 						zap.Int64("planID", t.GetTaskProto().GetPlanID()),
 						zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()),
@@ -434,14 +444,14 @@ func (c *compactionPlanHandler) Clean() {
 
 func (c *compactionPlanHandler) cleanCompactionTaskMeta() {
 	// gc clustering compaction tasks
-	triggers := c.meta.GetCompactionTasks()
+	triggers := c.meta.GetCompactionTasks(context.TODO())
 	for _, tasks := range triggers {
 		for _, task := range tasks {
 			if task.State == datapb.CompactionTaskState_completed || task.State == datapb.CompactionTaskState_cleaned {
 				duration := time.Since(time.Unix(task.StartTime, 0)).Seconds()
 				if duration > float64(Params.DataCoordCfg.CompactionDropToleranceInSeconds.GetAsDuration(time.Second).Seconds()) {
 					// try best to delete meta
-					err := c.meta.DropCompactionTask(task)
+					err := c.meta.DropCompactionTask(context.TODO(), task)
 					log.Debug("drop compaction task meta", zap.Int64("planID", task.PlanID))
 					if err != nil {
 						log.Warn("fail to drop task", zap.Int64("planID", task.PlanID), zap.Error(err))
@@ -478,7 +488,7 @@ func (c *compactionPlanHandler) cleanPartitionStats() error {
 	for _, info := range unusedPartStats {
 		log.Debug("collection has been dropped, remove partition stats",
 			zap.Int64("collID", info.GetCollectionID()))
-		if err := c.meta.CleanPartitionStatsInfo(info); err != nil {
+		if err := c.meta.CleanPartitionStatsInfo(context.TODO(), info); err != nil {
 			log.Warn("gcPartitionStatsInfo fail", zap.Error(err))
 			return err
 		}
@@ -492,7 +502,7 @@ func (c *compactionPlanHandler) cleanPartitionStats() error {
 		if len(infos) > 2 {
 			for i := 2; i < len(infos); i++ {
 				info := infos[i]
-				if err := c.meta.CleanPartitionStatsInfo(info); err != nil {
+				if err := c.meta.CleanPartitionStatsInfo(context.TODO(), info); err != nil {
 					log.Warn("gcPartitionStatsInfo fail", zap.Error(err))
 					return err
 				}
@@ -541,11 +551,14 @@ func (c *compactionPlanHandler) removeTasksByChannel(channel string) {
 	c.executingGuard.Unlock()
 }
 
-func (c *compactionPlanHandler) submitTask(t CompactionTask) {
+func (c *compactionPlanHandler) submitTask(t CompactionTask) error {
 	_, span := otel.Tracer(typeutil.DataCoordRole).Start(context.Background(), fmt.Sprintf("Compaction-%s", t.GetTaskProto().GetType()))
 	t.SetSpan(span)
-	c.queueTasks.Enqueue(t)
+	if err := c.queueTasks.Enqueue(t); err != nil {
+		return err
+	}
 	metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Inc()
+	return nil
 }
 
 // restoreTask used to restore Task from etcd
@@ -592,11 +605,15 @@ func (c *compactionPlanHandler) enqueueCompaction(task *datapb.CompactionTask) e
 	t.SetTask(t.ShadowClone(setStartTime(time.Now().Unix())))
 	err = t.SaveTaskMeta()
 	if err != nil {
-		c.meta.SetSegmentsCompacting(t.GetTaskProto().GetInputSegments(), false)
+		c.meta.SetSegmentsCompacting(context.TODO(), t.GetTaskProto().GetInputSegments(), false)
 		log.Warn("Failed to enqueue compaction task, unable to save task meta", zap.Error(err))
 		return err
 	}
-	c.submitTask(t)
+	if err = c.submitTask(t); err != nil {
+		log.Warn("submit compaction task failed", zap.Error(err))
+		c.meta.SetSegmentsCompacting(t.GetTaskProto().GetInputSegments(), false)
+		return err
+	}
 	log.Info("Compaction plan submitted")
 	return nil
 }
@@ -614,7 +631,7 @@ func (c *compactionPlanHandler) createCompactTask(t *datapb.CompactionTask) (Com
 	default:
 		return nil, merr.WrapErrIllegalCompactionPlan("illegal compaction type")
 	}
-	exist, succeed := c.meta.CheckAndSetSegmentsCompacting(t.GetInputSegments())
+	exist, succeed := c.meta.CheckAndSetSegmentsCompacting(context.TODO(), t.GetInputSegments())
 	if !exist {
 		return nil, merr.WrapErrIllegalCompactionPlan("segment not exist")
 	}

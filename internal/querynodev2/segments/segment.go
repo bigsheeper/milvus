@@ -183,6 +183,9 @@ func (s *baseSegment) LoadInfo() *querypb.SegmentLoadInfo {
 }
 
 func (s *baseSegment) UpdateBloomFilter(pks []storage.PrimaryKey) {
+	if s.segmentType == SegmentTypeGrowing {
+		return
+	}
 	s.bloomFilterSet.UpdateBloomFilter(pks)
 }
 
@@ -190,10 +193,20 @@ func (s *baseSegment) UpdateBloomFilter(pks []storage.PrimaryKey) {
 // false otherwise,
 // may returns true even the PK doesn't exist actually
 func (s *baseSegment) MayPkExist(pk *storage.LocationsCache) bool {
+	if s.segmentType == SegmentTypeGrowing {
+		return true
+	}
 	return s.bloomFilterSet.MayPkExist(pk)
 }
 
 func (s *baseSegment) BatchPkExist(lc *storage.BatchLocationsCache) []bool {
+	if s.segmentType == SegmentTypeGrowing {
+		allPositive := make([]bool, lc.Size())
+		for i := 0; i < lc.Size(); i++ {
+			allPositive[i] = true
+		}
+		return allPositive
+	}
 	return s.bloomFilterSet.BatchPkExist(lc)
 }
 

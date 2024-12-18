@@ -596,7 +596,7 @@ func (scheduler *taskScheduler) schedule(node int64) {
 		if scheduler.preProcess(task) && scheduler.isRelated(task, node) {
 			toProcess = append(toProcess, task)
 		}
-		if task.Status() != TaskStatusStarted {
+		if task.Status() != TaskStatusStarted || task.Status() != TaskStatusExecuting {
 			toRemove = append(toRemove, task)
 		}
 
@@ -608,6 +608,7 @@ func (scheduler *taskScheduler) schedule(node int64) {
 	commmittedNum := atomic.NewInt32(0)
 	funcutil.ProcessFuncParallel(len(toProcess), hardware.GetCPUNum(), func(idx int) error {
 		if scheduler.process(toProcess[idx]) {
+			toProcess[idx].SetStatus(TaskStatusExecuting)
 			commmittedNum.Inc()
 		}
 		return nil

@@ -43,6 +43,7 @@ const (
 	TaskStatusSucceeded = "succeeded"
 	TaskStatusCanceled  = "canceled"
 	TaskStatusFailed    = "failed"
+	TaskStatusExecuting = "executing"
 )
 
 const (

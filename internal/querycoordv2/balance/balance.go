@@ -85,8 +85,9 @@ func (b *RoundRobinBalancer) AssignSegment(collectionID int64, segments []*meta.
 	}
 	sort.Slice(nodesInfo, func(i, j int) bool {
 		cnt1, cnt2 := nodesInfo[i].SegmentCnt(), nodesInfo[j].SegmentCnt()
-		id1, id2 := nodesInfo[i].ID(), nodesInfo[j].ID()
-		delta1, delta2 := b.scheduler.GetSegmentTaskDelta(id1, -1), b.scheduler.GetSegmentTaskDelta(id2, -1)
+		//id1, id2 := nodesInfo[i].ID(), nodesInfo[j].ID()
+		//delta1, delta2 := b.scheduler.GetSegmentTaskDelta(id1, -1), b.scheduler.GetSegmentTaskDelta(id2, -1)
+		delta1, delta2 := 0, 0
 		return cnt1+delta1 < cnt2+delta2
 	})
 

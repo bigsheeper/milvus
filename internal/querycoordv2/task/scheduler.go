@@ -510,6 +510,9 @@ func (scheduler *taskScheduler) Dispatch(node int64) {
 }
 
 func (scheduler *taskScheduler) GetSegmentTaskDelta(nodeID, collectionID int64) int {
+	if collectionID == -1 {
+		return 0
+	}
 	targetActions := make([]Action, 0)
 	scheduler.segmentTasks.Range(func(_ replicaSegmentIndex, t Task) bool {
 		if collectionID != -1 && collectionID != t.CollectionID() {

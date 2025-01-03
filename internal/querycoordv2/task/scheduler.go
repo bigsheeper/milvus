@@ -292,7 +292,8 @@ func (scheduler *taskScheduler) updateTaskMetrics() {
 	if time.Since(scheduler.lastUpdateMetricTime) < 60*time.Second {
 		return
 	}
-	segmentGrowNum, segmentReduceNum, segmentUpdateNum, segmentMoveNum := 0, 0, 0, 0
+	segmentReduceNum, segmentUpdateNum, segmentMoveNum := 0, 0, 0
+	segmentGrowNum := make(map[int64]int)
 	leaderGrowNum, leaderReduceNum, leaderUpdateNum := 0, 0, 0
 	channelGrowNum, channelReduceNum, channelMoveNum := 0, 0, 0
 	scheduler.segmentTasks.Range(func(_ replicaSegmentIndex, task Task) bool {
@@ -301,7 +302,7 @@ func (scheduler *taskScheduler) updateTaskMetrics() {
 			segmentMoveNum++
 		case task.Actions()[0].Type() == ActionTypeGrow:
 			if _, ok := task.Actions()[0].(*SegmentAction); ok {
-				segmentGrowNum++
+				segmentGrowNum[task.Actions()[0].Node()]++
 			}
 			if _, ok := task.Actions()[0].(*LeaderAction); ok {
 				leaderGrowNum++
@@ -337,7 +338,9 @@ func (scheduler *taskScheduler) updateTaskMetrics() {
 		return true
 	})
 
-	metrics.QueryCoordTaskNum.WithLabelValues(metrics.SegmentGrowTaskLabel).Set(float64(segmentGrowNum))
+	for nodeID, num := range segmentGrowNum {
+		metrics.QueryCoordTaskNum.WithLabelValues(fmt.Sprintf("%s-%d", metrics.SegmentGrowTaskLabel, nodeID)).Set(float64(num))
+	}
 	metrics.QueryCoordTaskNum.WithLabelValues(metrics.SegmentReduceTaskLabel).Set(float64(segmentReduceNum))
 	metrics.QueryCoordTaskNum.WithLabelValues(metrics.SegmentMoveTaskLabel).Set(float64(segmentMoveNum))
 	metrics.QueryCoordTaskNum.WithLabelValues(metrics.SegmentUpdateTaskLabel).Set(float64(segmentUpdateNum))

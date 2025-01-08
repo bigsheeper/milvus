@@ -360,8 +360,8 @@ func (b *ScoreBasedBalancer) calculateScoreBySegment(br *balanceReport, collecti
 		nodeRowCount += int(float64(view.NumOfGrowingRows))
 	}
 
-	// calculate executing task cost in scheduler
-	nodeRowCount += b.scheduler.GetSegmentTaskDelta(nodeID, -1)
+	//// calculate executing task cost in scheduler
+	//nodeRowCount += b.scheduler.GetSegmentTaskDelta(nodeID, -1)
 
 	collectionRowCount := 0
 	// calculate collection sealed segment row count
@@ -376,8 +376,8 @@ func (b *ScoreBasedBalancer) calculateScoreBySegment(br *balanceReport, collecti
 		collectionRowCount += int(float64(view.NumOfGrowingRows))
 	}
 
-	// calculate executing task cost in scheduler
-	collectionRowCount += b.scheduler.GetSegmentTaskDelta(nodeID, collectionID)
+	//// calculate executing task cost in scheduler
+	//collectionRowCount += b.scheduler.GetSegmentTaskDelta(nodeID, collectionID)
 
 	br.AddDetailRecord(StrRecordf("Calcalute score for collection %d on node %d, global row count: %d, collection row count: %d",
 		collectionID, nodeID, nodeRowCount, collectionRowCount))

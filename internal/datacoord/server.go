@@ -363,8 +363,6 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("DataCoord report RootCoord ready")
 
-	s.stateCode.Store(commonpb.StateCode_Initializing)
-
 	s.broker = broker.NewCoordinatorBroker(s.rootCoordClient)
 	s.allocator = newRootCoordAllocator(s.rootCoordClient)
 

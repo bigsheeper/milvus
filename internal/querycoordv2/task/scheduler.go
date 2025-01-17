@@ -791,6 +791,7 @@ func (scheduler *taskScheduler) RemoveByNode(node int64) {
 		}
 		return true
 	})
+	metrics.QueryCoordTaskNum.DeleteLabelValues(fmt.Sprintf("%s-%d", metrics.SegmentGrowTaskLabel, node))
 }
 
 func (scheduler *taskScheduler) recordSegmentTaskError(task *SegmentTask) {

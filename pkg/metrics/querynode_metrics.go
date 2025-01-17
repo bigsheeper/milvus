@@ -124,10 +124,7 @@ var (
 			Help:      "number of segments loaded, clustered by its collection, partition, state and # of indexed fields",
 		}, []string{
 			nodeIDLabelName,
-			collectionIDLabelName,
-			partitionIDLabelName,
 			segmentStateLabelName,
-			indexCountLabelName,
 			segmentLevelLabelName,
 		})
 

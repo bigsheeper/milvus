@@ -222,6 +222,52 @@ func TestCatalog_ListCollections(t *testing.T) {
 		assert.Equal(t, int64(testDb), ret[0].DBID)
 	})
 
+	t.Run("list all collections", func(t *testing.T) {
+		kv := mocks.NewSnapShotKV(t)
+		ts := uint64(1)
+
+		bColl, err := proto.Marshal(coll2)
+		assert.NoError(t, err)
+		kv.On("LoadWithPrefix", mock.Anything, CollectionInfoMetaPrefix, ts).
+			Return([]string{"key"}, []string{string(bColl)}, nil)
+
+		partitionMeta := &pb.PartitionInfo{}
+		pm, err := proto.Marshal(partitionMeta)
+		assert.NoError(t, err)
+
+		kv.On("LoadWithPrefix", mock.Anything, mock.MatchedBy(
+			func(prefix string) bool {
+				return strings.HasPrefix(prefix, PartitionMetaPrefix)
+			}), ts).
+			Return([]string{"rootcoord/partitions/1/1"}, []string{string(pm)}, nil)
+
+		fieldMeta := &schemapb.FieldSchema{}
+		fm, err := proto.Marshal(fieldMeta)
+		assert.NoError(t, err)
+
+		kv.On("LoadWithPrefix", mock.Anything, mock.MatchedBy(
+			func(prefix string) bool {
+				return strings.HasPrefix(prefix, FieldMetaPrefix)
+			}), ts).
+			Return([]string{"rootcoord/fields/1/1"}, []string{string(fm)}, nil)
+
+		functionMeta := &schemapb.FunctionSchema{}
+		fcm, err := proto.Marshal(functionMeta)
+		assert.NoError(t, err)
+		kv.On("LoadWithPrefix", mock.Anything, mock.MatchedBy(
+			func(prefix string) bool {
+				return strings.HasPrefix(prefix, FunctionMetaPrefix)
+			}), ts).
+			Return([]string{"rootcoord/functions/1/1"}, []string{string(fcm)}, nil)
+
+		kc := NewCatalog(nil, kv)
+		ret, err := kc.ListAllCollections(ctx, ts)
+		assert.NoError(t, err)
+		assert.NotNil(t, ret)
+		assert.Equal(t, 1, len(ret))
+		assert.Equal(t, int64(testDb), ret[0].DBID)
+	})
+
 	t.Run("list collection ok for the newest version", func(t *testing.T) {
 		kv := mocks.NewSnapShotKV(t)
 		ts := uint64(1)

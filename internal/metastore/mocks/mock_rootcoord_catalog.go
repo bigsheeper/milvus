@@ -1482,6 +1482,65 @@ func (_c *RootCoordCatalog_ListAliases_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// ListAllCollections provides a mock function with given fields: ctx, ts
+func (_m *RootCoordCatalog) ListAllCollections(ctx context.Context, ts uint64) ([]*model.Collection, error) {
+	ret := _m.Called(ctx, ts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAllCollections")
+	}
+
+	var r0 []*model.Collection
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) ([]*model.Collection, error)); ok {
+		return rf(ctx, ts)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) []*model.Collection); ok {
+		r0 = rf(ctx, ts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*model.Collection)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = rf(ctx, ts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RootCoordCatalog_ListAllCollections_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAllCollections'
+type RootCoordCatalog_ListAllCollections_Call struct {
+	*mock.Call
+}
+
+// ListAllCollections is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ts uint64
+func (_e *RootCoordCatalog_Expecter) ListAllCollections(ctx interface{}, ts interface{}) *RootCoordCatalog_ListAllCollections_Call {
+	return &RootCoordCatalog_ListAllCollections_Call{Call: _e.mock.On("ListAllCollections", ctx, ts)}
+}
+
+func (_c *RootCoordCatalog_ListAllCollections_Call) Run(run func(ctx context.Context, ts uint64)) *RootCoordCatalog_ListAllCollections_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *RootCoordCatalog_ListAllCollections_Call) Return(_a0 []*model.Collection, _a1 error) *RootCoordCatalog_ListAllCollections_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *RootCoordCatalog_ListAllCollections_Call) RunAndReturn(run func(context.Context, uint64) ([]*model.Collection, error)) *RootCoordCatalog_ListAllCollections_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListCollections provides a mock function with given fields: ctx, dbID, ts
 func (_m *RootCoordCatalog) ListCollections(ctx context.Context, dbID int64, ts uint64) ([]*model.Collection, error) {
 	ret := _m.Called(ctx, dbID, ts)

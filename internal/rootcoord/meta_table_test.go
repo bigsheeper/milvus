@@ -1136,11 +1136,10 @@ func TestMetaTable_reload(t *testing.T) {
 
 	t.Run("failed to list collections", func(t *testing.T) {
 		meta := createMetaTableFn(func(catalog *mocks.RootCoordCatalog) {
-			catalog.On("ListCollections",
+			catalog.On("ListAllCollections",
 				mock.Anything,
 				mock.Anything,
-				mock.Anything,
-			).Return(nil, errors.New("error mock ListCollections"))
+			).Return(nil, errors.New("error mock ListAllCollections"))
 		})
 
 		err := meta.reload()
@@ -1151,8 +1150,7 @@ func TestMetaTable_reload(t *testing.T) {
 	t.Run("failed to list aliases", func(t *testing.T) {
 		meta := createMetaTableFn(
 			func(catalog *mocks.RootCoordCatalog) {
-				catalog.On("ListCollections",
-					mock.Anything,
+				catalog.On("ListAllCollections",
 					mock.Anything,
 					mock.Anything,
 				).Return(
@@ -1175,8 +1173,7 @@ func TestMetaTable_reload(t *testing.T) {
 	t.Run("no collections and default db doesn't exists", func(t *testing.T) {
 		meta := createMetaTableFn(
 			func(catalog *mocks.RootCoordCatalog) {
-				catalog.On("ListCollections",
-					mock.Anything,
+				catalog.On("ListAllCollections",
 					mock.Anything,
 					mock.Anything,
 				).Return(make([]*model.Collection, 0), nil)
@@ -1208,8 +1205,7 @@ func TestMetaTable_reload(t *testing.T) {
 			mock.Anything,
 			mock.Anything,
 		).Return([]*model.Database{model.NewDefaultDatabase(nil)}, nil)
-		catalog.On("ListCollections",
-			mock.Anything,
+		catalog.On("ListAllCollections",
 			mock.Anything,
 			mock.Anything,
 		).Return(
@@ -1238,8 +1234,7 @@ func TestMetaTable_reload(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		meta := createMetaTableFn(
 			func(catalog *mocks.RootCoordCatalog) {
-				catalog.On("ListCollections",
-					mock.Anything,
+				catalog.On("ListAllCollections",
 					mock.Anything,
 					mock.Anything,
 				).Return(

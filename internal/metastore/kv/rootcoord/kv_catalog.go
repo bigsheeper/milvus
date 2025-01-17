@@ -794,8 +794,19 @@ func (kc *Catalog) GetCollectionByName(ctx context.Context, dbID int64, collecti
 	return nil, merr.WrapErrCollectionNotFoundWithDB(dbID, collectionName, fmt.Sprintf("timestamp = %d", ts))
 }
 
+// ListCollections lists collections by dbID.
 func (kc *Catalog) ListCollections(ctx context.Context, dbID int64, ts typeutil.Timestamp) ([]*model.Collection, error) {
 	prefix := getDatabasePrefix(dbID)
+	return kc.listCollectionsByPrefix(ctx, ts, prefix)
+}
+
+// ListAllCollections lists all collections.
+func (kc *Catalog) ListAllCollections(ctx context.Context, ts typeutil.Timestamp) ([]*model.Collection, error) {
+	prefix := CollectionInfoMetaPrefix
+	return kc.listCollectionsByPrefix(ctx, ts, prefix)
+}
+
+func (kc *Catalog) listCollectionsByPrefix(ctx context.Context, ts typeutil.Timestamp, prefix string) ([]*model.Collection, error) {
 	_, vals, err := kc.Snapshot.LoadWithPrefix(ctx, prefix, ts)
 	if err != nil {
 		log.Ctx(ctx).Error("get collections meta fail",
@@ -831,7 +842,7 @@ func (kc *Catalog) ListCollections(ctx context.Context, dbID int64, ts typeutil.
 	if err != nil {
 		return nil, err
 	}
-	log.Ctx(ctx).Info("unmarshal all collection details cost", zap.Int64("db", dbID), zap.Duration("cost", time.Since(start)))
+	log.Ctx(ctx).Info("unmarshal all collection details cost", zap.String("prefix", prefix), zap.Duration("cost", time.Since(start)))
 	return colls, nil
 }
 

@@ -185,41 +185,42 @@ func (mt *MetaTable) reload() error {
 		return err
 	}
 
-	// recover collections from db namespace
-	for dbName, db := range mt.dbName2Meta {
-		partitionNum := int64(0)
-		collectionNum := int64(0)
-
+	for dbName := range mt.dbName2Meta {
 		mt.names.createDbIfNotExist(dbName)
-
-		start := time.Now()
-		// TODO: async list collections to accelerate cases with multiple databases.
-		collections, err := mt.catalog.ListCollections(mt.ctx, db.ID, typeutil.MaxTimestamp)
-		if err != nil {
-			return err
-		}
-		for _, collection := range collections {
-			if collection.DBName == "" {
-				collection.DBName = dbName
-			}
-			mt.collID2Meta[collection.CollectionID] = collection
-			if collection.Available() {
-				mt.names.insert(dbName, collection.Name, collection.CollectionID)
-				pn := collection.GetPartitionNum(true)
-				mt.generalCnt += pn * int(collection.ShardsNum)
-				collectionNum++
-				partitionNum += int64(pn)
-			}
-		}
-
-		metrics.RootCoordNumOfDatabases.Inc()
-		metrics.RootCoordNumOfCollections.WithLabelValues(dbName).Add(float64(collectionNum))
-		metrics.RootCoordNumOfPartitions.WithLabelValues().Add(float64(partitionNum))
-		log.Ctx(mt.ctx).Info("collections recovered from db", zap.String("db_name", dbName),
-			zap.Int64("collection_num", collectionNum),
-			zap.Int64("partition_num", partitionNum),
-			zap.Duration("dur", time.Since(start)))
 	}
+
+	var (
+		partitionNum      = 0
+		collectionNum     = 0
+		collectionNumByDB = make(map[string]int) // db -> collectionNum
+	)
+
+	start := time.Now()
+	collections, err := mt.catalog.ListAllCollections(mt.ctx, typeutil.MaxTimestamp)
+	if err != nil {
+		return err
+	}
+	for _, collection := range collections {
+		mt.collID2Meta[collection.CollectionID] = collection
+		if collection.Available() {
+			mt.names.insert(collection.DBName, collection.Name, collection.CollectionID)
+			pn := collection.GetPartitionNum(true)
+			mt.generalCnt += pn * int(collection.ShardsNum)
+			collectionNumByDB[collection.DBName]++
+			collectionNum++
+			partitionNum += pn
+		}
+	}
+
+	metrics.RootCoordNumOfDatabases.Set(float64(len(mt.dbName2Meta)))
+	for dbName, num := range collectionNumByDB {
+		metrics.RootCoordNumOfCollections.WithLabelValues(dbName).Add(float64(num))
+	}
+	metrics.RootCoordNumOfPartitions.WithLabelValues().Add(float64(partitionNum))
+	log.Ctx(mt.ctx).Info("collections recovered",
+		zap.Int("collection_num", collectionNum),
+		zap.Int("partition_num", partitionNum),
+		zap.Duration("dur", time.Since(start)))
 
 	// recover aliases from db namespace
 	for dbName, db := range mt.dbName2Meta {

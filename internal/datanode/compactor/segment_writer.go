@@ -179,7 +179,7 @@ func (w *MultiSegmentWriter) rotateWriter() error {
 		return err
 	}
 
-	w.writer = storage.NewBinlogValueWriter(rw, w.batchSize)
+	w.writer = storage.NewBinlogValueWriter(rw, w.batchSize, newSegmentID)
 	return nil
 }
 

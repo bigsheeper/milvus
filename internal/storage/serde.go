@@ -22,6 +22,8 @@ import (
 	"math"
 	"strconv"
 
+	"go.uber.org/zap"
+
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/parquet"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -777,6 +780,7 @@ type SerializeWriterImpl[T any] struct {
 	rw         RecordWriter
 	serializer Serializer[T]
 	batchSize  int
+	segmentID  int64
 
 	buffer []T
 	pos    int
@@ -787,6 +791,31 @@ func (sw *SerializeWriterImpl[T]) Flush() error {
 		return nil
 	}
 	buf := sw.buffer[:sw.pos]
+
+	pks := make([]int64, 0)
+	for _, b := range buf {
+		switch b := any(b).(type) {
+		case *Value:
+			pk := b.PK.GetValue().(int64)
+			pks = append(pks, pk)
+		case *DeleteLog:
+			pk := b.Pk.GetValue().(int64)
+			pks = append(pks, pk)
+		}
+	}
+	rowNum := len(pks)
+	if rowNum > 0 {
+		pkBegin := pks[0]
+		pkEnd := pks[rowNum-1]
+		log.Info("sheep debug, serde pks",
+			zap.Int64("segmentID", sw.segmentID),
+			zap.Int("rowNum", rowNum),
+			zap.Int64("pkBegin", pkBegin),
+			zap.Int64("pkEnd", pkEnd),
+			zap.Int64s("pks", pks),
+		)
+	}
+
 	r, err := sw.serializer(buf)
 	if err != nil {
 		return err
@@ -820,11 +849,12 @@ func (sw *SerializeWriterImpl[T]) Close() error {
 	return sw.rw.Close()
 }
 
-func NewSerializeRecordWriter[T any](rw RecordWriter, serializer Serializer[T], batchSize int) *SerializeWriterImpl[T] {
+func NewSerializeRecordWriter[T any](rw RecordWriter, serializer Serializer[T], batchSize int, segmentID int64) *SerializeWriterImpl[T] {
 	return &SerializeWriterImpl[T]{
 		rw:         rw,
 		serializer: serializer,
 		batchSize:  batchSize,
+		segmentID:  segmentID,
 	}
 }
 

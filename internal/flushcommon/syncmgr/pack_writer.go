@@ -32,6 +32,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
 	"github.com/milvus-io/milvus/pkg/v2/util/retry"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type PackWriter interface {
@@ -190,6 +191,34 @@ func (bw *BulkPackWriter) writeInserts(ctx context.Context, pack *SyncPack) (map
 			Binlogs: []*datapb.Binlog{binlog},
 		}
 	}
+
+	pkField, err := typeutil.GetPrimaryFieldSchema(bw.schema)
+	if err != nil {
+		panic(err)
+	}
+	pkss := make([]int64, 0)
+	for _, insertData := range pack.insertData {
+		pkFieldData := insertData.Data[pkField.GetFieldID()]
+		pks := pkFieldData.GetDataRows().([]int64)
+		if len(pks) <= 0 {
+			continue
+		}
+		pkss = append(pkss, pks...)
+	}
+
+	rows := len(pkss)
+	pkBegin := pkss[0]
+	pkEnd := pkss[rows-1]
+	log.Info("sheep debug, save binlog path, insert data",
+		zap.Int64("SegmentID", pack.segmentID),
+		zap.Int64("CollectionID", pack.collectionID),
+		zap.Any("logPath", logs[pkField.GetFieldID()]),
+		zap.Int("rows", rows),
+		zap.Int64("pkBegin", pkBegin),
+		zap.Int64("pkEnd", pkEnd),
+		zap.Int64s("pks", pkss),
+	)
+
 	return logs, nil
 }
 
@@ -316,6 +345,25 @@ func (bw *BulkPackWriter) writeDelta(ctx context.Context, pack *SyncPack) (*data
 	if err != nil {
 		return nil, err
 	}
+
+	pks := pack.deltaData.Pks
+	rowNum := len(pks)
+	if rowNum > 0 {
+		pkBegin := pks[0].GetValue().(int64)
+		pkEnd := pks[rowNum-1].GetValue().(int64)
+		log.Info("sheep debug, save binlog path, delete data",
+			zap.Int64("SegmentID", pack.segmentID),
+			zap.Int64("CollectionID", pack.collectionID),
+			zap.String("logPath", deltalog.GetLogPath()),
+			zap.Int64("logID", deltalog.GetLogID()),
+			zap.Int("delete rows", rowNum),
+			zap.Int64("pkBegin", pkBegin),
+			zap.Int64("pkEnd", pkEnd),
+			zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})))
+	}
+
 	return &datapb.FieldBinlog{
 		FieldID: s.pkField.GetFieldID(),
 		Binlogs: []*datapb.Binlog{deltalog},

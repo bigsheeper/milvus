@@ -22,6 +22,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/milvus-io/milvus/pkg/proto/etcdpb"
+
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
@@ -158,6 +160,80 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 	t.processInsertBlobs()
 	t.processStatsBlob()
 	t.processDeltaBlob()
+
+	deserializeInsertFn := func(blobs []*storage.Blob) []int64 {
+		meta := &etcdpb.CollectionMeta{
+			Schema: t.schema,
+			ID:     t.collectionID,
+		}
+		if len(blobs) == 0 {
+			return nil
+		}
+		inCodec := storage.NewInsertCodecWithSchema(meta)
+		_, _, _, insertData, err := inCodec.DeserializeAll(blobs)
+		if err != nil {
+			panic(err)
+		}
+		pkFieldData := insertData.Data[t.pkField.GetFieldID()]
+		return pkFieldData.GetRows().([]int64)
+	}
+
+	for _, insertBinlog := range t.insertBinlogs {
+		if insertBinlog.GetFieldID() == t.pkField.GetFieldID() {
+			for _, binlog := range insertBinlog.GetBinlogs() {
+				pks := deserializeInsertFn(lo.Values(t.binlogBlobs))
+				if len(pks) <= 0 {
+					continue
+				}
+				rows := len(pks)
+				pkBegin := pks[0]
+				pkEnd := pks[rows-1]
+				log.Info("sheep debug, save binlog path",
+					zap.Int64("SegmentID", t.segmentID),
+					zap.Int64("CollectionID", t.collectionID),
+					zap.String("logPath", binlog.GetLogPath()),
+					zap.Int64("logID", binlog.GetLogID()),
+					zap.Int("rows", rows),
+					zap.Int64("pkBegin", pkBegin),
+					zap.Int64("pkEnd", pkEnd),
+					zap.Int64s("pks", pks),
+				)
+			}
+		}
+	}
+
+	deserializeDeleteFn := func(blobs []*storage.Blob) []storage.PrimaryKey {
+		_, _, dData, err := storage.NewDeleteCodec().Deserialize(blobs)
+		if err != nil {
+			panic(err)
+		}
+		return dData.Pks
+	}
+
+	var pks []storage.PrimaryKey
+	if t.deltaBlob != nil {
+		pks = deserializeDeleteFn([]*storage.Blob{t.deltaBlob})
+	}
+	rowNum := len(pks)
+	if rowNum > 0 {
+		for _, binlog := range t.deltaBinlog.GetBinlogs() {
+			if binlog.GetLogID() == t.pkField.GetFieldID() {
+				pkBegin := pks[0].GetValue().(int64)
+				pkEnd := pks[rowNum-1].GetValue().(int64)
+				log.Info("sheep debug, save delta log path",
+					zap.Int64("SegmentID", t.segmentID),
+					zap.Int64("CollectionID", t.collectionID),
+					zap.String("logPath", binlog.GetLogPath()),
+					zap.Int64("logID", binlog.GetLogID()),
+					zap.Int("delete rows", rowNum),
+					zap.Int64("pkBegin", pkBegin),
+					zap.Int64("pkEnd", pkEnd),
+					zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+						return pk.GetValue().(int64)
+					})))
+			}
+		}
+	}
 
 	if len(t.bm25Blobs) > 0 || len(t.mergedBm25Blob) > 0 {
 		t.processBM25StastBlob()

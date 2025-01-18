@@ -109,6 +109,7 @@ func newCompactionTrigger(
 }
 
 func (t *compactionTrigger) start() {
+	return
 	t.globalTrigger = time.NewTicker(Params.DataCoordCfg.MixCompactionTriggerInterval.GetAsDuration(time.Second))
 	t.closeWaiter.Add(2)
 	go func() {

@@ -23,6 +23,9 @@ import (
 	"math"
 	"sync"
 
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap"
+
 	"github.com/apache/arrow/go/v12/arrow"
 	"github.com/apache/arrow/go/v12/arrow/array"
 	"github.com/apache/arrow/go/v12/parquet"
@@ -827,6 +830,7 @@ type SerializeWriter[T any] struct {
 	rw         RecordWriter
 	serializer Serializer[T]
 	batchSize  int
+	segmentID  int64
 	mu         sync.Mutex
 
 	buffer []T
@@ -840,6 +844,22 @@ func (sw *SerializeWriter[T]) Flush() error {
 		return nil
 	}
 	buf := sw.buffer[:sw.pos]
+	pks := make([]int64, 0)
+	for _, b := range buf {
+		pk := any(b).(*Value).PK.GetValue().(int64)
+		pks = append(pks, pk)
+	}
+	rowNum := len(pks)
+	pkBegin := pks[0]
+	pkEnd := pks[rowNum-1]
+	log.Info("sheep debug, mix compaction pks",
+		zap.Int64("segmentID", sw.segmentID),
+		zap.Int("rowNum", rowNum),
+		zap.Int64("pkBegin", pkBegin),
+		zap.Int64("pkEnd", pkEnd),
+		zap.Int64s("pks", pks),
+	)
+
 	r, err := sw.serializer(buf)
 	if err != nil {
 		return err
@@ -894,11 +914,12 @@ func (sw *SerializeWriter[T]) Close() error {
 	return nil
 }
 
-func NewSerializeRecordWriter[T any](rw RecordWriter, serializer Serializer[T], batchSize int) *SerializeWriter[T] {
+func NewSerializeRecordWriter[T any](rw RecordWriter, serializer Serializer[T], batchSize int, segmentID int64) *SerializeWriter[T] {
 	return &SerializeWriter[T]{
 		rw:         rw,
 		serializer: serializer,
 		batchSize:  batchSize,
+		segmentID:  segmentID,
 	}
 }
 

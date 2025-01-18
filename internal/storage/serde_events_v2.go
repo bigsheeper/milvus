@@ -238,7 +238,7 @@ func NewPackedSerializeWriter(bucketName string, paths []string, schema *schemap
 	}
 	return NewSerializeRecordWriter(PackedBinlogRecordWriter, func(v []*Value) (Record, error) {
 		return ValueSerializer(v, schema.Fields)
-	}, batchSize), nil
+	}, batchSize, 0), nil
 }
 
 var _ BinlogRecordWriter = (*PackedBinlogRecordWriter)(nil)

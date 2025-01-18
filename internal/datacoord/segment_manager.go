@@ -498,7 +498,7 @@ func (s *SegmentManager) GetFlushableSegments(ctx context.Context, channel strin
 	}
 
 	// TODO: It's too frequent; perhaps each channel could check once per minute instead.
-	s.cleanupSealedSegment(t, channel)
+	//s.cleanupSealedSegment(t, channel)
 
 	sealed, ok := s.channel2Sealed.Get(channel)
 	if !ok {

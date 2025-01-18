@@ -88,6 +88,21 @@ func (s *storageV1Serializer) EncodeBuffer(ctx context.Context, pack *SyncPack) 
 		for _, chunk := range pack.insertData {
 			for fieldID, fieldData := range chunk.Data {
 				memSize[fieldID] += int64(fieldData.GetMemorySize())
+				if fieldID == s.pkField.GetFieldID() {
+					rowNum := fieldData.RowNum()
+					if rowNum <= 0 {
+						log.Warn("sheep debug, 0 rows")
+						continue
+					}
+					pkBegin := fieldData.GetRow(0).(int64)
+					pkEnd := fieldData.GetRow(rowNum - 1).(int64)
+					log.Info("sheep debug, flush insert, pk range",
+						zap.Int("field data rows", rowNum),
+						zap.Int64("pkBegin", pkBegin),
+						zap.Int64("pkEnd", pkEnd),
+						zap.Int64s("pks", fieldData.GetDataRows().([]int64)),
+					)
+				}
 			}
 		}
 		task.binlogMemsize = memSize
@@ -152,6 +167,17 @@ func (s *storageV1Serializer) EncodeBuffer(ctx context.Context, pack *SyncPack) 
 		}
 		task.deltaBlob = deltaBlob
 		task.deltaRowCount = pack.deltaData.RowCount
+
+		rowNum := int(pack.deltaData.RowCount)
+		if rowNum > 0 {
+			pkBegin := pack.deltaData.Pks[0].GetValue().(int64)
+			pkEnd := pack.deltaData.Pks[rowNum-1].GetValue().(int64)
+			log.Info("sheep debug, flush delete, pk range", zap.Int("delete rows", rowNum),
+				zap.Int64("pkBegin", pkBegin), zap.Int64("pkEnd", pkEnd),
+				zap.Int64s("pks", lo.Map(pack.deltaData.Pks, func(pk storage.PrimaryKey, _ int) int64 {
+					return pk.GetValue().(int64)
+				})))
+		}
 	}
 	if pack.isDrop {
 		task.WithDrop()

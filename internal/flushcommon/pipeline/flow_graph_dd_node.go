@@ -203,6 +203,27 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.InsertLabel).
 				Add(float64(imsg.GetNumRows()))
 
+			for _, fieldData := range imsg.GetFieldsData() {
+				if fieldData.GetFieldId() == int64(100) {
+					rows := fieldData.GetScalars().GetLongData().GetData()
+					rowNum := len(rows)
+					if rowNum <= 0 {
+						log.Warn("sheep debug, 0 rows",
+							zap.Int64("segmentID", imsg.GetSegmentID()),
+							zap.String("channel", ddn.vChannelName))
+						continue
+					}
+					pkBegin := rows[0]
+					pkEnd := rows[rowNum-1]
+					log.Info("sheep debug, receive insert msg, pk range",
+						zap.Int64("segmentID", imsg.GetSegmentID()),
+						zap.String("channel", ddn.vChannelName),
+						zap.Int("field data rows", rowNum),
+						zap.Int64("pkBegin", pkBegin), zap.Int64("pkEnd", pkEnd),
+						zap.Int64s("pks", rows))
+				}
+			}
+
 			log.Debug("DDNode receive insert messages",
 				zap.Int64("segmentID", imsg.GetSegmentID()),
 				zap.String("channel", ddn.vChannelName),
@@ -221,6 +242,21 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 					zap.Int64("Expected collID", ddn.collectionID))
 				continue
 			}
+
+			rows := dmsg.GetPrimaryKeys().GetIntId().GetData()
+			rowNum := len(rows)
+			if rowNum <= 0 {
+				log.Warn("sheep debug, 0 rows",
+					zap.String("channel", ddn.vChannelName))
+				continue
+			}
+			pkBegin := rows[0]
+			pkEnd := rows[rowNum-1]
+			log.Info("sheep debug, receive delete msg, pk range",
+				zap.String("channel", ddn.vChannelName),
+				zap.Int("field data rows", rowNum),
+				zap.Int64("pkBegin", pkBegin), zap.Int64("pkEnd", pkEnd),
+				zap.Int64s("pks", rows))
 
 			log.Debug("DDNode receive delete messages", zap.String("channel", ddn.vChannelName), zap.Int64("numRows", dmsg.NumRows))
 			util.GetRateCollector().Add(metricsinfo.DeleteConsumeThroughput, float64(proto.Size(dmsg.DeleteRequest)))

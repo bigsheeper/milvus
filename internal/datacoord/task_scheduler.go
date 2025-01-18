@@ -18,6 +18,8 @@ package datacoord
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/samber/lo"
 	"sync"
 	"time"
 
@@ -30,8 +32,8 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 )
 
@@ -645,11 +647,82 @@ func (s *taskScheduler) processRetry(task Task) bool {
 	return true
 }
 
+func diffSlices(a, b []string) (onlyInA, onlyInB []string) {
+	// 创建map来存储b的元素
+	bMap := make(map[string]bool)
+	for _, item := range b {
+		bMap[item] = true
+	}
+
+	// 找到仅在a中的元素
+	for _, item := range a {
+		if !bMap[item] {
+			onlyInA = append(onlyInA, item)
+		}
+	}
+
+	// 创建map来存储a的元素
+	aMap := make(map[string]bool)
+	for _, item := range a {
+		aMap[item] = true
+	}
+
+	// 找到仅在b中的元素
+	for _, item := range b {
+		if !aMap[item] {
+			onlyInB = append(onlyInB, item)
+		}
+	}
+
+	return
+}
+
 func (s *taskScheduler) processInProgress(task Task) bool {
 	client, exist := s.nodeManager.GetClientByID(task.GetNodeID())
 	if exist {
 		task.QueryResult(s.ctx, client)
 		if task.GetState() == indexpb.JobState_JobStateFinished || task.GetState() == indexpb.JobState_JobStateFailed {
+			if task.GetTaskType() == indexpb.JobType_JobTypeStatsJob.String() {
+				st := task.(*statsTask)
+				segment := s.meta.GetHealthySegment(s.ctx, st.segmentID)
+				if segment == nil {
+					log.Warn("segment is node healthy, skip stats")
+				} else {
+					metaDelta := segment.GetDeltalogs()
+					reqDelta := st.req.GetDeltaLogs()
+					if len(metaDelta) != len(reqDelta) {
+						log.Warn("sheep debug, aaa stats delta log diff",
+							zap.Int64("segmentID", st.segmentID),
+							zap.Int("metaDeltaLen", len(metaDelta)),
+							zap.Int("reqDeltaLen", len(reqDelta)),
+							zap.Any("metaDelta", metaDelta),
+							zap.Any("reqDelta", reqDelta),
+						)
+					} else {
+						for i := 0; i < len(metaDelta); i++ {
+							metaDeltaPaths := lo.Map(metaDelta[i].GetBinlogs(), func(binlog *datapb.Binlog, _ int) string {
+								return binlog.GetLogPath()
+							})
+							reqDeltaPaths := lo.Map(reqDelta[i].GetBinlogs(), func(binlog *datapb.Binlog, _ int) string {
+								return binlog.GetLogPath()
+							})
+							onlyInMeta, onlyInReq := diffSlices(metaDeltaPaths, reqDeltaPaths)
+							log.Info("sheep debug, stats delta log diff",
+								zap.Int64("segmentID", st.segmentID),
+								zap.Any("onlyInMeta", onlyInMeta),
+								zap.Any("onlyInReq", onlyInReq),
+								zap.Any("metaDelta", metaDelta),
+								zap.Any("reqDelta", reqDelta),
+							)
+						}
+					}
+					log.Info("sheep debug, stats delta logs",
+						zap.Int64("segmentID", st.segmentID),
+						zap.Any("metaDelta", metaDelta),
+						zap.Any("reqDelta", reqDelta),
+					)
+				}
+			}
 			task.ResetTask(s.meta)
 			return s.processFinished(task)
 		}

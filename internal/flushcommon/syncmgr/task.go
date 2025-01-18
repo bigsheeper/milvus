@@ -36,6 +36,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/etcdpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
@@ -158,6 +159,79 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 	t.processInsertBlobs()
 	t.processStatsBlob()
 	t.processDeltaBlob()
+
+	deserializeInsertFn := func(blobs []*storage.Blob) []int64 {
+		meta := &etcdpb.CollectionMeta{
+			Schema: t.schema,
+			ID:     t.collectionID,
+		}
+		if len(blobs) == 0 {
+			return nil
+		}
+		inCodec := storage.NewInsertCodecWithSchema(meta)
+		_, _, _, insertData, err := inCodec.DeserializeAll(blobs)
+		if err != nil {
+			panic(err)
+		}
+		pkFieldData := insertData.Data[t.pkField.GetFieldID()]
+		return pkFieldData.GetDataRows().([]int64)
+	}
+
+	for _, insertBinlog := range t.insertBinlogs {
+		if insertBinlog.GetFieldID() == t.pkField.GetFieldID() {
+			for _, binlog := range insertBinlog.GetBinlogs() {
+				pks := deserializeInsertFn(lo.Values(t.binlogBlobs))
+				if len(pks) <= 0 {
+					continue
+				}
+				rows := len(pks)
+				pkBegin := pks[0]
+				pkEnd := pks[rows-1]
+				log.Info("sheep debug, save binlog path",
+					zap.Int64("SegmentID", t.segmentID),
+					zap.Int64("CollectionID", t.collectionID),
+					zap.String("logPath", binlog.GetLogPath()),
+					zap.Int64("logID", binlog.GetLogID()),
+					zap.Int("rows", rows),
+					zap.Int64("pkBegin", pkBegin),
+					zap.Int64("pkEnd", pkEnd),
+					zap.Int64s("pks", pks),
+				)
+			}
+		}
+	}
+
+	deserializeDeleteFn := func(blobs []*storage.Blob) []int64 {
+		_, _, dData, err := storage.NewDeleteCodec().Deserialize(blobs)
+		if err != nil {
+			panic(err)
+		}
+		return dData.DeletePks().(*storage.Int64PrimaryKeys).Values()
+	}
+
+	var pks []int64
+	if t.deltaBlob != nil {
+		pks = deserializeDeleteFn([]*storage.Blob{t.deltaBlob})
+	}
+	rowNum := len(pks)
+	if rowNum > 0 {
+		for _, binlog := range t.deltaBinlog.GetBinlogs() {
+			if binlog.GetLogID() == t.pkField.GetFieldID() {
+				pkBegin := pks[0]
+				pkEnd := pks[rowNum-1]
+				log.Info("sheep debug, save delta log path",
+					zap.Int64("SegmentID", t.segmentID),
+					zap.Int64("CollectionID", t.collectionID),
+					zap.String("logPath", binlog.GetLogPath()),
+					zap.Int64("logID", binlog.GetLogID()),
+					zap.Int("delete rows", rowNum),
+					zap.Int64("pkBegin", pkBegin),
+					zap.Int64("pkEnd", pkEnd),
+					zap.Int64s("pks", pks),
+				)
+			}
+		}
+	}
 
 	if len(t.bm25Blobs) > 0 || len(t.mergedBm25Blob) > 0 {
 		t.processBM25StastBlob()

@@ -258,6 +258,7 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 				}
 			}
 		case <-singleTicker.C:
+			continue
 			if !m.singlePolicy.Enable() {
 				continue
 			}

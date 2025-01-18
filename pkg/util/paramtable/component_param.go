@@ -4498,7 +4498,7 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 	p.EnableGarbageCollection = ParamItem{
 		Key:          "dataCoord.enableGarbageCollection",
 		Version:      "2.0.0",
-		DefaultValue: "true",
+		DefaultValue: "false",
 		Doc:          "Switch value to control if to enable garbage collection to clear the discarded data in MinIO or S3 service.",
 		Export:       true,
 	}

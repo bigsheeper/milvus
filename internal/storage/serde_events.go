@@ -804,13 +804,13 @@ func (b *BinlogValueWriter) Close() error {
 	return b.SerializeWriter.Close()
 }
 
-func NewBinlogValueWriter(rw BinlogRecordWriter, batchSize int,
+func NewBinlogValueWriter(rw BinlogRecordWriter, batchSize int, segmentID int64,
 ) *BinlogValueWriter {
 	return &BinlogValueWriter{
 		BinlogRecordWriter: rw,
 		SerializeWriter: NewSerializeRecordWriter(rw, func(v []*Value) (Record, error) {
 			return ValueSerializer(v, rw.Schema().Fields)
-		}, batchSize),
+		}, batchSize, segmentID),
 	}
 }
 
@@ -841,7 +841,7 @@ func NewBinlogSerializeWriter(schema *schemapb.CollectionSchema, partitionID, se
 		RecordWriter: compositeRecordWriter,
 		SerializeWriter: NewSerializeRecordWriter[*Value](compositeRecordWriter, func(v []*Value) (Record, error) {
 			return ValueSerializer(v, schema.Fields)
-		}, batchSize),
+		}, batchSize, segmentID),
 	}, nil
 }
 
@@ -958,7 +958,7 @@ func newDeltalogSerializeWriter(eventWriter *DeltalogStreamWriter, batchSize int
 			0: 0,
 		}
 		return NewSimpleArrowRecord(array.NewRecord(arrow.NewSchema(field, nil), arr, int64(len(v))), field2Col), nil
-	}, batchSize), nil
+	}, batchSize, eventWriter.segmentID), nil
 }
 
 var _ RecordReader = (*simpleArrowRecordReader)(nil)
@@ -1203,7 +1203,7 @@ func newDeltalogMultiFieldWriter(eventWriter *MultiFieldDeltalogStreamWriter, ba
 			common.TimeStampField: 1,
 		}
 		return NewSimpleArrowRecord(array.NewRecord(arrowSchema, arr, int64(len(v))), field2Col), nil
-	}, batchSize), nil
+	}, batchSize, eventWriter.segmentID), nil
 }
 
 func newDeltalogMultiFieldReader(blobs []*Blob) (*DeserializeReaderImpl[*DeleteLog], error) {

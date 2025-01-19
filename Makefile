@@ -488,7 +488,7 @@ generate-mockery-datacoord: getdeps
 	$(INSTALL_PATH)/mockery --name=SubCluster --dir=internal/datacoord --filename=mock_subcluster.go --output=internal/datacoord  --structname=MockSubCluster --with-expecter --inpackage
 	$(INSTALL_PATH)/mockery --name=Broker --dir=internal/datacoord/broker --filename=mock_coordinator_broker.go --output=internal/datacoord/broker  --structname=MockBroker --with-expecter --inpackage
 	$(INSTALL_PATH)/mockery --name=WorkerManager --dir=internal/datacoord --filename=mock_worker_manager.go --output=internal/datacoord  --structname=MockWorkerManager --with-expecter --inpackage
-	$(INSTALL_PATH)/mockery --name=MockSegmentManager --dir=internal/datacoord --filename=mock_segment_manager.go --output=internal/datacoord  --structname=MockSegmentManager --with-expecter --inpackage
+	$(INSTALL_PATH)/mockery --name=SegmentManager --dir=internal/datacoord --filename=mock_segment_manager.go --output=internal/datacoord  --structname=MockSegmentManager --with-expecter --inpackage
 
 
 generate-mockery-datanode: getdeps

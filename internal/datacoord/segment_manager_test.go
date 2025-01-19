@@ -881,3 +881,129 @@ func TestSegmentManager_DropSegmentsOfChannel(t *testing.T) {
 		})
 	}
 }
+
+func TestSegmentManager_CleanZeroSealedSegmentsOfChannel(t *testing.T) {
+	partitionID := int64(100)
+	type fields struct {
+		meta     *meta
+		segments []UniqueID
+	}
+	type args struct {
+		channel string
+		cpTs    Timestamp
+	}
+
+	newMetaFunc := func() *meta {
+		return &meta{
+			segments: &SegmentsInfo{
+				segments: map[int64]*SegmentInfo{
+					1: {
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:             1,
+							PartitionID:    partitionID,
+							InsertChannel:  "ch1",
+							State:          commonpb.SegmentState_Sealed,
+							NumOfRows:      1,
+							LastExpireTime: 100,
+						},
+					},
+					2: {
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:             2,
+							PartitionID:    partitionID,
+							InsertChannel:  "ch1",
+							State:          commonpb.SegmentState_Sealed,
+							NumOfRows:      0,
+							LastExpireTime: 100,
+						},
+					},
+					3: {
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:             3,
+							PartitionID:    partitionID,
+							InsertChannel:  "ch1",
+							State:          commonpb.SegmentState_Sealed,
+							NumOfRows:      0,
+							LastExpireTime: 90,
+						},
+					},
+					4: {
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:             4,
+							PartitionID:    partitionID,
+							InsertChannel:  "ch2",
+							State:          commonpb.SegmentState_Growing,
+							NumOfRows:      1,
+							LastExpireTime: 100,
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   []UniqueID
+	}{
+		{
+			"test clean empty sealed segments with normal channel cp <= lastExpireTs",
+			fields{
+				meta:     newMetaFunc(),
+				segments: []UniqueID{1, 2, 3},
+			},
+			args{
+				"ch1", 90,
+			},
+			[]UniqueID{1, 2, 4},
+		},
+		{
+			"test clean empty sealed segments with normal channel cp > lastExpireTs",
+			fields{
+				meta:     newMetaFunc(),
+				segments: []UniqueID{1, 2, 3},
+			},
+			args{
+				"ch1", 101,
+			},
+			[]UniqueID{1, 4},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &SegmentManager{
+				meta:            tt.fields.meta,
+				channelLock:     lock.NewKeyLock[string](),
+				channel2Growing: typeutil.NewConcurrentMap[string, typeutil.UniqueSet](),
+				channel2Sealed:  typeutil.NewConcurrentMap[string, typeutil.UniqueSet](),
+			}
+			for _, segmentID := range tt.fields.segments {
+				segmentInfo := tt.fields.meta.GetSegment(segmentID)
+				channel := tt.args.channel
+				if segmentInfo != nil {
+					channel = segmentInfo.GetInsertChannel()
+				}
+				if segmentInfo == nil || segmentInfo.GetState() == commonpb.SegmentState_Growing {
+					growing, _ := s.channel2Growing.GetOrInsert(channel, typeutil.NewUniqueSet())
+					growing.Insert(segmentID)
+				} else if segmentInfo.GetState() == commonpb.SegmentState_Sealed {
+					sealed, _ := s.channel2Sealed.GetOrInsert(channel, typeutil.NewUniqueSet())
+					sealed.Insert(segmentID)
+				}
+			}
+			s.CleanZeroSealedSegmentsOfChannel(tt.args.channel, tt.args.cpTs)
+			all := make([]int64, 0)
+			s.channel2Sealed.Range(func(_ string, segments typeutil.UniqueSet) bool {
+				all = append(all, segments.Collect()...)
+				return true
+			})
+			s.channel2Growing.Range(func(_ string, segments typeutil.UniqueSet) bool {
+				all = append(all, segments.Collect()...)
+				return true
+			})
+			assert.ElementsMatch(t, tt.want, all)
+		})
+	}
+}

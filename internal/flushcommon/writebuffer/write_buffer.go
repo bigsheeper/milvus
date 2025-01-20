@@ -581,6 +581,13 @@ func (wb *writeBufferBase) getSyncTask(ctx context.Context, segmentID int64) (sy
 	}
 
 	if delta != nil {
+		log.Info("sheep debug, getSyncTask",
+			zap.Int64("segmentID", segmentID),
+			zap.Int("rows", len(delta.Pks)),
+			zap.Int64s("pks", lo.Map(delta.Pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})),
+		)
 		totalMemSize += float64(delta.Size())
 	}
 

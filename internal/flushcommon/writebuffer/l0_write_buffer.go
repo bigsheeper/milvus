@@ -2,7 +2,7 @@ package writebuffer
 
 import (
 	"context"
-
+	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
@@ -123,6 +123,14 @@ func (wb *l0WriteBuffer) dispatchDeleteMsgs(groups []*InsertData, deleteMsgs []*
 	retMap.Range(func(key int, value *BatchApplyRet) bool {
 		l0SegmentID := wb.getL0SegmentID(deleteMsgs[value.DeleteDataIdx].GetPartitionID(), startPos)
 		pks := pksInDeleteMsgs[value.DeleteDataIdx]
+		log.Info("sheep debug, dispatchDeleteMsgs",
+			zap.Int64("segmentID", l0SegmentID),
+			zap.Int("rows", len(pks)),
+			zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})),
+		)
+
 		pkTss := deleteMsgs[value.DeleteDataIdx].GetTimestamps()
 
 		var deletePks []storage.PrimaryKey
@@ -136,6 +144,15 @@ func (wb *l0WriteBuffer) dispatchDeleteMsgs(groups []*InsertData, deleteMsgs []*
 		if len(deletePks) > 0 {
 			wb.bufferDelete(l0SegmentID, deletePks, deleteTss, startPos, endPos)
 		}
+
+		pks = wb.getOrCreateBuffer(l0SegmentID).deltaBuffer.buffer.Pks
+		log.Info("sheep debug, delBuf after dispatchDeleteMsgs",
+			zap.Int64("segmentID", l0SegmentID),
+			zap.Int("rows", len(pks)),
+			zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})),
+		)
 		return true
 	})
 }
@@ -145,9 +162,25 @@ func (wb *l0WriteBuffer) dispatchDeleteMsgsWithoutFilter(deleteMsgs []*msgstream
 		l0SegmentID := wb.getL0SegmentID(msg.GetPartitionID(), startPos)
 		pks := storage.ParseIDs2PrimaryKeys(msg.GetPrimaryKeys())
 		pkTss := msg.GetTimestamps()
+		log.Info("sheep debug, dispatchDeleteMsgsWithoutFilter",
+			zap.Int64("segmentID", l0SegmentID),
+			zap.Int("rows", len(pks)),
+			zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})),
+		)
 		if len(pks) > 0 {
 			wb.bufferDelete(l0SegmentID, pks, pkTss, startPos, endPos)
 		}
+
+		pks = wb.getOrCreateBuffer(l0SegmentID).deltaBuffer.buffer.Pks
+		log.Info("sheep debug, delBuf after dispatchDeleteMsgsWithoutFilter",
+			zap.Int64("segmentID", l0SegmentID),
+			zap.Int("rows", len(pks)),
+			zap.Int64s("pks", lo.Map(pks, func(pk storage.PrimaryKey, _ int) int64 {
+				return pk.GetValue().(int64)
+			})),
+		)
 	}
 }
 

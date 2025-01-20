@@ -857,7 +857,7 @@ func (sw *SerializeWriter[T]) Flush() error {
 	if rowNum > 0 {
 		pkBegin := pks[0]
 		pkEnd := pks[rowNum-1]
-		log.Info("sheep debug, mix compaction pks",
+		log.Info("sheep debug, serde SerializeWriter",
 			zap.Int64("segmentID", sw.segmentID),
 			zap.Int("rowNum", rowNum),
 			zap.Int64("pkBegin", pkBegin),

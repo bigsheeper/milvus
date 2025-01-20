@@ -176,7 +176,6 @@ func (m *CompactionTriggerManager) startLoop() {
 				}
 			}
 		case <-singleTicker.C:
-			continue
 			if !m.singlePolicy.Enable() {
 				continue
 			}

@@ -100,7 +100,7 @@ func (s *storageV1Serializer) EncodeBuffer(ctx context.Context, pack *SyncPack) 
 						zap.Int("field data rows", rowNum),
 						zap.Int64("pkBegin", pkBegin),
 						zap.Int64("pkEnd", pkEnd),
-						zap.Int64s("pks", fieldData.GetRows().([]int64)),
+						zap.Int64s("pks", fieldData.GetDataRows().([]int64)),
 					)
 				}
 			}

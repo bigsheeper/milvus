@@ -846,19 +846,25 @@ func (sw *SerializeWriter[T]) Flush() error {
 	buf := sw.buffer[:sw.pos]
 	pks := make([]int64, 0)
 	for _, b := range buf {
-		pk := any(b).(*Value).PK.GetValue().(int64)
-		pks = append(pks, pk)
+		switch any(b).(type) {
+		case *Value:
+			pks = append(pks, any(b).(*Value).PK.GetValue().(int64))
+		case *DeleteLog:
+			pks = append(pks, any(b).(*DeleteLog).Pk.GetValue().(int64))
+		}
 	}
 	rowNum := len(pks)
-	pkBegin := pks[0]
-	pkEnd := pks[rowNum-1]
-	log.Info("sheep debug, mix compaction pks",
-		zap.Int64("segmentID", sw.segmentID),
-		zap.Int("rowNum", rowNum),
-		zap.Int64("pkBegin", pkBegin),
-		zap.Int64("pkEnd", pkEnd),
-		zap.Int64s("pks", pks),
-	)
+	if rowNum > 0 {
+		pkBegin := pks[0]
+		pkEnd := pks[rowNum-1]
+		log.Info("sheep debug, mix compaction pks",
+			zap.Int64("segmentID", sw.segmentID),
+			zap.Int("rowNum", rowNum),
+			zap.Int64("pkBegin", pkBegin),
+			zap.Int64("pkEnd", pkEnd),
+			zap.Int64s("pks", pks),
+		)
+	}
 
 	r, err := sw.serializer(buf)
 	if err != nil {

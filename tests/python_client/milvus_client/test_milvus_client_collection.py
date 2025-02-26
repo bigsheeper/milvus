@@ -103,7 +103,7 @@ class TestMilvusClientCollectionInvalid(TestMilvusClientV2Base):
         client = self._client()
         collection_name = cf.gen_unique_str(prefix)
         # 1. create collection
-        error = {ct.err_code: 65535, ct.err_msg: f"invalid dimension: {dim}. "
+        error = {ct.err_code: 65535, ct.err_msg: f"invalid dimension: {dim} of field {default_vector_field_name}. "
                                                  f"float vector dimension should be in range 2 ~ 32768"}
         if dim < ct.min_dim:
             error = {ct.err_code: 65535, ct.err_msg: f"invalid dimension: {dim}. "
@@ -138,7 +138,7 @@ class TestMilvusClientCollectionInvalid(TestMilvusClientV2Base):
         collection_name = cf.gen_unique_str(prefix)
         # 1. create collection
         error = {ct.err_code: 65535, ct.err_msg: f"type param(max_length) should be specified for varChar "
-                                                 f"field of collection {collection_name}"}
+                                                 f"field(id) of collection {collection_name}"}
         self.create_collection(client, collection_name, default_dim, id_type="string", auto_id=True,
                                check_task=CheckTasks.err_res, check_items=error)
 
@@ -306,7 +306,7 @@ class TestMilvusClientCollectionValid(TestMilvusClientV2Base):
                        "consistency_level": 0,
                        "enable_dynamic_field": False,
                        "num_partitions": 16,
-                       "id_name": "id_string",
+                       "primary_field": "id_string",
                        "vector_name": "embeddings"}
         if nullable:
             check_items["nullable_fields"] = ["nullable_field", "array_field"]

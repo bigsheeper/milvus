@@ -34,10 +34,10 @@ import (
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
 	catalogmocks "github.com/milvus-io/milvus/internal/metastore/mocks"
 	"github.com/milvus-io/milvus/internal/metastore/model"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 )
 
 func TestReloadFromKV(t *testing.T) {
@@ -269,21 +269,8 @@ func TestMeta_CanCreateIndex(t *testing.T) {
 		tmpIndexID, err := m.CanCreateIndex(req)
 		assert.NoError(t, err)
 		assert.Equal(t, int64(0), tmpIndexID)
-		index := &model.Index{
-			TenantID:        "",
-			CollectionID:    collID,
-			FieldID:         fieldID,
-			IndexID:         indexID,
-			IndexName:       indexName,
-			IsDeleted:       false,
-			CreateTime:      0,
-			TypeParams:      typeParams,
-			IndexParams:     indexParams,
-			IsAutoIndex:     false,
-			UserIndexParams: userIndexParams,
-		}
 
-		err = m.CreateIndex(context.TODO(), index)
+		_, err = m.CreateIndex(context.TODO(), req, indexID)
 		assert.NoError(t, err)
 
 		tmpIndexID, err = m.CanCreateIndex(req)
@@ -376,6 +363,10 @@ func TestMeta_HasSameReq(t *testing.T) {
 				Key:   common.DimKey,
 				Value: "128",
 			},
+			{
+				Key:   common.MmapEnabledKey,
+				Value: "true",
+			},
 		}
 		indexParams = []*commonpb.KeyValuePair{
 			{
@@ -454,21 +445,21 @@ func TestMeta_CreateIndex(t *testing.T) {
 			Value: "FLAT",
 		},
 	}
-	index := &model.Index{
-		TenantID:     "",
-		CollectionID: 1,
-		FieldID:      2,
-		IndexID:      3,
-		IndexName:    "_default_idx",
-		IsDeleted:    false,
-		CreateTime:   12,
-		TypeParams: []*commonpb.KeyValuePair{
-			{
-				Key:   common.DimKey,
-				Value: "128",
-			},
+
+	typeParams := []*commonpb.KeyValuePair{
+		{
+			Key:   common.DimKey,
+			Value: "128",
 		},
+	}
+
+	req := &indexpb.CreateIndexRequest{
+		CollectionID:    1,
+		FieldID:         2,
+		IndexName:       indexName,
+		TypeParams:      typeParams,
 		IndexParams:     indexParams,
+		Timestamp:       12,
 		IsAutoIndex:     false,
 		UserIndexParams: indexParams,
 	}
@@ -481,7 +472,7 @@ func TestMeta_CreateIndex(t *testing.T) {
 		).Return(nil)
 
 		m := newSegmentIndexMeta(sc)
-		err := m.CreateIndex(context.TODO(), index)
+		_, err := m.CreateIndex(context.TODO(), req, 3)
 		assert.NoError(t, err)
 	})
 
@@ -493,7 +484,7 @@ func TestMeta_CreateIndex(t *testing.T) {
 		).Return(errors.New("fail"))
 
 		m := newSegmentIndexMeta(ec)
-		err := m.CreateIndex(context.TODO(), index)
+		_, err := m.CreateIndex(context.TODO(), req, 4)
 		assert.Error(t, err)
 	})
 }
@@ -1496,6 +1487,57 @@ func TestRemoveSegmentIndex(t *testing.T) {
 		err := m.RemoveSegmentIndex(context.TODO(), collID, partID, segID, indexID, buildID)
 		assert.NoError(t, err)
 
+		assert.Equal(t, len(m.segmentIndexes), 0)
+		assert.Equal(t, len(m.segmentBuildInfo.List()), 0)
+	})
+}
+
+func TestRemoveSegmentIndexByID(t *testing.T) {
+	t.Run("drop segment index fail", func(t *testing.T) {
+		expectedErr := errors.New("error")
+		catalog := catalogmocks.NewDataCoordCatalog(t)
+		catalog.EXPECT().
+			DropSegmentIndex(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(expectedErr)
+
+		catalog.EXPECT().CreateSegmentIndex(mock.Anything, mock.Anything).Return(nil)
+
+		m := newSegmentIndexMeta(catalog)
+		err := m.AddSegmentIndex(context.TODO(), &model.SegmentIndex{
+			SegmentID:    3,
+			CollectionID: 1,
+			PartitionID:  2,
+			NumRows:      1024,
+			IndexID:      1,
+			BuildID:      4,
+		})
+		assert.NoError(t, err)
+		err = m.RemoveSegmentIndexByID(context.TODO(), 4)
+		assert.Error(t, err)
+		assert.EqualError(t, err, "error")
+	})
+
+	t.Run("remove segment index ok", func(t *testing.T) {
+		catalog := catalogmocks.NewDataCoordCatalog(t)
+		catalog.EXPECT().
+			DropSegmentIndex(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil)
+
+		catalog.EXPECT().CreateSegmentIndex(mock.Anything, mock.Anything).Return(nil)
+
+		m := newSegmentIndexMeta(catalog)
+		err := m.AddSegmentIndex(context.TODO(), &model.SegmentIndex{
+			SegmentID:    3,
+			CollectionID: 1,
+			PartitionID:  2,
+			NumRows:      1024,
+			IndexID:      1,
+			BuildID:      4,
+		})
+		assert.NoError(t, err)
+
+		err = m.RemoveSegmentIndexByID(context.TODO(), 4)
+		assert.NoError(t, err)
 		assert.Equal(t, len(m.segmentIndexes), 0)
 		assert.Equal(t, len(m.segmentBuildInfo.List()), 0)
 	})

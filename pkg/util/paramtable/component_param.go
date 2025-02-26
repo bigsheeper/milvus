@@ -28,10 +28,10 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"go.uber.org/zap"
 
-	"github.com/milvus-io/milvus/pkg/config"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/util/hardware"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/config"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/util/hardware"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 )
 
 const (
@@ -175,6 +175,10 @@ func (p *ComponentParam) GetAll() map[string]string {
 	return p.baseTable.mgr.GetConfigs()
 }
 
+func (p *ComponentParam) GetConfigsView() map[string]string {
+	return p.baseTable.mgr.GetConfigsView()
+}
+
 func (p *ComponentParam) Watch(key string, watcher config.EventHandler) {
 	p.baseTable.mgr.Dispatcher.Register(key, watcher)
 }
@@ -236,10 +240,11 @@ type commonConfig struct {
 	StorageType ParamItem `refreshable:"false"`
 	SimdType    ParamItem `refreshable:"false"`
 
-	AuthorizationEnabled ParamItem `refreshable:"false"`
-	SuperUsers           ParamItem `refreshable:"true"`
-	DefaultRootPassword  ParamItem `refreshable:"false"`
-	RootShouldBindRole   ParamItem `refreshable:"true"`
+	AuthorizationEnabled  ParamItem `refreshable:"false"`
+	SuperUsers            ParamItem `refreshable:"true"`
+	DefaultRootPassword   ParamItem `refreshable:"false"`
+	RootShouldBindRole    ParamItem `refreshable:"true"`
+	EnablePublicPrivilege ParamItem `refreshable:"false"`
 
 	ClusterName ParamItem `refreshable:"false"`
 
@@ -291,6 +296,8 @@ type commonConfig struct {
 	LocalRPCEnabled ParamItem `refreshable:"false"`
 
 	SyncTaskPoolReleaseTimeoutSeconds ParamItem `refreshable:"true"`
+
+	EnabledJSONKeyStats ParamItem `refreshable:"true"`
 }
 
 func (p *commonConfig) init(base *BaseTable) {
@@ -679,6 +686,22 @@ like the old password verification when updating the credential`,
 	}
 	p.RootShouldBindRole.Init(base.mgr)
 
+	p.EnablePublicPrivilege = ParamItem{
+		Key: "common.security.enablePublicPrivilege",
+		Formatter: func(originValue string) string { // compatible with old version
+			fallbackValue := base.Get("proxy.enablePublicPrivilege")
+			if fallbackValue == "false" {
+				return "false"
+			}
+			return originValue
+		},
+		Version:      "2.5.4",
+		Doc:          "Whether to enable public privilege",
+		DefaultValue: "true",
+		Export:       true,
+	}
+	p.EnablePublicPrivilege.Init(base.mgr)
+
 	p.ClusterName = ParamItem{
 		Key:          "common.cluster.name",
 		Version:      "2.0.0",
@@ -977,6 +1000,15 @@ This helps Milvus-CDC synchronize incremental data`,
 		Export:       true,
 	}
 	p.SyncTaskPoolReleaseTimeoutSeconds.Init(base.mgr)
+
+	p.EnabledJSONKeyStats = ParamItem{
+		Key:          "common.enabledJsonKeyStats",
+		Version:      "2.5.5",
+		DefaultValue: "false",
+		Doc:          "Indicates whether to enable JSON key stats",
+		Export:       true,
+	}
+	p.EnabledJSONKeyStats.Init(base.mgr)
 }
 
 type gpuConfig struct {
@@ -1324,7 +1356,6 @@ type proxyConfig struct {
 	MustUsePartitionKey          ParamItem `refreshable:"true"`
 	SkipAutoIDCheck              ParamItem `refreshable:"true"`
 	SkipPartitionKeyCheck        ParamItem `refreshable:"true"`
-	EnablePublicPrivilege        ParamItem `refreshable:"false"`
 	MaxVarCharLength             ParamItem `refreshable:"false"`
 
 	AccessLog AccessLogConfig
@@ -1460,7 +1491,7 @@ func (p *proxyConfig) init(base *BaseTable) {
 	p.MaxTaskNum = ParamItem{
 		Key:          "proxy.maxTaskNum",
 		Version:      "2.2.0",
-		DefaultValue: "10000",
+		DefaultValue: "1024",
 		Doc:          "The maximum number of tasks in the task queue of the proxy.",
 		Export:       true,
 	}
@@ -1729,14 +1760,6 @@ please adjust in embedded Milvus: false`,
 		Doc:          "switch for whether proxy shall skip partition key check when inserting data",
 	}
 	p.SkipPartitionKeyCheck.Init(base.mgr)
-
-	p.EnablePublicPrivilege = ParamItem{
-		Key:          "proxy.enablePublicPrivilege",
-		Version:      "2.4.1",
-		DefaultValue: "true",
-		Doc:          "switch for whether proxy shall enable public privilege",
-	}
-	p.EnablePublicPrivilege.Init(base.mgr)
 
 	p.MaxVarCharLength = ParamItem{
 		Key:          "proxy.maxVarCharLength",
@@ -2470,9 +2493,12 @@ type queryNodeConfig struct {
 	// segcore
 	KnowhereThreadPoolSize        ParamItem `refreshable:"false"`
 	ChunkRows                     ParamItem `refreshable:"false"`
-	EnableTempSegmentIndex        ParamItem `refreshable:"false"`
+	EnableInterminSegmentIndex    ParamItem `refreshable:"false"`
 	InterimIndexNlist             ParamItem `refreshable:"false"`
 	InterimIndexNProbe            ParamItem `refreshable:"false"`
+	InterimIndexSubDim            ParamItem `refreshable:"false"`
+	InterimIndexRefineRatio       ParamItem `refreshable:"false"`
+	DenseVectorInterminIndexType  ParamItem `refreshable:"false"`
 	InterimIndexMemExpandRate     ParamItem `refreshable:"false"`
 	InterimIndexBuildParallelRate ParamItem `refreshable:"false"`
 	MultipleChunkedEnable         ParamItem `refreshable:"false"`
@@ -2571,6 +2597,10 @@ type queryNodeConfig struct {
 
 	// worker
 	WorkerPoolingSize ParamItem `refreshable:"false"`
+
+	// Json Key Index
+	JSONIndexMemoryBudgetInTantivy ParamItem `refreshable:"false"`
+	JSONIndexCommitInterval        ParamItem `refreshable:"false"`
 }
 
 func (p *queryNodeConfig) init(base *BaseTable) {
@@ -2642,7 +2672,7 @@ func (p *queryNodeConfig) init(base *BaseTable) {
 	}
 	p.ChunkRows.Init(base.mgr)
 
-	p.EnableTempSegmentIndex = ParamItem{
+	p.EnableInterminSegmentIndex = ParamItem{
 		Key:          "queryNode.segcore.interimIndex.enableIndex",
 		Version:      "2.0.0",
 		DefaultValue: "false",
@@ -2651,7 +2681,16 @@ Milvus will eventually seals and indexes all segments, but enabling this optimiz
 This defaults to true, indicating that Milvus creates temporary index for growing segments and the sealed segments that are not indexed upon searches.`,
 		Export: true,
 	}
-	p.EnableTempSegmentIndex.Init(base.mgr)
+	p.EnableInterminSegmentIndex.Init(base.mgr)
+
+	p.DenseVectorInterminIndexType = ParamItem{
+		Key:          "queryNode.segcore.interimIndex.denseVectorIndexType",
+		Version:      "2.5.4",
+		DefaultValue: "IVF_FLAT_CC",
+		Doc:          `Dense vector intermin index type`,
+		Export:       true,
+	}
+	p.DenseVectorInterminIndexType.Init(base.mgr)
 
 	p.KnowhereScoreConsistency = ParamItem{
 		Key:          "queryNode.segcore.knowhereScoreConsistency",
@@ -2667,7 +2706,7 @@ This defaults to true, indicating that Milvus creates temporary index for growin
 		Key:          "queryNode.segcore.interimIndex.nlist",
 		Version:      "2.0.0",
 		DefaultValue: "128",
-		Doc:          "temp index nlist, recommend to set sqrt(chunkRows), must smaller than chunkRows/8",
+		Doc:          "interim index nlist, recommend to set sqrt(chunkRows), must smaller than chunkRows/8",
 		Export:       true,
 	}
 	p.InterimIndexNlist.Init(base.mgr)
@@ -2717,6 +2756,30 @@ This defaults to true, indicating that Milvus creates temporary index for growin
 		Export: true,
 	}
 	p.InterimIndexNProbe.Init(base.mgr)
+
+	p.InterimIndexSubDim = ParamItem{
+		Key:          "queryNode.segcore.interimIndex.subDim",
+		Version:      "2.5.4",
+		DefaultValue: "2",
+		Doc:          "interim index sub dim, recommend to (subDim % vector dim == 0)",
+		Export:       true,
+	}
+	p.InterimIndexSubDim.Init(base.mgr)
+
+	p.InterimIndexRefineRatio = ParamItem{
+		Key:     "queryNode.segcore.interimIndex.refineRatio",
+		Version: "2.5.4",
+		Formatter: func(v string) string {
+			if getAsFloat(v) < 1.0 {
+				return "1.0"
+			}
+			return v
+		},
+		DefaultValue: "2.0",
+		Doc:          "interim index parameters, should set to be >= 1.0",
+		Export:       true,
+	}
+	p.InterimIndexRefineRatio.Init(base.mgr)
 
 	p.LoadMemoryUsageFactor = ParamItem{
 		Key:          "queryNode.loadMemoryUsageFactor",
@@ -3230,6 +3293,24 @@ user-task-polling:
 	}
 	p.ExprEvalBatchSize.Init(base.mgr)
 
+	p.JSONIndexMemoryBudgetInTantivy = ParamItem{
+		Key:          "queryNode.segcore.jsonIndexMemoryBudgetInTantivy",
+		Version:      "2.5.0",
+		DefaultValue: "16",
+		Doc:          "the memory budget for the JSON index In Tantivy",
+		Export:       true,
+	}
+	p.JSONIndexMemoryBudgetInTantivy.Init(base.mgr)
+
+	p.JSONIndexCommitInterval = ParamItem{
+		Key:          "queryNode.segcore.jsonIndexCommitInterval",
+		Version:      "2.5.0",
+		DefaultValue: "200",
+		Doc:          "the commit interval for the JSON index to commit",
+		Export:       true,
+	}
+	p.JSONIndexCommitInterval.Init(base.mgr)
+
 	p.CleanExcludeSegInterval = ParamItem{
 		Key:          "queryCoord.cleanExcludeSegmentInterval",
 		Version:      "2.4.0",
@@ -3359,7 +3440,8 @@ type dataCoordConfig struct {
 	CompactionTimeoutInSeconds       ParamItem `refreshable:"true"`
 	CompactionDropToleranceInSeconds ParamItem `refreshable:"true"`
 	CompactionGCIntervalInSeconds    ParamItem `refreshable:"true"`
-	CompactionCheckIntervalInSeconds ParamItem `refreshable:"false"`
+	CompactionCheckIntervalInSeconds ParamItem `refreshable:"false"` // deprecated
+	CompactionScheduleInterval       ParamItem `refreshable:"false"`
 	MixCompactionTriggerInterval     ParamItem `refreshable:"false"`
 	L0CompactionTriggerInterval      ParamItem `refreshable:"false"`
 	GlobalCompactionInterval         ParamItem `refreshable:"false"`
@@ -3438,8 +3520,11 @@ type dataCoordConfig struct {
 	MixCompactionSlotUsage        ParamItem `refreshable:"true"`
 	L0DeleteCompactionSlotUsage   ParamItem `refreshable:"true"`
 
-	EnableStatsTask   ParamItem `refreshable:"true"`
-	TaskCheckInterval ParamItem `refreshable:"true"`
+	EnableStatsTask       ParamItem `refreshable:"true"`
+	TaskCheckInterval     ParamItem `refreshable:"true"`
+	StatsTaskTriggerCount ParamItem `refreshable:"true"`
+
+	RequestTimeoutSeconds ParamItem `refreshable:"true"`
 }
 
 func (p *dataCoordConfig) init(base *BaseTable) {
@@ -3733,6 +3818,22 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 		DefaultValue: "3",
 	}
 	p.CompactionCheckIntervalInSeconds.Init(base.mgr)
+
+	p.CompactionScheduleInterval = ParamItem{
+		Key:          "dataCoord.compaction.scheduleInterval",
+		Version:      "2.4.21",
+		DefaultValue: "500",
+		Export:       true,
+		Formatter: func(value string) string {
+			ms := getAsInt64(value)
+			if ms < 100 {
+				ms = 100
+			}
+			return strconv.FormatInt(ms, 10)
+		},
+		Doc: "The time interval in milliseconds for scheduling compaction tasks. If the configuration setting is below 100ms, it will be ajusted upwards to 100ms",
+	}
+	p.CompactionScheduleInterval.Init(base.mgr)
 
 	p.SingleCompactionRatioThreshold = ParamItem{
 		Key:          "dataCoord.compaction.single.ratio.threshold",
@@ -4306,6 +4407,26 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 		Export:       false,
 	}
 	p.TaskCheckInterval.Init(base.mgr)
+
+	p.StatsTaskTriggerCount = ParamItem{
+		Key:          "dataCoord.statsTaskTriggerCount",
+		Version:      "2.5.5",
+		Doc:          "stats task count per trigger",
+		DefaultValue: "100",
+		PanicIfEmpty: false,
+		Export:       false,
+	}
+	p.StatsTaskTriggerCount.Init(base.mgr)
+
+	p.RequestTimeoutSeconds = ParamItem{
+		Key:          "dataCoord.requestTimeoutSeconds",
+		Version:      "2.5.5",
+		Doc:          "request timeout interval",
+		DefaultValue: "600",
+		PanicIfEmpty: false,
+		Export:       false,
+	}
+	p.RequestTimeoutSeconds.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

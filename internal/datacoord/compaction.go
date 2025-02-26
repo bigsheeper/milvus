@@ -31,14 +31,14 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/util/conc"
-	"github.com/milvus-io/milvus/pkg/util/lock"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/util/conc"
+	"github.com/milvus-io/milvus/pkg/v2/util/lock"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 // TODO: we just warn about the long executing/queuing tasks
@@ -61,7 +61,7 @@ type compactionPlanContext interface {
 	getCompactionInfo(ctx context.Context, signalID int64) *compactionInfo
 	removeTasksByChannel(channel string)
 	setTaskScheduler(scheduler *taskScheduler)
-	checkAndSetSegmentStating(segmentID int64) bool
+	checkAndSetSegmentStating(channel string, segmentID int64) bool
 }
 
 var (
@@ -167,13 +167,13 @@ func summaryCompactionState(tasks []*datapb.CompactionTask) *compactionInfo {
 	return ret
 }
 
-func (c *compactionPlanHandler) checkAndSetSegmentStating(segmentID int64) bool {
+func (c *compactionPlanHandler) checkAndSetSegmentStating(channel string, segmentID int64) bool {
 	c.executingGuard.Lock()
 	defer c.executingGuard.Unlock()
 
 	for _, t := range c.executingTasks {
 		if t.GetTaskProto().GetType() == datapb.CompactionType_Level0DeleteCompaction {
-			if t.CheckCompactionContainsSegment(segmentID) {
+			if t.GetTaskProto().GetChannel() == channel && t.CheckCompactionContainsSegment(segmentID) {
 				return false
 			}
 		}
@@ -327,6 +327,8 @@ func (c *compactionPlanHandler) schedule() []CompactionTask {
 		// Do not move this check logic outside the lock; it needs to remain mutually exclusive with the stats task.
 		if t.GetTaskProto().GetType() == datapb.CompactionType_Level0DeleteCompaction {
 			if !t.PreparePlan() {
+				selected = selected[:len(selected)-1]
+				excluded = append(excluded, t)
 				c.executingGuard.Unlock()
 				continue
 			}
@@ -411,10 +413,11 @@ func (c *compactionPlanHandler) loadMeta() {
 }
 
 func (c *compactionPlanHandler) loopSchedule() {
-	log.Info("compactionPlanHandler start loop schedule")
+	interval := paramtable.Get().DataCoordCfg.CompactionScheduleInterval.GetAsDuration(time.Millisecond)
+	log.Info("compactionPlanHandler start loop schedule", zap.Duration("schedule interval", interval))
 	defer c.stopWg.Done()
 
-	scheduleTicker := time.NewTicker(3 * time.Second)
+	scheduleTicker := time.NewTicker(interval)
 	defer scheduleTicker.Stop()
 	for {
 		select {
@@ -719,7 +722,7 @@ func (c *compactionPlanHandler) checkCompaction() error {
 			if id == NullNodeID {
 				break
 			}
-			metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Executing).Dec()
+			metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Dec()
 			metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", t.GetTaskProto().GetNodeID()), t.GetTaskProto().GetType().String(), metrics.Executing).Inc()
 		}
 	}

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package milvus.proto.indexcgo;
-option go_package="github.com/milvus-io/milvus/pkg/proto/indexcgopb";
+option go_package="github.com/milvus-io/milvus/pkg/v2/proto/indexcgopb";
 
 import "common.proto";
 import "schema.proto";
@@ -85,6 +85,16 @@ message BuildIndexInfo {
 }
 
 message LoadTextIndexInfo {
+  int64 FieldID = 1;
+  int64 version = 2;
+  int64 buildID = 3;
+  repeated string files = 4;
+  schema.FieldSchema schema = 5;
+  int64 collectionID = 6;
+  int64 partitionID = 7;
+}
+
+message LoadJsonKeyIndexInfo {
   int64 FieldID = 1;
   int64 version = 2;
   int64 buildID = 3;

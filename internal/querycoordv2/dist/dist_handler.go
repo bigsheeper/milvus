@@ -32,14 +32,14 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util/commonpbutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type TriggerUpdateTargetVersion = func(collectionID int64)
@@ -168,6 +168,7 @@ func (dh *distHandler) updateSegmentsDistribution(ctx context.Context, resp *que
 			Version:            s.GetVersion(),
 			LastDeltaTimestamp: s.GetLastDeltaTimestamp(),
 			IndexInfo:          s.GetIndexInfo(),
+			JSONIndexField:     s.GetFieldJsonIndexStats(),
 		})
 	}
 
@@ -246,11 +247,13 @@ func (dh *distHandler) updateLeaderView(ctx context.Context, resp *querypb.GetDa
 		// check leader serviceable
 		if err := utils.CheckDelegatorDataReady(dh.nodeManager, dh.target, view, meta.CurrentTarget); err != nil {
 			view.UnServiceableError = err
-			log.Info("leader is not available due to distribution not ready",
-				zap.Int64("collectionID", view.CollectionID),
-				zap.Int64("nodeID", view.ID),
-				zap.String("channel", view.Channel),
-				zap.Error(err))
+			log.Ctx(ctx).
+				WithRateGroup(fmt.Sprintf("distHandler.updateLeaderView.%s", view.Channel), 1, 60).
+				RatedInfo(10, "leader is not available due to distribution not ready",
+					zap.Int64("collectionID", view.CollectionID),
+					zap.Int64("nodeID", view.ID),
+					zap.String("channel", view.Channel),
+					zap.Error(err))
 			continue
 		}
 
@@ -265,11 +268,13 @@ func (dh *distHandler) updateLeaderView(ctx context.Context, resp *querypb.GetDa
 			// make dist handler pull next distribution until all delegator is serviceable
 			dh.lastUpdateTs = 0
 			collectionsToSync.Insert(lview.Collection)
-			log.Info("leader is not available due to target version not ready",
-				zap.Int64("collectionID", view.CollectionID),
-				zap.Int64("nodeID", view.ID),
-				zap.String("channel", view.Channel),
-				zap.Error(err))
+			log.Ctx(ctx).
+				WithRateGroup(fmt.Sprintf("distHandler.updateLeaderView.%s", view.Channel), 1, 60).
+				RatedInfo(10, "leader is not available due to target version not ready",
+					zap.Int64("collectionID", view.CollectionID),
+					zap.Int64("nodeID", view.ID),
+					zap.String("channel", view.Channel),
+					zap.Error(err))
 		}
 	}
 

@@ -22,9 +22,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/milvus-io/milvus/pkg/config"
-	"github.com/milvus-io/milvus/pkg/util"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/config"
+	"github.com/milvus-io/milvus/pkg/v2/util"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 )
 
 func TestServiceParam(t *testing.T) {
@@ -231,5 +231,12 @@ func TestServiceParam(t *testing.T) {
 		assert.Equal(t, 3600*time.Second, Params.SnapshotReserveTimeSeconds.GetAsDuration(time.Second))
 		assert.Equal(t, 100000, Params.PaginationSize.GetAsInt())
 		assert.Equal(t, 32, Params.ReadConcurrency.GetAsInt())
+	})
+
+	t.Run("test profile config", func(t *testing.T) {
+		params := &SParams.ProfileCfg
+		assert.Equal(t, "/var/lib/milvus/data/pprof", params.PprofPath.GetValue())
+		bt.Save(params.PprofPath.Key, "/tmp/pprof")
+		assert.Equal(t, "/tmp/pprof", params.PprofPath.GetValue())
 	})
 }

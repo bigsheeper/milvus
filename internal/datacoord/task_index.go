@@ -28,14 +28,14 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/vecindexmgr"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/util/indexparams"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/indexparams"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type indexBuildTask struct {
@@ -103,8 +103,8 @@ func (it *indexBuildTask) GetTaskType() string {
 }
 
 func (it *indexBuildTask) CheckTaskHealthy(mt *meta) bool {
-	_, exist := mt.indexMeta.GetIndexJob(it.GetTaskID())
-	return exist
+	job, exist := mt.indexMeta.GetIndexJob(it.GetTaskID())
+	return exist && !job.IsDeleted
 }
 
 func (it *indexBuildTask) SetState(state indexpb.JobState, failReason string) {
@@ -262,12 +262,13 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 	log.Ctx(ctx).Info("index task pre check successfully", zap.Int64("taskID", it.GetTaskID()),
 		zap.Int64("segID", segment.GetID()),
 		zap.Int32("CurrentIndexVersion", it.req.GetCurrentIndexVersion()),
-		zap.Int32("CurrentScalarIndexVersion", it.req.GetCurrentScalarIndexVersion()))
+		zap.Int32("CurrentScalarIndexVersion", it.req.GetCurrentScalarIndexVersion()),
+		zap.Int64("segID", segment.GetID()))
 	return true
 }
 
 func (it *indexBuildTask) AssignTask(ctx context.Context, client types.IndexNodeClient, meta *meta) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := client.CreateJobV2(ctx, &workerpb.CreateJobV2Request{
 		ClusterID: it.req.GetClusterID(),
@@ -296,7 +297,7 @@ func (it *indexBuildTask) setResult(info *workerpb.IndexTaskInfo) {
 }
 
 func (it *indexBuildTask) QueryResult(ctx context.Context, node types.IndexNodeClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := node.QueryJobsV2(ctx, &workerpb.QueryJobsV2Request{
 		ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -316,14 +317,17 @@ func (it *indexBuildTask) QueryResult(ctx context.Context, node types.IndexNodeC
 	// indexInfos length is always one.
 	for _, info := range resp.GetIndexJobResults().GetResults() {
 		if info.GetBuildID() == it.GetTaskID() {
-			log.Ctx(ctx).Info("query task index info successfully",
-				zap.Int64("taskID", it.GetTaskID()), zap.String("result state", info.GetState().String()),
-				zap.String("failReason", info.GetFailReason()))
 			if info.GetState() == commonpb.IndexState_Finished || info.GetState() == commonpb.IndexState_Failed ||
 				info.GetState() == commonpb.IndexState_Retry {
+				log.Ctx(ctx).Info("query task index info successfully",
+					zap.Int64("taskID", it.GetTaskID()), zap.String("result state", info.GetState().String()),
+					zap.String("failReason", info.GetFailReason()))
 				// state is retry or finished or failed
 				it.setResult(info)
 			} else if info.GetState() == commonpb.IndexState_IndexStateNone {
+				log.Ctx(ctx).Info("query task index info successfully",
+					zap.Int64("taskID", it.GetTaskID()), zap.String("result state", info.GetState().String()),
+					zap.String("failReason", info.GetFailReason()))
 				it.SetState(indexpb.JobState_JobStateRetry, "index state is none in info response")
 			}
 			// inProgress or unissued, keep InProgress state
@@ -334,7 +338,7 @@ func (it *indexBuildTask) QueryResult(ctx context.Context, node types.IndexNodeC
 }
 
 func (it *indexBuildTask) DropTaskOnWorker(ctx context.Context, client types.IndexNodeClient) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := client.DropJobsV2(ctx, &workerpb.DropJobsV2Request{
 		ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -356,4 +360,8 @@ func (it *indexBuildTask) DropTaskOnWorker(ctx context.Context, client types.Ind
 
 func (it *indexBuildTask) SetJobInfo(meta *meta) error {
 	return meta.indexMeta.FinishTask(it.taskInfo)
+}
+
+func (it *indexBuildTask) DropTaskMeta(ctx context.Context, meta *meta) error {
+	return meta.indexMeta.RemoveSegmentIndexByID(ctx, it.taskID)
 }

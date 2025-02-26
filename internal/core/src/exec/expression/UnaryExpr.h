@@ -24,6 +24,7 @@
 #include "common/Types.h"
 #include "common/Vector.h"
 #include "exec/expression/Expr.h"
+#include "exec/expression/Element.h"
 #include "index/Meta.h"
 #include "index/ScalarIndex.h"
 #include "segcore/SegmentInterface.h"
@@ -315,13 +316,15 @@ class PhyUnaryRangeFilterExpr : public SegmentExpr {
         const std::string& name,
         const segcore::SegmentInternalInterface* segment,
         int64_t active_count,
-        int64_t batch_size)
+        int64_t batch_size,
+        int32_t consistency_level)
         : SegmentExpr(std::move(input),
                       name,
                       segment,
                       expr->column_.field_id_,
                       active_count,
-                      batch_size),
+                      batch_size,
+                      consistency_level),
           expr_(expr) {
     }
 
@@ -355,6 +358,10 @@ class PhyUnaryRangeFilterExpr : public SegmentExpr {
 
     template <typename ExprValueType>
     VectorPtr
+    ExecRangeVisitorImplJsonForIndex();
+
+    template <typename ExprValueType>
+    VectorPtr
     ExecRangeVisitorImplArray(OffsetVector* input = nullptr);
 
     template <typename T>
@@ -381,9 +388,14 @@ class PhyUnaryRangeFilterExpr : public SegmentExpr {
     VectorPtr
     ExecTextMatch();
 
+    std::pair<std::string, std::string>
+    SplitAtFirstSlashDigit(std::string input);
+
  private:
     std::shared_ptr<const milvus::expr::UnaryRangeFilterExpr> expr_;
     int64_t overflow_check_pos_{0};
+    bool arg_inited_{false};
+    SingleElement value_arg_;
 };
 }  // namespace exec
 }  // namespace milvus

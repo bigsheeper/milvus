@@ -251,8 +251,8 @@ class ResponseChecker:
             assert res["enable_dynamic_field"] == check_items.get("enable_dynamic_field", True)
         if check_items.get("num_partitions", 1):
             assert res["num_partitions"] == check_items.get("num_partitions", 1)
-        if check_items.get("id_name", "id"):
-            assert res["fields"][0]["name"] == check_items.get("id_name", "id")
+        if check_items.get("primary_field", None) is not None:
+            assert res["fields"][0]["name"] == check_items.get("primary_field")
         if check_items.get("vector_name", "vector"):
             assert res["fields"][1]["name"] == check_items.get("vector_name", "vector")
         if check_items.get("dim", None) is not None:
@@ -372,13 +372,14 @@ class ResponseChecker:
             log.info("search_results_check: Numbers of query searched is correct")
         enable_milvus_client_api = check_items.get("enable_milvus_client_api", False)
         # log.debug(search_res)
+        pk_name = check_items.get('primary_field', 'id')
         for hits in search_res:
             searched_original_vectors = []
             ids = []
             vector_id = 0
             if enable_milvus_client_api:
                 for hit in hits:
-                    ids.append(hit['id'])
+                    ids.append(hit[pk_name])
             else:
                 ids = list(hits.ids)
             if (len(hits) != check_items["limit"]) \
@@ -408,7 +409,7 @@ class ResponseChecker:
                     log.info("search_results_check: Checked the distances for one nq: OK")
                 else:
                     pass  # just check nq and topk, not specific ids need check
-            vector_id +=  1
+            vector_id += 1
         log.info("search_results_check: limit (topK) and "
                  "ids searched for %d queries are correct" % len(search_res))
 
@@ -431,7 +432,7 @@ class ResponseChecker:
         while True:
             try:
                 res = search_iterator.next()
-                if len(res) == 0:
+                if res is None or len(res) == 0:
                     log.info("search iteration finished, close")
                     search_iterator.close()
                     break
@@ -453,6 +454,10 @@ class ResponseChecker:
             except Exception as e:
                 assert check_items["err_msg"] in str(e)
                 return False
+
+        if check_items.get("limit"):
+            if "range_filter" not in check_items and "radius" not in check_items:
+                assert len(pk_list) / check_items["limit"] >= 0.9
         assert len(pk_list) == len(set(pk_list))
         log.info("check: total %d results" % len(pk_list))
 

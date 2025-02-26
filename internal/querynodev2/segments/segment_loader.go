@@ -44,22 +44,22 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/pkoracle"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util"
-	"github.com/milvus-io/milvus/pkg/util/conc"
-	"github.com/milvus-io/milvus/pkg/util/contextutil"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/hardware"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metric"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/syncutil"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util"
+	"github.com/milvus-io/milvus/pkg/v2/util/conc"
+	"github.com/milvus-io/milvus/pkg/v2/util/contextutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/hardware"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metric"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/syncutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 const (
@@ -93,6 +93,10 @@ type Loader interface {
 		segment Segment,
 		loadInfo *querypb.SegmentLoadInfo,
 	) error
+
+	LoadJSONIndex(ctx context.Context,
+		segment Segment,
+		info *querypb.SegmentLoadInfo) error
 }
 
 type ResourceEstimate struct {
@@ -139,11 +143,11 @@ func (r *LoadResource) IsZero() bool {
 }
 
 type resourceEstimateFactor struct {
-	memoryUsageFactor        float64
-	memoryIndexUsageFactor   float64
-	enableTempSegmentIndex   bool
-	tempSegmentIndexFactor   float64
-	deltaDataExpansionFactor float64
+	memoryUsageFactor          float64
+	memoryIndexUsageFactor     float64
+	EnableInterminSegmentIndex bool
+	tempSegmentIndexFactor     float64
+	deltaDataExpansionFactor   float64
 }
 
 func NewLoader(
@@ -690,6 +694,7 @@ func separateLoadInfoV2(loadInfo *querypb.SegmentLoadInfo, schema *schemapb.Coll
 	[]*datapb.FieldBinlog, // fields info
 	map[int64]*datapb.TextIndexStats, // text indexed info
 	map[int64]struct{}, // unindexed text fields
+	map[int64]*datapb.JsonKeyStats, // json key stats info
 ) {
 	fieldID2IndexInfo := make(map[int64]*querypb.FieldIndexInfo)
 	for _, indexInfo := range loadInfo.IndexInfos {
@@ -726,6 +731,16 @@ func separateLoadInfoV2(loadInfo *querypb.SegmentLoadInfo, schema *schemapb.Coll
 		}
 	}
 
+	jsonKeyIndexInfo := make(map[int64]*datapb.JsonKeyStats, len(loadInfo.GetJsonKeyStatsLogs()))
+	for _, fieldStatsLog := range loadInfo.GetJsonKeyStatsLogs() {
+		jsonKeyLog, ok := jsonKeyIndexInfo[fieldStatsLog.FieldID]
+		if !ok {
+			jsonKeyIndexInfo[fieldStatsLog.FieldID] = fieldStatsLog
+		} else if fieldStatsLog.GetVersion() > jsonKeyLog.GetVersion() {
+			jsonKeyIndexInfo[fieldStatsLog.FieldID] = fieldStatsLog
+		}
+	}
+
 	unindexedTextFields := make(map[int64]struct{})
 	for _, field := range schema.GetFields() {
 		h := typeutil.CreateFieldSchemaHelper(field)
@@ -735,7 +750,7 @@ func separateLoadInfoV2(loadInfo *querypb.SegmentLoadInfo, schema *schemapb.Coll
 		}
 	}
 
-	return indexedFieldInfos, fieldBinlogs, textIndexedInfo, unindexedTextFields
+	return indexedFieldInfos, fieldBinlogs, textIndexedInfo, unindexedTextFields, jsonKeyIndexInfo
 }
 
 func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *querypb.SegmentLoadInfo, segment *LocalSegment) (err error) {
@@ -759,7 +774,7 @@ func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *qu
 
 	collection := segment.GetCollection()
 	schemaHelper, _ := typeutil.CreateSchemaHelper(collection.Schema())
-	indexedFieldInfos, fieldBinlogs, textIndexes, unindexedTextFields := separateLoadInfoV2(loadInfo, collection.Schema())
+	indexedFieldInfos, fieldBinlogs, textIndexes, unindexedTextFields, jsonKeyStats := separateLoadInfoV2(loadInfo, collection.Schema())
 	if err := segment.AddFieldDataInfo(ctx, loadInfo.GetNumOfRows(), loadInfo.GetBinlogPaths()); err != nil {
 		return err
 	}
@@ -770,6 +785,7 @@ func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *qu
 		zap.Int64s("indexedFields", lo.Keys(indexedFieldInfos)),
 		zap.Int64s("indexed text fields", lo.Keys(textIndexes)),
 		zap.Int64s("unindexed text fields", lo.Keys(unindexedTextFields)),
+		zap.Int64s("indexed json key fields", lo.Keys(jsonKeyStats)),
 	)
 	if err := loader.loadFieldsIndex(ctx, schemaHelper, segment, loadInfo.GetNumOfRows(), indexedFieldInfos); err != nil {
 		return err
@@ -816,6 +832,13 @@ func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *qu
 		}
 	}
 
+	for _, info := range jsonKeyStats {
+		if err := segment.LoadJSONKeyIndex(ctx, info, schemaHelper); err != nil {
+			return err
+		}
+	}
+	loadJSONKeyIndexesSpan := tr.RecordSpan()
+
 	// 4. rectify entries number for binlog in very rare cases
 	// https://github.com/milvus-io/milvus/23654
 	// legacy entry num = 0
@@ -829,6 +852,7 @@ func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *qu
 		zap.Duration("loadRawDataSpan", loadRawDataSpan),
 		zap.Duration("patchEntryNumberSpan", patchEntryNumberSpan),
 		zap.Duration("loadTextIndexesSpan", loadTextIndexesSpan),
+		zap.Duration("loadJsonKeyIndexSpan", loadJSONKeyIndexesSpan),
 	)
 	return nil
 }
@@ -847,6 +871,7 @@ func (loader *segmentLoader) LoadSegment(ctx context.Context,
 		zap.String("shard", segment.Shard().VirtualName()),
 		zap.Int64("segmentID", segment.ID()),
 	)
+
 	log.Info("start loading segment files",
 		zap.Int64("rowNum", loadInfo.GetNumOfRows()),
 		zap.String("segmentType", segment.Type().String()))
@@ -1376,11 +1401,11 @@ func (loader *segmentLoader) checkSegmentSize(ctx context.Context, segmentLoadIn
 	diskUsage := uint64(localDiskUsage) + loader.committedResource.DiskSize
 
 	factor := resourceEstimateFactor{
-		memoryUsageFactor:        paramtable.Get().QueryNodeCfg.LoadMemoryUsageFactor.GetAsFloat(),
-		memoryIndexUsageFactor:   paramtable.Get().QueryNodeCfg.MemoryIndexLoadPredictMemoryUsageFactor.GetAsFloat(),
-		enableTempSegmentIndex:   paramtable.Get().QueryNodeCfg.EnableTempSegmentIndex.GetAsBool(),
-		tempSegmentIndexFactor:   paramtable.Get().QueryNodeCfg.InterimIndexMemExpandRate.GetAsFloat(),
-		deltaDataExpansionFactor: paramtable.Get().QueryNodeCfg.DeltaDataExpansionRate.GetAsFloat(),
+		memoryUsageFactor:          paramtable.Get().QueryNodeCfg.LoadMemoryUsageFactor.GetAsFloat(),
+		memoryIndexUsageFactor:     paramtable.Get().QueryNodeCfg.MemoryIndexLoadPredictMemoryUsageFactor.GetAsFloat(),
+		EnableInterminSegmentIndex: paramtable.Get().QueryNodeCfg.EnableInterminSegmentIndex.GetAsBool(),
+		tempSegmentIndexFactor:     paramtable.Get().QueryNodeCfg.InterimIndexMemExpandRate.GetAsFloat(),
+		deltaDataExpansionFactor:   paramtable.Get().QueryNodeCfg.DeltaDataExpansionRate.GetAsFloat(),
 	}
 	maxSegmentSize := uint64(0)
 	predictMemUsage := memUsage
@@ -1519,6 +1544,11 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 			}
 		} else {
 			shouldCalculateDataSize = true
+			// querynode will generate a (memory type) intermin index for vector type
+			interimIndexEnable := multiplyFactor.EnableInterminSegmentIndex && !isGrowingMmapEnable() && SupportInterimIndexDataType(fieldSchema.GetDataType())
+			if interimIndexEnable {
+				segmentMemorySize += uint64(float64(binlogSize) * multiplyFactor.tempSegmentIndexFactor)
+			}
 		}
 
 		if shouldCalculateDataSize {
@@ -1532,11 +1562,6 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 				}
 			} else {
 				segmentDiskSize += uint64(getBinlogDataDiskSize(fieldBinlog))
-			}
-			// querynode will generate a (memory type) intermin index for vector type
-			interimIndexEnable := multiplyFactor.enableTempSegmentIndex && !isGrowingMmapEnable() && SupportInterimIndexDataType(fieldSchema.GetDataType())
-			if interimIndexEnable {
-				segmentMemorySize += uint64(float64(binlogSize) * multiplyFactor.tempSegmentIndexFactor)
 			}
 		}
 
@@ -1584,7 +1609,9 @@ func DoubleMemorySystemField(fieldID int64) bool {
 
 func SupportInterimIndexDataType(dataType schemapb.DataType) bool {
 	return dataType == schemapb.DataType_FloatVector ||
-		dataType == schemapb.DataType_SparseFloatVector
+		dataType == schemapb.DataType_SparseFloatVector ||
+		dataType == schemapb.DataType_Float16Vector ||
+		dataType == schemapb.DataType_BFloat16Vector
 }
 
 func (loader *segmentLoader) getFieldType(collectionID, fieldID int64) (schemapb.DataType, error) {
@@ -1672,6 +1699,35 @@ func (loader *segmentLoader) LoadIndex(ctx context.Context,
 	}
 
 	return loader.waitSegmentLoadDone(ctx, commonpb.SegmentState_SegmentStateNone, []int64{loadInfo.GetSegmentID()}, version)
+}
+
+func (loader *segmentLoader) LoadJSONIndex(ctx context.Context,
+	seg Segment,
+	loadInfo *querypb.SegmentLoadInfo,
+) error {
+	segment, ok := seg.(*LocalSegment)
+	if !ok {
+		return merr.WrapErrParameterInvalid("LocalSegment", fmt.Sprintf("%T", seg))
+	}
+
+	collection := segment.GetCollection()
+	schemaHelper, _ := typeutil.CreateSchemaHelper(collection.Schema())
+
+	jsonKeyIndexInfo := make(map[int64]*datapb.JsonKeyStats, len(loadInfo.GetJsonKeyStatsLogs()))
+	for _, fieldStatsLog := range loadInfo.GetJsonKeyStatsLogs() {
+		jsonKeyLog, ok := jsonKeyIndexInfo[fieldStatsLog.FieldID]
+		if !ok {
+			jsonKeyIndexInfo[fieldStatsLog.FieldID] = fieldStatsLog
+		} else if fieldStatsLog.GetVersion() > jsonKeyLog.GetVersion() {
+			jsonKeyIndexInfo[fieldStatsLog.FieldID] = fieldStatsLog
+		}
+	}
+	for _, info := range jsonKeyIndexInfo {
+		if err := segment.LoadJSONKeyIndex(ctx, info, schemaHelper); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func getBinlogDataDiskSize(fieldBinlog *datapb.FieldBinlog) int64 {

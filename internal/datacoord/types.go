@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 )
 
 type Task interface {
@@ -46,4 +46,5 @@ type Task interface {
 	SetEndTime(time.Time)
 	GetEndTime() time.Time
 	GetTaskType() string
+	DropTaskMeta(ctx context.Context, meta *meta) error
 }

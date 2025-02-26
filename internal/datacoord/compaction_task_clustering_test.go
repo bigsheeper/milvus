@@ -36,11 +36,11 @@ import (
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metautil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
 )
 
 func TestClusteringCompactionTaskSuite(t *testing.T) {
@@ -660,13 +660,12 @@ func (s *ClusteringCompactionTaskSuite) TestProcessIndexingState() {
 	s.Run("collection has index, segment is not indexed", func() {
 		task := s.generateBasicTask(false)
 		task.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_indexing))
-		index := &model.Index{
-			CollectionID: 1,
-			IndexID:      3,
-		}
 
+		indexReq := &indexpb.CreateIndexRequest{
+			CollectionID: 1,
+		}
 		task.updateAndSaveTaskMeta(setResultSegments([]int64{10, 11}))
-		err := s.meta.indexMeta.CreateIndex(context.TODO(), index)
+		_, err := s.meta.indexMeta.CreateIndex(context.TODO(), indexReq, 3)
 		s.NoError(err)
 
 		s.False(task.Process())
@@ -676,11 +675,10 @@ func (s *ClusteringCompactionTaskSuite) TestProcessIndexingState() {
 	s.Run("collection has index, segment indexed", func() {
 		task := s.generateBasicTask(false)
 		task.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_indexing))
-		index := &model.Index{
+		indexReq := &indexpb.CreateIndexRequest{
 			CollectionID: 1,
-			IndexID:      3,
 		}
-		err := s.meta.indexMeta.CreateIndex(context.TODO(), index)
+		_, err := s.meta.indexMeta.CreateIndex(context.TODO(), indexReq, 3)
 		s.NoError(err)
 
 		s.meta.indexMeta.updateSegmentIndex(&model.SegmentIndex{

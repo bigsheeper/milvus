@@ -21,7 +21,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 const (
@@ -132,7 +132,7 @@ var (
 			Name:      "task_latency",
 			Help:      "latency of all kind of task in query coord scheduler scheduler",
 			Buckets:   longTaskBuckets,
-		}, []string{collectionIDLabelName, taskTypeLabel, channelNameLabelName})
+		}, []string{collectionIDLabelName, TaskTypeLabel, channelNameLabelName})
 
 	QueryCoordResourceGroupInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{

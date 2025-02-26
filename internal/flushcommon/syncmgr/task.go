@@ -34,18 +34,18 @@ import (
 	"github.com/milvus-io/milvus/internal/flushcommon/metacache"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metautil"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/retry"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/retry"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type SyncTask struct {
@@ -254,6 +254,7 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 	t.flushedSize = totalSize
 
 	metrics.DataNodeFlushedSize.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), t.dataSource, t.level.String()).Add(float64(t.flushedSize))
+	metrics.DataNodeWriteBinlogSize.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), t.dataSource, fmt.Sprint(t.collectionID)).Add(float64(t.flushedSize))
 	metrics.DataNodeFlushedRows.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), t.dataSource).Add(float64(t.batchRows))
 
 	metrics.DataNodeSave2StorageLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), t.level.String()).Observe(float64(t.tr.RecordSpan().Milliseconds()))

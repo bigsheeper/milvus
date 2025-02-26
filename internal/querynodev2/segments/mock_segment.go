@@ -7,19 +7,19 @@ import (
 
 	commonpb "github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 
-	datapb "github.com/milvus-io/milvus/pkg/proto/datapb"
+	datapb "github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 
-	metautil "github.com/milvus-io/milvus/pkg/util/metautil"
+	metautil "github.com/milvus-io/milvus/pkg/v2/util/metautil"
 
 	mock "github.com/stretchr/testify/mock"
 
 	msgpb "github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 
-	querypb "github.com/milvus-io/milvus/pkg/proto/querypb"
+	querypb "github.com/milvus-io/milvus/pkg/v2/proto/querypb"
 
 	segcore "github.com/milvus-io/milvus/internal/util/segcore"
 
-	segcorepb "github.com/milvus-io/milvus/pkg/proto/segcorepb"
+	segcorepb "github.com/milvus-io/milvus/pkg/v2/proto/segcorepb"
 
 	storage "github.com/milvus-io/milvus/internal/storage"
 )
@@ -359,6 +359,53 @@ func (_c *MockSegment_GetBM25Stats_Call) Return(_a0 map[int64]*storage.BM25Stats
 }
 
 func (_c *MockSegment_GetBM25Stats_Call) RunAndReturn(run func() map[int64]*storage.BM25Stats) *MockSegment_GetBM25Stats_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetFieldJSONIndexStats provides a mock function with given fields:
+func (_m *MockSegment) GetFieldJSONIndexStats() []int64 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFieldJSONIndexStats")
+	}
+
+	var r0 []int64
+	if rf, ok := ret.Get(0).(func() []int64); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]int64)
+		}
+	}
+
+	return r0
+}
+
+// MockSegment_GetFieldJSONIndexStats_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFieldJSONIndexStats'
+type MockSegment_GetFieldJSONIndexStats_Call struct {
+	*mock.Call
+}
+
+// GetFieldJSONIndexStats is a helper method to define mock.On call
+func (_e *MockSegment_Expecter) GetFieldJSONIndexStats() *MockSegment_GetFieldJSONIndexStats_Call {
+	return &MockSegment_GetFieldJSONIndexStats_Call{Call: _e.mock.On("GetFieldJSONIndexStats")}
+}
+
+func (_c *MockSegment_GetFieldJSONIndexStats_Call) Run(run func()) *MockSegment_GetFieldJSONIndexStats_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockSegment_GetFieldJSONIndexStats_Call) Return(_a0 []int64) *MockSegment_GetFieldJSONIndexStats_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockSegment_GetFieldJSONIndexStats_Call) RunAndReturn(run func() []int64) *MockSegment_GetFieldJSONIndexStats_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -183,9 +183,9 @@ PhyJsonContainsFilterExpr::ExecArrayContains(OffsetVector* input) {
     TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
     valid_res.set();
 
-    std::unordered_set<GetType> elements;
-    for (auto const& element : expr_->vals_) {
-        elements.insert(GetValueFromProto<GetType>(element));
+    if (!arg_inited_) {
+        arg_set_ = std::make_shared<SortVectorElement<GetType>>(expr_->vals_);
+        arg_inited_ = true;
     }
     auto execute_sub_batch =
         []<FilterType filter_type = FilterType::sequential>(
@@ -195,11 +195,11 @@ PhyJsonContainsFilterExpr::ExecArrayContains(OffsetVector* input) {
             const int size,
             TargetBitmapView res,
             TargetBitmapView valid_res,
-            const std::unordered_set<GetType>& elements) {
+            const std::shared_ptr<MultiElement>& elements) {
         auto executor = [&](size_t i) {
             const auto& array = data[i];
             for (int j = 0; j < array.length(); ++j) {
-                if (elements.count(array.template get_data<GetType>(j)) > 0) {
+                if (elements->In(array.template get_data<GetType>(j))) {
                     return true;
                 }
             }
@@ -226,10 +226,10 @@ PhyJsonContainsFilterExpr::ExecArrayContains(OffsetVector* input) {
                                                     input,
                                                     res,
                                                     valid_res,
-                                                    elements);
+                                                    arg_set_);
     } else {
         processed_size = ProcessDataChunks<milvus::ArrayView>(
-            execute_sub_batch, std::nullptr_t{}, res, valid_res, elements);
+            execute_sub_batch, std::nullptr_t{}, res, valid_res, arg_set_);
     }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
@@ -246,6 +246,12 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
+
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsByKeyIndex<ExprValueType>();
+    }
+
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -258,10 +264,10 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
     TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
     valid_res.set();
 
-    std::unordered_set<GetType> elements;
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
-    for (auto const& element : expr_->vals_) {
-        elements.insert(GetValueFromProto<GetType>(element));
+    if (!arg_inited_) {
+        arg_set_ = std::make_shared<SortVectorElement<GetType>>(expr_->vals_);
+        arg_inited_ = true;
     }
     auto execute_sub_batch =
         []<FilterType filter_type = FilterType::sequential>(
@@ -272,7 +278,7 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
             TargetBitmapView res,
             TargetBitmapView valid_res,
             const std::string& pointer,
-            const std::unordered_set<GetType>& elements) {
+            const std::shared_ptr<MultiElement>& elements) {
         auto executor = [&](size_t i) {
             auto doc = data[i].doc();
             auto array = doc.at_pointer(pointer).get_array();
@@ -284,7 +290,7 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
                 if (val.error()) {
                     continue;
                 }
-                if (elements.count(val.value()) > 0) {
+                if (elements->In(val.value()) > 0) {
                     return true;
                 }
             }
@@ -311,14 +317,14 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
                                                     res,
                                                     valid_res,
                                                     pointer,
-                                                    elements);
+                                                    arg_set_);
     } else {
         processed_size = ProcessDataChunks<Json>(execute_sub_batch,
                                                  std::nullptr_t{},
                                                  res,
                                                  valid_res,
                                                  pointer,
-                                                 elements);
+                                                 arg_set_);
     }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
@@ -328,8 +334,89 @@ PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
     return res_vec;
 }
 
+template <typename ExprValueType>
+VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsByKeyIndex() {
+    using GetType =
+        std::conditional_t<std::is_same_v<ExprValueType, std::string>,
+                           std::string_view,
+                           ExprValueType>;
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    if (!arg_inited_) {
+        arg_set_ = std::make_shared<SortVectorElement<GetType>>(expr_->vals_);
+        arg_inited_ = true;
+    }
+
+    if (arg_set_->Empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [this, segment, &field_id](uint32_t row_id,
+                                                      uint16_t offset,
+                                                      uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            auto array = json.array_at(offset, size);
+
+            if (array.error()) {
+                return false;
+            }
+            for (auto&& it : array) {
+                auto val = it.template get<GetType>();
+                if (val.error()) {
+                    continue;
+                }
+                if (this->arg_set_->In(val.value())) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
+}
+
 VectorPtr
 PhyJsonContainsFilterExpr::ExecJsonContainsArray(OffsetVector* input) {
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsArrayByKeyIndex();
+    }
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -421,6 +508,78 @@ PhyJsonContainsFilterExpr::ExecJsonContainsArray(OffsetVector* input) {
     return res_vec;
 }
 
+VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsArrayByKeyIndex() {
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    std::vector<proto::plan::Array> elements;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    for (auto const& element : expr_->vals_) {
+        elements.emplace_back(GetValueFromProto<proto::plan::Array>(element));
+    }
+    if (elements.empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [segment, &elements, &field_id](uint32_t row_id,
+                                                           uint16_t offset,
+                                                           uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            auto array = json.array_at(offset, size);
+            if (array.error()) {
+                return false;
+            }
+            for (auto&& it : array) {
+                auto val = it.get_array();
+                if (val.error()) {
+                    continue;
+                }
+                for (auto const& element : elements) {
+                    if (CompareTwoJsonArray(val, element)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
+}
+
 template <typename ExprValueType>
 VectorPtr
 PhyJsonContainsFilterExpr::ExecArrayContainsAll(OffsetVector* input) {
@@ -442,7 +601,7 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(OffsetVector* input) {
     TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
     valid_res.set();
 
-    std::unordered_set<GetType> elements;
+    std::set<GetType> elements;
     for (auto const& element : expr_->vals_) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
@@ -455,9 +614,9 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(OffsetVector* input) {
             const int size,
             TargetBitmapView res,
             TargetBitmapView valid_res,
-            const std::unordered_set<GetType>& elements) {
+            const std::set<GetType>& elements) {
         auto executor = [&](size_t i) {
-            std::unordered_set<GetType> tmp_elements(elements);
+            std::set<GetType> tmp_elements(elements);
             // Note: array can only be iterated once
             for (int j = 0; j < data[i].length(); ++j) {
                 tmp_elements.erase(data[i].template get_data<GetType>(j));
@@ -508,6 +667,11 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(OffsetVector* input) {
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
+
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsAllByKeyIndex<ExprValueType>();
+    }
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -521,7 +685,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(OffsetVector* input) {
     valid_res.set();
 
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
-    std::unordered_set<GetType> elements;
+    std::set<GetType> elements;
     for (auto const& element : expr_->vals_) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
@@ -535,14 +699,14 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(OffsetVector* input) {
             TargetBitmapView res,
             TargetBitmapView valid_res,
             const std::string& pointer,
-            const std::unordered_set<GetType>& elements) {
+            const std::set<GetType>& elements) {
         auto executor = [&](const size_t i) -> bool {
             auto doc = data[i].doc();
             auto array = doc.at_pointer(pointer).get_array();
             if (array.error()) {
                 return false;
             }
-            std::unordered_set<GetType> tmp_elements(elements);
+            std::set<GetType> tmp_elements(elements);
             // Note: array can only be iterated once
             for (auto&& it : array) {
                 auto val = it.template get<GetType>();
@@ -594,9 +758,90 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(OffsetVector* input) {
     return res_vec;
 }
 
+template <typename ExprValueType>
+VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsAllByKeyIndex() {
+    using GetType =
+        std::conditional_t<std::is_same_v<ExprValueType, std::string>,
+                           std::string_view,
+                           ExprValueType>;
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    std::set<GetType> elements;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    for (auto const& element : expr_->vals_) {
+        elements.insert(GetValueFromProto<GetType>(element));
+    }
+    if (elements.empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [segment, &elements, &field_id](uint32_t row_id,
+                                                           uint16_t offset,
+                                                           uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            auto array = json.array_at(offset, size);
+            if (array.error()) {
+                return false;
+            }
+            std::set<GetType> tmp_elements(elements);
+            for (auto&& it : array) {
+                auto val = it.template get<GetType>();
+                if (val.error()) {
+                    continue;
+                }
+                tmp_elements.erase(val.value());
+                if (tmp_elements.size() == 0) {
+                    return true;
+                }
+            }
+            return tmp_elements.empty();
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
+}
+
 VectorPtr
 PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
     OffsetVector* input) {
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsAllWithDiffTypeByKeyIndex();
+    }
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -611,7 +856,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
 
     auto elements = expr_->vals_;
-    std::unordered_set<int> elements_index;
+    std::set<int> elements_index;
     int i = 0;
     for (auto& element : elements) {
         elements_index.insert(i);
@@ -628,7 +873,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
             TargetBitmapView valid_res,
             const std::string& pointer,
             const std::vector<proto::plan::GenericValue>& elements,
-            const std::unordered_set<int> elements_index) {
+            const std::set<int> elements_index) {
         auto executor = [&](size_t i) -> bool {
             const auto& json = data[i];
             auto doc = json.doc();
@@ -636,7 +881,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
             if (array.error()) {
                 return false;
             }
-            std::unordered_set<int> tmp_elements_index(elements_index);
+            std::set<int> tmp_elements_index(elements_index);
             for (auto&& it : array) {
                 int i = -1;
                 for (auto& element : elements) {
@@ -748,7 +993,145 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
 }
 
 VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffTypeByKeyIndex() {
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    auto elements = expr_->vals_;
+    std::set<int> elements_index;
+    int i = 0;
+    for (auto& element : elements) {
+        elements_index.insert(i);
+        i++;
+    }
+    if (elements.empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [segment, &elements, &elements_index, &field_id](
+                               uint32_t row_id,
+                               uint16_t offset,
+                               uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            std::set<int> tmp_elements_index(elements_index);
+            auto array = json.array_at(offset, size);
+            if (array.error()) {
+                return false;
+            }
+            for (auto&& it : array) {
+                int i = -1;
+                for (auto& element : elements) {
+                    i++;
+                    switch (element.val_case()) {
+                        case proto::plan::GenericValue::kBoolVal: {
+                            auto val = it.template get<bool>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.bool_val()) {
+                                tmp_elements_index.erase(i);
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kInt64Val: {
+                            auto val = it.template get<int64_t>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.int64_val()) {
+                                tmp_elements_index.erase(i);
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kFloatVal: {
+                            auto val = it.template get<double>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.float_val()) {
+                                tmp_elements_index.erase(i);
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kStringVal: {
+                            auto val = it.template get<std::string_view>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.string_val()) {
+                                tmp_elements_index.erase(i);
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kArrayVal: {
+                            auto val = it.get_array();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (CompareTwoJsonArray(val, element.array_val())) {
+                                tmp_elements_index.erase(i);
+                            }
+                            break;
+                        }
+                        default:
+                            PanicInfo(DataTypeInvalid,
+                                      fmt::format("unsupported data type {}",
+                                                  element.val_case()));
+                    }
+                    if (tmp_elements_index.size() == 0) {
+                        return true;
+                    }
+                }
+                if (tmp_elements_index.size() == 0) {
+                    return true;
+                }
+            }
+            return tmp_elements_index.size() == 0;
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
+}
+
+VectorPtr
 PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(OffsetVector* input) {
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsAllArrayByKeyIndex();
+    }
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -846,7 +1229,87 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(OffsetVector* input) {
 }
 
 VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsAllArrayByKeyIndex() {
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    std::vector<proto::plan::Array> elements;
+    for (auto const& element : expr_->vals_) {
+        elements.emplace_back(GetValueFromProto<proto::plan::Array>(element));
+    }
+    if (elements.empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [segment, &elements, &field_id](uint32_t row_id,
+                                                           uint16_t offset,
+                                                           uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            auto array = json.array_at(offset, size);
+            if (array.error()) {
+                return false;
+            }
+            std::set<int> exist_elements_index;
+            for (auto&& it : array) {
+                auto json_array = it.get_array();
+                if (json_array.error()) {
+                    continue;
+                }
+                for (int index = 0; index < elements.size(); ++index) {
+                    if (CompareTwoJsonArray(json_array, elements[index])) {
+                        exist_elements_index.insert(index);
+                    }
+                }
+                if (exist_elements_index.size() == elements.size()) {
+                    return true;
+                }
+            }
+            return exist_elements_index.size() == elements.size();
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
+}
+
+VectorPtr
 PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(OffsetVector* input) {
+    FieldId field_id = expr_->column_.field_id_;
+    if (CanUseJsonKeyIndex(field_id) && !has_offset_input_) {
+        return ExecJsonContainsWithDiffTypeByKeyIndex();
+    }
     auto real_batch_size =
         has_offset_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
@@ -862,7 +1325,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(OffsetVector* input) {
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
 
     auto elements = expr_->vals_;
-    std::unordered_set<int> elements_index;
+    std::set<int> elements_index;
     int i = 0;
     for (auto& element : elements) {
         elements_index.insert(i);
@@ -985,6 +1448,125 @@ PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(OffsetVector* input) {
                processed_size,
                real_batch_size);
     return res_vec;
+}
+
+VectorPtr
+PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffTypeByKeyIndex() {
+    auto real_batch_size = current_data_chunk_pos_ + batch_size_ > active_count_
+                               ? active_count_ - current_data_chunk_pos_
+                               : batch_size_;
+    auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
+    auto elements = expr_->vals_;
+    if (elements.empty()) {
+        MoveCursor();
+        return std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size, false),
+            TargetBitmap(real_batch_size, true));
+    }
+    if (cached_index_chunk_id_ != 0) {
+        const segcore::SegmentInternalInterface* segment = nullptr;
+        if (segment_->type() == SegmentType::Growing) {
+            segment =
+                dynamic_cast<const segcore::SegmentGrowingImpl*>(segment_);
+        } else if (segment_->type() == SegmentType::Sealed) {
+            segment = dynamic_cast<const segcore::SegmentSealed*>(segment_);
+        }
+        auto field_id = expr_->column_.field_id_;
+        auto* index = segment->GetJsonKeyIndex(field_id);
+        Assert(index != nullptr);
+        auto filter_func = [segment, &elements, &field_id](uint32_t row_id,
+                                                           uint16_t offset,
+                                                           uint16_t size) {
+            auto json_pair = segment->GetJsonData(field_id, row_id);
+            if (!json_pair.second) {
+                return false;
+            }
+            auto json =
+                milvus::Json(json_pair.first.data(), json_pair.first.size());
+            auto array = json.array_at(offset, size);
+            if (array.error()) {
+                return false;
+            }
+            // Note: array can only be iterated once
+            for (auto&& it : array) {
+                for (auto const& element : elements) {
+                    switch (element.val_case()) {
+                        case proto::plan::GenericValue::kBoolVal: {
+                            auto val = it.template get<bool>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.bool_val()) {
+                                return true;
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kInt64Val: {
+                            auto val = it.template get<int64_t>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.int64_val()) {
+                                return true;
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kFloatVal: {
+                            auto val = it.template get<double>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.float_val()) {
+                                return true;
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kStringVal: {
+                            auto val = it.template get<std::string_view>();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (val.value() == element.string_val()) {
+                                return true;
+                            }
+                            break;
+                        }
+                        case proto::plan::GenericValue::kArrayVal: {
+                            auto val = it.get_array();
+                            if (val.error()) {
+                                continue;
+                            }
+                            if (CompareTwoJsonArray(val, element.array_val())) {
+                                return true;
+                            }
+                            break;
+                        }
+                        default:
+                            PanicInfo(DataTypeInvalid,
+                                      fmt::format("unsupported data type {}",
+                                                  element.val_case()));
+                    }
+                }
+            }
+            return false;
+        };
+        bool is_growing = segment_->type() == SegmentType::Growing;
+        bool is_strong_consistency = consistency_level_ == 0;
+        cached_index_chunk_res_ = index
+                                      ->FilterByPath(pointer,
+                                                     active_count_,
+                                                     is_growing,
+                                                     is_strong_consistency,
+                                                     filter_func)
+                                      .clone();
+        cached_index_chunk_id_ = 0;
+    }
+    TargetBitmap result;
+    result.append(
+        cached_index_chunk_res_, current_data_chunk_pos_, real_batch_size);
+    current_data_chunk_pos_ += real_batch_size;
+    return std::make_shared<ColumnVector>(std::move(result),
+                                          TargetBitmap(real_batch_size, true));
 }
 
 VectorPtr

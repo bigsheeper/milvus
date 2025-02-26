@@ -34,12 +34,12 @@ import (
 	"github.com/milvus-io/milvus/internal/flushcommon/syncmgr"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/function"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 func WrapTaskNotFoundError(taskID int64) error {
@@ -169,12 +169,11 @@ func CheckRowsEqual(schema *schemapb.CollectionSchema, data *storage.InsertData)
 	return nil
 }
 
-func AppendSystemFieldsData(task *ImportTask, data *storage.InsertData) error {
+func AppendSystemFieldsData(task *ImportTask, data *storage.InsertData, rowNum int) error {
 	pkField, err := typeutil.GetPrimaryFieldSchema(task.GetSchema())
 	if err != nil {
 		return err
 	}
-	rowNum := GetInsertDataRowCount(data, task.GetSchema())
 	ids := make([]int64, rowNum)
 	start, _, err := task.allocator.Alloc(uint32(rowNum))
 	if err != nil {

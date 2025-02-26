@@ -27,7 +27,6 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
-	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
@@ -38,18 +37,18 @@ import (
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
 	"github.com/milvus-io/milvus/internal/util/vecindexmgr"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/indexparams"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/indexparams"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type indexMeta struct {
@@ -66,8 +65,6 @@ type indexMeta struct {
 
 	// segmentID -> indexID -> segmentIndex
 	segmentIndexes map[UniqueID]map[UniqueID]*model.SegmentIndex
-
-	lastUpdateMetricTime atomic.Time
 }
 
 func newIndexTaskStats(s *model.SegmentIndex) *metricsinfo.IndexTaskStats {
@@ -82,6 +79,7 @@ func newIndexTaskStats(s *model.SegmentIndex) *metricsinfo.IndexTaskStats {
 		IndexVersion:    s.IndexVersion,
 		CreatedUTCTime:  typeutil.TimestampToString(s.CreatedUTCTime * 1000),
 		FinishedUTCTime: typeutil.TimestampToString(s.FinishedUTCTime * 1000),
+		NodeID:          s.NodeID,
 	}
 }
 
@@ -98,7 +96,7 @@ func newSegmentIndexBuildInfo() *segmentBuildInfo {
 		// build ID -> segment index
 		buildID2SegmentIndex: make(map[UniqueID]*model.SegmentIndex),
 		// build ID -> task stats
-		taskStats: expirable.NewLRU[UniqueID, *metricsinfo.IndexTaskStats](64, nil, time.Minute*30),
+		taskStats: expirable.NewLRU[UniqueID, *metricsinfo.IndexTaskStats](1024, nil, time.Minute*30),
 	}
 }
 
@@ -208,49 +206,48 @@ func (m *indexMeta) updateSegIndexMeta(segIdx *model.SegmentIndex, updateFunc fu
 }
 
 func (m *indexMeta) updateIndexTasksMetrics() {
-	if time.Since(m.lastUpdateMetricTime.Load()) < 120*time.Second {
-		return
-	}
-	defer m.lastUpdateMetricTime.Store(time.Now())
-	taskMetrics := make(map[UniqueID]map[commonpb.IndexState]int)
+	m.RLock()
+	defer m.RUnlock()
+
+	taskMetrics := make(map[indexpb.JobState]int)
 	for _, segIdx := range m.segmentBuildInfo.List() {
-		if segIdx.IsDeleted {
+		if segIdx.IsDeleted || !m.isIndexExist(segIdx.CollectionID, segIdx.IndexID) {
 			continue
 		}
-		if _, ok := taskMetrics[segIdx.CollectionID]; !ok {
-			taskMetrics[segIdx.CollectionID] = make(map[commonpb.IndexState]int)
-			taskMetrics[segIdx.CollectionID][commonpb.IndexState_Unissued] = 0
-			taskMetrics[segIdx.CollectionID][commonpb.IndexState_InProgress] = 0
-			taskMetrics[segIdx.CollectionID][commonpb.IndexState_Finished] = 0
-			taskMetrics[segIdx.CollectionID][commonpb.IndexState_Failed] = 0
+
+		switch segIdx.IndexState {
+		case commonpb.IndexState_IndexStateNone:
+			taskMetrics[indexpb.JobState_JobStateNone]++
+		case commonpb.IndexState_Unissued:
+			taskMetrics[indexpb.JobState_JobStateInit]++
+		case commonpb.IndexState_InProgress:
+			taskMetrics[indexpb.JobState_JobStateInProgress]++
+		case commonpb.IndexState_Finished:
+			taskMetrics[indexpb.JobState_JobStateFinished]++
+		case commonpb.IndexState_Failed:
+			taskMetrics[indexpb.JobState_JobStateFailed]++
+		case commonpb.IndexState_Retry:
+			taskMetrics[indexpb.JobState_JobStateRetry]++
 		}
-		taskMetrics[segIdx.CollectionID][segIdx.IndexState]++
 	}
-	for collID, m := range taskMetrics {
-		for k, v := range m {
-			switch k {
-			case commonpb.IndexState_Unissued:
-				metrics.IndexTaskNum.WithLabelValues(strconv.FormatInt(collID, 10), metrics.UnissuedIndexTaskLabel).Set(float64(v))
-			case commonpb.IndexState_InProgress:
-				metrics.IndexTaskNum.WithLabelValues(strconv.FormatInt(collID, 10), metrics.InProgressIndexTaskLabel).Set(float64(v))
-			case commonpb.IndexState_Finished:
-				metrics.IndexTaskNum.WithLabelValues(strconv.FormatInt(collID, 10), metrics.FinishedIndexTaskLabel).Set(float64(v))
-			case commonpb.IndexState_Failed:
-				metrics.IndexTaskNum.WithLabelValues(strconv.FormatInt(collID, 10), metrics.FailedIndexTaskLabel).Set(float64(v))
-			}
-		}
+
+	jobType := indexpb.JobType_JobTypeIndexJob.String()
+	for k, v := range taskMetrics {
+		metrics.TaskNum.WithLabelValues(jobType, k.String()).Set(float64(v))
 	}
 	log.Ctx(m.ctx).Info("update index metric", zap.Int("collectionNum", len(taskMetrics)))
 }
 
 func checkParams(fieldIndex *model.Index, req *indexpb.CreateIndexRequest) bool {
-	if len(fieldIndex.TypeParams) != len(req.TypeParams) {
+	metaTypeParams := DeleteParams(fieldIndex.TypeParams, []string{common.MmapEnabledKey})
+	reqTypeParams := DeleteParams(req.TypeParams, []string{common.MmapEnabledKey})
+	if len(metaTypeParams) != len(reqTypeParams) {
 		return false
 	}
 	notEq := false
-	for _, param1 := range fieldIndex.TypeParams {
+	for _, param1 := range metaTypeParams {
 		exist := false
-		for _, param2 := range req.TypeParams {
+		for _, param2 := range reqTypeParams {
 			if param2.Key == param1.Key && param2.Value == param1.Value {
 				exist = true
 			}
@@ -329,10 +326,14 @@ func checkParams(fieldIndex *model.Index, req *indexpb.CreateIndexRequest) bool 
 	return !notEq
 }
 
+// CanCreateIndex currently is used in Unittest
 func (m *indexMeta) CanCreateIndex(req *indexpb.CreateIndexRequest) (UniqueID, error) {
 	m.RLock()
 	defer m.RUnlock()
+	return m.canCreateIndex(req)
+}
 
+func (m *indexMeta) canCreateIndex(req *indexpb.CreateIndexRequest) (UniqueID, error) {
 	indexes, ok := m.indexes[req.CollectionID]
 	if !ok {
 		return 0, nil
@@ -387,23 +388,51 @@ func (m *indexMeta) HasSameReq(req *indexpb.CreateIndexRequest) (bool, UniqueID)
 	return false, 0
 }
 
-func (m *indexMeta) CreateIndex(ctx context.Context, index *model.Index) error {
-	log.Ctx(ctx).Info("meta update: CreateIndex", zap.Int64("collectionID", index.CollectionID),
-		zap.Int64("fieldID", index.FieldID), zap.Int64("indexID", index.IndexID), zap.String("indexName", index.IndexName))
+func (m *indexMeta) CreateIndex(ctx context.Context, req *indexpb.CreateIndexRequest, allocatedIndexID UniqueID) (UniqueID, error) {
 	m.Lock()
 	defer m.Unlock()
+
+	indexID, err := m.canCreateIndex(req)
+	if err != nil {
+		return indexID, err
+	}
+
+	if indexID == 0 {
+		indexID = allocatedIndexID
+	} else {
+		return indexID, nil
+	}
+
+	// exclude the mmap.enable param, because it will be conflicted with the index's mmap.enable param
+	typeParams := DeleteParams(req.GetTypeParams(), []string{common.MmapEnabledKey})
+	index := &model.Index{
+		CollectionID:    req.GetCollectionID(),
+		FieldID:         req.GetFieldID(),
+		IndexID:         indexID,
+		IndexName:       req.GetIndexName(),
+		TypeParams:      typeParams,
+		IndexParams:     req.GetIndexParams(),
+		CreateTime:      req.GetTimestamp(),
+		IsAutoIndex:     req.GetIsAutoIndex(),
+		UserIndexParams: req.GetUserIndexParams(),
+	}
+	if err := ValidateIndexParams(index); err != nil {
+		return indexID, err
+	}
+	log.Ctx(ctx).Info("meta update: CreateIndex", zap.Int64("collectionID", index.CollectionID),
+		zap.Int64("fieldID", index.FieldID), zap.Int64("indexID", index.IndexID), zap.String("indexName", index.IndexName))
 
 	if err := m.catalog.CreateIndex(ctx, index); err != nil {
 		log.Ctx(ctx).Error("meta update: CreateIndex save meta fail", zap.Int64("collectionID", index.CollectionID),
 			zap.Int64("fieldID", index.FieldID), zap.Int64("indexID", index.IndexID),
 			zap.String("indexName", index.IndexName), zap.Error(err))
-		return err
+		return indexID, err
 	}
 
 	m.updateCollectionIndex(index)
 	log.Ctx(ctx).Info("meta update: CreateIndex success", zap.Int64("collectionID", index.CollectionID),
 		zap.Int64("fieldID", index.FieldID), zap.Int64("indexID", index.IndexID), zap.String("indexName", index.IndexName))
-	return nil
+	return indexID, nil
 }
 
 func (m *indexMeta) AlterIndex(ctx context.Context, indexes ...*model.Index) error {
@@ -443,7 +472,6 @@ func (m *indexMeta) AddSegmentIndex(ctx context.Context, segIndex *model.Segment
 	log.Ctx(ctx).Info("meta update: adding segment index success", zap.Int64("collectionID", segIndex.CollectionID),
 		zap.Int64("segmentID", segIndex.SegmentID), zap.Int64("indexID", segIndex.IndexID),
 		zap.Int64("buildID", buildID))
-	m.updateIndexTasksMetrics()
 	return nil
 }
 
@@ -557,10 +585,7 @@ func (m *indexMeta) GetIndexesForCollection(collID UniqueID, indexName string) [
 	return indexInfos
 }
 
-func (m *indexMeta) GetFieldIndexes(collID, fieldID UniqueID, indexName string) []*model.Index {
-	m.RLock()
-	defer m.RUnlock()
-
+func (m *indexMeta) getFieldIndexes(collID, fieldID UniqueID, indexName string) []*model.Index {
 	indexInfos := make([]*model.Index, 0)
 	for _, index := range m.indexes[collID] {
 		if index.IsDeleted || index.FieldID != fieldID {
@@ -571,6 +596,12 @@ func (m *indexMeta) GetFieldIndexes(collID, fieldID UniqueID, indexName string) 
 		}
 	}
 	return indexInfos
+}
+
+func (m *indexMeta) GetFieldIndexes(collID, fieldID UniqueID, indexName string) []*model.Index {
+	m.RLock()
+	defer m.RUnlock()
+	return m.getFieldIndexes(collID, fieldID, indexName)
 }
 
 // MarkIndexAsDeleted will mark the corresponding index as deleted, and recycleUnusedIndexFiles will recycle these tasks.
@@ -756,6 +787,10 @@ func (m *indexMeta) IsIndexExist(collID, indexID UniqueID) bool {
 	m.RLock()
 	defer m.RUnlock()
 
+	return m.isIndexExist(collID, indexID)
+}
+
+func (m *indexMeta) isIndexExist(collID, indexID UniqueID) bool {
 	fieldIndexes, ok := m.indexes[collID]
 	if !ok {
 		return false
@@ -816,7 +851,6 @@ func (m *indexMeta) FinishTask(taskInfo *workerpb.IndexTaskInfo) error {
 		zap.String("state", taskInfo.GetState().String()), zap.String("fail reason", taskInfo.GetFailReason()),
 		zap.Int32("current_index_version", taskInfo.GetCurrentIndexVersion()),
 	)
-	m.updateIndexTasksMetrics()
 	metrics.FlushedSegmentFileNum.WithLabelValues(metrics.IndexFileLabel).Observe(float64(len(taskInfo.GetIndexFileKeys())))
 	return nil
 }
@@ -841,7 +875,6 @@ func (m *indexMeta) DeleteTask(buildID int64) error {
 	}
 
 	log.Ctx(m.ctx).Info("delete index task success", zap.Int64("buildID", buildID))
-	m.updateIndexTasksMetrics()
 	return nil
 }
 
@@ -870,8 +903,6 @@ func (m *indexMeta) BuildIndex(buildID UniqueID) error {
 	}
 	log.Ctx(m.ctx).Info("meta update: segment index in progress success", zap.Int64("buildID", segIdx.BuildID),
 		zap.Int64("segmentID", segIdx.SegmentID))
-
-	m.updateIndexTasksMetrics()
 	return nil
 }
 
@@ -906,10 +937,7 @@ func (m *indexMeta) SetStoredIndexFileSizeMetric(collections map[UniqueID]*colle
 	return total
 }
 
-func (m *indexMeta) RemoveSegmentIndex(ctx context.Context, collID, partID, segID, indexID, buildID UniqueID) error {
-	m.Lock()
-	defer m.Unlock()
-
+func (m *indexMeta) removeSegmentIndex(ctx context.Context, collID, partID, segID, indexID, buildID UniqueID) error {
 	err := m.catalog.DropSegmentIndex(ctx, collID, partID, segID, buildID)
 	if err != nil {
 		return err
@@ -924,8 +952,26 @@ func (m *indexMeta) RemoveSegmentIndex(ctx context.Context, collID, partID, segI
 	}
 
 	m.segmentBuildInfo.Remove(buildID)
-	m.updateIndexTasksMetrics()
 	return nil
+}
+
+func (m *indexMeta) RemoveSegmentIndex(ctx context.Context, collID, partID, segID, indexID, buildID UniqueID) error {
+	m.Lock()
+	defer m.Unlock()
+
+	return m.removeSegmentIndex(ctx, collID, partID, segID, indexID, buildID)
+}
+
+func (m *indexMeta) RemoveSegmentIndexByID(ctx context.Context, buildID UniqueID) error {
+	m.Lock()
+	defer m.Unlock()
+
+	segIdx, ok := m.segmentBuildInfo.Get(buildID)
+	if !ok {
+		return nil
+	}
+
+	return m.removeSegmentIndex(ctx, segIdx.CollectionID, segIdx.PartitionID, segIdx.SegmentID, segIdx.IndexID, buildID)
 }
 
 func (m *indexMeta) GetDeletedIndexes() []*model.Index {

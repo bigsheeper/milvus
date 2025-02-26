@@ -7,9 +7,9 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/proto/etcdpb"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/proto/etcdpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 func generateFloatVectors(nb, dim int) []float32 {
@@ -165,4 +165,21 @@ func generateTestData(collID, partID, segID int64, num int) ([]*Blob, error) {
 
 	blobs, err := insertCodec.Serialize(partID, segID, data)
 	return blobs, err
+}
+
+func generateDeleteData(collID, partID, segID int64, num int) ([]*Blob, error) {
+	pks := make([]storage.PrimaryKey, 0, num)
+	tss := make([]storage.Timestamp, 0, num)
+	for i := 1; i <= num; i++ {
+		pks = append(pks, storage.NewInt64PrimaryKey(int64(i)))
+		tss = append(tss, storage.Timestamp(i+1))
+	}
+
+	deleteCodec := storage.NewDeleteCodec()
+	blob, err := deleteCodec.Serialize(collID, partID, segID, &storage.DeleteData{
+		Pks:      pks,
+		Tss:      tss,
+		RowCount: int64(num),
+	})
+	return []*Blob{blob}, err
 }

@@ -84,6 +84,30 @@ VectorMemIndex<T>::VectorMemIndex(
 }
 
 template <typename T>
+VectorMemIndex<T>::VectorMemIndex(const IndexType& index_type,
+                                  const MetricType& metric_type,
+                                  const IndexVersion& version,
+                                  const knowhere::ViewDataOp view_data)
+    : VectorIndex(index_type, metric_type) {
+    CheckMetricTypeSupport<T>(metric_type);
+    AssertInfo(!is_unsupported(index_type, metric_type),
+               index_type + " doesn't support metric: " + metric_type);
+
+    auto view_data_pack = knowhere::Pack(view_data);
+    auto get_index_obj = knowhere::IndexFactory::Instance().Create<T>(
+        GetIndexType(), version, view_data_pack);
+    if (get_index_obj.has_value()) {
+        index_ = get_index_obj.value();
+    } else {
+        auto err = get_index_obj.error();
+        if (err == knowhere::Status::invalid_index_error) {
+            PanicInfo(ErrorCode::Unsupported, get_index_obj.what());
+        }
+        PanicInfo(ErrorCode::KnowhereError, get_index_obj.what());
+    }
+}
+
+template <typename T>
 knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>>
 VectorMemIndex<T>::VectorIterators(const milvus::DatasetPtr dataset,
                                    const knowhere::Json& conf,
@@ -287,8 +311,11 @@ VectorMemIndex<T>::Build(const Config& config) {
 
     auto opt_fields = GetValueFromConfig<OptFieldT>(config, VEC_OPT_FIELDS);
     std::unordered_map<int64_t, std::vector<std::vector<uint32_t>>> scalar_info;
-    if (opt_fields.has_value() && index_.IsAdditionalScalarSupported() &&
-        config.value("partition_key_isolation", false)) {
+    auto is_partition_key_isolation =
+        GetValueFromConfig<bool>(config, "partition_key_isolation");
+    if (opt_fields.has_value() &&
+        index_.IsAdditionalScalarSupported(
+            is_partition_key_isolation.value_or(false))) {
         scalar_info = file_manager_->CacheOptFieldToMemory(opt_fields.value());
     }
 

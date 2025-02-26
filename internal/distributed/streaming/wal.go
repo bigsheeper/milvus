@@ -13,11 +13,11 @@ import (
 	"github.com/milvus-io/milvus/internal/streamingnode/client/handler"
 	"github.com/milvus-io/milvus/internal/util/streamingutil"
 	"github.com/milvus-io/milvus/internal/util/streamingutil/status"
-	"github.com/milvus-io/milvus/pkg/streaming/util/message"
-	"github.com/milvus-io/milvus/pkg/streaming/util/types"
-	"github.com/milvus-io/milvus/pkg/util/conc"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
+	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
+	"github.com/milvus-io/milvus/pkg/v2/util/conc"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 var ErrWALAccesserClosed = status.NewOnShutdownError("wal accesser closed")
@@ -71,16 +71,6 @@ func (w *walAccesserImpl) RawAppend(ctx context.Context, msg message.MutableMess
 	return w.appendToWAL(ctx, msg)
 }
 
-func (w *walAccesserImpl) BroadcastAppend(ctx context.Context, msg message.BroadcastMutableMessage) (*types.BroadcastAppendResult, error) {
-	assertValidBroadcastMessage(msg)
-	if !w.lifetime.Add(typeutil.LifetimeStateWorking) {
-		return nil, ErrWALAccesserClosed
-	}
-	defer w.lifetime.Done()
-
-	return w.broadcastToWAL(ctx, msg)
-}
-
 // Read returns a scanner for reading records from the wal.
 func (w *walAccesserImpl) Read(_ context.Context, opts ReadOption) Scanner {
 	if !w.lifetime.Add(typeutil.LifetimeStateWorking) {
@@ -102,6 +92,11 @@ func (w *walAccesserImpl) Read(_ context.Context, opts ReadOption) Scanner {
 		MessageHandler: opts.MessageHandler,
 	})
 	return rc
+}
+
+// Broadcast returns a broadcast for broadcasting records to the wal.
+func (w *walAccesserImpl) Broadcast() Broadcast {
+	return broadcast{w}
 }
 
 func (w *walAccesserImpl) Txn(ctx context.Context, opts TxnOption) (Txn, error) {

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,28 +47,28 @@ import (
 	"github.com/milvus-io/milvus/internal/util/hookutil"
 	"github.com/milvus-io/milvus/internal/util/importutilv2"
 	"github.com/milvus-io/milvus/internal/util/streamingutil"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/mq/msgstream"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/proto/proxypb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util"
-	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
-	"github.com/milvus-io/milvus/pkg/util/crypto"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/logutil"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/ratelimitutil"
-	"github.com/milvus-io/milvus/pkg/util/requestutil"
-	"github.com/milvus-io/milvus/pkg/util/retry"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/mq/msgstream"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/proxypb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util"
+	"github.com/milvus-io/milvus/pkg/v2/util/commonpbutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/crypto"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/logutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/ratelimitutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/requestutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/retry"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 const moduleName = "Proxy"
@@ -592,7 +593,7 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		zap.String("consistency_level", request.ConsistencyLevel.String()),
 	)
 
-	log.Debug(rpcReceived(method))
+	log.Info(rpcReceived(method))
 
 	if err := node.sched.ddQueue.Enqueue(cct); err != nil {
 		log.Warn(
@@ -843,7 +844,7 @@ func (node *Proxy) LoadCollection(ctx context.Context, request *milvuspb.LoadCol
 		zap.Bool("refreshMode", request.Refresh),
 	)
 
-	log.Debug("LoadCollection received")
+	log.Info("LoadCollection received")
 
 	if err := node.sched.ddQueue.Enqueue(lct); err != nil {
 		log.Warn("LoadCollection failed to enqueue",
@@ -3287,6 +3288,21 @@ func (node *Proxy) HybridSearch(ctx context.Context, request *milvuspb.HybridSea
 	return rsp, err
 }
 
+type hybridSearchRequestExprLogger struct {
+	*milvuspb.HybridSearchRequest
+}
+
+// String implements Stringer interface for lazy logging.
+func (l *hybridSearchRequestExprLogger) String() string {
+	builder := &strings.Builder{}
+
+	for idx, subReq := range l.Requests {
+		builder.WriteString(fmt.Sprintf("[No.%d req, expr: %s]", idx, subReq.GetDsl()))
+	}
+
+	return builder.String()
+}
+
 func (node *Proxy) hybridSearch(ctx context.Context, request *milvuspb.HybridSearchRequest, optimizedSearch bool) (*milvuspb.SearchResults, bool, bool, error) {
 	metrics.GetStats(ctx).
 		SetNodeID(paramtable.GetNodeID()).
@@ -3339,6 +3355,7 @@ func (node *Proxy) hybridSearch(ctx context.Context, request *milvuspb.HybridSea
 		zap.Any("OutputFields", request.OutputFields),
 		zap.String("ConsistencyLevel", request.GetConsistencyLevel().String()),
 		zap.Bool("useDefaultConsistency", request.GetUseDefaultConsistency()),
+		zap.Stringer("dsls", &hybridSearchRequestExprLogger{HybridSearchRequest: request}),
 	)
 
 	defer func() {
@@ -3725,7 +3742,8 @@ func (node *Proxy) Query(ctx context.Context, request *milvuspb.QueryRequest) (*
 				commonpbutil.WithMsgType(commonpb.MsgType_Retrieve),
 				commonpbutil.WithSourceID(paramtable.GetNodeID()),
 			),
-			ReqID: paramtable.GetNodeID(),
+			ReqID:            paramtable.GetNodeID(),
+			ConsistencyLevel: request.ConsistencyLevel,
 		},
 		request:             request,
 		qc:                  node.queryCoord,
@@ -6738,7 +6756,7 @@ func DeregisterSubLabel(subLabel string) {
 func (node *Proxy) RegisterRestRouter(router gin.IRouter) {
 	// Cluster request that executed by proxy
 	router.GET(http.ClusterInfoPath, getClusterInfo(node))
-	router.GET(http.ClusterConfigsPath, getConfigs(paramtable.Get().GetAll()))
+	router.GET(http.ClusterConfigsPath, getConfigs(paramtable.Get().GetConfigsView()))
 	router.GET(http.ClusterClientsPath, getConnectedClients)
 	router.GET(http.ClusterDependenciesPath, getDependencies)
 

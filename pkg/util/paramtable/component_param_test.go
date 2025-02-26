@@ -22,8 +22,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/milvus-io/milvus/pkg/config"
-	"github.com/milvus-io/milvus/pkg/util/hardware"
+	"github.com/milvus-io/milvus/pkg/v2/config"
+	"github.com/milvus-io/milvus/pkg/v2/util/hardware"
 )
 
 func shouldPanic(t *testing.T, name string, f func()) {
@@ -420,11 +420,11 @@ func TestComponentParam(t *testing.T) {
 		chunkRows = Params.ChunkRows.GetAsInt64()
 		assert.Equal(t, int64(8192), chunkRows)
 
-		enableInterimIndex := Params.EnableTempSegmentIndex.GetAsBool()
+		enableInterimIndex := Params.EnableInterminSegmentIndex.GetAsBool()
 		assert.Equal(t, true, enableInterimIndex)
 
 		params.Save("queryNode.segcore.interimIndex.enableIndex", "true")
-		enableInterimIndex = Params.EnableTempSegmentIndex.GetAsBool()
+		enableInterimIndex = Params.EnableInterminSegmentIndex.GetAsBool()
 		assert.Equal(t, true, enableInterimIndex)
 
 		assert.Equal(t, false, Params.KnowhereScoreConsistency.GetAsBool())
@@ -539,6 +539,13 @@ func TestComponentParam(t *testing.T) {
 		assert.Equal(t, 4, Params.L0DeleteCompactionSlotUsage.GetAsInt())
 		params.Save("datacoord.scheduler.taskSlowThreshold", "1000")
 		assert.Equal(t, 1000*time.Second, Params.TaskSlowThreshold.GetAsDuration(time.Second))
+
+		params.Save("datacoord.statsTask.enable", "true")
+		assert.True(t, Params.EnableStatsTask.GetAsBool())
+		params.Save("datacoord.taskCheckInterval", "500")
+		assert.Equal(t, 500*time.Second, Params.TaskCheckInterval.GetAsDuration(time.Second))
+		params.Save("datacoord.statsTaskTriggerCount", "3")
+		assert.Equal(t, 3, Params.StatsTaskTriggerCount.GetAsInt())
 	})
 
 	t.Run("test dataNodeConfig", func(t *testing.T) {

@@ -59,6 +59,7 @@ const (
 
 	StreamingDataSourceLabel  = "streaming"
 	BulkinsertDataSourceLabel = "bulkinsert"
+	CompactionDataSourceLabel = "compaction"
 
 	Leader     = "OnLeader"
 	FromLeader = "FromLeader"
@@ -124,13 +125,14 @@ const (
 	pathLabelName            = "path"
 	cgoNameLabelName         = `cgo_name`
 	cgoTypeLabelName         = `cgo_type`
+	queueTypeLabelName       = `queue_type`
 
 	// entities label
 	LoadedLabel         = "loaded"
 	NumEntitiesAllLabel = "all"
 
-	taskTypeLabel  = "task_type"
-	taskStateLabel = "task_state"
+	TaskTypeLabel  = "task_type"
+	TaskStateLabel = "task_state"
 )
 
 var (

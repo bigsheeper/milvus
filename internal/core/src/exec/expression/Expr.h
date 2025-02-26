@@ -27,7 +27,9 @@
 #include "exec/QueryContext.h"
 #include "expr/ITypeExpr.h"
 #include "query/PlanProto.h"
-
+#include "segcore/SegmentSealedImpl.h"
+#include "segcore/SegmentInterface.h"
+#include "segcore/SegmentGrowingImpl.h"
 namespace milvus {
 namespace exec {
 
@@ -111,12 +113,14 @@ class SegmentExpr : public Expr {
                 const segcore::SegmentInternalInterface* segment,
                 const FieldId& field_id,
                 int64_t active_count,
-                int64_t batch_size)
+                int64_t batch_size,
+                int32_t consistency_level)
         : Expr(DataType::BOOL, std::move(input), name),
           segment_(segment),
           field_id_(field_id),
           active_count_(active_count),
-          batch_size_(batch_size) {
+          batch_size_(batch_size),
+          consistency_level_(consistency_level) {
         size_per_chunk_ = segment_->size_per_chunk();
         AssertInfo(
             batch_size_ > 0,
@@ -880,17 +884,33 @@ class SegmentExpr : public Expr {
 
             size = std::min(size, batch_size_ - processed_size);
 
-            auto chunk = segment_->chunk_data<T>(field_id_, i);
-            const bool* valid_data = chunk.valid_data();
-            if (valid_data == nullptr) {
-                return valid_result;
-            }
-            valid_data += data_pos;
-            for (int j = 0; j < size; j++) {
-                if (!valid_data[j]) {
-                    valid_result[j + processed_size] = false;
+            bool access_sealed_variable_column = false;
+            if constexpr (std::is_same_v<T, std::string_view> ||
+                          std::is_same_v<T, Json>) {
+                if (segment_->type() == SegmentType::Sealed) {
+                    auto [data_vec, valid_data] = segment_->get_batch_views<T>(
+                        field_id_, i, data_pos, size);
+                    ApplyValidData(valid_data.data(),
+                                   valid_result + processed_size,
+                                   valid_result + processed_size,
+                                   size);
+                    access_sealed_variable_column = true;
                 }
             }
+
+            if (!access_sealed_variable_column) {
+                auto chunk = segment_->chunk_data<T>(field_id_, i);
+                const bool* valid_data = chunk.valid_data();
+                if (valid_data == nullptr) {
+                    return valid_result;
+                }
+                valid_data += data_pos;
+                ApplyValidData(valid_data,
+                               valid_result + processed_size,
+                               valid_result + processed_size,
+                               size);
+            }
+
             processed_size += size;
             if (processed_size >= batch_size_) {
                 current_data_chunk_ = i;
@@ -1063,6 +1083,23 @@ class SegmentExpr : public Expr {
         use_index_ = false;
     }
 
+    bool
+    CanUseJsonKeyIndex(FieldId field_id) const {
+        if (segment_->type() == SegmentType::Sealed) {
+            auto sealed_seg =
+                dynamic_cast<const segcore::SegmentSealed*>(segment_);
+            Assert(sealed_seg != nullptr);
+            if (sealed_seg->GetJsonKeyIndex(field_id) != nullptr) {
+                return true;
+            }
+        } else if (segment_->type() == SegmentType ::Growing) {
+            if (segment_->GetJsonKeyIndex(field_id) != nullptr) {
+                return true;
+            }
+        }
+        return false;
+    }
+
  protected:
     const segcore::SegmentInternalInterface* segment_;
     const FieldId field_id_;
@@ -1095,6 +1132,7 @@ class SegmentExpr : public Expr {
 
     // Cache for text match.
     std::shared_ptr<TargetBitmap> cached_match_res_{nullptr};
+    int32_t consistency_level_{0};
 };
 
 void

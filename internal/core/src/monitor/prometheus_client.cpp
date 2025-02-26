@@ -181,6 +181,13 @@ std::map<std::string, std::string> iterativeFilterLatencyLabels{
     {"type", "iterative_filter_latency"}};
 std::map<std::string, std::string> scalarProportionLabels{
     {"type", "scalar_proportion"}};
+std::map<std::string, std::string> getVectorLatencyLabels{
+    {"type", "get_vector_latency"}};
+std::map<std::string, std::string> retrieveGetTargetEntryLatencyLabels{
+    {"type", "retrieve_get_target_entry_latency"}};
+std::map<std::string, std::string> searchGetTargetEntryLatencyLabels{
+    {"type", "search_get_target_entry_latency"}};
+
 DEFINE_PROMETHEUS_HISTOGRAM_FAMILY(internal_core_search_latency,
                                    "[cpp]latency(us) of search on segment")
 DEFINE_PROMETHEUS_HISTOGRAM(internal_core_search_latency_scalar,
@@ -200,7 +207,15 @@ DEFINE_PROMETHEUS_HISTOGRAM_WITH_BUCKETS(
     internal_core_search_latency,
     scalarProportionLabels,
     ratioBuckets)
-
+DEFINE_PROMETHEUS_HISTOGRAM(internal_core_get_vector_latency,
+                            internal_core_search_latency,
+                            getVectorLatencyLabels)
+DEFINE_PROMETHEUS_HISTOGRAM(internal_core_retrieve_get_target_entry_latency,
+                            internal_core_search_latency,
+                            retrieveGetTargetEntryLatencyLabels)
+DEFINE_PROMETHEUS_HISTOGRAM(internal_core_search_get_target_entry_latency,
+                            internal_core_search_latency,
+                            searchGetTargetEntryLatencyLabels)
 // mmap metrics
 std::map<std::string, std::string> mmapAllocatedSpaceAnonLabel = {
     {"type", "anon"}};

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -20,19 +21,19 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/exprutil"
 	"github.com/milvus-io/milvus/internal/util/reduce"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/proto/planpb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metric"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/planpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util/commonpbutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metric"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 const (
@@ -192,19 +193,9 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.SearchRequest.Nq = nq
 
-	var ignoreGrowing bool
-	// parse common search params
-	for i, kv := range t.request.GetSearchParams() {
-		if kv.GetKey() == IgnoreGrowingKey {
-			ignoreGrowing, err = strconv.ParseBool(kv.GetValue())
-			if err != nil {
-				return errors.New("parse search growing failed")
-			}
-			t.request.SearchParams = append(t.request.GetSearchParams()[:i], t.request.GetSearchParams()[i+1:]...)
-			break
-		}
+	if t.SearchRequest.IgnoreGrowing, err = isIgnoreGrowing(t.request.SearchParams); err != nil {
+		return err
 	}
-	t.SearchRequest.IgnoreGrowing = ignoreGrowing
 
 	outputFieldIDs, err := getOutputFieldIDs(t.schema, t.request.GetOutputFields())
 	if err != nil {
@@ -368,6 +359,14 @@ func (t *searchTask) initAdvancedSearchRequest(ctx context.Context) error {
 			return err
 		}
 
+		ignoreGrowing := t.SearchRequest.IgnoreGrowing
+		if !ignoreGrowing {
+			// fetch ignore_growing from sub search param if not set in search request
+			if ignoreGrowing, err = isIgnoreGrowing(subReq.GetSearchParams()); err != nil {
+				return err
+			}
+		}
+
 		internalSubReq := &internalpb.SubSearchRequest{
 			Dsl:                subReq.GetDsl(),
 			PlaceholderGroup:   subReq.GetPlaceholderGroup(),
@@ -380,6 +379,7 @@ func (t *searchTask) initAdvancedSearchRequest(ctx context.Context) error {
 			MetricType:         queryInfo.GetMetricType(),
 			GroupByFieldId:     t.rankParams.GetGroupByFieldId(),
 			GroupSize:          t.rankParams.GetGroupSize(),
+			IgnoreGrowing:      ignoreGrowing,
 		}
 
 		internalSubReq.FieldId = queryInfo.GetQueryFieldId()
@@ -534,13 +534,16 @@ func (t *searchTask) tryGeneratePlan(params []*commonpb.KeyValuePair, dsl string
 	}
 
 	searchInfo.planInfo.QueryFieldId = annField.GetFieldID()
+	start := time.Now()
 	plan, planErr := planparserv2.CreateSearchPlan(t.schema.schemaHelper, dsl, annsFieldName, searchInfo.planInfo, exprTemplateValues)
 	if planErr != nil {
 		log.Ctx(t.ctx).Warn("failed to create query plan", zap.Error(planErr),
 			zap.String("dsl", dsl), // may be very large if large term passed.
 			zap.String("anns field", annsFieldName), zap.Any("query info", searchInfo.planInfo))
+		metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "search", metrics.FailLabel).Observe(float64(time.Since(start).Milliseconds()))
 		return nil, nil, 0, false, merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", planErr)
 	}
+	metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "search", metrics.SuccessLabel).Observe(float64(time.Since(start).Milliseconds()))
 	log.Ctx(t.ctx).Debug("create query plan",
 		zap.String("dsl", t.request.Dsl), // may be very large if large term passed.
 		zap.String("anns field", annsFieldName), zap.Any("query info", searchInfo.planInfo))
@@ -897,8 +900,9 @@ func (t *searchTask) Requery(span trace.Span) error {
 				commonpbutil.WithMsgType(commonpb.MsgType_Retrieve),
 				commonpbutil.WithSourceID(paramtable.GetNodeID()),
 			),
-			ReqID:        paramtable.GetNodeID(),
-			PartitionIDs: t.GetPartitionIDs(), // use search partitionIDs
+			ReqID:            paramtable.GetNodeID(),
+			PartitionIDs:     t.GetPartitionIDs(), // use search partitionIDs
+			ConsistencyLevel: t.ConsistencyLevel,
 		},
 		request:      queryReq,
 		plan:         plan,

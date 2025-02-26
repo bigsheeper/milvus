@@ -38,19 +38,19 @@ import (
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	_ "github.com/milvus-io/milvus/internal/util/grpcclient"
 	streamingserviceinterceptor "github.com/milvus-io/milvus/internal/util/streamingutil/service/interceptor"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/proto/proxypb"
-	"github.com/milvus-io/milvus/pkg/proto/rootcoordpb"
-	"github.com/milvus-io/milvus/pkg/tracer"
-	"github.com/milvus-io/milvus/pkg/util"
-	"github.com/milvus-io/milvus/pkg/util/etcd"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/interceptor"
-	"github.com/milvus-io/milvus/pkg/util/logutil"
-	"github.com/milvus-io/milvus/pkg/util/netutil"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/tikv"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/proxypb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/rootcoordpb"
+	"github.com/milvus-io/milvus/pkg/v2/tracer"
+	"github.com/milvus-io/milvus/pkg/v2/util"
+	"github.com/milvus-io/milvus/pkg/v2/util/etcd"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/interceptor"
+	"github.com/milvus-io/milvus/pkg/v2/util/logutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/netutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/tikv"
 )
 
 // Server grpc wrapper
@@ -345,6 +345,12 @@ func (s *Server) Stop() (err error) {
 	}
 	if s.tikvCli != nil {
 		defer s.tikvCli.Close()
+	}
+
+	if s.rootCoord != nil {
+		log.Info("graceful stop rootCoord")
+		s.rootCoord.GracefulStop()
+		log.Info("graceful stop rootCoord done")
 	}
 
 	if s.grpcServer != nil {

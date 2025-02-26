@@ -25,8 +25,8 @@ import (
 
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/metastore"
-	"github.com/milvus-io/milvus/pkg/util/lock"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/lock"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
 
 type ImportMeta interface {
@@ -53,7 +53,7 @@ type importTasks struct {
 func newImportTasks() *importTasks {
 	return &importTasks{
 		tasks:     make(map[int64]ImportTask),
-		taskStats: expirable.NewLRU[UniqueID, ImportTask](64, nil, time.Minute*30),
+		taskStats: expirable.NewLRU[UniqueID, ImportTask](512, nil, time.Minute*30),
 	}
 }
 

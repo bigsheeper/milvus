@@ -27,10 +27,10 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 func (s *Server) ListCheckers(ctx context.Context, req *querypb.ListCheckersRequest) (*querypb.ListCheckersResponse, error) {
@@ -192,6 +192,33 @@ func (s *Server) ResumeBalance(ctx context.Context, req *querypb.ResumeBalanceRe
 	}
 
 	return merr.Success(), nil
+}
+
+// CheckBalanceStatus checks whether balance is active or suspended
+func (s *Server) CheckBalanceStatus(ctx context.Context, req *querypb.CheckBalanceStatusRequest) (*querypb.CheckBalanceStatusResponse, error) {
+	log := log.Ctx(ctx)
+	log.Info("CheckBalanceStatus request received")
+
+	errMsg := "failed to check balance status"
+	if err := merr.CheckHealthy(s.State()); err != nil {
+		log.Warn(errMsg, zap.Error(err))
+		return &querypb.CheckBalanceStatusResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+
+	isActive, err := s.checkerController.IsActive(utils.BalanceChecker)
+	if err != nil {
+		log.Warn(errMsg, zap.Error(err))
+		return &querypb.CheckBalanceStatusResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+
+	return &querypb.CheckBalanceStatusResponse{
+		Status:   merr.Success(),
+		IsActive: isActive,
+	}, nil
 }
 
 // suspend node from resource operation, for given node, suspend load_segment/sub_channel operations

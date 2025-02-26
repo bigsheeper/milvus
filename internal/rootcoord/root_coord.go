@@ -54,26 +54,26 @@ import (
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
 	"github.com/milvus-io/milvus/internal/util/streamingutil"
 	tsoutil2 "github.com/milvus-io/milvus/internal/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/kv"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	pb "github.com/milvus-io/milvus/pkg/proto/etcdpb"
-	"github.com/milvus-io/milvus/pkg/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/proto/proxypb"
-	"github.com/milvus-io/milvus/pkg/proto/rootcoordpb"
-	"github.com/milvus-io/milvus/pkg/util"
-	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
-	"github.com/milvus-io/milvus/pkg/util/crypto"
-	"github.com/milvus-io/milvus/pkg/util/expr"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/retry"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/kv"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	pb "github.com/milvus-io/milvus/pkg/v2/proto/etcdpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/proxypb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/rootcoordpb"
+	"github.com/milvus-io/milvus/pkg/v2/util"
+	"github.com/milvus-io/milvus/pkg/v2/util/commonpbutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/crypto"
+	"github.com/milvus-io/milvus/pkg/v2/util/expr"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/retry"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 // UniqueID is an alias of typeutil.UniqueID.
@@ -597,7 +597,7 @@ func (c *Core) initRbac(initCtx context.Context) error {
 		}
 	}
 
-	if Params.ProxyCfg.EnablePublicPrivilege.GetAsBool() {
+	if Params.CommonCfg.EnablePublicPrivilege.GetAsBool() {
 		err = c.initPublicRolePrivilege(initCtx)
 		if err != nil {
 			return err
@@ -664,15 +664,12 @@ func (c *Core) initBuiltinRoles() error {
 			return errors.Wrapf(err, "failed to create a builtin role: %s", role)
 		}
 		for _, privilege := range privilegesJSON[util.RoleConfigPrivileges] {
-			privilegeName := privilege[util.RoleConfigPrivilege]
-			if !util.IsAnyWord(privilege[util.RoleConfigPrivilege]) {
-				dbPrivName, err := c.getMetastorePrivilegeName(c.ctx, privilege[util.RoleConfigPrivilege])
-				if err != nil {
-					return errors.Wrapf(err, "failed to get metastore privilege name for: %s", privilege[util.RoleConfigPrivilege])
-				}
-				privilegeName = dbPrivName
+			privilegeName, err := c.getMetastorePrivilegeName(c.ctx, privilege[util.RoleConfigPrivilege])
+			if err != nil {
+				return errors.Wrapf(err, "failed to get metastore privilege name for: %s", privilege[util.RoleConfigPrivilege])
 			}
-			err := c.meta.OperatePrivilege(c.ctx, util.DefaultTenant, &milvuspb.GrantEntity{
+
+			err = c.meta.OperatePrivilege(c.ctx, util.DefaultTenant, &milvuspb.GrantEntity{
 				Role:       &milvuspb.RoleEntity{Name: role},
 				Object:     &milvuspb.ObjectEntity{Name: privilege[util.RoleConfigObjectType]},
 				ObjectName: privilege[util.RoleConfigObjectName],
@@ -829,15 +826,18 @@ func (c *Core) revokeSession() {
 	}
 }
 
+func (c *Core) GracefulStop() {
+	if c.streamingCoord != nil {
+		c.streamingCoord.Stop()
+	}
+}
+
 // Stop stops rootCoord.
 func (c *Core) Stop() error {
 	c.UpdateStateCode(commonpb.StateCode_Abnormal)
 	c.stopExecutor()
 	c.stopScheduler()
 
-	if c.streamingCoord != nil {
-		c.streamingCoord.Stop()
-	}
 	if c.proxyWatcher != nil {
 		c.proxyWatcher.Stop()
 	}
@@ -2776,6 +2776,10 @@ func (c *Core) validatePrivilegeGroupParams(ctx context.Context, entity string, 
 }
 
 func (c *Core) getMetastorePrivilegeName(ctx context.Context, privName string) (string, error) {
+	// if it is '*', return directly
+	if util.IsAnyWord(privName) {
+		return privName, nil
+	}
 	// if it is built-in privilege, return the privilege name directly
 	if util.IsPrivilegeNameDefined(privName) {
 		return util.PrivilegeNameForMetastore(privName), nil
@@ -2788,7 +2792,7 @@ func (c *Core) getMetastorePrivilegeName(ctx context.Context, privName string) (
 	if customGroup {
 		return util.PrivilegeGroupNameForMetastore(privName), nil
 	}
-	return "", errors.New("not found the privilege name")
+	return "", errors.Newf("not found the privilege name [%s] from metastore", privName)
 }
 
 // SelectGrant select grant

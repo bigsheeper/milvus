@@ -50,22 +50,22 @@ import (
 	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
 	"github.com/milvus-io/milvus/internal/util/segcore"
 	"github.com/milvus-io/milvus/internal/util/vecindexmgr"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/cgopb"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/indexcgopb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/proto/segcorepb"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/indexparams"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/metautil"
-	"github.com/milvus-io/milvus/pkg/util/metric"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/cgopb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexcgopb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/segcorepb"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/indexparams"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
+	"github.com/milvus-io/milvus/pkg/v2/util/metric"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type SegmentType = commonpb.SegmentState
@@ -243,10 +243,10 @@ func (s *baseSegment) ResourceUsageEstimate() ResourceUsage {
 	}
 
 	usage, err := getResourceUsageEstimateOfSegment(s.collection.Schema(), s.LoadInfo(), resourceEstimateFactor{
-		memoryUsageFactor:        1.0,
-		memoryIndexUsageFactor:   1.0,
-		enableTempSegmentIndex:   false,
-		deltaDataExpansionFactor: paramtable.Get().QueryNodeCfg.DeltaDataExpansionRate.GetAsFloat(),
+		memoryUsageFactor:          1.0,
+		memoryIndexUsageFactor:     1.0,
+		EnableInterminSegmentIndex: false,
+		deltaDataExpansionFactor:   paramtable.Get().QueryNodeCfg.DeltaDataExpansionRate.GetAsFloat(),
 	})
 	if err != nil {
 		// Should never failure, if failed, segment should never be loaded.
@@ -297,6 +297,7 @@ type LocalSegment struct {
 	fields             *typeutil.ConcurrentMap[int64, *FieldInfo]
 	fieldIndexes       *typeutil.ConcurrentMap[int64, *IndexedFieldInfo]
 	warmupDispatcher   *AsyncWarmupDispatcher
+	fieldJSONStats     []int64
 }
 
 func NewSegment(ctx context.Context,
@@ -1033,6 +1034,7 @@ func (s *LocalSegment) LoadIndex(ctx context.Context, indexInfo *querypb.FieldIn
 			IndexInfo: indexInfo,
 			IsLoaded:  true,
 		})
+		return nil
 	}
 
 	return s.innerLoadIndex(ctx, fieldSchema, indexInfo, tr, fieldType)
@@ -1135,6 +1137,49 @@ func (s *LocalSegment) LoadTextIndex(ctx context.Context, textLogs *datapb.TextI
 	}).Await()
 
 	return HandleCStatus(ctx, &status, "LoadTextIndex failed")
+}
+
+func (s *LocalSegment) LoadJSONKeyIndex(ctx context.Context, jsonKeyStats *datapb.JsonKeyStats, schemaHelper *typeutil.SchemaHelper) error {
+	log.Ctx(ctx).Info("load json key index", zap.Int64("field id", jsonKeyStats.GetFieldID()), zap.Any("json key logs", jsonKeyStats))
+	exists := false
+	for _, field := range s.fieldJSONStats {
+		if field == jsonKeyStats.GetFieldID() {
+			exists = true
+			break
+		}
+	}
+	if exists {
+		log.Warn("JsonKeyIndexStats already loaded")
+		return nil
+	}
+	f, err := schemaHelper.GetFieldFromID(jsonKeyStats.GetFieldID())
+	if err != nil {
+		return err
+	}
+
+	cgoProto := &indexcgopb.LoadJsonKeyIndexInfo{
+		FieldID:      jsonKeyStats.GetFieldID(),
+		Version:      jsonKeyStats.GetVersion(),
+		BuildID:      jsonKeyStats.GetBuildID(),
+		Files:        jsonKeyStats.GetFiles(),
+		Schema:       f,
+		CollectionID: s.Collection(),
+		PartitionID:  s.Partition(),
+	}
+
+	marshaled, err := proto.Marshal(cgoProto)
+	if err != nil {
+		return err
+	}
+
+	var status C.CStatus
+	_, _ = GetLoadPool().Submit(func() (any, error) {
+		traceCtx := ParseCTraceContext(ctx)
+		status = C.LoadJsonKeyIndex(traceCtx.ctx, s.ptr, (*C.uint8_t)(unsafe.Pointer(&marshaled[0])), (C.uint64_t)(len(marshaled)))
+		return nil, nil
+	}).Await()
+	s.fieldJSONStats = append(s.fieldJSONStats, jsonKeyStats.GetFieldID())
+	return HandleCStatus(ctx, &status, "Load JsonKeyStats failed")
 }
 
 func (s *LocalSegment) UpdateIndexInfo(ctx context.Context, indexInfo *querypb.FieldIndexInfo, info *LoadIndexInfo) error {
@@ -1442,4 +1487,8 @@ func (d *AsyncWarmupDispatcher) Run(ctx context.Context) {
 			d.mu.Unlock()
 		}
 	}
+}
+
+func (s *LocalSegment) GetFieldJSONIndexStats() []int64 {
+	return s.fieldJSONStats
 }

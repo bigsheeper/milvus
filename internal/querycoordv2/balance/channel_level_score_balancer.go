@@ -28,9 +28,9 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 // score based segment use (collection_row_count + global_row_count * factor) as node' score
@@ -180,11 +180,12 @@ func (b *ChannelLevelScoreBalancer) genSegmentPlan(ctx context.Context, br *bala
 	if len(nodeItemsMap) == 0 {
 		return nil
 	}
-	log.Info("node workload status",
-		zap.Int64("collectionID", replica.GetCollectionID()),
-		zap.Int64("replicaID", replica.GetID()),
-		zap.String("channelName", channelName),
-		zap.Stringers("nodes", lo.Values(nodeItemsMap)))
+
+	log.Ctx(ctx).WithRateGroup(fmt.Sprintf("genSegmentPlan-%d-%d", replica.GetCollectionID(), replica.GetID()), 1, 60).
+		RatedInfo(30, "node segment workload status",
+			zap.Int64("collectionID", replica.GetCollectionID()),
+			zap.Int64("replicaID", replica.GetID()),
+			zap.Stringers("nodes", lo.Values(nodeItemsMap)))
 
 	// list all segment which could be balanced, and calculate node's score
 	for _, node := range onlineNodes {

@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/pkg/common"
+	"github.com/milvus-io/milvus/pkg/v2/common"
 )
 
 type FieldSchemaHelper struct {
@@ -51,6 +51,10 @@ func (h *FieldSchemaHelper) EnableMatch() bool {
 	}
 	enable, err := strconv.ParseBool(s)
 	return err == nil && enable
+}
+
+func (h *FieldSchemaHelper) EnableJSONKeyIndex() bool {
+	return IsJSONType(h.schema.GetDataType())
 }
 
 func (h *FieldSchemaHelper) EnableAnalyzer() bool {

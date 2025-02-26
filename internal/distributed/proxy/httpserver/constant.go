@@ -19,7 +19,7 @@ package httpserver
 import (
 	"time"
 
-	"github.com/milvus-io/milvus/pkg/util/metric"
+	"github.com/milvus-io/milvus/pkg/v2/util/metric"
 )
 
 // v2
@@ -126,6 +126,7 @@ const (
 	HTTPReturnRecalls        = "recalls"
 	HTTPReturnLoadState      = "loadState"
 	HTTPReturnLoadProgress   = "loadProgress"
+	HTTPReturnTopks          = "topks"
 
 	HTTPReturnHas = "has"
 
@@ -149,13 +150,15 @@ const (
 	HTTPReturnFunctionOutputFieldNames = "outputFieldNames"
 	HTTPReturnFunctionParams           = "params"
 
-	HTTPReturnIndexMetricType  = "metricType"
-	HTTPReturnIndexType        = "indexType"
-	HTTPReturnIndexTotalRows   = "totalRows"
-	HTTPReturnIndexPendingRows = "pendingRows"
-	HTTPReturnIndexIndexedRows = "indexedRows"
-	HTTPReturnIndexState       = "indexState"
-	HTTPReturnIndexFailReason  = "failReason"
+	HTTPReturnIndexMetricType      = "metricType"
+	HTTPReturnIndexType            = "indexType"
+	HTTPIndexOffsetCacheEnabledKey = "indexoffsetcache.enabled"
+	HTTPMmapEnabledKey             = "mmap.enabled"
+	HTTPReturnIndexTotalRows       = "totalRows"
+	HTTPReturnIndexPendingRows     = "pendingRows"
+	HTTPReturnIndexIndexedRows     = "indexedRows"
+	HTTPReturnIndexState           = "indexState"
+	HTTPReturnIndexFailReason      = "failReason"
 
 	HTTPReturnDistance = "distance"
 

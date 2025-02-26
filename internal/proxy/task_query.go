@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -19,19 +20,19 @@ import (
 	"github.com/milvus-io/milvus/internal/util/exprutil"
 	"github.com/milvus-io/milvus/internal/util/reduce"
 	typeutil2 "github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/milvus-io/milvus/pkg/common"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/proto/planpb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
-	"github.com/milvus-io/milvus/pkg/util/funcutil"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/paramtable"
-	"github.com/milvus-io/milvus/pkg/util/timerecord"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/planpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util/commonpbutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 const (
@@ -235,11 +236,13 @@ func createCntPlan(expr string, schemaHelper *typeutil.SchemaHelper, exprTemplat
 			},
 		}, nil
 	}
+	start := time.Now()
 	plan, err := planparserv2.CreateRetrievePlan(schemaHelper, expr, exprTemplateValues)
 	if err != nil {
+		metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "query", metrics.FailLabel).Observe(float64(time.Since(start).Milliseconds()))
 		return nil, merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", err))
 	}
-
+	metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "query", metrics.SuccessLabel).Observe(float64(time.Since(start).Milliseconds()))
 	plan.Node.(*planpb.PlanNode_Query).Query.IsCount = true
 
 	return plan, nil
@@ -258,10 +261,13 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 
 	var err error
 	if t.plan == nil {
+		start := time.Now()
 		t.plan, err = planparserv2.CreateRetrievePlan(schema.schemaHelper, t.request.Expr, t.request.GetExprTemplateValues())
 		if err != nil {
+			metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "query", metrics.FailLabel).Observe(float64(time.Since(start).Milliseconds()))
 			return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", err))
 		}
+		metrics.ProxyParseExpressionLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), "query", metrics.SuccessLabel).Observe(float64(time.Since(start).Milliseconds()))
 	}
 
 	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, err = translateOutputFields(t.request.OutputFields, t.schema, true)
@@ -359,18 +365,9 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	log.Debug("Validate partition names.")
 
 	// fetch search_growing from query param
-	var ignoreGrowing bool
-	for i, kv := range t.request.GetQueryParams() {
-		if kv.GetKey() == IgnoreGrowingKey {
-			ignoreGrowing, err = strconv.ParseBool(kv.Value)
-			if err != nil {
-				return errors.New("parse search growing failed")
-			}
-			t.request.QueryParams = append(t.request.GetQueryParams()[:i], t.request.GetQueryParams()[i+1:]...)
-			break
-		}
+	if t.RetrieveRequest.IgnoreGrowing, err = isIgnoreGrowing(t.request.GetQueryParams()); err != nil {
+		return err
 	}
-	t.RetrieveRequest.IgnoreGrowing = ignoreGrowing
 
 	queryParams, err := parseQueryParams(t.request.GetQueryParams())
 	if err != nil {
@@ -577,6 +574,10 @@ func (t *queryTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
+func (t *queryTask) IsSubTask() bool {
+	return t.reQuery
+}
+
 func (t *queryTask) queryShard(ctx context.Context, nodeID int64, qn types.QueryNodeClient, channel string) error {
 	needOverrideMvcc := false
 	mvccTs := t.MvccTimestamp
@@ -594,7 +595,7 @@ func (t *queryTask) queryShard(ctx context.Context, nodeID int64, qn types.Query
 		retrieveReq.MvccTimestamp = mvccTs
 		retrieveReq.GuaranteeTimestamp = mvccTs
 	}
-
+	retrieveReq.ConsistencyLevel = t.ConsistencyLevel
 	req := &querypb.QueryRequest{
 		Req:         retrieveReq,
 		DmlChannels: []string{channel},

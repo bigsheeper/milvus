@@ -486,8 +486,7 @@ class TestNewIndexBase(TestcaseBase):
                                   index_name=ct.default_index_name,
                                   check_task=CheckTasks.err_res,
                                   check_items={ct.err_code: 999,
-                                               ct.err_msg: "cannot create index on non-existed field: int8"}
-                                  )
+                                               ct.err_msg: "cannot create index on non-existed field: int8"})
 
     @pytest.mark.tags(CaseLabel.L1)
     def test_create_index_partition(self):
@@ -1191,7 +1190,7 @@ class TestIndexInvalid(TestcaseBase):
         yield request.param
 
     @pytest.mark.tags(CaseLabel.L0)
-    def test_index_with_invalid_index_name(self, connect, invalid_index_name):
+    def test_index_with_invalid_index_name(self, invalid_index_name):
         """
         target: test create index interface for invalid scenario
         method:
@@ -1396,8 +1395,9 @@ class TestIndexInvalid(TestcaseBase):
         expected: raise exception
         """
         collection_w = self.init_collection_general(prefix, is_index=False, is_all_data_type=True)[0]
-        scalar_index = ["Trie", "STL_SORT"]
-        scalar_fields = [ct.default_string_field_name, ct.default_int16_field_name]
+        # Trie support now
+        scalar_index = ["STL_SORT"]
+        scalar_fields = [ct.default_int16_field_name]
         for i in range(len(scalar_fields)):
             index_name = f"scalar_index_name_{i}"
             scalar_index_params = {"index_type": f"{scalar_index[i]}"}
@@ -1480,6 +1480,28 @@ class TestIndexInvalid(TestcaseBase):
         params = {"index_type": index, "metric_type": "IP", "params": {"drop_ratio_build": ratio}}
         error = {ct.err_code: 999,
                  ct.err_msg: f"Out of range in json: param 'drop_ratio_build' ({ratio*1.0}) should be in range [0.000000, 1.000000)"}
+        index, _ = self.index_wrap.init_index(collection_w.collection, ct.default_sparse_vec_field_name, params,
+                                              check_task=CheckTasks.err_res,
+                                              check_items=error)
+
+    @pytest.mark.tags(CaseLabel.L2)
+    @pytest.mark.parametrize("inverted_index_algo", ["INVALID_ALGO"])
+    @pytest.mark.parametrize("index ", ct.all_index_types[9:11])
+    def test_invalid_sparse_inverted_index_algo(self, inverted_index_algo, index):
+        """
+        target: index creation for unsupported ratio parameter
+        method: indexing of unsupported ratio parameters
+        expected: raise exception
+        """
+        c_name = cf.gen_unique_str(prefix)
+        schema = cf.gen_default_sparse_schema()
+        collection_w = self.init_collection_wrap(name=c_name, schema=schema)
+        data = cf.gen_default_list_sparse_data()
+        collection_w.insert(data=data)
+        params = {"index_type": index, "metric_type": "IP", "params": {"inverted_index_algo": inverted_index_algo}}
+        error = {ct.err_code: 999,
+                 ct.err_msg: f"sparse inverted index algo {inverted_index_algo} not found or not supported, "
+                             f"supported: [TAAT_NAIVE DAAT_WAND DAAT_MAXSCORE]"}
         index, _ = self.index_wrap.init_index(collection_w.collection, ct.default_sparse_vec_field_name, params,
                                               check_task=CheckTasks.err_res,
                                               check_items=error)
@@ -2176,7 +2198,8 @@ class TestScaNNIndex(TestcaseBase):
         """
         collection_w = self.init_collection_general(prefix, is_index=False)[0]
         index_params = {"index_type": "SCANN", "metric_type": "L2", "params": {"nlist": nlist}}
-        error = {ct.err_code: 999, ct.err_msg: f"Out of range in json: param 'nlist' ({nlist}) should be in range [1, 65536]"}
+        error = {ct.err_code: 999,
+                 ct.err_msg: f"Out of range in json: param 'nlist' ({nlist}) should be in range [1, 65536]"}
         collection_w.create_index(default_field_name, index_params,
                                   check_task=CheckTasks.err_res, check_items=error)
 
@@ -2191,7 +2214,8 @@ class TestScaNNIndex(TestcaseBase):
         collection_w = self.init_collection_general(prefix, is_index=False, dim=dim)[0]
         index_params = {"index_type": "SCANN", "metric_type": "L2", "params": {"nlist": 1024}}
         error = {ct.err_code: 1100,
-                 ct.err_msg: f"The dimension of a vector (dim) should be a multiple of 2. Dimension:{dim}"}
+                 ct.err_msg: f"The dimension of a vector (dim) should be a multiple of sub_dim. "
+                             f"Dimension:{dim}, sub_dim:2"}
         collection_w.create_index(default_field_name, index_params,
                                   check_task=CheckTasks.err_res, check_items=error)
 

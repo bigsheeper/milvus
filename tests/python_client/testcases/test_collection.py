@@ -720,7 +720,7 @@ class TestCollectionParams(TestcaseBase):
         c_name = cf.gen_unique_str(prefix)
         float_vec_field = cf.gen_float_vec_field(dim=dim)
         schema = cf.gen_collection_schema(fields=[cf.gen_int64_field(is_primary=True), float_vec_field])
-        error = {ct.err_code: 65535, ct.err_msg: "invalid dimension: {}.".format(dim)}
+        error = {ct.err_code: 65535, ct.err_msg: "invalid dimension: {}".format(dim)}
         self.collection_wrap.init_collection(c_name, schema=schema, check_task=CheckTasks.err_res, check_items=error)
 
     @pytest.mark.tags(CaseLabel.L1)
@@ -1608,7 +1608,7 @@ class TestCollectionCountBinary(TestcaseBase):
         collection_w = self.init_collection_wrap(schema=c_schema,
                                                  check_task=CheckTasks.err_res,
                                                  check_items={"err_code": 1,
-                                                              "err_msg": f"invalid dimension: {dim}. binary vector dimension should be multiple of 8."})
+                                                              "err_msg": f"invalid dimension: {dim} of field {ct.default_binary_vec_field_name}. binary vector dimension should be multiple of 8."})
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_collection_count_no_entities(self):
@@ -3878,7 +3878,7 @@ class TestCollectionString(TestcaseBase):
         max_length = 65535 + 1
         string_field = cf.gen_string_field(max_length=max_length)
         schema = cf.gen_collection_schema([int_field, string_field, vec_field])
-        error = {ct.err_code: 65535, ct.err_msg: "the maximum length specified for a VarChar should be in (0, 65535]"}
+        error = {ct.err_code: 65535, ct.err_msg: f"the maximum length specified for a VarChar field({ct.default_string_field_name}) should be in (0, 65535]"}
         self.collection_wrap.init_collection(name=c_name, schema=schema,
                                              check_task=CheckTasks.err_res, check_items=error)
 
@@ -4096,8 +4096,8 @@ class TestCollectionARRAY(TestcaseBase):
         array_schema = cf.gen_collection_schema([int_field, vec_field, array_field])
         self.init_collection_wrap(schema=array_schema, check_task=CheckTasks.err_res,
                                   check_items={ct.err_code: 65535,
-                                               ct.err_msg: "type param(max_length) should be specified for "
-                                                           "varChar field of collection"})
+                                               ct.err_msg: "type param(max_length) should be specified for varChar "
+                                                           "field(int_array) of collection"})
 
     @pytest.mark.tags(CaseLabel.L2)
     @pytest.mark.skip("https://github.com/milvus-io/pymilvus/issues/2041")

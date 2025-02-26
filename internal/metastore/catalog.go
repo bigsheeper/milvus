@@ -6,11 +6,11 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus/internal/metastore/model"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/proto/streamingpb"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/streamingpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 //go:generate mockery --name=RootCoordCatalog
@@ -218,7 +218,7 @@ type StreamingCoordCataLog interface {
 	// SaveBroadcastTask save the broadcast task to metastore.
 	// Make the task recoverable after restart.
 	// When broadcast task is done, it will be removed from metastore.
-	SaveBroadcastTask(ctx context.Context, task *streamingpb.BroadcastTask) error
+	SaveBroadcastTask(ctx context.Context, broadcastID uint64, task *streamingpb.BroadcastTask) error
 }
 
 // StreamingNodeCataLog is the interface for streamingnode catalog

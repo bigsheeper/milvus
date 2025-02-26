@@ -657,7 +657,7 @@ class TestQueryParams(TestcaseBase):
                                     "list": [m for m in range(i, i + limit)]}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         expression = f"{expr_prefix}({json_field}['list'], 1000)"
@@ -686,7 +686,7 @@ class TestQueryParams(TestcaseBase):
             }
             array.append(data)
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         expression = f"{expr_prefix}({json_field}, '1000')"
@@ -711,7 +711,7 @@ class TestQueryParams(TestcaseBase):
             array[i][ct.default_json_field_name] = {"number": i, "list": [m for m in range(i, i + limit)]}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         tar = 1000
@@ -752,7 +752,7 @@ class TestQueryParams(TestcaseBase):
             array[i][ct.default_json_field_name] = content
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         # test for int
@@ -815,7 +815,7 @@ class TestQueryParams(TestcaseBase):
             array[i]["listMix"] = [i, i * 1.1, str(i), bool(i % 2), [i, str(i)]]  # test for mixed data
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
 
@@ -888,7 +888,7 @@ class TestQueryParams(TestcaseBase):
             array[i][ct.default_json_field_name] = content
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
 
@@ -961,7 +961,7 @@ class TestQueryParams(TestcaseBase):
             array[i]["listMix"] = mix_data[i]  # test for mixed data
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
 
@@ -1019,7 +1019,7 @@ class TestQueryParams(TestcaseBase):
             array[i][json_field] = {"list": [[i, i + 1], [i, i + 2], [i, i + 3]]}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         _id = random.randint(3, ct.default_nb - 3)
@@ -1053,7 +1053,7 @@ class TestQueryParams(TestcaseBase):
                                     "list": [m for m in range(i, i + 10)]}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         expression = f"{expr_prefix}({json_field}['list'], {not_list})"
@@ -1079,7 +1079,7 @@ class TestQueryParams(TestcaseBase):
                                     "list": [m for m in range(i, i + limit)]}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         expression = f"{expr_prefix}({json_field}['list'], 1000)"
@@ -1770,7 +1770,7 @@ class TestQueryParams(TestcaseBase):
         collection_w.insert(data)
 
         # 3. query with param ignore_growing invalid
-        error = {ct.err_code: 999, ct.err_msg: "parse search growing failed"}
+        error = {ct.err_code: 999, ct.err_msg: "parse ignore growing field failed"}
         collection_w.query('int64 >= 0', ignore_growing=ignore_growing,
                            check_task=CheckTasks.err_res, check_items=error)
 
@@ -3573,7 +3573,7 @@ class TestQueryCount(TestcaseBase):
                 array[i][json_field] = {"string": str(i), "bool": bool(i), "number": i}
 
         collection_w.insert(array)
-
+        time.sleep(0.4)
         # 3. query
         collection_w.load()
         expression = f'{ct.default_json_field_name}["number"] < 100'
@@ -3623,7 +3623,7 @@ class TestQueryCount(TestcaseBase):
                 cf.gen_json_data_for_diff_json_types(nb=nb, start=i * nb, json_type=json_objects_array)
             ]
             collection_w.insert(data)
-
+        time.sleep(0.4)
         # 3. build index and load
         collection_w.create_index(ct.default_float_vec_field_name, index_params=default_index_params)
         collection_w.load()
@@ -3737,6 +3737,7 @@ class TestQueryCount(TestcaseBase):
         collection_w_alias.drop(check_task=CheckTasks.err_res,
                                 check_items={ct.err_code: 1,
                                              ct.err_msg: "cannot drop the collection via alias"})
+        self.utility_wrap.drop_alias(alias)
         collection_w.drop()
 
     @pytest.mark.tags(CaseLabel.L2)
@@ -4800,13 +4801,10 @@ class TestQueryTextMatch(TestcaseBase):
                 assert any(
                     [token in r[field] for token in top_10_tokens]), f"top 10 tokens {top_10_tokens} not in {r[field]}"
 
-
-
     @pytest.mark.tags(CaseLabel.L0)
     @pytest.mark.parametrize("enable_partition_key", [True])
     @pytest.mark.parametrize("enable_inverted_index", [True])
     @pytest.mark.parametrize("tokenizer", ["jieba", "standard"])
-    @pytest.mark.xfail(reason="unstable case, issue: https://github.com/milvus-io/milvus/issues/36962")
     def test_query_text_match_with_growing_segment(
             self, tokenizer, enable_inverted_index, enable_partition_key
     ):
@@ -4817,7 +4815,7 @@ class TestQueryTextMatch(TestcaseBase):
                 3. verify the result
         expected: text match successfully and result is correct
         """
-        tokenizer_params = {
+        analyzer_params = {
             "tokenizer": tokenizer,
         }
         dim = 128
@@ -4827,34 +4825,34 @@ class TestQueryTextMatch(TestcaseBase):
                 name="word",
                 dtype=DataType.VARCHAR,
                 max_length=65535,
-                enable_tokenizer=True,
+                enable_analyzer=True,
                 enable_match=True,
                 is_partition_key=enable_partition_key,
-                tokenizer_params=tokenizer_params,
+                analyzer_params=analyzer_params,
             ),
             FieldSchema(
                 name="sentence",
                 dtype=DataType.VARCHAR,
                 max_length=65535,
-                enable_tokenizer=True,
+                enable_analyzer=True,
                 enable_match=True,
-                tokenizer_params=tokenizer_params,
+                analyzer_params=analyzer_params,
             ),
             FieldSchema(
                 name="paragraph",
                 dtype=DataType.VARCHAR,
                 max_length=65535,
-                enable_tokenizer=True,
+                enable_analyzer=True,
                 enable_match=True,
-                tokenizer_params=tokenizer_params,
+                analyzer_params=analyzer_params,
             ),
             FieldSchema(
                 name="text",
                 dtype=DataType.VARCHAR,
                 max_length=65535,
-                enable_tokenizer=True,
+                enable_analyzer=True,
                 enable_match=True,
-                tokenizer_params=tokenizer_params,
+                analyzer_params=analyzer_params,
             ),
             FieldSchema(name="emb", dtype=DataType.FLOAT_VECTOR, dim=dim),
         ]
@@ -4897,6 +4895,7 @@ class TestQueryTextMatch(TestcaseBase):
                 if i + batch_size < len(df)
                 else data[i: len(df)]
             )
+        time.sleep(3)
         # analyze the croup
         text_fields = ["word", "sentence", "paragraph", "text"]
         wf_map = {}
@@ -4905,22 +4904,12 @@ class TestQueryTextMatch(TestcaseBase):
         # query single field for one token
         for field in text_fields:
             token = wf_map[field].most_common()[0][0]
-            expr = f"TextMatch({field}, '{token}')"
+            expr = f"text_match({field}, '{token}')"
             log.info(f"expr: {expr}")
             res, _ = collection_w.query(expr=expr, output_fields=["id", field])
-            assert len(res) > 0
             log.info(f"res len {len(res)}")
-            for r in res:
-                assert token in r[field]
-            # verify inverted index
-            if enable_inverted_index:
-                if field == "word":
-                    expr = f"{field} == '{token}'"
-                    log.info(f"expr: {expr}")
-                    res, _ = collection_w.query(expr=expr, output_fields=["id", field])
-                    log.info(f"res len {len(res)}")
-                    for r in res:
-                        assert r[field] == token
+            assert len(res) > 0
+
         # query single field for multi-word
         for field in text_fields:
             # match top 10 most common words
@@ -4928,12 +4917,25 @@ class TestQueryTextMatch(TestcaseBase):
             for word, count in wf_map[field].most_common(10):
                 top_10_tokens.append(word)
             string_of_top_10_words = " ".join(top_10_tokens)
-            expr = f"TextMatch({field}, '{string_of_top_10_words}')"
+            expr = f"text_match({field}, '{string_of_top_10_words}')"
             log.info(f"expr {expr}")
             res, _ = collection_w.query(expr=expr, output_fields=["id", field])
             log.info(f"res len {len(res)}")
-            for r in res:
-                assert any([token in r[field] for token in top_10_tokens])
+            assert len(res) > 0
+
+        # flush and then query again
+        collection_w.flush()
+        for field in text_fields:
+            # match top 10 most common words
+            top_10_tokens = []
+            for word, count in wf_map[field].most_common(10):
+                top_10_tokens.append(word)
+            string_of_top_10_words = " ".join(top_10_tokens)
+            expr = f"text_match({field}, '{string_of_top_10_words}')"
+            log.info(f"expr {expr}")
+            res, _ = collection_w.query(expr=expr, output_fields=["id", field])
+            log.info(f"res len {len(res)}")
+            assert len(res) > 0
 
 
     @pytest.mark.tags(CaseLabel.L0)

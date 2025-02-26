@@ -29,11 +29,11 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/pkg/log"
-	"github.com/milvus-io/milvus/pkg/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/util/merr"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 var _ Task = (*analyzeTask)(nil)
@@ -228,7 +228,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 }
 
 func (at *analyzeTask) AssignTask(ctx context.Context, client types.IndexNodeClient, meta *meta) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := client.CreateJobV2(ctx, &workerpb.CreateJobV2Request{
 		ClusterID: at.req.GetClusterID(),
@@ -257,7 +257,7 @@ func (at *analyzeTask) setResult(result *workerpb.AnalyzeResult) {
 }
 
 func (at *analyzeTask) QueryResult(ctx context.Context, client types.IndexNodeClient) {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := client.QueryJobsV2(ctx, &workerpb.QueryJobsV2Request{
 		ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -277,14 +277,17 @@ func (at *analyzeTask) QueryResult(ctx context.Context, client types.IndexNodeCl
 	// infos length is always one.
 	for _, result := range resp.GetAnalyzeJobResults().GetResults() {
 		if result.GetTaskID() == at.GetTaskID() {
-			log.Ctx(ctx).Info("query analysis task info successfully",
-				zap.Int64("taskID", at.GetTaskID()), zap.String("result state", result.GetState().String()),
-				zap.String("failReason", result.GetFailReason()))
 			if result.GetState() == indexpb.JobState_JobStateFinished || result.GetState() == indexpb.JobState_JobStateFailed ||
 				result.GetState() == indexpb.JobState_JobStateRetry {
+				log.Ctx(ctx).Info("query analysis task info successfully",
+					zap.Int64("taskID", at.GetTaskID()), zap.String("result state", result.GetState().String()),
+					zap.String("failReason", result.GetFailReason()))
 				// state is retry or finished or failed
 				at.setResult(result)
 			} else if result.GetState() == indexpb.JobState_JobStateNone {
+				log.Ctx(ctx).Info("query analysis task info successfully",
+					zap.Int64("taskID", at.GetTaskID()), zap.String("result state", result.GetState().String()),
+					zap.String("failReason", result.GetFailReason()))
 				at.SetState(indexpb.JobState_JobStateRetry, "analyze task state is none in info response")
 			}
 			// inProgress or unissued/init, keep InProgress state
@@ -297,7 +300,7 @@ func (at *analyzeTask) QueryResult(ctx context.Context, client types.IndexNodeCl
 }
 
 func (at *analyzeTask) DropTaskOnWorker(ctx context.Context, client types.IndexNodeClient) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), reqTimeoutInterval)
+	ctx, cancel := context.WithTimeout(ctx, Params.DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second))
 	defer cancel()
 	resp, err := client.DropJobsV2(ctx, &workerpb.DropJobsV2Request{
 		ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -319,4 +322,8 @@ func (at *analyzeTask) DropTaskOnWorker(ctx context.Context, client types.IndexN
 
 func (at *analyzeTask) SetJobInfo(meta *meta) error {
 	return meta.analyzeMeta.FinishTask(at.GetTaskID(), at.taskInfo)
+}
+
+func (at *analyzeTask) DropTaskMeta(ctx context.Context, meta *meta) error {
+	return meta.analyzeMeta.DropAnalyzeTask(ctx, at.GetTaskID())
 }

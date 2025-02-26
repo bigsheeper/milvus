@@ -23,11 +23,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/util/metrics"
-	"github.com/milvus-io/milvus/pkg/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/util/metricsinfo"
-	"github.com/milvus-io/milvus/pkg/util/tsoutil"
-	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
+	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type segDistCriterion struct {
@@ -125,6 +125,7 @@ type Segment struct {
 	Version            int64                             // Version is the timestamp of loading segment
 	LastDeltaTimestamp uint64                            // The timestamp of the last delta record
 	IndexInfo          map[int64]*querypb.FieldIndexInfo // index info of loaded segment
+	JSONIndexField     []int64                           // json index info of loaded segment
 }
 
 func SegmentFromInfo(info *datapb.SegmentInfo) *Segment {

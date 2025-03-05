@@ -214,7 +214,7 @@ func (m *indexMeta) updateSegIndexMeta(segIdx *model.SegmentIndex, updateFunc fu
 func (m *indexMeta) updateIndexTasksMetrics() {
 	taskMetrics := make(map[indexpb.JobState]int)
 	for _, segIdx := range m.segmentBuildInfo.List() {
-		if segIdx.IsDeleted || !m.isIndexExist(segIdx.CollectionID, segIdx.IndexID) {
+		if segIdx.IsDeleted || !m.IsIndexExist(segIdx.CollectionID, segIdx.IndexID) {
 			continue
 		}
 
@@ -392,8 +392,8 @@ func (m *indexMeta) HasSameReq(req *indexpb.CreateIndexRequest) (bool, UniqueID)
 }
 
 func (m *indexMeta) CreateIndex(ctx context.Context, req *indexpb.CreateIndexRequest, allocatedIndexID UniqueID) (UniqueID, error) {
-	m.fieldIndexLock.RLock()
-	defer m.fieldIndexLock.RUnlock()
+	m.fieldIndexLock.Lock()
+	defer m.fieldIndexLock.Unlock()
 
 	indexID, err := m.canCreateIndex(req)
 	if err != nil {
@@ -439,8 +439,8 @@ func (m *indexMeta) CreateIndex(ctx context.Context, req *indexpb.CreateIndexReq
 }
 
 func (m *indexMeta) AlterIndex(ctx context.Context, indexes ...*model.Index) error {
-	m.fieldIndexLock.RLock()
-	defer m.fieldIndexLock.RUnlock()
+	m.fieldIndexLock.Lock()
+	defer m.fieldIndexLock.Unlock()
 
 	err := m.catalog.AlterIndexes(ctx, indexes)
 	if err != nil {
@@ -509,6 +509,7 @@ func (m *indexMeta) GetSegmentIndexState(collID, segmentID UniqueID, indexID Uni
 	fieldIndexes, ok := m.indexes[collID]
 	if !ok {
 		state.FailReason = fmt.Sprintf("collection not exist with ID: %d", collID)
+		m.fieldIndexLock.RUnlock()
 		return state
 	}
 	m.fieldIndexLock.RUnlock()
@@ -539,6 +540,7 @@ func (m *indexMeta) GetIndexedSegments(collectionID int64, segmentIDs, fieldIDs 
 	m.fieldIndexLock.RLock()
 	fieldIndexes, ok := m.indexes[collectionID]
 	if !ok {
+		m.fieldIndexLock.RUnlock()
 		return nil
 	}
 	m.fieldIndexLock.RUnlock()
@@ -651,6 +653,7 @@ func (m *indexMeta) IsUnIndexedSegment(collectionID UniqueID, segID UniqueID) bo
 	m.fieldIndexLock.RLock()
 	fieldIndexes, ok := m.indexes[collectionID]
 	if !ok {
+		m.fieldIndexLock.RUnlock()
 		return false
 	}
 	m.fieldIndexLock.RUnlock()
@@ -785,10 +788,6 @@ func (m *indexMeta) IsIndexExist(collID, indexID UniqueID) bool {
 	m.fieldIndexLock.RLock()
 	defer m.fieldIndexLock.RUnlock()
 
-	return m.isIndexExist(collID, indexID)
-}
-
-func (m *indexMeta) isIndexExist(collID, indexID UniqueID) bool {
 	fieldIndexes, ok := m.indexes[collID]
 	if !ok {
 		return false
@@ -915,8 +914,8 @@ func (m *indexMeta) GetAllSegIndexes() map[int64]*model.SegmentIndex {
 
 // SetStoredIndexFileSizeMetric returns the total index files size of all segment for each collection.
 func (m *indexMeta) SetStoredIndexFileSizeMetric(collections map[UniqueID]*collectionInfo) uint64 {
-	m.fieldIndexLock.RLock()
-	defer m.fieldIndexLock.RUnlock()
+	m.fieldIndexLock.Lock()
+	defer m.fieldIndexLock.Unlock()
 
 	var total uint64
 	metrics.DataCoordStoredIndexFilesSize.Reset()
@@ -1138,6 +1137,7 @@ func (m *indexMeta) GetSegmentIndexedFields(collectionID UniqueID, segmentID Uni
 	fieldIndexes, ok := m.indexes[collectionID]
 	if !ok {
 		// the segment should be unindexed status if the collection has no indexes
+		m.fieldIndexLock.RUnlock()
 		return false, []*metricsinfo.IndexedField{}
 	}
 	m.fieldIndexLock.RUnlock()

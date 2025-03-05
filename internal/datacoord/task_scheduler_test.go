@@ -871,14 +871,20 @@ func (s *taskSchedulerSuite) scheduler(handler Handler) {
 
 	scheduler := newTaskScheduler(ctx, mt, workerManager, cm, newIndexEngineVersionManager(), handler, nil, nil)
 	s.Equal(6, scheduler.pendingTasks.TaskCount())
-	s.Equal(3, len(scheduler.runningTasks))
+	s.Equal(3, scheduler.runningTasks.Len())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(1).GetState())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(2).GetState())
-	s.Equal(indexpb.JobState_JobStateRetry, scheduler.runningTasks[5].GetState())
+	t5, ok := scheduler.runningTasks.Get(5)
+	s.True(ok)
+	s.Equal(indexpb.JobState_JobStateRetry, t5.GetState())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(buildID).GetState())
-	s.Equal(indexpb.JobState_JobStateInProgress, scheduler.runningTasks[buildID+1].GetState())
+	t6, ok := scheduler.runningTasks.Get(buildID + 1)
+	s.True(ok)
+	s.Equal(indexpb.JobState_JobStateInProgress, t6.GetState())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(buildID+3).GetState())
-	s.Equal(indexpb.JobState_JobStateInProgress, scheduler.runningTasks[buildID+8].GetState())
+	t8, ok := scheduler.runningTasks.Get(buildID + 8)
+	s.True(ok)
+	s.Equal(indexpb.JobState_JobStateInProgress, t8.GetState())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(buildID+9).GetState())
 	s.Equal(indexpb.JobState_JobStateInit, scheduler.pendingTasks.Get(buildID+10).GetState())
 
@@ -914,9 +920,7 @@ func (s *taskSchedulerSuite) scheduler(handler Handler) {
 		if scheduler.pendingTasks.TaskCount() == 0 {
 			// maybe task is waiting for assigning, so sleep three seconds.
 			time.Sleep(time.Second * 3)
-			scheduler.runningQueueLock.RLock()
-			taskNum := len(scheduler.runningTasks)
-			scheduler.runningQueueLock.RUnlock()
+			taskNum := scheduler.runningTasks.Len()
 			if taskNum == 0 {
 				break
 			}
@@ -1040,9 +1044,7 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 
 		for {
 			if scheduler.pendingTasks.TaskCount() == 0 {
-				scheduler.runningQueueLock.RLock()
-				taskNum := len(scheduler.runningTasks)
-				scheduler.runningQueueLock.RUnlock()
+				taskNum := scheduler.runningTasks.Len()
 				if taskNum == 0 {
 					break
 				}
@@ -1294,10 +1296,7 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 
 		for {
 			if scheduler.pendingTasks.TaskCount() == 0 {
-				scheduler.runningQueueLock.RLock()
-				taskNum := len(scheduler.runningTasks)
-				scheduler.runningQueueLock.RUnlock()
-
+				taskNum := scheduler.runningTasks.Len()
 				if taskNum == 0 {
 					break
 				}
@@ -1523,9 +1522,7 @@ func (s *taskSchedulerSuite) Test_indexTaskFailCase() {
 		<-finishCH
 		for {
 			if scheduler.pendingTasks.TaskCount() == 0 {
-				scheduler.runningQueueLock.RLock()
-				taskNum := len(scheduler.runningTasks)
-				scheduler.runningQueueLock.RUnlock()
+				taskNum := scheduler.runningTasks.Len()
 				if taskNum == 0 {
 					break
 				}
@@ -1725,9 +1722,7 @@ func (s *taskSchedulerSuite) Test_indexTaskWithMvOptionalScalarField() {
 	waitTaskDoneFunc := func(sche *taskScheduler) {
 		for {
 			if sche.pendingTasks.TaskCount() == 0 {
-				sche.runningQueueLock.RLock()
-				taskNum := len(sche.runningTasks)
-				sche.runningQueueLock.RUnlock()
+				taskNum := scheduler.runningTasks.Len()
 				if taskNum == 0 {
 					break
 				}
@@ -2073,7 +2068,8 @@ func (s *taskSchedulerSuite) Test_reload() {
 		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
 		s.NotNil(scheduler)
 		s.True(mt.segments.segments[1000].isCompacting)
-		task := scheduler.runningTasks[statsTaskID]
+		task, ok := scheduler.runningTasks.Get(statsTaskID)
+		s.True(ok)
 		s.NotNil(task)
 	})
 
@@ -2147,7 +2143,8 @@ func (s *taskSchedulerSuite) Test_reload() {
 		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
 		s.NotNil(scheduler)
 		s.True(mt.segments.segments[1000].isCompacting)
-		task := scheduler.runningTasks[statsTaskID]
+		task, ok := scheduler.runningTasks.Get(statsTaskID)
+		s.True(ok)
 		s.Equal(indexpb.JobState_JobStateFailed, task.GetState())
 	})
 
@@ -2221,7 +2218,8 @@ func (s *taskSchedulerSuite) Test_reload() {
 		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
 		s.NotNil(scheduler)
 		s.False(mt.segments.segments[1000].isCompacting)
-		task := scheduler.runningTasks[statsTaskID]
+		task, ok := scheduler.runningTasks.Get(statsTaskID)
+		s.True(ok)
 		s.Equal(indexpb.JobState_JobStateFailed, task.GetState())
 	})
 }

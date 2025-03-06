@@ -2663,8 +2663,8 @@ func Test_compactionTrigger_generatePlans(t *testing.T) {
 			CollectionID:   2,
 			PartitionID:    1,
 			LastExpireTime: 100,
-			NumOfRows:      100,
-			MaxRowNum:      300,
+			NumOfRows:      10000000,
+			MaxRowNum:      30000000,
 			InsertChannel:  "ch1",
 			State:          commonpb.SegmentState_Flushed,
 			Binlogs: []*datapb.FieldBinlog{
@@ -2691,8 +2691,8 @@ func Test_compactionTrigger_generatePlans(t *testing.T) {
 			CollectionID:   2,
 			PartitionID:    1,
 			LastExpireTime: 100,
-			NumOfRows:      100,
-			MaxRowNum:      300,
+			NumOfRows:      10000000,
+			MaxRowNum:      30000000,
 			InsertChannel:  "ch1",
 			State:          commonpb.SegmentState_Flushed,
 			Binlogs: []*datapb.FieldBinlog{

@@ -554,6 +554,18 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 	expectedExpandedSize := int64(float64(expectedSize) * expantionRate)
 	maxExpandedLeftSize := expectedExpandedSize - satisfiedSize
 	reasons := make([]string, 0)
+
+	toUpdateIDs := lo.Map(toUpdate.candidates, func(seg *SegmentInfo, _ int) int64 {
+		return seg.GetID()
+	})
+	toMergeIDs := lo.Map(toMerge.candidates, func(seg *SegmentInfo, _ int) int64 {
+		return seg.GetID()
+	})
+	toPackIDs := lo.Map(toPack.candidates, func(seg *SegmentInfo, _ int) int64 {
+		return seg.GetID()
+	})
+	log.Info("candidates info before pack", zap.Int64s("toUpdate", toUpdateIDs), zap.Int64s("toMerge", toMergeIDs), zap.Int64s("toPack", toPackIDs))
+
 	// 1. Merge small segments if they can make a full bucket
 	for {
 		pack, left := toMerge.pack(expectedSize, maxLeftSize, minSegs, maxSegs)
@@ -562,6 +574,9 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 		}
 		reasons = append(reasons, fmt.Sprintf("merging %d small segments with left size %d", len(pack), left))
 		buckets = append(buckets, pack)
+		log.Info("bucket info - 1 - merge small", zap.Int64s("segs", lo.Map(pack, func(seg *SegmentInfo, _ int) int64 {
+			return seg.GetID()
+		})))
 	}
 
 	// 2. Pack prioritized candidates with small segments
@@ -574,11 +589,17 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 		}
 		reasons = append(reasons, fmt.Sprintf("packing %d prioritized segments", len(pack)))
 		buckets = append(buckets, pack)
+		log.Info("bucket info - 2 - prioritized candidates", zap.Int64s("segs", lo.Map(pack, func(seg *SegmentInfo, _ int) int64 {
+			return seg.GetID()
+		})))
 	}
 	// if there is any segment toUpdate left, its size must greater than expectedSize, add it to the buckets
 	for _, s := range toUpdate.candidates {
 		buckets = append(buckets, []*SegmentInfo{s})
 		reasons = append(reasons, fmt.Sprintf("force packing prioritized segment %d", s.GetID()))
+		log.Info("bucket info - 3 - force packing", zap.Int64s("segs", lo.Map([]*SegmentInfo{s}, func(seg *SegmentInfo, _ int) int64 {
+			return seg.GetID()
+		})))
 	}
 	// 2.+ legacy: squeeze small segments
 	// Try merge all small segments, and then squeeze
@@ -589,6 +610,9 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 		}
 		reasons = append(reasons, fmt.Sprintf("packing all %d small segments", len(pack)))
 		buckets = append(buckets, pack)
+		log.Info("bucket info - 4 - packing all", zap.Int64s("segs", lo.Map(pack, func(seg *SegmentInfo, _ int) int64 {
+			return seg.GetID()
+		})))
 	}
 	remaining := t.squeezeSmallSegmentsToBuckets(toMerge.candidates, buckets, expectedSize)
 	toMerge = newSegmentPacker("merge", remaining)
@@ -601,6 +625,9 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 		}
 		reasons = append(reasons, fmt.Sprintf("packing %d small segments and non-planned segments", len(pack)))
 		buckets = append(buckets, pack)
+		log.Info("bucket info - 5 - non-planned", zap.Int64s("segs", lo.Map(pack, func(seg *SegmentInfo, _ int) int64 {
+			return seg.GetID()
+		})))
 	}
 
 	tasks := make([]*typeutil.Pair[int64, []int64], len(buckets))
@@ -622,6 +649,11 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, signal *compa
 			zap.Int("smallCandidates", len(smallCandidates)),
 			zap.Int("nonPlannedSegments", len(nonPlannedSegments)),
 			zap.Strings("reasons", reasons))
+		for i, bucket := range buckets {
+			log.Info("total bucket info", zap.Int64s("segs", lo.Map(bucket, func(seg *SegmentInfo, _ int) int64 {
+				return seg.GetID()
+			})), zap.String("reason", reasons[i]))
+		}
 	}
 	return tasks
 }

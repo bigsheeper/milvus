@@ -212,6 +212,8 @@ func (f *Field) ProtoMessage() *schemapb.FieldSchema {
 		IsPartitionKey:  f.IsPartitionKey,
 		IsClusteringKey: f.IsClusteringKey,
 		ElementType:     schemapb.DataType(f.ElementType),
+		Nullable:        f.Nullable,
+		DefaultValue:    f.DefaultValue,
 	}
 }
 
@@ -410,6 +412,8 @@ func (f *Field) ReadProto(p *schemapb.FieldSchema) *Field {
 	f.IsPartitionKey = p.GetIsPartitionKey()
 	f.IsClusteringKey = p.GetIsClusteringKey()
 	f.ElementType = FieldType(p.GetElementType())
+	f.DefaultValue = p.GetDefaultValue()
+	f.Nullable = p.GetNullable()
 
 	return f
 }

@@ -40,8 +40,6 @@ import (
 type DispatcherManager interface {
 	Add(ctx context.Context, streamConfig *StreamConfig) (<-chan *MsgPack, error)
 	Remove(vchannel string)
-	NumTarget() int
-	NumConsumer() int
 	Run()
 	Close()
 }
@@ -54,6 +52,9 @@ type dispatcherManager struct {
 	pchannel string
 
 	registeredTargets *typeutil.ConcurrentMap[string, *target]
+
+	numConsumer     atomic.Int64
+	numActiveTarget atomic.Int64
 
 	mu                sync.RWMutex
 	mainDispatcher    *Dispatcher
@@ -100,22 +101,6 @@ func (c *dispatcherManager) Remove(vchannel string) {
 	t.close()
 }
 
-func (c *dispatcherManager) NumTarget() int {
-	return c.registeredTargets.Len()
-}
-
-func (c *dispatcherManager) NumConsumer() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	numConsumer := 0
-	if c.mainDispatcher != nil {
-		numConsumer++
-	}
-	numConsumer += len(c.deputyDispatchers)
-	return numConsumer
-}
-
 func (c *dispatcherManager) Close() {
 	c.closeOnce.Do(func() {
 		c.closeChan <- struct{}{}
@@ -140,8 +125,25 @@ func (c *dispatcherManager) Run() {
 			c.tryRemoveUnregisteredTargets()
 			c.tryBuildDispatcher()
 			c.tryMerge()
+			c.updateNumInfo()
 		}
 	}
+}
+
+func (c *dispatcherManager) updateNumInfo() {
+	numConsumer := 0
+	numActiveTarget := 0
+	if c.mainDispatcher != nil {
+		numConsumer++
+		numActiveTarget += c.mainDispatcher.TargetNum()
+	}
+	numConsumer += len(c.deputyDispatchers)
+	c.numConsumer.Store(int64(numConsumer))
+
+	for _, d := range c.deputyDispatchers {
+		numActiveTarget += d.TargetNum()
+	}
+	c.numActiveTarget.Store(int64(numActiveTarget))
 }
 
 func (c *dispatcherManager) removeTargetFromDispatcher(t *target) {

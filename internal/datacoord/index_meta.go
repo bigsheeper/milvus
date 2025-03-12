@@ -422,15 +422,9 @@ func (m *indexMeta) HasSameReq(req *indexpb.CreateIndexRequest) (bool, UniqueID)
 	return false, 0
 }
 
-<<<<<<< HEAD
 func (m *indexMeta) CreateIndex(ctx context.Context, req *indexpb.CreateIndexRequest, allocatedIndexID UniqueID, isJson bool) (UniqueID, error) {
-	m.Lock()
-	defer m.Unlock()
-=======
-func (m *indexMeta) CreateIndex(ctx context.Context, req *indexpb.CreateIndexRequest, allocatedIndexID UniqueID) (UniqueID, error) {
 	m.fieldIndexLock.Lock()
 	defer m.fieldIndexLock.Unlock()
->>>>>>> 85b716f7b0 (Refine task meta with key lock)
 
 	indexID, err := m.canCreateIndex(req, isJson)
 	if err != nil {

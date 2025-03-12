@@ -195,7 +195,7 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 			Channel:      st.req.GetInsertChannel(),
 			NumRows:      0,
 		})
-		return false
+		return false, 0
 	}
 
 	if segment.GetIsSorted() && st.subJobType == indexpb.StatsSubJob_Sort {

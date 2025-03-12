@@ -864,10 +864,11 @@ func (s *taskSchedulerSuite) scheduler(handler Handler) {
 
 	mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 		withStatsTaskMeta(&statsTaskMeta{
-			ctx:     ctx,
-			catalog: catalog,
-			keyLock: lock.NewKeyLock[UniqueID](),
-			tasks:   typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+			ctx:             ctx,
+			catalog:         catalog,
+			keyLock:         lock.NewKeyLock[UniqueID](),
+			tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+			segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
 		}))
 
 	cm := mocks.NewChunkManager(s.T())
@@ -1033,10 +1034,11 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 				segmentBuildInfo: newSegmentIndexBuildInfo(),
 			}),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     ctx,
-				catalog: catalog,
-				keyLock: lock.NewKeyLock[UniqueID](),
-				tasks:   typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				ctx:             ctx,
+				catalog:         catalog,
+				keyLock:         lock.NewKeyLock[UniqueID](),
+				tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
 			}))
 
 		handler := NewNMockHandler(s.T())
@@ -1091,10 +1093,11 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 				segmentIndexes:   typeutil.NewConcurrentMap[UniqueID, *typeutil.ConcurrentMap[UniqueID, *model.SegmentIndex]](),
 				segmentBuildInfo: newSegmentIndexBuildInfo(),
 			}), withStatsTaskMeta(&statsTaskMeta{
-				ctx:     ctx,
-				catalog: catalog,
-				keyLock: lock.NewKeyLock[UniqueID](),
-				tasks:   typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				ctx:             ctx,
+				catalog:         catalog,
+				keyLock:         lock.NewKeyLock[UniqueID](),
+				tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
 			}))
 
 		handler := NewNMockHandler(s.T())
@@ -1391,10 +1394,11 @@ func (s *taskSchedulerSuite) Test_indexTaskFailCase() {
 				segmentIndexes:   segIndexes,
 			}),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				keyLock: lock.NewKeyLock[UniqueID](),
-				tasks:   typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				ctx:             context.Background(),
+				catalog:         catalog,
+				keyLock:         lock.NewKeyLock[UniqueID](),
+				tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+				segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
 			}))
 
 		mt.indexMeta.segmentBuildInfo.Add(&model.SegmentIndex{
@@ -1698,10 +1702,11 @@ func (s *taskSchedulerSuite) Test_indexTaskWithMvOptionalScalarField() {
 			},
 		},
 		statsTaskMeta: &statsTaskMeta{
-			ctx:     context.Background(),
-			catalog: catalog,
-			keyLock: lock.NewKeyLock[UniqueID](),
-			tasks:   typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+			ctx:             context.Background(),
+			catalog:         catalog,
+			keyLock:         lock.NewKeyLock[UniqueID](),
+			tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+			segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
 		},
 	}
 
@@ -2066,7 +2071,7 @@ func (s *taskSchedulerSuite) Test_reload() {
 		workerManager := session.NewMockWorkerManager(s.T())
 		handler := NewNMockHandler(s.T())
 		tasks := typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask]()
-		tasks.Insert(statsTaskID, &indexpb.StatsTask{
+		statsTask := &indexpb.StatsTask{
 			CollectionID:    10000,
 			PartitionID:     10001,
 			SegmentID:       1000,
@@ -2079,12 +2084,17 @@ func (s *taskSchedulerSuite) Test_reload() {
 			TargetSegmentID: 2000,
 			SubJobType:      indexpb.StatsSubJob_Sort,
 			CanRecycle:      false,
-		})
+		}
+		tasks.Insert(statsTaskID, statsTask)
+		secondaryIndex := typeutil.NewConcurrentMap[string, *indexpb.StatsTask]()
+		secondaryKey := createSecondaryIndexKey(statsTask.GetSegmentID(), statsTask.GetSubJobType().String())
+		secondaryIndex.Insert(secondaryKey, statsTask)
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				tasks:   tasks,
+				ctx:             context.Background(),
+				catalog:         catalog,
+				tasks:           tasks,
+				segmentID2Tasks: secondaryIndex,
 			}))
 		compactionHandler := NewMockCompactionPlanContext(s.T())
 		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
@@ -2102,7 +2112,7 @@ func (s *taskSchedulerSuite) Test_reload() {
 		workerManager := session.NewMockWorkerManager(s.T())
 		handler := NewNMockHandler(s.T())
 		tasks := typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask]()
-		tasks.Insert(statsTaskID, &indexpb.StatsTask{
+		statsTask := &indexpb.StatsTask{
 			CollectionID:    10000,
 			PartitionID:     10001,
 			SegmentID:       1000,
@@ -2115,13 +2125,18 @@ func (s *taskSchedulerSuite) Test_reload() {
 			TargetSegmentID: 2000,
 			SubJobType:      indexpb.StatsSubJob_Sort,
 			CanRecycle:      false,
-		})
+		}
+		tasks.Insert(statsTaskID, statsTask)
+		secondaryIndex := typeutil.NewConcurrentMap[string, *indexpb.StatsTask]()
+		secondaryKey := createSecondaryIndexKey(statsTask.GetSegmentID(), statsTask.GetSubJobType().String())
+		secondaryIndex.Insert(secondaryKey, statsTask)
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				tasks:   tasks,
-				keyLock: lock.NewKeyLock[UniqueID](),
+				ctx:             context.Background(),
+				catalog:         catalog,
+				tasks:           tasks,
+				segmentID2Tasks: secondaryIndex,
+				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
 		compactionHandler := NewMockCompactionPlanContext(s.T())
 		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
@@ -2139,7 +2154,7 @@ func (s *taskSchedulerSuite) Test_reload() {
 		workerManager := session.NewMockWorkerManager(s.T())
 		handler := NewNMockHandler(s.T())
 		tasks := typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask]()
-		tasks.Insert(statsTaskID, &indexpb.StatsTask{
+		statsTask := &indexpb.StatsTask{
 			CollectionID:    10000,
 			PartitionID:     10001,
 			SegmentID:       1000,
@@ -2152,13 +2167,18 @@ func (s *taskSchedulerSuite) Test_reload() {
 			TargetSegmentID: 2000,
 			SubJobType:      indexpb.StatsSubJob_Sort,
 			CanRecycle:      false,
-		})
+		}
+		tasks.Insert(statsTaskID, statsTask)
+		secondaryIndex := typeutil.NewConcurrentMap[string, *indexpb.StatsTask]()
+		secondaryKey := createSecondaryIndexKey(statsTask.GetSegmentID(), statsTask.GetSubJobType().String())
+		secondaryIndex.Insert(secondaryKey, statsTask)
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				tasks:   tasks,
-				keyLock: lock.NewKeyLock[UniqueID](),
+				ctx:             context.Background(),
+				catalog:         catalog,
+				tasks:           tasks,
+				segmentID2Tasks: secondaryIndex,
+				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
 		compactionHandler := NewMockCompactionPlanContext(s.T())
 		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
@@ -2177,7 +2197,7 @@ func (s *taskSchedulerSuite) Test_reload() {
 		workerManager := session.NewMockWorkerManager(s.T())
 		handler := NewNMockHandler(s.T())
 		tasks := typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask]()
-		tasks.Insert(statsTaskID, &indexpb.StatsTask{
+		statsTask := &indexpb.StatsTask{
 			CollectionID:    10000,
 			PartitionID:     10001,
 			SegmentID:       1000,
@@ -2190,13 +2210,18 @@ func (s *taskSchedulerSuite) Test_reload() {
 			TargetSegmentID: 2000,
 			SubJobType:      indexpb.StatsSubJob_Sort,
 			CanRecycle:      false,
-		})
+		}
+		tasks.Insert(statsTaskID, statsTask)
+		secondaryIndex := typeutil.NewConcurrentMap[string, *indexpb.StatsTask]()
+		secondaryKey := createSecondaryIndexKey(statsTask.GetSegmentID(), statsTask.GetSubJobType().String())
+		secondaryIndex.Insert(secondaryKey, statsTask)
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				tasks:   tasks,
-				keyLock: lock.NewKeyLock[UniqueID](),
+				ctx:             context.Background(),
+				catalog:         catalog,
+				tasks:           tasks,
+				segmentID2Tasks: secondaryIndex,
+				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
 		compactionHandler := NewMockCompactionPlanContext(s.T())
 		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
@@ -2214,7 +2239,7 @@ func (s *taskSchedulerSuite) Test_reload() {
 		workerManager := session.NewMockWorkerManager(s.T())
 		handler := NewNMockHandler(s.T())
 		tasks := typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask]()
-		tasks.Insert(statsTaskID, &indexpb.StatsTask{
+		statsTask := &indexpb.StatsTask{
 			CollectionID:    10000,
 			PartitionID:     10001,
 			SegmentID:       1000,
@@ -2227,13 +2252,19 @@ func (s *taskSchedulerSuite) Test_reload() {
 			TargetSegmentID: 2000,
 			SubJobType:      indexpb.StatsSubJob_Sort,
 			CanRecycle:      false,
-		})
+		}
+		tasks.Insert(statsTaskID, statsTask)
+		secondaryIndex := typeutil.NewConcurrentMap[string, *indexpb.StatsTask]()
+		secondaryKey := createSecondaryIndexKey(statsTask.GetSegmentID(), statsTask.GetSubJobType().String())
+		secondaryIndex.Insert(secondaryKey, statsTask)
+
 		mt := createMeta(catalog, withAnalyzeMeta(s.createAnalyzeMeta(catalog)), withIndexMeta(createIndexMeta(catalog)),
 			withStatsTaskMeta(&statsTaskMeta{
-				ctx:     context.Background(),
-				catalog: catalog,
-				tasks:   tasks,
-				keyLock: lock.NewKeyLock[UniqueID](),
+				ctx:             context.Background(),
+				catalog:         catalog,
+				tasks:           tasks,
+				segmentID2Tasks: secondaryIndex,
+				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
 		compactionHandler := NewMockCompactionPlanContext(s.T())
 		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
@@ -2255,9 +2286,13 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 	targetSegID := UniqueID(113)
 
 	workerManager := session.NewMockWorkerManager(s.T())
-	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-		return map[int64]int64{
-			1: 1,
+	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+		return map[int64]*session.WorkerSlots{
+			1: {
+				NodeID:         1,
+				TotalSlots:     16,
+				AvailableSlots: 16,
+			},
 		}
 	})
 
@@ -2266,24 +2301,11 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 		catalog:  catalog,
 		segments: NewSegmentsInfo(),
 		statsTaskMeta: &statsTaskMeta{
-			ctx:     ctx,
-			catalog: catalog,
-			tasks: map[int64]*indexpb.StatsTask{
-				taskID: {
-					CollectionID:    1,
-					PartitionID:     2,
-					SegmentID:       segID,
-					InsertChannel:   "ch-1",
-					TaskID:          taskID,
-					Version:         0,
-					NodeID:          0,
-					State:           indexpb.JobState_JobStateInit,
-					FailReason:      "",
-					TargetSegmentID: targetSegID,
-					SubJobType:      indexpb.StatsSubJob_Sort,
-					CanRecycle:      false,
-				},
-			},
+			ctx:             ctx,
+			catalog:         catalog,
+			tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+			segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
+			keyLock:         lock.NewKeyLock[UniqueID](),
 		},
 	}
 
@@ -2313,7 +2335,7 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 		cancel:                    cancel,
 		meta:                      mt,
 		pendingTasks:              newFairQueuePolicy(),
-		runningTasks:              make(map[UniqueID]Task),
+		runningTasks:              typeutil.NewConcurrentMap[UniqueID, Task](),
 		notifyChan:                make(chan struct{}, 1),
 		taskLock:                  lock.NewKeyLock[int64](),
 		scheduleDuration:          Params.DataCoordCfg.IndexTaskSchedulerInterval.GetAsDuration(time.Millisecond),
@@ -2333,9 +2355,7 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 	for {
 		time.Sleep(time.Second)
 		if scheduler.pendingTasks.TaskCount() == 0 {
-			scheduler.runningQueueLock.RLock()
-			taskNum := len(scheduler.runningTasks)
-			scheduler.runningQueueLock.RUnlock()
+			taskNum := scheduler.runningTasks.Len()
 			if taskNum == 0 {
 				break
 			}

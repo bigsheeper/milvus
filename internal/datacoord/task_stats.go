@@ -168,9 +168,10 @@ func (st *statsTask) calculateTaskSlotPolicy(segmentSize int64) int64 {
 }
 
 func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (bool, int64) {
-	log := log.Ctx(ctx).With(zap.Int64("taskID", st.taskID), zap.Int64("segmentID", st.segmentID))
+	log := log.Ctx(ctx).With(zap.Int64("taskID", st.taskID), zap.Int64("segmentID", st.segmentID),
+		zap.Int64("targetSegmentID", st.targetSegmentID))
 
-	statsMeta := dependency.meta.statsTaskMeta.GetStatsTaskBySegmentID(st.segmentID, st.subJobType)
+	statsMeta := dependency.meta.statsTaskMeta.GetStatsTask(st.taskID)
 	if statsMeta == nil {
 		log.Warn("stats task meta is null, skip it")
 		st.SetState(indexpb.JobState_JobStateNone, "stats task meta is null")
@@ -251,6 +252,9 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 		BinlogMaxSize: Params.DataNodeCfg.BinLogMaxSize.GetAsUint64(),
 		TaskSlot:      taskSlot,
 	}
+
+	log.Info("stats task pre check successfully", zap.String("subJobType", st.subJobType.String()),
+		zap.Int64("num rows", segment.GetNumOfRows()), zap.Int64("task version", st.req.GetTaskVersion()))
 
 	return true, taskSlot
 }

@@ -69,6 +69,7 @@ func (s *Server) createIndexForSegment(ctx context.Context, segment *SegmentInfo
 	if err != nil {
 		return err
 	}
+	taskSlot := calculateIndexTaskSlot(segment.getSegmentSize())
 	segIndex := &model.SegmentIndex{
 		SegmentID:      segment.ID,
 		CollectionID:   segment.CollectionID,
@@ -78,11 +79,12 @@ func (s *Server) createIndexForSegment(ctx context.Context, segment *SegmentInfo
 		BuildID:        buildID,
 		CreatedUTCTime: uint64(time.Now().Unix()),
 		WriteHandoff:   false,
+		TaskSlot:       taskSlot,
 	}
 	if err = s.meta.indexMeta.AddSegmentIndex(ctx, segIndex); err != nil {
 		return err
 	}
-	s.taskScheduler.enqueue(newIndexBuildTask(buildID))
+	s.taskScheduler.enqueue(newIndexBuildTask(buildID, taskSlot))
 	return nil
 }
 

@@ -117,6 +117,10 @@ func (at *analyzeTask) GetFailReason() string {
 	return at.taskInfo.GetFailReason()
 }
 
+func (at *analyzeTask) GetTaskSlot() int64 {
+	return Params.DataCoordCfg.AnalyzeTaskSlotUsage.GetAsInt64()
+}
+
 func (at *analyzeTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, compactionHandler compactionPlanContext) error {
 	if err := meta.analyzeMeta.UpdateVersion(at.GetTaskID(), nodeID); err != nil {
 		return err
@@ -132,12 +136,12 @@ func (at *analyzeTask) UpdateMetaBuildingState(meta *meta) error {
 	return nil
 }
 
-func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) (bool, int64) {
+func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) bool {
 	t := dependency.meta.analyzeMeta.GetTask(at.GetTaskID())
 	if t == nil {
 		log.Ctx(ctx).Info("task is nil, delete it", zap.Int64("taskID", at.GetTaskID()))
 		at.SetState(indexpb.JobState_JobStateNone, "analyze task is nil")
-		return false, 0
+		return false
 	}
 
 	at.req = &workerpb.AnalyzeRequest{
@@ -169,7 +173,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 			log.Ctx(ctx).Warn("analyze stats task is processing, but segment is nil, delete the task",
 				zap.Int64("taskID", at.GetTaskID()), zap.Int64("segmentID", segID))
 			at.SetState(indexpb.JobState_JobStateFailed, fmt.Sprintf("segmentInfo with ID: %d is nil", segID))
-			return false, 0
+			return false
 		}
 
 		totalSegmentsRows += info.GetNumOfRows()
@@ -187,7 +191,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 		log.Ctx(ctx).Warn("analyze task get collection info failed", zap.Int64("collectionID",
 			segments[0].GetCollectionID()), zap.Error(err))
 		at.SetState(indexpb.JobState_JobStateInit, err.Error())
-		return false, 0
+		return false
 	}
 
 	schema := collInfo.Schema
@@ -202,7 +206,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 	dim, err := storage.GetDimFromParams(field.TypeParams)
 	if err != nil {
 		at.SetState(indexpb.JobState_JobStateInit, err.Error())
-		return false, 0
+		return false
 	}
 	at.req.Dim = int64(dim)
 
@@ -211,7 +215,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 	if numClusters < Params.DataCoordCfg.ClusteringCompactionMinCentroidsNum.GetAsInt64() {
 		log.Ctx(ctx).Info("data size is too small, skip analyze task", zap.Float64("raw data size", totalSegmentsRawDataSize), zap.Int64("num clusters", numClusters), zap.Int64("minimum num clusters required", Params.DataCoordCfg.ClusteringCompactionMinCentroidsNum.GetAsInt64()))
 		at.SetState(indexpb.JobState_JobStateFinished, "")
-		return false, 0
+		return false
 	}
 	if numClusters > Params.DataCoordCfg.ClusteringCompactionMaxCentroidsNum.GetAsInt64() {
 		numClusters = Params.DataCoordCfg.ClusteringCompactionMaxCentroidsNum.GetAsInt64()
@@ -225,7 +229,7 @@ func (at *analyzeTask) PreCheck(ctx context.Context, dependency *taskScheduler) 
 	taskSlot := Params.DataCoordCfg.AnalyzeTaskSlotUsage.GetAsInt64()
 	at.req.TaskSlot = taskSlot
 
-	return true, taskSlot
+	return true
 }
 
 func (at *analyzeTask) AssignTask(ctx context.Context, client types.IndexNodeClient, meta *meta) bool {

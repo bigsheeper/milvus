@@ -83,6 +83,7 @@ message SegmentIndex {
     uint64 finished_time = 18;
     uint64 mem_size = 19; // the total size of index file at local (disk or memory) before loading by knowhere. (not compress)
     int32 current_scalar_index_version = 20;
+    int64 task_slot = 21;
 }
 
 message RegisterNodeRequest {
@@ -319,6 +320,7 @@ message StatsTask {
     int64 target_segmentID = 10;
     index.StatsSubJob subJobType = 11;
     bool canRecycle = 12;
+    int64 taskSlot = 13;
 }
 
 enum StatsSubJob {

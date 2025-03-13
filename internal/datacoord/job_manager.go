@@ -284,6 +284,7 @@ func (jm *statsJobManager) SubmitStatsTask(originSegmentID, targetSegmentID int6
 	if err != nil {
 		return err
 	}
+	taskSlot := calculateStatsTaskSlot(originSegment.getSegmentSize())
 	t := &indexpb.StatsTask{
 		CollectionID:    originSegment.GetCollectionID(),
 		PartitionID:     originSegment.GetPartitionID(),
@@ -297,6 +298,7 @@ func (jm *statsJobManager) SubmitStatsTask(originSegmentID, targetSegmentID int6
 		TargetSegmentID: targetSegmentID,
 		SubJobType:      subJobType,
 		CanRecycle:      canRecycle,
+		TaskSlot:        taskSlot,
 	}
 	if err = jm.mt.statsTaskMeta.AddStatsTask(t); err != nil {
 		if errors.Is(err, merr.ErrTaskDuplicate) {
@@ -307,7 +309,7 @@ func (jm *statsJobManager) SubmitStatsTask(originSegmentID, targetSegmentID int6
 		}
 		return err
 	}
-	jm.scheduler.enqueue(newStatsTask(t.GetTaskID(), t.GetSegmentID(), t.GetTargetSegmentID(), subJobType))
+	jm.scheduler.enqueue(newStatsTask(t.GetTaskID(), t.GetSegmentID(), t.GetTargetSegmentID(), subJobType, taskSlot))
 	return nil
 }
 

@@ -42,6 +42,7 @@ type indexBuildTask struct {
 	taskID   int64
 	nodeID   int64
 	taskInfo *workerpb.IndexTaskInfo
+	taskSlot int64
 
 	queueTime time.Time
 	startTime time.Time
@@ -52,9 +53,10 @@ type indexBuildTask struct {
 
 var _ Task = (*indexBuildTask)(nil)
 
-func newIndexBuildTask(taskID int64) *indexBuildTask {
+func newIndexBuildTask(taskID int64, taskSlot int64) *indexBuildTask {
 	return &indexBuildTask{
-		taskID: taskID,
+		taskID:   taskID,
+		taskSlot: taskSlot,
 		taskInfo: &workerpb.IndexTaskInfo{
 			BuildID: taskID,
 			State:   commonpb.IndexState_Unissued,
@@ -119,6 +121,10 @@ func (it *indexBuildTask) GetFailReason() string {
 	return it.taskInfo.FailReason
 }
 
+func (it *indexBuildTask) GetTaskSlot() int64 {
+	return it.taskSlot
+}
+
 func (it *indexBuildTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, compactionHandler compactionPlanContext) error {
 	if err := meta.indexMeta.UpdateVersion(it.taskID, nodeID); err != nil {
 		return err
@@ -131,19 +137,19 @@ func (it *indexBuildTask) UpdateMetaBuildingState(meta *meta) error {
 	return meta.indexMeta.BuildIndex(it.taskID)
 }
 
-func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskScheduler) (bool, int64) {
+func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskScheduler) bool {
 	segIndex, exist := dependency.meta.indexMeta.GetIndexJob(it.taskID)
 	if !exist || segIndex == nil {
 		log.Ctx(ctx).Info("index task has not exist in meta table, remove task", zap.Int64("taskID", it.taskID))
 		it.SetState(indexpb.JobState_JobStateNone, "index task has not exist in meta table")
-		return false, 0
+		return false
 	}
 
 	segment := dependency.meta.GetSegment(ctx, segIndex.SegmentID)
 	if !isSegmentHealthy(segment) || !dependency.meta.indexMeta.IsIndexExist(segIndex.CollectionID, segIndex.IndexID) {
 		log.Ctx(ctx).Info("task is no need to build index, remove it", zap.Int64("taskID", it.taskID))
 		it.SetState(indexpb.JobState_JobStateNone, "task is no need to build index")
-		return false, 0
+		return false
 	}
 	indexParams := dependency.meta.indexMeta.GetIndexParams(segIndex.CollectionID, segIndex.IndexID)
 	indexType := GetIndexType(indexParams)
@@ -153,7 +159,7 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		it.SetStartTime(time.Now())
 		it.SetEndTime(time.Now())
 		it.SetState(indexpb.JobState_JobStateFinished, "fake finished index success")
-		return false, 0
+		return false
 	}
 
 	typeParams := dependency.meta.indexMeta.GetTypeParams(segIndex.CollectionID, segIndex.IndexID)
@@ -169,7 +175,7 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		if ret != nil {
 			log.Ctx(ctx).Warn("failed to update index build params defined in yaml", zap.Int64("taskID", it.taskID), zap.Error(ret))
 			it.SetState(indexpb.JobState_JobStateInit, ret.Error())
-			return false, 0
+			return false
 		}
 	}
 
@@ -179,14 +185,14 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		if err != nil {
 			log.Ctx(ctx).Warn("failed to append index build params", zap.Int64("taskID", it.taskID), zap.Error(err))
 			it.SetState(indexpb.JobState_JobStateInit, err.Error())
-			return false, 0
+			return false
 		}
 	}
 
 	collectionInfo, err := dependency.handler.GetCollection(ctx, segment.GetCollectionID())
 	if err != nil {
 		log.Ctx(ctx).Info("index builder get collection info failed", zap.Int64("collectionID", segment.GetCollectionID()), zap.Error(err))
-		return false, 0
+		return false
 	}
 
 	schema := collectionInfo.Schema
@@ -214,7 +220,7 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		if collectionInfo == nil {
 			log.Ctx(ctx).Warn("get collection failed", zap.Int64("collID", segIndex.CollectionID), zap.Error(err))
 			it.SetState(indexpb.JobState_JobStateInit, err.Error())
-			return true, 0
+			return true
 		}
 		partitionKeyField, _ := typeutil.GetPartitionKeyFieldSchema(schema)
 		if partitionKeyField != nil && typeutil.IsFieldDataTypeSupportMaterializedView(partitionKeyField) {
@@ -233,8 +239,6 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 			}
 		}
 	}
-
-	taskSlot := calculateIndexTaskSlot(segment.getSegmentSize())
 
 	it.req = &workerpb.CreateJobRequest{
 		ClusterID:                 Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -258,7 +262,7 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		OptionalScalarFields:      optionalFields,
 		Field:                     field,
 		PartitionKeyIsolation:     partitionKeyIsolation,
-		TaskSlot:                  taskSlot,
+		TaskSlot:                  it.taskSlot,
 	}
 
 	log.Ctx(ctx).Info("index task pre check successfully", zap.Int64("taskID", it.GetTaskID()),
@@ -266,18 +270,7 @@ func (it *indexBuildTask) PreCheck(ctx context.Context, dependency *taskSchedule
 		zap.Int32("CurrentIndexVersion", it.req.GetCurrentIndexVersion()),
 		zap.Int32("CurrentScalarIndexVersion", it.req.GetCurrentScalarIndexVersion()),
 		zap.Int64("segID", segment.GetID()))
-	return true, taskSlot
-}
-
-func calculateIndexTaskSlot(segmentSize int64) int64 {
-	if segmentSize > 500*1024*1024 {
-		return max(Params.DataCoordCfg.IndexTaskSlotUsage.GetAsInt64(), 1)
-	} else if segmentSize > 100*1024*1024 {
-		return max(Params.DataCoordCfg.IndexTaskSlotUsage.GetAsInt64()/2, 1)
-	} else if segmentSize > 10*1024*1024 {
-		return max(Params.DataCoordCfg.IndexTaskSlotUsage.GetAsInt64()/4, 1)
-	}
-	return max(Params.DataCoordCfg.IndexTaskSlotUsage.GetAsInt64()/8, 1)
+	return true
 }
 
 func (it *indexBuildTask) AssignTask(ctx context.Context, client types.IndexNodeClient, meta *meta) bool {

@@ -127,6 +127,7 @@ func (s *taskScheduler) reloadFromMeta() {
 					State:      segIndex.IndexState,
 					FailReason: segIndex.FailReason,
 				},
+				taskSlot: segIndex.TaskSlot,
 				req: &workerpb.CreateJobRequest{
 					ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
 					BuildID:   segIndex.BuildID,
@@ -182,6 +183,7 @@ func (s *taskScheduler) reloadFromMeta() {
 				State:      t.GetState(),
 				FailReason: t.GetFailReason(),
 			},
+			taskSlot: t.GetTaskSlot(),
 			req: &workerpb.CreateStatsRequest{
 				ClusterID: Params.CommonCfg.ClusterPrefix.GetValue(),
 				TaskID:    taskID,
@@ -376,23 +378,29 @@ func (s *taskScheduler) run() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			task := s.pendingTasks.Pop()
-			if task == nil {
+			trySend := func() {
 				select {
 				case stopCh <- struct{}{}:
 				default:
 				}
+			}
+			task := s.pendingTasks.Pop()
+			if task == nil {
+				trySend()
 				return
 			}
 
-			s.taskLock.Lock(task.GetTaskID())
-			keep := s.process(task, workerSlots)
-			s.taskLock.Unlock(task.GetTaskID())
-			if !keep {
-				select {
-				case stopCh <- struct{}{}:
-				default:
+			taskSlot := task.GetTaskSlot()
+			nodeID := s.pickNode(workerSlots, taskSlot)
+			if nodeID != -1 {
+				s.taskLock.Lock(task.GetTaskID())
+				keep := s.process(task, nodeID)
+				s.taskLock.Unlock(task.GetTaskID())
+				if !keep {
+					trySend()
 				}
+			} else {
+				trySend()
 			}
 
 			switch task.GetState() {
@@ -411,19 +419,16 @@ END:
 	wg.Wait()
 }
 
-func (s *taskScheduler) process(task Task, workerSlots map[typeutil.UniqueID]*session.WorkerSlots) bool {
-	if !task.CheckTaskHealthy(s.meta) {
-		task.SetState(indexpb.JobState_JobStateNone, "task not healthy")
-		return true
-	}
+func (s *taskScheduler) process(task Task, nodeID int64) bool {
 	log.Ctx(s.ctx).Info("task is processing", zap.Int64("taskID", task.GetTaskID()),
-		zap.String("task type", task.GetTaskType()), zap.String("state", task.GetState().String()))
+		zap.Int64("nodeID", nodeID), zap.String("task type", task.GetTaskType()),
+		zap.String("state", task.GetState().String()))
 
 	switch task.GetState() {
 	case indexpb.JobState_JobStateNone:
 		return s.processNone(task)
 	case indexpb.JobState_JobStateInit:
-		return s.processInit(task, workerSlots)
+		return s.processInit(task, nodeID)
 	default:
 		log.Ctx(s.ctx).Error("invalid task state in pending queue", zap.Int64("taskID", task.GetTaskID()), zap.String("state", task.GetState().String()))
 	}
@@ -511,17 +516,14 @@ func (s *taskScheduler) collectTaskMetrics() {
 	}
 }
 
-func (s *taskScheduler) processInit(task Task, workerSlots map[typeutil.UniqueID]*session.WorkerSlots) bool {
+func (s *taskScheduler) processInit(task Task, nodeID int64) bool {
 	// 0. pre check task
 	// Determine whether the task can be performed or if it is truly necessary.
 	// for example: flat index doesn't need to actually build. checkPass is false.
-	checkPass, taskSLot := task.PreCheck(s.ctx, s)
+	checkPass := task.PreCheck(s.ctx, s)
 	if !checkPass {
 		return true
 	}
-
-	nodeID := s.pickNode(workerSlots, taskSLot)
-
 	client, exist := s.nodeManager.GetClientByID(nodeID)
 	if !exist || client == nil {
 		log.Ctx(s.ctx).Debug("get indexnode client failed", zap.Int64("nodeID", nodeID))

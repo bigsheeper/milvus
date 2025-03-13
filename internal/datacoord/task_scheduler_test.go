@@ -2351,7 +2351,7 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 	}
 	scheduler.Start()
 
-	scheduler.enqueue(newStatsTask(taskID, segID, targetSegID, indexpb.StatsSubJob_Sort))
+	scheduler.enqueue(newStatsTask(taskID, segID, targetSegID, indexpb.StatsSubJob_Sort, 1))
 	for {
 		time.Sleep(time.Second)
 		if scheduler.pendingTasks.TaskCount() == 0 {

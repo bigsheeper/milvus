@@ -141,7 +141,7 @@ func (s *statsTaskSuite) SetupSuite() {
 }
 
 func (s *statsTaskSuite) TestTaskStats_PreCheck() {
-	st := newStatsTask(s.taskID, s.segID, s.targetID, indexpb.StatsSubJob_Sort)
+	st := newStatsTask(s.taskID, s.segID, s.targetID, indexpb.StatsSubJob_Sort, 1)
 
 	s.Equal(s.taskID, st.GetTaskID())
 
@@ -229,24 +229,22 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 		s.Run("segment not healthy", func() {
 			s.mt.segments.segments[s.segID].State = commonpb.SegmentState_Dropped
 
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta: s.mt,
 			})
 
 			s.False(checkPass)
-			s.Zero(taskSlot)
 		})
 
 		s.Run("segment is sorted", func() {
 			s.mt.segments.segments[s.segID].State = commonpb.SegmentState_Flushed
 			s.mt.segments.segments[s.segID].IsSorted = true
 
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta: s.mt,
 			})
 
 			s.False(checkPass)
-			s.Zero(taskSlot)
 		})
 
 		s.Run("get collection failed", func() {
@@ -254,13 +252,12 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 
 			handler := NewNMockHandler(s.T())
 			handler.EXPECT().GetCollection(context.Background(), collID).Return(nil, fmt.Errorf("mock error")).Once()
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta:    s.mt,
 				handler: handler,
 			})
 
 			s.False(checkPass)
-			s.Zero(taskSlot)
 		})
 
 		s.Run("get collection ttl failed", func() {
@@ -292,13 +289,12 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 				Properties: map[string]string{common.CollectionTTLConfigKey: "false"},
 			}, nil).Once()
 
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta:    s.mt,
 				handler: handler,
 			})
 
 			s.False(checkPass)
-			s.Zero(taskSlot)
 		})
 
 		s.Run("alloc failed", func() {
@@ -333,14 +329,13 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 				Properties: map[string]string{common.CollectionTTLConfigKey: "100"},
 			}, nil)
 
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta:      s.mt,
 				handler:   handler,
 				allocator: alloc,
 			})
 
 			s.False(checkPass)
-			s.Zero(taskSlot)
 		})
 
 		s.Run("normal case", func() {
@@ -375,14 +370,13 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 				Properties: map[string]string{common.CollectionTTLConfigKey: "100"},
 			}, nil)
 
-			checkPass, taskSlot := st.PreCheck(context.Background(), &taskScheduler{
+			checkPass := st.PreCheck(context.Background(), &taskScheduler{
 				meta:      s.mt,
 				handler:   handler,
 				allocator: alloc,
 			})
 
 			s.True(checkPass)
-			s.Equal(int64(1), taskSlot)
 		})
 	})
 

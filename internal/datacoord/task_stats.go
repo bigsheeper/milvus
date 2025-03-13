@@ -38,6 +38,8 @@ type statsTask struct {
 	nodeID          int64
 	taskInfo        *workerpb.StatsResult
 
+	taskSlot int64
+
 	queueTime time.Time
 	startTime time.Time
 	endTime   time.Time
@@ -49,7 +51,7 @@ type statsTask struct {
 
 var _ Task = (*statsTask)(nil)
 
-func newStatsTask(taskID int64, segmentID, targetSegmentID int64, subJobType indexpb.StatsSubJob) *statsTask {
+func newStatsTask(taskID int64, segmentID, targetSegmentID int64, subJobType indexpb.StatsSubJob, taskSlot int64) *statsTask {
 	return &statsTask{
 		taskID:          taskID,
 		segmentID:       segmentID,
@@ -59,6 +61,7 @@ func newStatsTask(taskID int64, segmentID, targetSegmentID int64, subJobType ind
 			State:  indexpb.JobState_JobStateInit,
 		},
 		subJobType: subJobType,
+		taskSlot:   taskSlot,
 	}
 }
 
@@ -126,6 +129,10 @@ func (st *statsTask) GetFailReason() string {
 	return st.taskInfo.GetFailReason()
 }
 
+func (st *statsTask) GetTaskSlot() int64 {
+	return st.taskSlot
+}
+
 func (st *statsTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, compactionHandler compactionPlanContext) error {
 	// mark compacting
 	if exist, canDo := meta.CheckAndSetSegmentsCompacting(ctx, []UniqueID{st.segmentID}); !exist || !canDo {
@@ -156,18 +163,8 @@ func (st *statsTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta
 func (st *statsTask) UpdateMetaBuildingState(meta *meta) error {
 	return meta.statsTaskMeta.UpdateBuildingTask(st.taskID)
 }
-func (st *statsTask) calculateTaskSlotPolicy(segmentSize int64) int64 {
-	if segmentSize > 500*1024*1024 {
-		return max(Params.DataCoordCfg.StatsTaskSlotUsage.GetAsInt64(), 1)
-	} else if segmentSize > 100*1024*1024 {
-		return max(Params.DataCoordCfg.StatsTaskSlotUsage.GetAsInt64()/2, 1)
-	} else if segmentSize > 10*1024*1024 {
-		return max(Params.DataCoordCfg.StatsTaskSlotUsage.GetAsInt64()/4, 1)
-	}
-	return max(Params.DataCoordCfg.StatsTaskSlotUsage.GetAsInt64()/8, 1)
-}
 
-func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (bool, int64) {
+func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) bool {
 	log := log.Ctx(ctx).With(zap.Int64("taskID", st.taskID), zap.Int64("segmentID", st.segmentID),
 		zap.Int64("targetSegmentID", st.targetSegmentID))
 
@@ -175,14 +172,14 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 	if statsMeta == nil {
 		log.Warn("stats task meta is null, skip it")
 		st.SetState(indexpb.JobState_JobStateNone, "stats task meta is null")
-		return false, 0
+		return false
 	}
 	// set segment compacting
 	segment := dependency.meta.GetHealthySegment(ctx, st.segmentID)
 	if segment == nil {
 		log.Warn("segment is node healthy, skip stats")
 		st.SetState(indexpb.JobState_JobStateNone, "segment is not healthy")
-		return false, 0
+		return false
 	}
 
 	if segment.GetNumOfRows() == 0 {
@@ -196,13 +193,13 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 			Channel:      st.req.GetInsertChannel(),
 			NumRows:      0,
 		})
-		return false, 0
+		return false
 	}
 
 	if segment.GetIsSorted() && st.subJobType == indexpb.StatsSubJob_Sort {
 		log.Info("stats task is marked as sorted, skip stats")
 		st.SetState(indexpb.JobState_JobStateNone, "segment is marked as sorted")
-		return false, 0
+		return false
 	}
 
 	collInfo, err := dependency.handler.GetCollection(ctx, segment.GetCollectionID())
@@ -210,14 +207,14 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 		log.Warn("stats task get collection info failed", zap.Int64("collectionID",
 			segment.GetCollectionID()), zap.Error(err))
 		st.SetState(indexpb.JobState_JobStateInit, err.Error())
-		return false, 0
+		return false
 	}
 
 	collTtl, err := getCollectionTTL(collInfo.Properties)
 	if err != nil {
 		log.Warn("stats task get collection ttl failed", zap.Int64("collectionID", segment.GetCollectionID()), zap.Error(err))
 		st.SetState(indexpb.JobState_JobStateInit, err.Error())
-		return false, 0
+		return false
 	}
 
 	binlogNum := (segment.getSegmentSize()/Params.DataNodeCfg.BinLogMaxSize.GetAsInt64() + 1) * int64(len(collInfo.Schema.GetFields())) * 100
@@ -226,10 +223,8 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 	if err != nil {
 		log.Warn("stats task alloc logID failed", zap.Int64("collectionID", segment.GetCollectionID()), zap.Error(err))
 		st.SetState(indexpb.JobState_JobStateInit, err.Error())
-		return false, 0
+		return false
 	}
-
-	taskSlot := st.calculateTaskSlotPolicy(segment.getSegmentSize())
 
 	st.req = &workerpb.CreateStatsRequest{
 		ClusterID:       Params.CommonCfg.ClusterPrefix.GetValue(),
@@ -250,13 +245,13 @@ func (st *statsTask) PreCheck(ctx context.Context, dependency *taskScheduler) (b
 		// update version after check
 		TaskVersion:   statsMeta.GetVersion() + 1,
 		BinlogMaxSize: Params.DataNodeCfg.BinLogMaxSize.GetAsUint64(),
-		TaskSlot:      taskSlot,
+		TaskSlot:      st.taskSlot,
 	}
 
 	log.Info("stats task pre check successfully", zap.String("subJobType", st.subJobType.String()),
 		zap.Int64("num rows", segment.GetNumOfRows()), zap.Int64("task version", st.req.GetTaskVersion()))
 
-	return true, taskSlot
+	return true
 }
 
 func (st *statsTask) AssignTask(ctx context.Context, client types.IndexNodeClient, meta *meta) bool {

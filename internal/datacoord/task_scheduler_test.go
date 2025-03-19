@@ -847,9 +847,13 @@ func (s *taskSchedulerSuite) scheduler(handler Handler) {
 	in.EXPECT().DropJobsV2(mock.Anything, mock.Anything).Return(merr.Success(), nil)
 
 	workerManager := session.NewMockWorkerManager(s.T())
-	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-		return map[int64]int64{
-			1: 1,
+	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+		return map[int64]*session.WorkerSlots{
+			1: {
+				NodeID:         1,
+				TotalSlots:     16,
+				AvailableSlots: 16,
+			},
 		}
 	})
 	workerManager.EXPECT().GetClientByID(mock.Anything).Return(in, true)
@@ -993,9 +997,13 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		workerManager := session.NewMockWorkerManager(s.T())
-		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-			return map[int64]int64{
-				1: 1,
+		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+			return map[int64]*session.WorkerSlots{
+				1: {
+					NodeID:         1,
+					TotalSlots:     16,
+					AvailableSlots: 16,
+				},
 			}
 		})
 
@@ -1063,9 +1071,13 @@ func (s *taskSchedulerSuite) Test_analyzeTaskFailCase() {
 		in := mocks.NewMockIndexNodeClient(s.T())
 
 		workerManager := session.NewMockWorkerManager(s.T())
-		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-			return map[int64]int64{
-				1: 1,
+		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+			return map[int64]*session.WorkerSlots{
+				1: {
+					NodeID:         1,
+					TotalSlots:     16,
+					AvailableSlots: 16,
+				},
 			}
 		})
 
@@ -1315,9 +1327,13 @@ func (s *taskSchedulerSuite) Test_indexTaskFailCase() {
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		in := mocks.NewMockIndexNodeClient(s.T())
 		workerManager := session.NewMockWorkerManager(s.T())
-		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-			return map[int64]int64{
-				1: 1,
+		workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+			return map[int64]*session.WorkerSlots{
+				1: {
+					NodeID:         1,
+					TotalSlots:     16,
+					AvailableSlots: 16,
+				},
 			}
 		})
 
@@ -1553,9 +1569,13 @@ func (s *taskSchedulerSuite) Test_indexTaskWithMvOptionalScalarField() {
 	in := mocks.NewMockIndexNodeClient(s.T())
 
 	workerManager := session.NewMockWorkerManager(s.T())
-	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-		return map[int64]int64{
-			1: 1,
+	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+		return map[int64]*session.WorkerSlots{
+			1: {
+				NodeID:         1,
+				TotalSlots:     16,
+				AvailableSlots: 16,
+			},
 		}
 	})
 	workerManager.EXPECT().GetClientByID(mock.Anything).Return(in, true)
@@ -2295,9 +2315,13 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 	targetSegID := UniqueID(113)
 
 	workerManager := session.NewMockWorkerManager(s.T())
-	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]int64 {
-		return map[int64]int64{
-			1: 1,
+	workerManager.EXPECT().QuerySlots().RunAndReturn(func() map[int64]*session.WorkerSlots {
+		return map[int64]*session.WorkerSlots{
+			1: {
+				NodeID:         1,
+				TotalSlots:     16,
+				AvailableSlots: 16,
+			},
 		}
 	})
 
@@ -2370,7 +2394,7 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 	}
 	scheduler.Start()
 
-	scheduler.enqueue(newStatsTask(taskID, segID, targetSegID, indexpb.StatsSubJob_Sort))
+	scheduler.enqueue(newStatsTask(taskID, segID, targetSegID, indexpb.StatsSubJob_Sort, 1))
 	for {
 		time.Sleep(time.Second)
 		if scheduler.pendingTasks.TaskCount() == 0 {

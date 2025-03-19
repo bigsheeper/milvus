@@ -26,14 +26,14 @@ func TestSingleLockUnlock(t *testing.T) {
 	lock := NewSegmentKeyLock()
 	segmentID := int64(1)
 
-	lock.Lock(segmentID)
-	lock.Unlock(segmentID)
+	lock.Lock(segmentID, segmentID)
+	lock.Unlock(segmentID, segmentID)
 
-	lock.Lock(segmentID)
-	lock.Unlock(segmentID)
+	lock.Lock(segmentID, segmentID)
+	lock.Unlock(segmentID, segmentID)
 
-	lock.RLock(segmentID)
-	lock.RUnlock(segmentID)
+	lock.RLock(segmentID, segmentID)
+	lock.RUnlock(segmentID, segmentID)
 }
 
 func TestMultipleLocksOrder(t *testing.T) {

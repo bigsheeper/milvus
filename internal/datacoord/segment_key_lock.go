@@ -19,6 +19,8 @@ package datacoord
 import (
 	"sort"
 
+	"github.com/samber/lo"
+
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 )
 
@@ -35,6 +37,7 @@ type segmentKeyLock struct {
 }
 
 func (s *segmentKeyLock) getKeys(segmentIDs []int64) []int64 {
+	segmentIDs = lo.Uniq(segmentIDs)
 	// Sort to ensure a globally consistent order for acquiring locks.
 	sort.Slice(segmentIDs, func(i, j int) bool {
 		return segmentIDs[i] < segmentIDs[j]

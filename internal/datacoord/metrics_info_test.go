@@ -494,7 +494,7 @@ func TestGetChannelsJSON(t *testing.T) {
 		mockCluster.EXPECT().GetSessions().Return([]*session.Session{session.NewSession(&session.NodeInfo{NodeID: 1}, dataNodeCreator)})
 		svr.cluster = mockCluster
 
-		svr.meta = &meta{channelCPs: newChannelCps()}
+		svr.meta = newMemoryMeta(t)
 		svr.meta.channelCPs.checkpoints["channel1"] = &msgpb.MsgPosition{Timestamp: 1000}
 
 		actualJSON, err := svr.getChannelsJSON(context.TODO(), req)
@@ -533,7 +533,7 @@ func TestGetChannelsJSON(t *testing.T) {
 		mockCluster.EXPECT().GetSessions().Return([]*session.Session{session.NewSession(&session.NodeInfo{NodeID: 1}, dataNodeCreator)})
 		svr.cluster = mockCluster
 
-		svr.meta = &meta{channelCPs: newChannelCps()}
+		svr.meta = newMemoryMeta(t)
 
 		actualJSON, err := svr.getChannelsJSON(ctx, req)
 		assert.Error(t, err)
@@ -563,7 +563,7 @@ func TestGetChannelsJSON(t *testing.T) {
 		mockCluster.EXPECT().GetSessions().Return([]*session.Session{session.NewSession(&session.NodeInfo{NodeID: 1}, dataNodeCreator)})
 		svr.cluster = mockCluster
 
-		svr.meta = &meta{channelCPs: newChannelCps()}
+		svr.meta = newMemoryMeta(t)
 
 		actualJSON, err := svr.getChannelsJSON(ctx, req)
 		assert.Error(t, err)
@@ -592,7 +592,7 @@ func TestGetChannelsJSON(t *testing.T) {
 		mockCluster := NewMockCluster(t)
 		mockCluster.EXPECT().GetSessions().Return([]*session.Session{session.NewSession(&session.NodeInfo{NodeID: 1}, dataNodeCreator)})
 		svr.cluster = mockCluster
-		svr.meta = &meta{channelCPs: newChannelCps()}
+		svr.meta = newMemoryMeta(t)
 
 		expectedJSON := "null"
 		actualJSON, err := svr.getChannelsJSON(ctx, req)
@@ -611,22 +611,19 @@ func TestGetDistJSON(t *testing.T) {
 		req := &milvuspb.GetMetricsRequest{}
 		ctx := context.Background()
 
-		svr.meta = &meta{
-			segments: &SegmentsInfo{
-				segments: map[int64]*SegmentInfo{
-					1: {
-						SegmentInfo: &datapb.SegmentInfo{
-							ID:            1,
-							CollectionID:  1,
-							PartitionID:   1,
-							InsertChannel: "channel1",
-							Level:         datapb.SegmentLevel_L1,
-							State:         commonpb.SegmentState_Flushed,
-						},
-					},
-				},
+		s1 := &SegmentInfo{
+			SegmentInfo: &datapb.SegmentInfo{
+				ID:            1,
+				CollectionID:  1,
+				PartitionID:   1,
+				InsertChannel: "channel1",
+				Level:         datapb.SegmentLevel_L1,
+				State:         commonpb.SegmentState_Flushed,
 			},
 		}
+		meta := newMemoryMeta(t)
+		AddTestSegmentInfos(meta, s1)
+		svr.meta = meta
 
 		cm := NewMockChannelManager(t)
 		cm.EXPECT().GetChannelWatchInfos().Return(map[int64]map[string]*datapb.ChannelWatchInfo{
@@ -676,7 +673,7 @@ func TestGetDistJSON(t *testing.T) {
 		req := &milvuspb.GetMetricsRequest{}
 		ctx := context.Background()
 
-		svr.meta = &meta{segments: &SegmentsInfo{segments: map[int64]*SegmentInfo{}}}
+		svr.meta = newMemoryMeta(t)
 		cm := NewMockChannelManager(t)
 		cm.EXPECT().GetChannelWatchInfos().Return(map[int64]map[string]*datapb.ChannelWatchInfo{})
 
@@ -688,6 +685,28 @@ func TestGetDistJSON(t *testing.T) {
 }
 
 func TestServer_getSegmentsJSON(t *testing.T) {
+	s1 := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:            1,
+			CollectionID:  1,
+			PartitionID:   2,
+			InsertChannel: "channel1",
+		},
+	}
+	indexMeta := &indexMeta{
+		indexes: map[UniqueID]map[UniqueID]*model.Index{
+			1: {
+				10: &model.Index{
+					CollectionID: 1,
+					FieldID:      100,
+					IndexID:      10,
+					IndexName:    "test_index",
+					IsDeleted:    false,
+				},
+			},
+		},
+	}
+
 	segIndexes := typeutil.NewConcurrentMap[UniqueID, *typeutil.ConcurrentMap[UniqueID, *model.SegmentIndex]]()
 	segIdx0 := typeutil.NewConcurrentMap[UniqueID, *model.SegmentIndex]()
 	segIdx0.Insert(10, &model.SegmentIndex{
@@ -707,35 +726,13 @@ func TestServer_getSegmentsJSON(t *testing.T) {
 		IndexSerializedSize: 0,
 	})
 	segIndexes.Insert(1000, segIdx0)
+	indexMeta.segmentIndexes = segIndexes
+
+	meta := newMemoryMeta(t)
+	AddTestSegmentInfos(meta, s1)
+	meta.indexMeta = indexMeta
 	s := &Server{
-		meta: &meta{
-			segments: &SegmentsInfo{
-				segments: map[int64]*SegmentInfo{
-					1: {
-						SegmentInfo: &datapb.SegmentInfo{
-							ID:            1,
-							CollectionID:  1,
-							PartitionID:   2,
-							InsertChannel: "channel1",
-						},
-					},
-				},
-			},
-			indexMeta: &indexMeta{
-				segmentIndexes: segIndexes,
-				indexes: map[UniqueID]map[UniqueID]*model.Index{
-					1: {
-						10: &model.Index{
-							CollectionID: 1,
-							FieldID:      100,
-							IndexID:      10,
-							IndexName:    "test_index",
-							IsDeleted:    false,
-						},
-					},
-				},
-			},
-		},
+		meta: meta,
 	}
 
 	ctx := context.TODO()

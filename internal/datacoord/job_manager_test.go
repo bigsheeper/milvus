@@ -41,68 +41,66 @@ func (s *jobManagerSuite) TestJobManager_triggerStatsTaskLoop() {
 	catalog := mocks.NewDataCoordCatalog(s.T())
 	catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil)
 
-	mt := &meta{
-		collections: map[UniqueID]*collectionInfo{
-			1: {
-				Schema: &schemapb.CollectionSchema{
-					Fields: []*schemapb.FieldSchema{
+	collections := typeutil.NewConcurrentMap[UniqueID, *collectionInfo]()
+	collections.Insert(1, &collectionInfo{
+		Schema: &schemapb.CollectionSchema{
+			Fields: []*schemapb.FieldSchema{
+				{
+					FieldID:  100,
+					Name:     "pk",
+					DataType: schemapb.DataType_Int64,
+				},
+				{
+					FieldID:  101,
+					Name:     "var",
+					DataType: schemapb.DataType_VarChar,
+					TypeParams: []*commonpb.KeyValuePair{
 						{
-							FieldID:  100,
-							Name:     "pk",
-							DataType: schemapb.DataType_Int64,
+							Key: "enable_match", Value: "true",
 						},
 						{
-							FieldID:  101,
-							Name:     "var",
-							DataType: schemapb.DataType_VarChar,
-							TypeParams: []*commonpb.KeyValuePair{
-								{
-									Key: "enable_match", Value: "true",
-								},
-								{
-									Key: "enable_analyzer", Value: "true",
-								},
-							},
-						},
-						{
-							FieldID:  102,
-							Name:     "json",
-							DataType: schemapb.DataType_JSON,
+							Key: "enable_analyzer", Value: "true",
 						},
 					},
+				},
+				{
+					FieldID:  102,
+					Name:     "json",
+					DataType: schemapb.DataType_JSON,
 				},
 			},
 		},
-		segments: &SegmentsInfo{
-			segments: map[UniqueID]*SegmentInfo{
-				10: {
-					SegmentInfo: &datapb.SegmentInfo{
-						ID:           10,
-						CollectionID: 1,
-						PartitionID:  2,
-						IsSorted:     false,
-						State:        commonpb.SegmentState_Flushed,
-					},
-				},
-				20: {
-					SegmentInfo: &datapb.SegmentInfo{
-						ID:           20,
-						CollectionID: 1,
-						PartitionID:  2,
-						IsSorted:     true,
-						State:        commonpb.SegmentState_Flushed,
-					},
-				},
-			},
-		},
-		statsTaskMeta: &statsTaskMeta{
-			ctx:             ctx,
-			catalog:         catalog,
-			keyLock:         lock.NewKeyLock[UniqueID](),
-			tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
-			segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
+	})
+
+	s1 := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:           10,
+			CollectionID: 1,
+			PartitionID:  2,
+			IsSorted:     false,
+			State:        commonpb.SegmentState_Flushed,
 		},
 	}
+	s2 := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:           20,
+			CollectionID: 1,
+			PartitionID:  2,
+			IsSorted:     true,
+			State:        commonpb.SegmentState_Flushed,
+		},
+	}
+
+	mt := newMemoryMeta(s.T())
+	mt.collections = collections
+	mt.statsTaskMeta = &statsTaskMeta{
+		ctx:             ctx,
+		catalog:         catalog,
+		keyLock:         lock.NewKeyLock[UniqueID](),
+		tasks:           typeutil.NewConcurrentMap[UniqueID, *indexpb.StatsTask](),
+		segmentID2Tasks: typeutil.NewConcurrentMap[string, *indexpb.StatsTask](),
+	}
+	AddTestSegmentInfos(mt, s1, s2)
 
 	jm := &statsJobManager{
 		ctx:    ctx,

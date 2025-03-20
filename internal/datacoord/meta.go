@@ -1410,8 +1410,8 @@ func (m *meta) SetAllocations(segmentID UniqueID, allocations []*Allocation) {
 // SetCurrentRows set current row count for segment with provided `segmentID`
 // Note that currRows is not persisted in KV store
 func (m *meta) SetCurrentRows(segmentID UniqueID, rows int64) {
-	m.Lock()
-	defer m.Unlock()
+	m.segMu.Lock()
+	defer m.segMu.Unlock()
 	m.segments.SetCurrentRows(segmentID, rows)
 }
 

@@ -437,7 +437,7 @@ func (m *CompactionTriggerManager) addL0ImportTaskForImport(ctx context.Context,
 						},
 					},
 				},
-			}, job, m.allocator, m.meta)
+			}, job, m.allocator, m.meta, m.imeta)
 			if err != nil {
 				log.Warn("new import tasks failed", zap.Error(err))
 				return err

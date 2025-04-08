@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"math/rand"
 	"os"
 	"sync"
@@ -93,6 +94,9 @@ var _ types.DataCoord = (*Server)(nil)
 
 var Params = paramtable.Get()
 
+// TODO: sheep, singleton or server's object
+var globalScheduler task.GlobalScheduler
+
 // Server implements `types.DataCoord`
 // handles Data Coordinator related jobs
 type Server struct {
@@ -122,7 +126,7 @@ type Server struct {
 	gcOpt            GcOption
 	handler          Handler
 	importMeta       ImportMeta
-	importScheduler  ImportScheduler
+	importInspector  ImportInspector
 	importChecker    ImportChecker
 
 	compactionTrigger        trigger
@@ -374,7 +378,9 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("init service discovery done")
 
-	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog)
+	globalScheduler = task.NewGlobalTaskScheduler(s.ctx)
+
+	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta, s.importMeta)
 	if err != nil {
 		return err
 	}
@@ -394,7 +400,7 @@ func (s *Server) initDataCoord() error {
 
 	s.initGarbageCollection(storageCli)
 
-	s.importScheduler = NewImportScheduler(s.meta, s.cluster, s.allocator, s.importMeta)
+	s.importInspector = NewImportInspector(s.meta, s.importMeta)
 	s.importChecker = NewImportChecker(s.meta, s.broker, s.cluster, s.allocator, s.importMeta, s.jobManager, s.compactionTriggerManager)
 
 	s.syncSegmentsScheduler = newSyncSegmentsScheduler(s.meta, s.channelManager, s.sessionManager)
@@ -727,7 +733,8 @@ func (s *Server) startServerLoop() {
 	s.serverLoopWg.Add(2)
 	s.startWatchService(s.serverLoopCtx)
 	s.startFlushLoop(s.serverLoopCtx)
-	go s.importScheduler.Start()
+	globalScheduler.Start()
+	go s.importInspector.Start()
 	go s.importChecker.Start()
 	s.garbageCollector.start()
 
@@ -1046,7 +1053,8 @@ func (s *Server) Stop() error {
 	s.stopServerLoop()
 	log.Info("datacoord stopServerLoop stopped")
 
-	s.importScheduler.Close()
+	globalScheduler.Stop()
+	s.importInspector.Close()
 	s.importChecker.Close()
 	s.syncSegmentsScheduler.Stop()
 

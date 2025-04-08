@@ -83,7 +83,7 @@ func newTaskScheduler(
 		runningTasks:              typeutil.NewConcurrentMap[UniqueID, Task](),
 		notifyChan:                make(chan struct{}, 1),
 		taskLock:                  lock.NewKeyLock[int64](),
-		scheduleDuration:          Params.DataCoordCfg.IndexTaskSchedulerInterval.GetAsDuration(time.Millisecond),
+		scheduleDuration:          Params.DataCoordCfg.TaskScheduleInterval.GetAsDuration(time.Millisecond),
 		collectMetricsDuration:    time.Minute,
 		policy:                    defaultBuildIndexPolicy,
 		nodeManager:               nodeManager,

@@ -35,7 +35,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
 
-type ImportSchedulerSuite struct {
+type ImportInspectorSuite struct {
 	suite.Suite
 
 	collectionID int64
@@ -45,10 +45,10 @@ type ImportSchedulerSuite struct {
 	cluster   *MockCluster
 	meta      *meta
 	imeta     ImportMeta
-	scheduler *importScheduler
+	inspector *importInspector
 }
 
-func (s *ImportSchedulerSuite) SetupTest() {
+func (s *ImportInspectorSuite) SetupTest() {
 	var err error
 
 	s.collectionID = 1
@@ -77,10 +77,10 @@ func (s *ImportSchedulerSuite) SetupTest() {
 	})
 	s.imeta, err = NewImportMeta(context.TODO(), s.catalog)
 	s.NoError(err)
-	s.scheduler = NewImportScheduler(s.meta, s.cluster, s.alloc, s.imeta).(*importScheduler)
+	s.inspector = NewImportInspector(s.meta, s.imeta).(*importInspector)
 }
 
-func (s *ImportSchedulerSuite) TestProcessPreImport() {
+func (s *ImportInspectorSuite) TestProcessPreImport() {
 	s.catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 	s.catalog.EXPECT().SavePreImportTask(mock.Anything, mock.Anything).Return(nil)
 	var task ImportTask = &preImportTask{
@@ -118,7 +118,7 @@ func (s *ImportSchedulerSuite) TestProcessPreImport() {
 		}, nil)
 		return []*session.Session{sess}
 	})
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_InProgress, task.GetState())
 	s.Equal(int64(nodeID), task.GetNodeID())
@@ -127,18 +127,18 @@ func (s *ImportSchedulerSuite) TestProcessPreImport() {
 	s.cluster.EXPECT().QueryPreImport(mock.Anything, mock.Anything).Return(&datapb.QueryPreImportResponse{
 		State: datapb.ImportTaskStateV2_Completed,
 	}, nil)
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_Completed, task.GetState())
 
 	// drop import task
 	s.cluster.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(int64(NullNodeID), task.GetNodeID())
 }
 
-func (s *ImportSchedulerSuite) TestProcessImport() {
+func (s *ImportInspectorSuite) TestProcessImport() {
 	s.catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 	s.catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(nil)
 	var task ImportTask = &importTask{
@@ -194,7 +194,7 @@ func (s *ImportSchedulerSuite) TestProcessImport() {
 		}, nil)
 		return []*session.Session{sess}
 	})
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_InProgress, task.GetState())
 	s.Equal(int64(nodeID), task.GetNodeID())
@@ -206,18 +206,18 @@ func (s *ImportSchedulerSuite) TestProcessImport() {
 	s.cluster.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
 		State: datapb.ImportTaskStateV2_Completed,
 	}, nil)
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_Completed, task.GetState())
 
 	// drop import task
 	s.cluster.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
-	s.scheduler.process()
+	s.inspector.inspect()
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(int64(NullNodeID), task.GetNodeID())
 }
 
-func (s *ImportSchedulerSuite) TestProcessFailed() {
+func (s *ImportInspectorSuite) TestProcessFailed() {
 	s.catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 	s.catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(nil)
 	var task ImportTask = &importTask{
@@ -272,7 +272,7 @@ func (s *ImportSchedulerSuite) TestProcessFailed() {
 
 	s.cluster.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
 	s.catalog.EXPECT().AlterSegments(mock.Anything, mock.Anything).Return(nil)
-	s.scheduler.process()
+	s.inspector.inspect()
 	for _, id := range task.(*importTask).GetSegmentIDs() {
 		segment := s.meta.GetSegment(context.TODO(), id)
 		s.Equal(commonpb.SegmentState_Dropped, segment.GetState())
@@ -283,6 +283,6 @@ func (s *ImportSchedulerSuite) TestProcessFailed() {
 	s.Equal(int64(NullNodeID), task.GetNodeID())
 }
 
-func TestImportScheduler(t *testing.T) {
-	suite.Run(t, new(ImportSchedulerSuite))
+func TestImportInspector(t *testing.T) {
+	suite.Run(t, new(ImportInspectorSuite))
 }

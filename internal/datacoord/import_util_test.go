@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"math/rand"
 	"path"
 	"testing"
@@ -451,8 +452,11 @@ func TestImportUtil_CheckDiskQuota(t *testing.T) {
 }
 
 func TestImportUtil_DropImportTask(t *testing.T) {
-	cluster := NewMockCluster(t)
-	cluster.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
+	manager := session.NewMockDataNodeManager(t)
+	manager.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
+	cluster := session.Cluster{
+		DataNodeManager: manager,
+	}
 
 	catalog := mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListImportJobs(mock.Anything).Return(nil, nil)

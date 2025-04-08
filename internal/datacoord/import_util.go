@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"math"
 	"path"
 	"sort"
@@ -55,8 +56,7 @@ func WrapTaskLog(task ImportTask, fields ...zap.Field) []zap.Field {
 }
 
 func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
-	job ImportJob,
-	alloc allocator.Allocator,
+	job ImportJob, alloc allocator.Allocator, imeta ImportMeta,
 ) ([]ImportTask, error) {
 	idStart, _, err := alloc.AllocN(int64(len(fileGroups)))
 	if err != nil {
@@ -78,7 +78,8 @@ func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
 				FileStats:    fileStats,
 				CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
 			},
-			tr: timerecord.NewTimeRecorder("preimport task"),
+			imeta: imeta,
+			tr:    timerecord.NewTimeRecorder("preimport task"),
 		}
 		tasks = append(tasks, task)
 	}
@@ -86,7 +87,7 @@ func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
 }
 
 func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
-	job ImportJob, alloc allocator.Allocator, meta *meta,
+	job ImportJob, alloc allocator.Allocator, meta *meta, imeta ImportMeta,
 ) ([]ImportTask, error) {
 	idBegin, _, err := alloc.AllocN(int64(len(fileGroups)))
 	if err != nil {
@@ -104,7 +105,10 @@ func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
 				FileStats:    group,
 				CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
 			},
-			tr: timerecord.NewTimeRecorder("import task"),
+			alloc: alloc,
+			meta:  meta,
+			imeta: imeta,
+			tr:    timerecord.NewTimeRecorder("import task"),
 		}
 		segments, err := AssignSegments(job, task, alloc, meta)
 		if err != nil {
@@ -574,7 +578,7 @@ func GetTaskProgresses(jobID int64, imeta ImportMeta, meta *meta) []*internalpb.
 	return progresses
 }
 
-func DropImportTask(task ImportTask, cluster Cluster, tm ImportMeta) error {
+func DropImportTask(task ImportTask, cluster session.Cluster, tm ImportMeta) error {
 	if task.GetNodeID() == NullNodeID {
 		return nil
 	}

@@ -18,6 +18,7 @@ package datacoord
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -94,7 +95,7 @@ type importMeta struct {
 	catalog metastore.DataCoordCatalog
 }
 
-func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog) (ImportMeta, error) {
+func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, alloc allocator.Allocator, meta *meta, imeta ImportMeta) (ImportMeta, error) {
 	restoredPreImportTasks, err := catalog.ListPreImportTasks(ctx)
 	if err != nil {
 		return nil, err
@@ -113,12 +114,16 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog) (Imp
 	for _, task := range restoredPreImportTasks {
 		tasks.add(&preImportTask{
 			PreImportTask: task,
+			imeta:         imeta,
 			tr:            timerecord.NewTimeRecorder("preimport task"),
 		})
 	}
 	for _, task := range restoredImportTasks {
 		tasks.add(&importTask{
 			ImportTaskV2: task,
+			alloc:        alloc,
+			meta:         meta,
+			imeta:        imeta,
 			tr:           timerecord.NewTimeRecorder("import task"),
 		})
 	}

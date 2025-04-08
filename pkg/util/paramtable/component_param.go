@@ -3591,12 +3591,12 @@ type dataCoordConfig struct {
 	GCScanIntervalInHour    ParamItem `refreshable:"false"`
 	EnableActiveStandby     ParamItem `refreshable:"false"`
 
-	BindIndexNodeMode          ParamItem `refreshable:"false"`
-	IndexNodeAddress           ParamItem `refreshable:"false"`
-	WithCredential             ParamItem `refreshable:"false"`
-	IndexNodeID                ParamItem `refreshable:"false"`
-	IndexTaskSchedulerInterval ParamItem `refreshable:"false"`
-	TaskSlowThreshold          ParamItem `refreshable:"true"`
+	BindIndexNodeMode    ParamItem `refreshable:"false"`
+	IndexNodeAddress     ParamItem `refreshable:"false"`
+	WithCredential       ParamItem `refreshable:"false"`
+	IndexNodeID          ParamItem `refreshable:"false"`
+	TaskScheduleInterval ParamItem `refreshable:"false"`
+	TaskSlowThreshold    ParamItem `refreshable:"true"`
 
 	MinSegmentNumRowsToEnableIndex ParamItem `refreshable:"true"`
 	BrokerTimeout                  ParamItem `refreshable:"false"`
@@ -4326,12 +4326,12 @@ During compaction, the size of segment # of rows is able to exceed segment max #
 		Export:       true,
 	}
 	p.IndexNodeID.Init(base.mgr)
-	p.IndexTaskSchedulerInterval = ParamItem{
+	p.TaskScheduleInterval = ParamItem{
 		Key:          "indexCoord.scheduler.interval",
 		Version:      "2.0.0",
 		DefaultValue: "1000",
 	}
-	p.IndexTaskSchedulerInterval.Init(base.mgr)
+	p.TaskScheduleInterval.Init(base.mgr)
 
 	p.TaskSlowThreshold = ParamItem{
 		Key:          "datacoord.scheduler.taskSlowThreshold",

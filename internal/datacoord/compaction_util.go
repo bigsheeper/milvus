@@ -25,11 +25,12 @@ import (
 
 func compactionStateToTaskState(s datapb.CompactionTaskState) task.State {
 	switch s {
-	case datapb.CompactionTaskState_executing:
-		return task.InProgress
 	case datapb.CompactionTaskState_pipelining:
 		return task.Pending
-	case datapb.CompactionTaskState_completed:
+	case datapb.CompactionTaskState_executing:
+		return task.InProgress
+	case datapb.CompactionTaskState_completed, datapb.CompactionTaskState_meta_saved,
+		datapb.CompactionTaskState_statistic, datapb.CompactionTaskState_indexing, datapb.CompactionTaskState_cleaned:
 		return task.Finished
 	case datapb.CompactionTaskState_failed:
 		return task.Failed

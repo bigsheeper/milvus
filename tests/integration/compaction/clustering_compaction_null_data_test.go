@@ -294,7 +294,7 @@ func (s *ClusteringCompactionNullDataSuite) TestClusteringCompactionNullData() {
 		for {
 			select {
 			case <-timeoutCtx.Done():
-				s.Fail("check query segment info timeout")
+				s.FailNow("check query segment info timeout")
 				return
 			default:
 				if checkQuerySegmentInfo() {

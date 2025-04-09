@@ -130,7 +130,7 @@ type Server struct {
 	importChecker    ImportChecker
 
 	compactionTrigger        trigger
-	compactionHandler        compactionPlanContext
+	compactionInspector      CompactionInspector
 	compactionTriggerManager TriggerManager
 
 	syncSegmentsScheduler *SyncSegmentsScheduler
@@ -673,8 +673,8 @@ func (s *Server) initMeta(chunkManager storage.ChunkManager) error {
 
 func (s *Server) initTaskScheduler(manager storage.ChunkManager) {
 	if s.taskScheduler == nil {
-		s.taskScheduler = newTaskScheduler(s.ctx, s.meta, s.indexNodeManager, manager, s.indexEngineVersionManager, s.handler, s.allocator, s.compactionHandler)
-		s.compactionHandler.setTaskScheduler(s.taskScheduler)
+		s.taskScheduler = newTaskScheduler(s.ctx, s.meta, s.indexNodeManager, manager, s.indexEngineVersionManager, s.handler, s.allocator, s.compactionInspector)
+		s.compactionInspector.setTaskScheduler(s.taskScheduler)
 	}
 }
 
@@ -691,11 +691,11 @@ func (s *Server) initIndexNodeManager() {
 }
 
 func (s *Server) initCompaction() {
-	cph := newCompactionPlanHandler(s.cluster, s.sessionManager, s.meta, s.allocator, s.handler)
+	cph := newCompactionInspector(s.cluster, s.sessionManager, s.meta, s.allocator, s.handler)
 	cph.loadMeta()
-	s.compactionHandler = cph
-	s.compactionTriggerManager = NewCompactionTriggerManager(s.allocator, s.handler, s.compactionHandler, s.meta, s.importMeta)
-	s.compactionTrigger = newCompactionTrigger(s.meta, s.compactionHandler, s.allocator, s.handler, s.indexEngineVersionManager)
+	s.compactionInspector = cph
+	s.compactionTriggerManager = NewCompactionTriggerManager(s.allocator, s.handler, s.compactionInspector, s.meta, s.importMeta)
+	s.compactionTrigger = newCompactionTrigger(s.meta, s.compactionInspector, s.allocator, s.handler, s.indexEngineVersionManager)
 }
 
 func (s *Server) stopCompaction() {
@@ -706,14 +706,14 @@ func (s *Server) stopCompaction() {
 		s.compactionTriggerManager.Stop()
 	}
 
-	if s.compactionHandler != nil {
-		s.compactionHandler.stop()
+	if s.compactionInspector != nil {
+		s.compactionInspector.stop()
 	}
 }
 
 func (s *Server) startCompaction() {
-	if s.compactionHandler != nil {
-		s.compactionHandler.start()
+	if s.compactionInspector != nil {
+		s.compactionInspector.start()
 	}
 
 	if s.compactionTrigger != nil {

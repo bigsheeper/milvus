@@ -115,12 +115,24 @@ func (s *globalTaskScheduler) notify() {
 	}
 }
 
-func (s *globalTaskScheduler) pickNode(nodeSlots map[int64]int64) int64 {
-	for w, slots := range nodeSlots {
-		if slots >= 1 {
-			nodeSlots[w] = slots - 1
-			return w
+func (s *globalTaskScheduler) pickNode(workerSlots map[int64]*session.WorkerSlots, taskSlot int64) int64 {
+	var fallbackNodeID int64 = NullNodeID
+	var maxAvailable int64 = -1
+
+	for nodeID, ws := range workerSlots {
+		if ws.AvailableSlots >= taskSlot {
+			ws.AvailableSlots -= taskSlot
+			return nodeID
 		}
+		if ws.AvailableSlots > maxAvailable && ws.AvailableSlots > 0 {
+			maxAvailable = ws.AvailableSlots
+			fallbackNodeID = nodeID
+		}
+	}
+
+	if fallbackNodeID != NullNodeID {
+		workerSlots[fallbackNodeID].AvailableSlots = 0
+		return fallbackNodeID
 	}
 	return NullNodeID
 }
@@ -134,12 +146,13 @@ func (s *globalTaskScheduler) schedule() {
 	log.Ctx(s.ctx).Info("scheduling pending tasks...", zap.Int("num", pendingNum), zap.Any("nodeSlots", nodeSlots))
 
 	for {
-		nodeID := s.pickNode(nodeSlots)
-		if nodeID == NullNodeID {
-			break
-		}
 		task := s.pendingTasks.Pop()
 		if task == nil {
+			break
+		}
+		taskSlot := task.GetTaskSlot()
+		nodeID := s.pickNode(nodeSlots, taskSlot)
+		if nodeID == NullNodeID {
 			break
 		}
 		s.execPool.Submit(func() (struct{}, error) {

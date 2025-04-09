@@ -40,10 +40,9 @@ type ImportInspector interface {
 }
 
 type importInspector struct {
-	meta    *meta
-	cluster Cluster
-	alloc   allocator.Allocator
-	imeta   ImportMeta
+	meta  *meta
+	alloc allocator.Allocator
+	imeta ImportMeta
 
 	closeOnce sync.Once
 	closeChan chan struct{}
@@ -103,11 +102,11 @@ func (s *importInspector) inspect() {
 }
 
 func (s *importInspector) processPendingPreImport(task ImportTask) {
-	globalScheduler.Enqueue(task.(*preImportTask))
+	globalScheduler.Enqueue(task)
 }
 
 func (s *importInspector) processPendingImport(task ImportTask) {
-	globalScheduler.Enqueue(task.(*importTask))
+	globalScheduler.Enqueue(task)
 }
 
 func (s *importInspector) processFailed(task ImportTask) {

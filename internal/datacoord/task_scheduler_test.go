@@ -2110,9 +2110,9 @@ func (s *taskSchedulerSuite) Test_reload() {
 				tasks:           tasks,
 				segmentID2Tasks: secondaryIndex,
 			}))
-		compactionHandler := NewMockCompactionPlanContext(s.T())
-		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
-		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
+		inspector := NewMockCompactionInspector(s.T())
+		inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
+		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, inspector)
 		s.NotNil(scheduler)
 		s.True(mt.segments.segments[1000].isCompacting)
 		task, ok := scheduler.runningTasks.Get(statsTaskID)
@@ -2152,10 +2152,10 @@ func (s *taskSchedulerSuite) Test_reload() {
 				segmentID2Tasks: secondaryIndex,
 				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
-		compactionHandler := NewMockCompactionPlanContext(s.T())
-		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
+		inspector := NewMockCompactionInspector(s.T())
+		inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
 		mt.segments.segments[1000].isCompacting = true
-		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
+		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, inspector)
 		s.NotNil(scheduler)
 		s.True(mt.segments.segments[1000].isCompacting)
 		task := scheduler.pendingTasks.Get(statsTaskID)
@@ -2194,10 +2194,10 @@ func (s *taskSchedulerSuite) Test_reload() {
 				segmentID2Tasks: secondaryIndex,
 				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
-		compactionHandler := NewMockCompactionPlanContext(s.T())
-		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
+		inspector := NewMockCompactionInspector(s.T())
+		inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true).Maybe()
 		mt.segments.segments[1000].isCompacting = true
-		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
+		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, inspector)
 		s.NotNil(scheduler)
 		s.True(mt.segments.segments[1000].isCompacting)
 		task, ok := scheduler.runningTasks.Get(statsTaskID)
@@ -2237,10 +2237,10 @@ func (s *taskSchedulerSuite) Test_reload() {
 				segmentID2Tasks: secondaryIndex,
 				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
-		compactionHandler := NewMockCompactionPlanContext(s.T())
-		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
+		inspector := NewMockCompactionInspector(s.T())
+		inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
 		mt.segments.segments[1000].isCompacting = false
-		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
+		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, inspector)
 		s.NotNil(scheduler)
 		s.False(mt.segments.segments[1000].isCompacting)
 		task := scheduler.pendingTasks.Get(statsTaskID)
@@ -2280,10 +2280,10 @@ func (s *taskSchedulerSuite) Test_reload() {
 				segmentID2Tasks: secondaryIndex,
 				keyLock:         lock.NewKeyLock[UniqueID](),
 			}))
-		compactionHandler := NewMockCompactionPlanContext(s.T())
-		compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
+		inspector := NewMockCompactionInspector(s.T())
+		inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false).Maybe()
 		mt.segments.segments[1000].isCompacting = false
-		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, compactionHandler)
+		scheduler := newTaskScheduler(context.Background(), mt, workerManager, nil, nil, handler, nil, inspector)
 		s.NotNil(scheduler)
 		s.False(mt.segments.segments[1000].isCompacting)
 		task, ok := scheduler.runningTasks.Get(statsTaskID)
@@ -2375,7 +2375,7 @@ func (s *taskSchedulerSuite) Test_zeroSegmentStats() {
 		indexEngineVersionManager: newIndexEngineVersionManager(),
 		allocator:                 nil,
 		taskStats:                 expirable.NewLRU[UniqueID, Task](512, nil, time.Minute*15),
-		compactionHandler:         nil,
+		inspector:                 nil,
 	}
 	scheduler.Start()
 

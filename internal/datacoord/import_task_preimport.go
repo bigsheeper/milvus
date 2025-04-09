@@ -35,7 +35,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
 
-var _ task.Task = (*preImportTask)(nil)
+var _ ImportTask = (*preImportTask)(nil)
 
 type preImportTask struct {
 	*datapb.PreImportTask
@@ -132,10 +132,6 @@ func (p *preImportTask) GetType() TaskType {
 
 func (p *preImportTask) GetTR() *timerecord.TimeRecorder {
 	return p.tr
-}
-
-func (p *preImportTask) GetSlots() int64 {
-	return int64(funcutil.Min(len(p.GetFileStats()), paramtable.Get().DataNodeCfg.MaxTaskSlotNum.GetAsInt()))
 }
 
 func (p *preImportTask) Clone() ImportTask {

@@ -59,7 +59,7 @@ type taskScheduler struct {
 	indexEngineVersionManager IndexEngineVersionManager
 	handler                   Handler
 	allocator                 allocator.Allocator
-	compactionHandler         compactionPlanContext
+	inspector                 CompactionInspector
 
 	slotsMutex sync.RWMutex
 
@@ -73,7 +73,7 @@ func newTaskScheduler(
 	indexEngineVersionManager IndexEngineVersionManager,
 	handler Handler,
 	allocator allocator.Allocator,
-	compactionHandler compactionPlanContext,
+	inspector CompactionInspector,
 ) *taskScheduler {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -94,7 +94,7 @@ func newTaskScheduler(
 		indexEngineVersionManager: indexEngineVersionManager,
 		allocator:                 allocator,
 		taskStats:                 expirable.NewLRU[UniqueID, Task](512, nil, time.Minute*15),
-		compactionHandler:         compactionHandler,
+		inspector:                 inspector,
 	}
 	ts.reloadFromMeta()
 	return ts
@@ -214,7 +214,7 @@ func (s *taskScheduler) reloadFromMeta() {
 				task.taskInfo.State = indexpb.JobState_JobStateFailed
 				task.taskInfo.FailReason = "segment is not exist or is compacting"
 			} else {
-				if !s.compactionHandler.checkAndSetSegmentStating(t.GetInsertChannel(), t.GetSegmentID()) {
+				if !s.inspector.checkAndSetSegmentStating(t.GetInsertChannel(), t.GetSegmentID()) {
 					s.meta.SetSegmentsCompacting(context.TODO(), []UniqueID{t.GetSegmentID()}, false)
 					err := s.meta.statsTaskMeta.DropStatsTask(t.GetTaskID())
 					if err == nil {
@@ -519,7 +519,7 @@ func (s *taskScheduler) processInit(task Task, nodeID int64) bool {
 	log.Ctx(s.ctx).Info("pick client success", zap.Int64("taskID", task.GetTaskID()), zap.Int64("nodeID", nodeID))
 
 	// 2. update version
-	if err := task.UpdateVersion(s.ctx, nodeID, s.meta, s.compactionHandler); err != nil {
+	if err := task.UpdateVersion(s.ctx, nodeID, s.meta, s.inspector); err != nil {
 		log.Ctx(s.ctx).Warn("update task version failed", zap.Int64("taskID", task.GetTaskID()), zap.Error(err))
 		return false
 	}

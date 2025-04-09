@@ -49,7 +49,7 @@ type CompactionPlanHandlerSuite struct {
 	mockAlloc   *allocator.MockAllocator
 	mockCm      *MockChannelManager
 	mockSessMgr *session.MockDataNodeManager
-	handler     *compactionPlanHandler
+	handler     *compactionInspector
 	mockHandler *NMockHandler
 	cluster     *MockCluster
 }
@@ -61,7 +61,7 @@ func (s *CompactionPlanHandlerSuite) SetupTest() {
 	s.mockCm = NewMockChannelManager(s.T())
 	s.mockSessMgr = session.NewMockDataNodeManager(s.T())
 	s.cluster = NewMockCluster(s.T())
-	s.handler = newCompactionPlanHandler(s.cluster, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
+	s.handler = newCompactionInspector(s.cluster, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
 	s.mockHandler = NewNMockHandler(s.T())
 	s.mockHandler.EXPECT().GetCollection(mock.Anything, mock.Anything).Return(&collectionInfo{}, nil).Maybe()
 }
@@ -657,7 +657,7 @@ func (s *CompactionPlanHandlerSuite) TestCompactionQueueFull() {
 	paramtable.Get().Save("dataCoord.compaction.taskQueueCapacity", "1")
 	defer paramtable.Get().Reset("dataCoord.compaction.taskQueueCapacity")
 
-	s.handler = newCompactionPlanHandler(s.cluster, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
+	s.handler = newCompactionInspector(s.cluster, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
 
 	t1 := newMixCompactionTask(&datapb.CompactionTask{
 		TriggerID: 1,
@@ -683,7 +683,7 @@ func (s *CompactionPlanHandlerSuite) TestCompactionQueueFull() {
 func (s *CompactionPlanHandlerSuite) TestExecCompactionPlan() {
 	s.SetupTest()
 	s.mockMeta.EXPECT().CheckAndSetSegmentsCompacting(mock.Anything, mock.Anything).Return(true, true).Maybe()
-	handler := newCompactionPlanHandler(nil, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
+	handler := newCompactionInspector(nil, s.mockSessMgr, s.mockMeta, s.mockAlloc, nil)
 
 	task := &datapb.CompactionTask{
 		TriggerID: 1,
@@ -1069,7 +1069,7 @@ func (s *CompactionPlanHandlerSuite) TestCleanClusteringCompactionCommitFail() {
 	s.Equal(0, len(s.handler.cleaningTasks))
 }
 
-// test compactionHandler should keep clean the failed task until it become cleaned
+// test inspector should keep clean the failed task until it become cleaned
 func (s *CompactionPlanHandlerSuite) TestKeepClean() {
 	s.SetupTest()
 
@@ -1170,7 +1170,7 @@ func getDeltaLogPath(rootPath string, segmentID typeutil.UniqueID) string {
 }
 
 func TestCheckDelay(t *testing.T) {
-	handler := &compactionPlanHandler{}
+	handler := &compactionInspector{}
 	t1 := newMixCompactionTask(&datapb.CompactionTask{
 		StartTime: time.Now().Add(-100 * time.Minute).Unix(),
 	}, nil, nil, nil)
@@ -1220,7 +1220,7 @@ func TestGetCompactionTasksNum(t *testing.T) {
 		Type:         datapb.CompactionType_Level0DeleteCompaction,
 	}, nil, nil, nil)
 
-	handler := &compactionPlanHandler{
+	handler := &compactionInspector{
 		queueTasks:     queueTasks,
 		executingTasks: executingTasks,
 	}

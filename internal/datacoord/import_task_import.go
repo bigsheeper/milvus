@@ -40,7 +40,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
 
-var _ task.Task = (*importTask)(nil)
+var _ ImportTask = (*importTask)(nil)
 
 type importTask struct {
 	*datapb.ImportTaskV2
@@ -208,17 +208,6 @@ func (t *importTask) GetType() TaskType {
 
 func (t *importTask) GetTR() *timerecord.TimeRecorder {
 	return t.tr
-}
-
-func (t *importTask) GetSlots() int64 {
-	// Consider the following two scenarios:
-	// 1. Importing a large number of small files results in
-	//    a small total data size, making file count unsuitable as a slot number.
-	// 2. Importing a file with many shards number results in many segments and a small total data size,
-	//    making segment count unsuitable as a slot number.
-	// Taking these factors into account, we've decided to use the
-	// minimum value between segment count and file count as the slot number.
-	return int64(funcutil.Min(len(t.GetFileStats()), len(t.GetSegmentIDs()), paramtable.Get().DataNodeCfg.MaxTaskSlotNum.GetAsInt()))
 }
 
 func (t *importTask) Clone() ImportTask {

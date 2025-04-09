@@ -121,7 +121,7 @@ func (at *analyzeTask) GetTaskSlot() int64 {
 	return Params.DataCoordCfg.AnalyzeTaskSlotUsage.GetAsInt64()
 }
 
-func (at *analyzeTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, compactionHandler compactionPlanContext) error {
+func (at *analyzeTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, inspector CompactionInspector) error {
 	if err := meta.analyzeMeta.UpdateVersion(at.GetTaskID(), nodeID); err != nil {
 		return err
 	}

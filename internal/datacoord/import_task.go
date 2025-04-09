@@ -17,6 +17,7 @@
 package datacoord
 
 import (
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
@@ -145,6 +146,7 @@ func UpdateStatsSegmentIDs(segmentIDs []UniqueID) UpdateAction {
 }
 
 type ImportTask interface {
+	task.Task
 	GetJobID() int64
 	GetTaskID() int64
 	GetCollectionID() int64
@@ -154,7 +156,6 @@ type ImportTask interface {
 	GetReason() string
 	GetFileStats() []*datapb.ImportFileStats
 	GetTR() *timerecord.TimeRecorder
-	GetSlots() int64
 	Clone() ImportTask
 	GetSource() datapb.ImportTaskSourceV2
 }

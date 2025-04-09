@@ -23,13 +23,10 @@ import (
 
 var _ CompactionTask = (*mixCompactionTask)(nil)
 
-var _ task.Task = (*mixCompactionTask)(nil)
-
 type mixCompactionTask struct {
 	taskProto atomic.Value // *datapb.CompactionTask
 
 	allocator allocator.Allocator
-	sessions  session.DataNodeManager
 	meta      CompactionMeta
 }
 
@@ -155,18 +152,13 @@ func (t *mixCompactionTask) GetTaskProto() *datapb.CompactionTask {
 	return task.(*datapb.CompactionTask)
 }
 
-func newMixCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, session session.DataNodeManager) *mixCompactionTask {
+func newMixCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta) *mixCompactionTask {
 	task := &mixCompactionTask{
 		allocator: allocator,
 		meta:      meta,
-		sessions:  session,
 	}
 	task.taskProto.Store(t)
 	return task
-}
-
-func (t *mixCompactionTask) processPipelining() bool {
-
 }
 
 func (t *mixCompactionTask) processMetaSaved() bool {
@@ -177,10 +169,6 @@ func (t *mixCompactionTask) processMetaSaved() bool {
 	}
 
 	return t.processCompleted()
-}
-
-func (t *mixCompactionTask) processExecuting() bool {
-
 }
 
 func (t *mixCompactionTask) saveTaskMeta(task *datapb.CompactionTask) error {
@@ -220,10 +208,6 @@ func (t *mixCompactionTask) Process() bool {
 	lastState := t.GetTaskProto().GetState().String()
 	processResult := true
 	switch t.GetTaskProto().GetState() {
-	case datapb.CompactionTaskState_pipelining:
-		processResult = t.processPipelining()
-	case datapb.CompactionTaskState_executing:
-		processResult = t.processExecuting()
 	case datapb.CompactionTaskState_meta_saved:
 		processResult = t.processMetaSaved()
 	case datapb.CompactionTaskState_completed:
@@ -277,13 +261,6 @@ func (t *mixCompactionTask) Clean() bool {
 
 func (t *mixCompactionTask) doClean() error {
 	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("PlanID", t.GetTaskProto().GetPlanID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
-	if err := t.sessions.DropCompactionPlan(t.GetTaskProto().GetNodeID(), &datapb.DropCompactionPlanRequest{
-		PlanID: t.GetTaskProto().GetPlanID(),
-	}); err != nil {
-		log.Warn("mixCompactionTask processFailed unable to drop compaction plan", zap.Error(err))
-		return err
-	}
-
 	err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_cleaned))
 	if err != nil {
 		log.Warn("mixCompactionTask fail to updateAndSaveTaskMeta", zap.Error(err))

@@ -182,28 +182,28 @@ func (s *statsTaskSuite) TestTaskStats_PreCheck() {
 
 		s.Run("segment is in l0 compaction", func() {
 			s.mt.segments.segments[s.segID].isCompacting = false
-			compactionHandler := NewMockCompactionPlanContext(s.T())
-			compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false)
-			s.Error(st.UpdateVersion(context.Background(), 1, s.mt, compactionHandler))
+			inspector := NewMockCompactionInspector(s.T())
+			inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(false)
+			s.Error(st.UpdateVersion(context.Background(), 1, s.mt, inspector))
 			s.False(s.mt.segments.segments[s.segID].isCompacting)
 		})
 
 		s.Run("normal case", func() {
 			s.mt.segments.segments[s.segID].isCompacting = false
-			compactionHandler := NewMockCompactionPlanContext(s.T())
-			compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
+			inspector := NewMockCompactionInspector(s.T())
+			inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
 
 			catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil).Once()
-			s.NoError(st.UpdateVersion(context.Background(), 1, s.mt, compactionHandler))
+			s.NoError(st.UpdateVersion(context.Background(), 1, s.mt, inspector))
 		})
 
 		s.Run("failed case", func() {
 			s.mt.segments.segments[s.segID].isCompacting = false
-			compactionHandler := NewMockCompactionPlanContext(s.T())
-			compactionHandler.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
+			inspector := NewMockCompactionInspector(s.T())
+			inspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
 
 			catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(fmt.Errorf("error")).Once()
-			s.Error(st.UpdateVersion(context.Background(), 1, s.mt, compactionHandler))
+			s.Error(st.UpdateVersion(context.Background(), 1, s.mt, inspector))
 		})
 	})
 

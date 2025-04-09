@@ -11,9 +11,9 @@ packages:
       trigger:
         config:
           mockname: MockTrigger
-      compactionPlanContext:
+      CompactionInspector:
         config:
-          mockname: MockCompactionPlanContext
+          mockname: MockCompactionInspector
       Handler:
         config:
           mockname: NMockHandler

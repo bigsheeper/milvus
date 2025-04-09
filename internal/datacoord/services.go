@@ -705,7 +705,7 @@ func (s *Server) DropVirtualChannel(ctx context.Context, req *datapb.DropVirtual
 		}
 	}
 	s.segmentManager.DropSegmentsOfChannel(ctx, channel)
-	s.compactionHandler.removeTasksByChannel(channel)
+	s.compactionInspector.removeTasksByChannel(channel)
 	metrics.DataCoordCheckpointUnixSeconds.DeleteLabelValues(fmt.Sprint(paramtable.GetNodeID()), channel)
 	s.meta.MarkChannelCheckpointDropped(ctx, channel)
 
@@ -1221,7 +1221,7 @@ func (s *Server) ManualCompaction(ctx context.Context, req *milvuspb.ManualCompa
 		return resp, nil
 	}
 
-	taskCnt := s.compactionHandler.getCompactionTasksNumBySignalID(id)
+	taskCnt := s.compactionInspector.getCompactionTasksNumBySignalID(id)
 	if taskCnt == 0 {
 		resp.CompactionID = -1
 		resp.CompactionPlanCount = 0
@@ -1255,7 +1255,7 @@ func (s *Server) GetCompactionState(ctx context.Context, req *milvuspb.GetCompac
 		return resp, nil
 	}
 
-	info := s.compactionHandler.getCompactionInfo(ctx, req.GetCompactionID())
+	info := s.compactionInspector.getCompactionInfo(ctx, req.GetCompactionID())
 
 	resp.State = info.state
 	resp.ExecutingPlanNo = int64(info.executingCnt)
@@ -1289,7 +1289,7 @@ func (s *Server) GetCompactionStateWithPlans(ctx context.Context, req *milvuspb.
 		return resp, nil
 	}
 
-	info := s.compactionHandler.getCompactionInfo(ctx, req.GetCompactionID())
+	info := s.compactionInspector.getCompactionInfo(ctx, req.GetCompactionID())
 	resp.State = info.state
 	resp.MergeInfos = lo.MapToSlice[int64, *milvuspb.CompactionMergeInfo](info.mergeInfos, func(_ int64, merge *milvuspb.CompactionMergeInfo) *milvuspb.CompactionMergeInfo {
 		return merge

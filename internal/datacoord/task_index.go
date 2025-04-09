@@ -125,7 +125,7 @@ func (it *indexBuildTask) GetTaskSlot() int64 {
 	return it.taskSlot
 }
 
-func (it *indexBuildTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, compactionHandler compactionPlanContext) error {
+func (it *indexBuildTask) UpdateVersion(ctx context.Context, nodeID int64, meta *meta, inspector CompactionInspector) error {
 	if err := meta.indexMeta.UpdateVersion(it.taskID, nodeID); err != nil {
 		return err
 	}

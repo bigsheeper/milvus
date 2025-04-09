@@ -55,7 +55,7 @@ func (t *importTask) GetTaskType() task.Type {
 	return task.Import
 }
 
-func toTaskState(s datapb.ImportTaskStateV2) task.State {
+func importStateToTaskState(s datapb.ImportTaskStateV2) task.State {
 	switch s {
 	case datapb.ImportTaskStateV2_Pending:
 		return task.Pending
@@ -70,7 +70,7 @@ func toTaskState(s datapb.ImportTaskStateV2) task.State {
 }
 
 func (t *importTask) GetTaskState() task.State {
-	return toTaskState(t.GetState())
+	return importStateToTaskState(t.GetState())
 }
 
 func (t *importTask) GetTaskNodeID() int64 {

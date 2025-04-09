@@ -49,7 +49,7 @@ func (p *preImportTask) GetTaskType() task.Type {
 }
 
 func (p *preImportTask) GetTaskState() task.State {
-	return toTaskState(p.GetState())
+	return importStateToTaskState(p.GetState())
 }
 
 func (p *preImportTask) GetTaskSlot() int64 {
@@ -120,8 +120,10 @@ func (p *preImportTask) QueryTaskOnWorker(cluster session.Cluster) {
 }
 
 func (p *preImportTask) DropTaskOnWorker(cluster session.Cluster) {
-	//TODO implement me
-	panic("implement me")
+	err := DropImportTask(p, cluster, p.imeta)
+	if err != nil {
+		log.Warn("drop import failed", WrapTaskLog(p, zap.Error(err))...)
+	}
 }
 
 func (p *preImportTask) GetType() TaskType {

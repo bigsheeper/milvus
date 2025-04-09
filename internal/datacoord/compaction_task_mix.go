@@ -3,6 +3,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -22,12 +23,128 @@ import (
 
 var _ CompactionTask = (*mixCompactionTask)(nil)
 
+var _ task.Task = (*mixCompactionTask)(nil)
+
 type mixCompactionTask struct {
 	taskProto atomic.Value // *datapb.CompactionTask
 
 	allocator allocator.Allocator
 	sessions  session.DataNodeManager
 	meta      CompactionMeta
+}
+
+func (t *mixCompactionTask) GetTaskID() int64 {
+	return t.GetTaskProto().GetPlanID()
+}
+
+func (t *mixCompactionTask) GetTaskType() task.Type {
+	return task.Compaction
+}
+
+func (t *mixCompactionTask) GetTaskState() task.State {
+	return compactionStateToTaskState(t.GetTaskProto().GetState())
+}
+
+func (t *mixCompactionTask) GetTaskSlot() int64 {
+	return 4 // TODO: sheep, make it configurable
+}
+
+func (t *mixCompactionTask) CreateTaskOnWorker(nodeID int64, cluster session.Cluster) {
+	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()),
+		zap.Int64("PlanID", t.GetTaskProto().GetPlanID()),
+		zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()),
+		zap.Int64("nodeID", nodeID))
+
+	plan, err := t.BuildCompactionRequest()
+	if err != nil {
+		log.Warn("mixCompactionTask failed to build compaction request", zap.Error(err))
+		err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed), setFailReason(err.Error()))
+		if err != nil {
+			log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
+		}
+		return
+	}
+
+	err = cluster.Compaction(context.TODO(), nodeID, plan)
+	if err != nil {
+		// Compaction tasks may be refused by DataNode because of slot limit. In this case, the node id is reset
+		//  to enable a retry in compaction.checkCompaction().
+		// This is tricky, we should remove the reassignment here.
+		originNodeID := t.GetTaskProto().GetNodeID()
+		log.Warn("mixCompactionTask failed to notify compaction tasks to DataNode",
+			zap.Int64("planID", t.GetTaskProto().GetPlanID()),
+			zap.Int64("nodeID", originNodeID),
+			zap.Error(err))
+		err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_pipelining), setNodeID(NullNodeID))
+		if err != nil {
+			log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
+		}
+		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", originNodeID), t.GetTaskProto().GetType().String(), metrics.Executing).Dec()
+		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Inc()
+		return
+	}
+	log.Info("mixCompactionTask notify compaction tasks to DataNode")
+
+	err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_executing), setNodeID(nodeID))
+	if err != nil {
+		log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
+	}
+}
+
+func (t *mixCompactionTask) QueryTaskOnWorker(cluster session.Cluster) {
+	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()),
+		zap.Int64("PlanID", t.GetTaskProto().GetPlanID()),
+		zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
+	result, err := cluster.GetCompactionPlanResult(t.GetTaskProto().GetNodeID(), t.GetTaskProto().GetPlanID())
+	if err != nil || result == nil {
+		if errors.Is(err, merr.ErrNodeNotFound) {
+			if err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_pipelining), setNodeID(NullNodeID)); err != nil {
+				log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
+			}
+		}
+		log.Warn("mixCompactionTask failed to get compaction result", zap.Error(err))
+		return
+	}
+	switch result.GetState() {
+	case datapb.CompactionTaskState_completed:
+		if len(result.GetSegments()) == 0 {
+			log.Info("illegal compaction results")
+			err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
+			if err != nil {
+				log.Warn("mixCompactionTask failed to setState failed", zap.Error(err))
+			}
+			return
+		}
+		if err := t.saveSegmentMeta(result); err != nil {
+			log.Warn("mixCompactionTask failed to save segment meta", zap.Error(err))
+			if errors.Is(err, merr.ErrIllegalCompactionPlan) {
+				err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
+				if err != nil {
+					log.Warn("mixCompactionTask failed to setState failed", zap.Error(err))
+				}
+			}
+			return
+		}
+		UpdateCompactionSegmentSizeMetrics(result.GetSegments())
+		t.processMetaSaved()
+	case datapb.CompactionTaskState_failed:
+		log.Info("mixCompactionTask fail in datanode")
+		err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
+		if err != nil {
+			log.Warn("fail to updateAndSaveTaskMeta")
+		}
+	}
+}
+
+func (t *mixCompactionTask) DropTaskOnWorker(cluster session.Cluster) {
+	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()),
+		zap.Int64("PlanID", t.GetTaskProto().GetPlanID()),
+		zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
+	if err := cluster.DropCompactionPlan(t.GetTaskProto().GetNodeID(), &datapb.DropCompactionPlanRequest{
+		PlanID: t.GetTaskProto().GetPlanID(),
+	}); err != nil {
+		log.Warn("mixCompactionTask processCompleted unable to drop compaction plan")
+	}
 }
 
 func (t *mixCompactionTask) GetTaskProto() *datapb.CompactionTask {
@@ -49,49 +166,7 @@ func newMixCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocato
 }
 
 func (t *mixCompactionTask) processPipelining() bool {
-	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("PlanID", t.GetTaskProto().GetPlanID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()), zap.Int64("nodeID", t.GetTaskProto().GetNodeID()))
-	if t.NeedReAssignNodeID() {
-		log.Info("mixCompactionTask need assign nodeID")
-		return false
-	}
 
-	plan, err := t.BuildCompactionRequest()
-	if err != nil {
-		log.Warn("mixCompactionTask failed to build compaction request", zap.Error(err))
-		err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed), setFailReason(err.Error()))
-		if err != nil {
-			log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
-			return false
-		}
-		return true
-	}
-
-	err = t.sessions.Compaction(context.TODO(), t.GetTaskProto().GetNodeID(), plan)
-	if err != nil {
-		// Compaction tasks may be refused by DataNode because of slot limit. In this case, the node id is reset
-		//  to enable a retry in compaction.checkCompaction().
-		// This is tricky, we should remove the reassignment here.
-		originNodeID := t.GetTaskProto().GetNodeID()
-		log.Warn("mixCompactionTask failed to notify compaction tasks to DataNode",
-			zap.Int64("planID", t.GetTaskProto().GetPlanID()),
-			zap.Int64("nodeID", originNodeID),
-			zap.Error(err))
-		err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_pipelining), setNodeID(NullNodeID))
-		if err != nil {
-			log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
-		}
-		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", originNodeID), t.GetTaskProto().GetType().String(), metrics.Executing).Dec()
-		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Inc()
-		return false
-	}
-	log.Info("mixCompactionTask notify compaction tasks to DataNode")
-
-	err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_executing))
-	if err != nil {
-		log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
-		return false
-	}
-	return false
 }
 
 func (t *mixCompactionTask) processMetaSaved() bool {
@@ -105,51 +180,7 @@ func (t *mixCompactionTask) processMetaSaved() bool {
 }
 
 func (t *mixCompactionTask) processExecuting() bool {
-	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("PlanID", t.GetTaskProto().GetPlanID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
-	result, err := t.sessions.GetCompactionPlanResult(t.GetTaskProto().GetNodeID(), t.GetTaskProto().GetPlanID())
-	if err != nil || result == nil {
-		if errors.Is(err, merr.ErrNodeNotFound) {
-			if err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_pipelining), setNodeID(NullNodeID)); err != nil {
-				log.Warn("mixCompactionTask failed to updateAndSaveTaskMeta", zap.Error(err))
-			}
-		}
-		log.Warn("mixCompactionTask failed to get compaction result", zap.Error(err))
-		return false
-	}
-	switch result.GetState() {
-	case datapb.CompactionTaskState_completed:
-		if len(result.GetSegments()) == 0 {
-			log.Info("illegal compaction results")
-			err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
-			if err != nil {
-				log.Warn("mixCompactionTask failed to setState failed", zap.Error(err))
-				return false
-			}
-			return true
-		}
-		if err := t.saveSegmentMeta(result); err != nil {
-			log.Warn("mixCompactionTask failed to save segment meta", zap.Error(err))
-			if errors.Is(err, merr.ErrIllegalCompactionPlan) {
-				err = t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
-				if err != nil {
-					log.Warn("mixCompactionTask failed to setState failed", zap.Error(err))
-					return false
-				}
-				return true
-			}
-			return false
-		}
-		UpdateCompactionSegmentSizeMetrics(result.GetSegments())
-		return t.processMetaSaved()
-	case datapb.CompactionTaskState_failed:
-		log.Info("mixCompactionTask fail in datanode")
-		err := t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_failed))
-		if err != nil {
-			log.Warn("fail to updateAndSaveTaskMeta")
-		}
-		return true
-	}
-	return false
+
 }
 
 func (t *mixCompactionTask) saveTaskMeta(task *datapb.CompactionTask) error {
@@ -216,16 +247,11 @@ func (t *mixCompactionTask) NeedReAssignNodeID() bool {
 }
 
 func (t *mixCompactionTask) processCompleted() bool {
-	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("PlanID", t.GetTaskProto().GetPlanID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
-	if err := t.sessions.DropCompactionPlan(t.GetTaskProto().GetNodeID(), &datapb.DropCompactionPlanRequest{
-		PlanID: t.GetTaskProto().GetPlanID(),
-	}); err != nil {
-		log.Warn("mixCompactionTask processCompleted unable to drop compaction plan")
-	}
-
+	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()),
+		zap.Int64("PlanID", t.GetTaskProto().GetPlanID()),
+		zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
 	t.resetSegmentCompacting()
 	log.Info("mixCompactionTask processCompleted done")
-
 	return true
 }
 

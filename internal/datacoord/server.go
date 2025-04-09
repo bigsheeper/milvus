@@ -378,7 +378,7 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("init service discovery done")
 
-	globalScheduler = task.NewGlobalTaskScheduler(s.ctx)
+	globalScheduler = task.NewGlobalTaskScheduler(s.ctx, session.Cluster{DataNodeManager: s.sessionManager, WorkerManager: s.indexNodeManager})
 
 	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta, s.importMeta)
 	if err != nil {

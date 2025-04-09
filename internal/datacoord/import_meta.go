@@ -258,12 +258,16 @@ func (m *importMeta) UpdateTask(ctx context.Context, taskID int64, actions ...Up
 				return err
 			}
 			m.tasks.add(updatedTask)
+			// update memory task
+			task.(*preImportTask).PreImportTask = updatedTask.(*preImportTask).PreImportTask
 		case ImportTaskType:
 			err := m.catalog.SaveImportTask(ctx, updatedTask.(*importTask).ImportTaskV2)
 			if err != nil {
 				return err
 			}
 			m.tasks.add(updatedTask)
+			// update memory task
+			task.(*importTask).ImportTaskV2 = updatedTask.(*importTask).ImportTaskV2
 		}
 	}
 

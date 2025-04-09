@@ -180,7 +180,7 @@ func (s *globalTaskScheduler) check() {
 	}
 }
 
-func NewGlobalTaskScheduler(ctx context.Context) GlobalScheduler {
+func NewGlobalTaskScheduler(ctx context.Context, cluster session.Cluster) GlobalScheduler {
 	execPool := conc.NewPool[struct{}](128)
 	checkPool := conc.NewPool[struct{}](128)
 	ctx1, cancel := context.WithCancel(ctx)
@@ -193,6 +193,6 @@ func NewGlobalTaskScheduler(ctx context.Context) GlobalScheduler {
 		runningTasks: typeutil.NewConcurrentMap[int64, Task](),
 		execPool:     execPool,
 		checkPool:    checkPool,
-		cluster:      session.Cluster{},
+		cluster:      cluster,
 	}
 }

@@ -69,7 +69,7 @@ func TestImportUtil_NewPreImportTasks(t *testing.T) {
 		id := rand.Int63()
 		return id, id + n, nil
 	})
-	tasks, err := NewPreImportTasks(fileGroups, job, alloc)
+	tasks, err := NewPreImportTasks(fileGroups, job, alloc, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(tasks))
 }
@@ -124,7 +124,7 @@ func TestImportUtil_NewImportTasks(t *testing.T) {
 	meta, err := newMeta(context.TODO(), catalog, nil, broker)
 	assert.NoError(t, err)
 
-	tasks, err := NewImportTasks(fileGroups, job, alloc, meta)
+	tasks, err := NewImportTasks(fileGroups, job, alloc, meta, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(tasks))
 	for _, task := range tasks {
@@ -182,7 +182,7 @@ func TestImportUtil_NewImportTasksWithDataTt(t *testing.T) {
 	meta, err := newMeta(context.TODO(), catalog, nil, broker)
 	assert.NoError(t, err)
 
-	tasks, err := NewImportTasks(fileGroups, job, alloc, meta)
+	tasks, err := NewImportTasks(fileGroups, job, alloc, meta, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(tasks))
 	for _, task := range tasks {
@@ -382,7 +382,7 @@ func TestImportUtil_CheckDiskQuota(t *testing.T) {
 	catalog.EXPECT().ListPartitionStatsInfos(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
 
-	imeta, err := NewImportMeta(context.TODO(), catalog)
+	imeta, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	broker := broker.NewMockBroker(t)
@@ -464,7 +464,7 @@ func TestImportUtil_DropImportTask(t *testing.T) {
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(nil)
 
-	imeta, err := NewImportMeta(context.TODO(), catalog)
+	imeta, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	task := &importTask{
@@ -572,7 +572,7 @@ func TestImportUtil_GetImportProgress(t *testing.T) {
 	catalog.EXPECT().ListPartitionStatsInfos(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
 
-	imeta, err := NewImportMeta(context.TODO(), catalog)
+	imeta, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	broker := broker.NewMockBroker(t)

@@ -1364,7 +1364,7 @@ func TestImportV2(t *testing.T) {
 		catalog.EXPECT().ListImportJobs(mock.Anything).Return(nil, nil)
 		catalog.EXPECT().ListPreImportTasks(mock.Anything).Return(nil, nil)
 		catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
-		s.importMeta, err = NewImportMeta(context.TODO(), catalog)
+		s.importMeta, err = NewImportMeta(context.TODO(), catalog, nil, nil)
 		assert.NoError(t, err)
 		alloc := allocator.NewMockAllocator(t)
 		alloc.EXPECT().AllocN(mock.Anything).Return(0, 0, mockErr)
@@ -1382,7 +1382,7 @@ func TestImportV2(t *testing.T) {
 		catalog.EXPECT().ListPreImportTasks(mock.Anything).Return(nil, nil)
 		catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
 		catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(mockErr)
-		s.importMeta, err = NewImportMeta(context.TODO(), catalog)
+		s.importMeta, err = NewImportMeta(context.TODO(), catalog, nil, nil)
 		assert.NoError(t, err)
 		resp, err = s.ImportV2(ctx, &internalpb.ImportRequestInternal{
 			Files: []*internalpb.ImportFile{
@@ -1452,7 +1452,7 @@ func TestImportV2(t *testing.T) {
 		streaming.SetWALForTest(wal)
 		defer streaming.RecoverWALForTest()
 
-		s.importMeta, err = NewImportMeta(context.TODO(), catalog)
+		s.importMeta, err = NewImportMeta(context.TODO(), catalog, nil, nil)
 		assert.NoError(t, err)
 		resp, err = s.GetImportProgress(ctx, &internalpb.GetImportProgressRequest{
 			JobID: "-1",
@@ -1495,7 +1495,7 @@ func TestImportV2(t *testing.T) {
 		catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
 		catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 		catalog.EXPECT().SavePreImportTask(mock.Anything, mock.Anything).Return(nil)
-		s.importMeta, err = NewImportMeta(context.TODO(), catalog)
+		s.importMeta, err = NewImportMeta(context.TODO(), catalog, nil, nil)
 		assert.NoError(t, err)
 		var job ImportJob = &importJob{
 			ImportJob: &datapb.ImportJob{

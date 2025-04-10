@@ -113,8 +113,8 @@ func (s *ClusteringCompactionTaskSuite) TestClusteringCompactionSegmentMetaChang
 	s.mockSessionMgr.EXPECT().Compaction(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	task := s.generateBasicTask(false)
 
-	err := task.processPipelining()
-	s.NoError(err)
+	cluster := session.Cluster{DataNodeManager: s.mockSessionMgr}
+	task.CreateTaskOnWorker(1, cluster)
 
 	seg11 := s.meta.GetSegment(context.TODO(), 101)
 	s.Equal(datapb.SegmentLevel_L1, seg11.Level)
@@ -147,7 +147,7 @@ func (s *ClusteringCompactionTaskSuite) TestClusteringCompactionSegmentMetaChang
 
 	s.mockSessionMgr.EXPECT().DropCompactionPlan(mock.Anything, mock.Anything).Return(nil)
 
-	err = task.doClean()
+	err := task.doClean()
 	s.NoError(err)
 
 	s.Run("v2.4.x", func() {
@@ -191,7 +191,6 @@ func (s *ClusteringCompactionTaskSuite) TestClusteringCompactionSegmentMetaChang
 		})
 
 		task := s.generateBasicTask(false)
-		task.sessions = s.mockSessionMgr
 		s.mockSessionMgr.EXPECT().DropCompactionPlan(mock.Anything, mock.Anything).Return(nil)
 		task.GetTaskProto().InputSegments = []int64{101, 102}
 		task.GetTaskProto().ResultSegments = []int64{103, 104}
@@ -278,7 +277,6 @@ func (s *ClusteringCompactionTaskSuite) TestClusteringCompactionSegmentMetaChang
 		})
 
 		task := s.generateBasicTask(false)
-		task.sessions = s.mockSessionMgr
 		s.mockSessionMgr.EXPECT().DropCompactionPlan(mock.Anything, mock.Anything).Return(nil)
 		task.GetTaskProto().InputSegments = []int64{101, 102}
 		task.GetTaskProto().TmpSegments = []int64{103, 104}
@@ -352,7 +350,7 @@ func (s *ClusteringCompactionTaskSuite) generateBasicTask(vectorClusteringKey bo
 		ResultSegments:     []int64{1000, 1100},
 	}
 
-	task := newClusteringCompactionTask(compactionTask, s.mockAlloc, s.meta, s.mockSessionMgr, s.handler, s.analyzeScheduler)
+	task := newClusteringCompactionTask(compactionTask, s.mockAlloc, s.meta, s.handler, s.analyzeScheduler)
 	task.maxRetryTimes = 0
 	return task
 }
@@ -611,28 +609,29 @@ func (s *ClusteringCompactionTaskSuite) TestProcessExecuting() {
 
 func (s *ClusteringCompactionTaskSuite) TestProcessExecutingState() {
 	task := s.generateBasicTask(false)
+	cluster := session.Cluster{DataNodeManager: s.mockSessionMgr}
 	s.mockSessionMgr.EXPECT().GetCompactionPlanResult(mock.Anything, mock.Anything).Return(&datapb.CompactionPlanResult{
 		State: datapb.CompactionTaskState_failed,
 	}, nil).Once()
-	s.NoError(task.processExecuting())
+	task.QueryTaskOnWorker(cluster)
 	s.Equal(datapb.CompactionTaskState_failed, task.GetTaskProto().GetState())
 
 	s.mockSessionMgr.EXPECT().GetCompactionPlanResult(mock.Anything, mock.Anything).Return(&datapb.CompactionPlanResult{
 		State: datapb.CompactionTaskState_failed,
 	}, nil).Once()
-	s.NoError(task.processExecuting())
+	task.QueryTaskOnWorker(cluster)
 	s.Equal(datapb.CompactionTaskState_failed, task.GetTaskProto().GetState())
 
 	s.mockSessionMgr.EXPECT().GetCompactionPlanResult(mock.Anything, mock.Anything).Return(&datapb.CompactionPlanResult{
 		State: datapb.CompactionTaskState_pipelining,
 	}, nil).Once()
-	s.NoError(task.processExecuting())
+	task.QueryTaskOnWorker(cluster)
 	s.Equal(datapb.CompactionTaskState_failed, task.GetTaskProto().GetState())
 
 	s.mockSessionMgr.EXPECT().GetCompactionPlanResult(mock.Anything, mock.Anything).Return(&datapb.CompactionPlanResult{
 		State: datapb.CompactionTaskState_completed,
 	}, nil).Once()
-	s.Error(task.processExecuting())
+	task.QueryTaskOnWorker(cluster)
 	s.Equal(datapb.CompactionTaskState_failed, task.GetTaskProto().GetState())
 
 	s.mockSessionMgr.EXPECT().GetCompactionPlanResult(mock.Anything, mock.Anything).Return(&datapb.CompactionPlanResult{
@@ -646,7 +645,7 @@ func (s *ClusteringCompactionTaskSuite) TestProcessExecutingState() {
 			},
 		},
 	}, nil).Once()
-	s.Error(task.processExecuting())
+	task.QueryTaskOnWorker(cluster)
 	s.Equal(datapb.CompactionTaskState_failed, task.GetTaskProto().GetState())
 }
 

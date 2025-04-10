@@ -97,7 +97,7 @@ func (s *L0CompactionTaskSuite) TestProcessRefreshPlan_NormalL0() {
 		NodeID:        1,
 		State:         datapb.CompactionTaskState_executing,
 		InputSegments: []int64{100, 101},
-	}, nil, s.mockMeta, nil)
+	}, nil, s.mockMeta)
 	alloc := allocator.NewMockAllocator(s.T())
 	alloc.EXPECT().AllocN(mock.Anything).Return(100, 200, nil)
 	task.allocator = alloc
@@ -127,7 +127,7 @@ func (s *L0CompactionTaskSuite) TestProcessRefreshPlan_SegmentNotFoundL0() {
 		Type:          datapb.CompactionType_Level0DeleteCompaction,
 		NodeID:        1,
 		State:         datapb.CompactionTaskState_executing,
-	}, nil, s.mockMeta, nil)
+	}, nil, s.mockMeta)
 
 	_, err := task.BuildCompactionRequest()
 	s.Error(err)
@@ -157,7 +157,7 @@ func (s *L0CompactionTaskSuite) TestProcessRefreshPlan_SelectZeroSegmentsL0() {
 		NodeID:        1,
 		State:         datapb.CompactionTaskState_executing,
 		InputSegments: []int64{100, 101},
-	}, nil, s.mockMeta, nil)
+	}, nil, s.mockMeta)
 	_, err := task.BuildCompactionRequest()
 	s.Error(err)
 }
@@ -208,7 +208,7 @@ func (s *L0CompactionTaskSuite) generateTestL0Task(state datapb.CompactionTaskSt
 		State:         state,
 		Channel:       "ch-1",
 		InputSegments: []int64{100, 101},
-	}, s.mockAlloc, s.mockMeta, s.mockSessMgr)
+	}, s.mockAlloc, s.mockMeta)
 }
 
 func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {

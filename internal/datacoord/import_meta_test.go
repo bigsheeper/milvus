@@ -40,7 +40,7 @@ func TestImportMeta_Restore(t *testing.T) {
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return([]*datapb.ImportTaskV2{{TaskID: 2}}, nil)
 	ctx := context.TODO()
 
-	im, err := NewImportMeta(ctx, catalog)
+	im, err := NewImportMeta(ctx, catalog, nil, nil)
 	assert.NoError(t, err)
 
 	jobs := im.GetJobBy(ctx)
@@ -59,20 +59,20 @@ func TestImportMeta_Restore(t *testing.T) {
 	mockErr := errors.New("mock error")
 	catalog = mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListPreImportTasks(mock.Anything).Return([]*datapb.PreImportTask{{TaskID: 1}}, mockErr)
-	_, err = NewImportMeta(ctx, catalog)
+	_, err = NewImportMeta(ctx, catalog, nil, nil)
 	assert.Error(t, err)
 
 	catalog = mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return([]*datapb.ImportTaskV2{{TaskID: 2}}, mockErr)
 	catalog.EXPECT().ListPreImportTasks(mock.Anything).Return([]*datapb.PreImportTask{{TaskID: 1}}, nil)
-	_, err = NewImportMeta(ctx, catalog)
+	_, err = NewImportMeta(ctx, catalog, nil, nil)
 	assert.Error(t, err)
 
 	catalog = mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListImportJobs(mock.Anything).Return([]*datapb.ImportJob{{JobID: 0}}, mockErr)
 	catalog.EXPECT().ListPreImportTasks(mock.Anything).Return([]*datapb.PreImportTask{{TaskID: 1}}, nil)
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return([]*datapb.ImportTaskV2{{TaskID: 2}}, nil)
-	_, err = NewImportMeta(ctx, catalog)
+	_, err = NewImportMeta(ctx, catalog, nil, nil)
 	assert.Error(t, err)
 }
 
@@ -84,7 +84,7 @@ func TestImportMeta_Job(t *testing.T) {
 	catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 	catalog.EXPECT().DropImportJob(mock.Anything, mock.Anything).Return(nil)
 
-	im, err := NewImportMeta(context.TODO(), catalog)
+	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	jobIDs := []int64{1000, 2000, 3000}
@@ -158,7 +158,7 @@ func TestImportMetaAddJob(t *testing.T) {
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil)
 
-	im, err := NewImportMeta(context.TODO(), catalog)
+	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	var job ImportJob = &importJob{
@@ -201,7 +201,7 @@ func TestImportMeta_ImportTask(t *testing.T) {
 	catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(nil)
 	catalog.EXPECT().DropImportTask(mock.Anything, mock.Anything).Return(nil)
 
-	im, err := NewImportMeta(context.TODO(), catalog)
+	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	task1 := &importTask{
@@ -262,7 +262,7 @@ func TestImportMeta_Task_Failed(t *testing.T) {
 	catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(mockErr)
 	catalog.EXPECT().DropImportTask(mock.Anything, mock.Anything).Return(mockErr)
 
-	im, err := NewImportMeta(context.TODO(), catalog)
+	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 	im.(*importMeta).catalog = catalog
 
@@ -293,7 +293,7 @@ func TestTaskStatsJSON(t *testing.T) {
 	catalog.EXPECT().ListImportTasks(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().SaveImportTask(mock.Anything, mock.Anything).Return(nil)
 
-	im, err := NewImportMeta(context.TODO(), catalog)
+	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
 	statsJSON := im.TaskStatsJSON(context.TODO())

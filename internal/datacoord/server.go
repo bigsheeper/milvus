@@ -380,7 +380,7 @@ func (s *Server) initDataCoord() error {
 
 	globalScheduler = task.NewGlobalTaskScheduler(s.ctx, session.Cluster{DataNodeManager: s.sessionManager, WorkerManager: s.indexNodeManager})
 
-	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta, s.importMeta)
+	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta)
 	if err != nil {
 		return err
 	}
@@ -691,7 +691,7 @@ func (s *Server) initIndexNodeManager() {
 }
 
 func (s *Server) initCompaction() {
-	cph := newCompactionInspector(s.cluster, s.sessionManager, s.meta, s.allocator, s.handler)
+	cph := newCompactionInspector(s.cluster, s.meta, s.allocator, s.handler)
 	cph.loadMeta()
 	s.compactionInspector = cph
 	s.compactionTriggerManager = NewCompactionTriggerManager(s.allocator, s.handler, s.compactionInspector, s.meta, s.importMeta)

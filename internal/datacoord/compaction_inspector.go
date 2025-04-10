@@ -29,7 +29,6 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
-	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
@@ -91,7 +90,6 @@ type compactionInspector struct {
 
 	meta             CompactionMeta
 	allocator        allocator.Allocator
-	sessions         session.DataNodeManager
 	cluster          Cluster
 	analyzeScheduler *taskScheduler
 	handler          Handler
@@ -199,7 +197,7 @@ func (c *compactionInspector) getCompactionTasksNumBySignalID(triggerID int64) i
 	return cnt
 }
 
-func newCompactionInspector(cluster Cluster, sessions session.DataNodeManager, meta CompactionMeta,
+func newCompactionInspector(cluster Cluster, meta CompactionMeta,
 	allocator allocator.Allocator, handler Handler,
 ) *compactionInspector {
 	// Higher capacity will have better ordering in priority, but consumes more memory.
@@ -208,7 +206,6 @@ func newCompactionInspector(cluster Cluster, sessions session.DataNodeManager, m
 	return &compactionInspector{
 		queueTasks:     NewCompactionQueue(capacity, getPrioritizer()),
 		meta:           meta,
-		sessions:       sessions,
 		allocator:      allocator,
 		stopCh:         make(chan struct{}),
 		cluster:        cluster,

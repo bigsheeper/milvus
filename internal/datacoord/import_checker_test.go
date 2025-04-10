@@ -68,15 +68,15 @@ func (s *ImportCheckerSuite) SetupTest() {
 	cluster := NewMockCluster(s.T())
 	s.alloc = allocator.NewMockAllocator(s.T())
 
-	imeta, err := NewImportMeta(context.TODO(), catalog)
-	s.NoError(err)
-	s.imeta = imeta
-
 	broker := broker2.NewMockBroker(s.T())
 	broker.EXPECT().ShowCollectionIDs(mock.Anything).Return(nil, nil)
 
 	meta, err := newMeta(context.TODO(), catalog, nil, broker)
 	s.NoError(err)
+
+	imeta, err := NewImportMeta(context.TODO(), catalog, s.alloc, meta)
+	s.NoError(err)
+	s.imeta = imeta
 
 	sjm := NewMockStatsJobManager(s.T())
 	l0CompactionTrigger := NewMockTriggerManager(s.T())
@@ -542,12 +542,15 @@ func TestImportCheckerCompaction(t *testing.T) {
 	cluster := NewMockCluster(t)
 	alloc := allocator.NewMockAllocator(t)
 
-	imeta, err := NewImportMeta(context.TODO(), catalog)
-	assert.NoError(t, err)
-
 	broker := broker2.NewMockBroker(t)
 	broker.EXPECT().ShowCollectionIDs(mock.Anything).Return(&rootcoordpb.ShowCollectionIDsResponse{}, nil)
+
 	meta, err := newMeta(context.TODO(), catalog, nil, broker)
+	assert.NoError(t, err)
+
+	imeta, err := NewImportMeta(context.TODO(), catalog, alloc, meta)
+	assert.NoError(t, err)
+
 	sjm := NewMockStatsJobManager(t)
 	l0CompactionTrigger := NewMockTriggerManager(t)
 	compactionChan := make(chan struct{}, 1)

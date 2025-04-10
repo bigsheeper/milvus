@@ -95,7 +95,7 @@ type importMeta struct {
 	catalog metastore.DataCoordCatalog
 }
 
-func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, alloc allocator.Allocator, meta *meta, imeta ImportMeta) (ImportMeta, error) {
+func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, alloc allocator.Allocator, meta *meta) (ImportMeta, error) {
 	restoredPreImportTasks, err := catalog.ListPreImportTasks(ctx)
 	if err != nil {
 		return nil, err
@@ -110,6 +110,7 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, allo
 	}
 
 	tasks := newImportTasks()
+	imeta := &importMeta{}
 
 	for _, task := range restoredPreImportTasks {
 		tasks.add(&preImportTask{
@@ -136,11 +137,10 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, allo
 		}
 	}
 
-	return &importMeta{
-		jobs:    jobs,
-		tasks:   tasks,
-		catalog: catalog,
-	}, nil
+	imeta.jobs = jobs
+	imeta.tasks = tasks
+	imeta.catalog = catalog
+	return imeta, nil
 }
 
 func (m *importMeta) AddJob(ctx context.Context, job ImportJob) error {

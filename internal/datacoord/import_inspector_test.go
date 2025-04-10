@@ -75,7 +75,7 @@ func (s *ImportInspectorSuite) SetupTest() {
 		ID:     s.collectionID,
 		Schema: newTestSchema(),
 	})
-	s.imeta, err = NewImportMeta(context.TODO(), s.catalog)
+	s.imeta, err = NewImportMeta(context.TODO(), s.catalog, s.alloc, s.meta)
 	s.NoError(err)
 	s.inspector = NewImportInspector(s.meta, s.imeta).(*importInspector)
 }

@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/compaction"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
+	globalTask "github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/v2/common"
 	"github.com/milvus-io/milvus/pkg/v2/log"
@@ -56,7 +57,7 @@ type clusteringCompactionTask struct {
 	allocator        allocator.Allocator
 	meta             CompactionMeta
 	handler          Handler
-	analyzeScheduler *taskScheduler
+	analyzeScheduler globalTask.GlobalScheduler
 
 	maxRetryTimes int32
 }
@@ -219,7 +220,7 @@ func (t *clusteringCompactionTask) GetTaskProto() *datapb.CompactionTask {
 	return task.(*datapb.CompactionTask)
 }
 
-func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, handler Handler, analyzeScheduler *taskScheduler) *clusteringCompactionTask {
+func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, handler Handler, analyzeScheduler globalTask.GlobalScheduler) *clusteringCompactionTask {
 	task := &clusteringCompactionTask{
 		allocator:        allocator,
 		meta:             meta,
@@ -715,7 +716,16 @@ func (t *clusteringCompactionTask) doAnalyze() error {
 		return err
 	}
 
-	t.analyzeScheduler.enqueue(newAnalyzeTask(t.GetTaskProto().GetAnalyzeTaskID()))
+	t.analyzeScheduler.Enqueue(newAnalyzeTask(&indexpb.AnalyzeTask{
+		CollectionID: t.GetTaskProto().GetCollectionID(),
+		PartitionID:  t.GetTaskProto().GetPartitionID(),
+		FieldID:      t.GetTaskProto().GetClusteringKeyField().FieldID,
+		FieldName:    t.GetTaskProto().GetClusteringKeyField().Name,
+		FieldType:    t.GetTaskProto().GetClusteringKeyField().DataType,
+		SegmentIDs:   t.GetTaskProto().GetInputSegments(),
+		TaskID:       t.GetTaskProto().GetAnalyzeTaskID(),
+		State:        indexpb.JobState_JobStateInit,
+	}, t.meta.(*meta)))
 
 	log.Info("submit analyze task", zap.Int64("planID", t.GetTaskProto().GetPlanID()), zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()), zap.Int64("id", t.GetTaskProto().GetAnalyzeTaskID()))
 	return t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_analyzing))

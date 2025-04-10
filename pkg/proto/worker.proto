@@ -88,7 +88,7 @@ message CreateJobRequest {
 
 message QueryJobsRequest {
   string clusterID = 1;
-  repeated int64 buildIDs = 2;
+  repeated int64 taskIDs = 2;
 }
 
 message QueryJobsResponse {
@@ -99,7 +99,7 @@ message QueryJobsResponse {
 
 message DropJobsRequest {
   string clusterID = 1;
-  repeated int64 buildIDs = 2;
+  repeated int64 taskIDs = 2;
 }
 
 message GetJobStatsRequest {

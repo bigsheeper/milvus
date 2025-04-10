@@ -59,7 +59,6 @@ type CompactionInspector interface {
 	getCompactionTasksNumBySignalID(signalID int64) int
 	getCompactionInfo(ctx context.Context, signalID int64) *compactionInfo
 	removeTasksByChannel(channel string)
-	setTaskScheduler(scheduler *taskScheduler)
 	checkAndSetSegmentStating(channel string, segmentID int64) bool
 	getCompactionTasksNum(filters ...compactionTaskFilter) int
 }
@@ -91,7 +90,8 @@ type compactionInspector struct {
 
 	meta             CompactionMeta
 	allocator        allocator.Allocator
-	analyzeScheduler *taskScheduler
+	cluster          Cluster
+	analyzeScheduler task.GlobalScheduler
 	handler          Handler
 	scheduler        task.GlobalScheduler
 
@@ -224,10 +224,6 @@ func (c *compactionInspector) checkSchedule() {
 	}
 	c.cleanFailedTasks()
 	c.schedule()
-}
-
-func (c *compactionInspector) setTaskScheduler(scheduler *taskScheduler) {
-	c.analyzeScheduler = scheduler
 }
 
 func (c *compactionInspector) schedule() []CompactionTask {

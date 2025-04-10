@@ -67,9 +67,6 @@ func (h *spyCompactionInspector) getCompactionInfo(ctx context.Context, signalID
 	return nil
 }
 
-func (h *spyCompactionInspector) setTaskScheduler(scheduler *taskScheduler) {
-}
-
 var _ CompactionInspector = (*spyCompactionInspector)(nil)
 
 func (h *spyCompactionInspector) removeTasksByChannel(channel string) {}

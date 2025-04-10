@@ -193,7 +193,7 @@ func (s *globalTaskScheduler) check() {
 		future := s.checkPool.Submit(func() (struct{}, error) {
 			task.QueryTaskOnWorker(s.cluster)
 			switch task.GetTaskState() {
-			case taskcommon.Retry:
+			case taskcommon.Pending, taskcommon.Retry:
 				s.pendingTasks.Push(task)
 			case taskcommon.Finished, taskcommon.Failed:
 				task.DropTaskOnWorker(s.cluster)

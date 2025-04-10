@@ -60,18 +60,18 @@ type Cluster interface {
 
 	// Index
 	CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
-	QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.IndexJobResults, error)
-	DropIndex(nodeID int64, in *workerpb.DropJobsV2Request) error
+	QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error)
+	DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error
 
 	// Stats
 	CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) error
-	QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.StatsResults, error)
-	DropStats(nodeID int64, in *workerpb.DropJobsV2Request) error
+	QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)
+	DropStats(nodeID int64, in *workerpb.DropJobsRequest) error
 
 	// Analyze
 	CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
-	QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.AnalyzeResults, error)
-	DropAnalyze(nodeID int64, in *workerpb.DropJobsV2Request) error
+	QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error)
+	DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error
 }
 
 var _ Cluster = (*cluster)(nil)
@@ -345,7 +345,7 @@ func (c *cluster) CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
 	return c.createTask(nodeID, in, properties)
 }
 
-func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.IndexJobResults, error) {
+func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error) {
 	properties := task.NewProperties()
 	properties.AppendType(task.Index)
 	resp, err := c.queryTask(nodeID, in, properties)
@@ -360,7 +360,7 @@ func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request) (*wo
 	return result, nil
 }
 
-func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
 	properties := task.NewProperties()
 	properties.AppendType(task.Index)
 	return c.dropTask(nodeID, in, properties)
@@ -372,7 +372,7 @@ func (c *cluster) CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) err
 	return c.createTask(nodeID, in, properties)
 }
 
-func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.StatsResults, error) {
+func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error) {
 	properties := task.NewProperties()
 	properties.AppendType(task.Stats)
 	resp, err := c.queryTask(nodeID, in, properties)
@@ -387,7 +387,7 @@ func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request) (*wo
 	return result, nil
 }
 
-func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
 	properties := task.NewProperties()
 	properties.AppendType(task.Stats)
 	return c.dropTask(nodeID, in, properties)
@@ -399,7 +399,7 @@ func (c *cluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
 	return c.createTask(nodeID, in, properties)
 }
 
-func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.AnalyzeResults, error) {
+func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error) {
 	properties := task.NewProperties()
 	properties.AppendType(task.Analyze)
 	resp, err := c.queryTask(nodeID, in, properties)
@@ -414,7 +414,7 @@ func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Request) (*
 	return result, nil
 }
 
-func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {
 	properties := task.NewProperties()
 	properties.AppendType(task.Analyze)
 	return c.dropTask(nodeID, in, properties)

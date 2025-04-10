@@ -153,9 +153,10 @@ type Server struct {
 	indexNodeManager          session.WorkerManager
 	indexEngineVersionManager IndexEngineVersionManager
 
-	taskScheduler   *taskScheduler
-	jobManager      StatsJobManager
-	globalScheduler task.GlobalScheduler
+	statsInspector   *statsInspector
+	indexInspector   *indexInspector
+	analyzeInspector *analyzeInspector
+	globalScheduler  task.GlobalScheduler
 
 	// manage ways that data coord access other coord
 	broker broker.Broker
@@ -304,10 +305,13 @@ func (s *Server) initDataCoord() error {
 	s.initCompaction()
 	log.Info("init compaction done")
 
-	s.initTaskScheduler(storageCli)
+	s.initAnalyzeInspector()
+	log.Info("init analyze inspector done")
+
+	s.initIndexInspector(storageCli)
 	log.Info("init task scheduler done")
 
-	s.initJobManager()
+	s.initStatsInspector()
 	log.Info("init statsJobManager done")
 
 	if err = s.initSegmentManager(); err != nil {
@@ -318,7 +322,8 @@ func (s *Server) initDataCoord() error {
 	s.initGarbageCollection(storageCli)
 
 	s.importInspector = NewImportInspector(s.meta, s.importMeta, s.globalScheduler)
-	s.importChecker = NewImportChecker(s.meta, s.broker, s.allocator, s.importMeta, s.jobManager, s.compactionTriggerManager)
+
+	s.importChecker = NewImportChecker(s.meta, s.broker, s.allocator, s.importMeta, s.statsInspector, s.compactionTriggerManager)
 
 	s.syncSegmentsScheduler = newSyncSegmentsScheduler(s.meta, s.channelManager, s.sessionManager)
 
@@ -574,16 +579,21 @@ func (s *Server) initMeta(chunkManager storage.ChunkManager) error {
 	return retry.Do(s.ctx, reloadEtcdFn, retry.Attempts(connMetaMaxRetryTime))
 }
 
-func (s *Server) initTaskScheduler(manager storage.ChunkManager) {
-	if s.taskScheduler == nil {
-		s.taskScheduler = newTaskScheduler(s.ctx, s.meta, s.indexNodeManager, manager, s.indexEngineVersionManager, s.handler, s.allocator, s.compactionInspector)
-		s.compactionInspector.setTaskScheduler(s.taskScheduler)
+func (s *Server) initAnalyzeInspector() {
+	if s.analyzeInspector == nil {
+		s.analyzeInspector = newAnalyzeInspector(s.ctx, s.meta, s.globalScheduler)
 	}
 }
 
-func (s *Server) initJobManager() {
-	if s.jobManager == nil {
-		s.jobManager = newJobManager(s.ctx, s.meta, s.taskScheduler, s.allocator)
+func (s *Server) initIndexInspector(storageCli storage.ChunkManager) {
+	if s.indexInspector == nil {
+		s.indexInspector = newIndexInspector(s.ctx, s.notifyIndexChan, s.meta, s.globalScheduler, s.allocator, s.handler, storageCli, s.indexEngineVersionManager)
+	}
+}
+
+func (s *Server) initStatsInspector() {
+	if s.statsInspector == nil {
+		s.statsInspector = newStatsInspector(s.ctx, s.meta, s.globalScheduler, s.allocator, s.handler, s.compactionInspector)
 	}
 }
 
@@ -669,10 +679,9 @@ func (s *Server) collectMetaMetrics(ctx context.Context) {
 }
 
 func (s *Server) startTaskScheduler() {
-	s.taskScheduler.Start()
-	s.jobManager.Start()
-
-	s.startIndexService(s.serverLoopCtx)
+	s.statsInspector.Start()
+	s.indexInspector.Start()
+	s.analyzeInspector.Start()
 	s.startCollectMetaMetrics(s.serverLoopCtx)
 }
 
@@ -968,11 +977,14 @@ func (s *Server) Stop() error {
 	s.stopCompaction()
 	log.Info("datacoord compaction stopped")
 
-	s.jobManager.Stop()
-	log.Info("datacoord statsJobManager stopped")
+	s.statsInspector.Stop()
+	log.Info("datacoord stats inspector stopped")
 
-	s.taskScheduler.Stop()
-	log.Info("datacoord index builder stopped")
+	s.indexInspector.Stop()
+	log.Info("datacoord index inspector stopped")
+
+	s.analyzeInspector.Stop()
+	log.Info("datacoord analyze inspector stopped")
 
 	s.cluster.Close()
 	log.Info("datacoord cluster stopped")

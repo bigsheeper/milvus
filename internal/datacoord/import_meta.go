@@ -113,20 +113,22 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, allo
 	imeta := &importMeta{}
 
 	for _, task := range restoredPreImportTasks {
-		tasks.add(&preImportTask{
-			PreImportTask: task,
-			imeta:         imeta,
-			tr:            timerecord.NewTimeRecorder("preimport task"),
-		})
+		t := &preImportTask{
+			imeta: imeta,
+			tr:    timerecord.NewTimeRecorder("preimport task"),
+		}
+		t.task.Store(task)
+		tasks.add(t)
 	}
 	for _, task := range restoredImportTasks {
-		tasks.add(&importTask{
-			ImportTaskV2: task,
-			alloc:        alloc,
-			meta:         meta,
-			imeta:        imeta,
-			tr:           timerecord.NewTimeRecorder("import task"),
-		})
+		t := &importTask{
+			alloc: alloc,
+			meta:  meta,
+			imeta: imeta,
+			tr:    timerecord.NewTimeRecorder("import task"),
+		}
+		t.task.Store(task)
+		tasks.add(t)
 	}
 
 	jobs := make(map[int64]ImportJob)
@@ -228,13 +230,13 @@ func (m *importMeta) AddTask(ctx context.Context, task ImportTask) error {
 	defer m.mu.Unlock()
 	switch task.GetType() {
 	case PreImportTaskType:
-		err := m.catalog.SavePreImportTask(ctx, task.(*preImportTask).PreImportTask)
+		err := m.catalog.SavePreImportTask(ctx, task.(*preImportTask).task.Load())
 		if err != nil {
 			return err
 		}
 		m.tasks.add(task)
 	case ImportTaskType:
-		err := m.catalog.SaveImportTask(ctx, task.(*importTask).ImportTaskV2)
+		err := m.catalog.SaveImportTask(ctx, task.(*importTask).task.Load())
 		if err != nil {
 			return err
 		}
@@ -253,21 +255,21 @@ func (m *importMeta) UpdateTask(ctx context.Context, taskID int64, actions ...Up
 		}
 		switch updatedTask.GetType() {
 		case PreImportTaskType:
-			err := m.catalog.SavePreImportTask(ctx, updatedTask.(*preImportTask).PreImportTask)
+			err := m.catalog.SavePreImportTask(ctx, updatedTask.(*preImportTask).task.Load())
 			if err != nil {
 				return err
 			}
 			m.tasks.add(updatedTask)
 			// update memory task
-			task.(*preImportTask).PreImportTask = updatedTask.(*preImportTask).PreImportTask
+			task.(*preImportTask).task.Store(updatedTask.(*preImportTask).task.Load())
 		case ImportTaskType:
-			err := m.catalog.SaveImportTask(ctx, updatedTask.(*importTask).ImportTaskV2)
+			err := m.catalog.SaveImportTask(ctx, updatedTask.(*importTask).task.Load())
 			if err != nil {
 				return err
 			}
 			m.tasks.add(updatedTask)
 			// update memory task
-			task.(*importTask).ImportTaskV2 = updatedTask.(*importTask).ImportTaskV2
+			task.(*importTask).task.Store(updatedTask.(*importTask).task.Load())
 		}
 	}
 

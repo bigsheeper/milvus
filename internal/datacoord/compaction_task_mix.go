@@ -206,7 +206,7 @@ func (t *mixCompactionTask) Process() bool {
 		zap.Int64("PlanID", t.GetTaskProto().GetPlanID()),
 		zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
 	lastState := t.GetTaskProto().GetState().String()
-	processResult := true
+	processResult := false
 	switch t.GetTaskProto().GetState() {
 	case datapb.CompactionTaskState_meta_saved:
 		processResult = t.processMetaSaved()
@@ -214,6 +214,8 @@ func (t *mixCompactionTask) Process() bool {
 		processResult = t.processCompleted()
 	case datapb.CompactionTaskState_failed:
 		processResult = t.processFailed()
+	case datapb.CompactionTaskState_timeout:
+		processResult = true
 	}
 	currentState := t.GetTaskProto().GetState().String()
 	if currentState != lastState {

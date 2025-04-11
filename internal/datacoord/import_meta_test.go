@@ -204,16 +204,16 @@ func TestImportMeta_ImportTask(t *testing.T) {
 	im, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
-	task1 := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:        1,
-			TaskID:       2,
-			CollectionID: 3,
-			SegmentIDs:   []int64{5, 6},
-			NodeID:       7,
-			State:        datapb.ImportTaskStateV2_Pending,
-		},
+	taskProto := &datapb.ImportTaskV2{
+		JobID:        1,
+		TaskID:       2,
+		CollectionID: 3,
+		SegmentIDs:   []int64{5, 6},
+		NodeID:       7,
+		State:        datapb.ImportTaskStateV2_Pending,
 	}
+	task1 := &importTask{}
+	task1.task.Store(taskProto)
 	err = im.AddTask(context.TODO(), task1)
 	assert.NoError(t, err)
 	err = im.AddTask(context.TODO(), task1)
@@ -222,8 +222,8 @@ func TestImportMeta_ImportTask(t *testing.T) {
 	assert.Equal(t, task1, res)
 
 	task2 := task1.Clone()
-	task2.(*importTask).TaskID = 8
-	task2.(*importTask).State = datapb.ImportTaskStateV2_Completed
+	task2.(*importTask).task.Load().TaskID = 8
+	task2.(*importTask).task.Load().State = datapb.ImportTaskStateV2_Completed
 	err = im.AddTask(context.TODO(), task2)
 	assert.NoError(t, err)
 
@@ -266,16 +266,16 @@ func TestImportMeta_Task_Failed(t *testing.T) {
 	assert.NoError(t, err)
 	im.(*importMeta).catalog = catalog
 
-	task := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:        1,
-			TaskID:       2,
-			CollectionID: 3,
-			SegmentIDs:   []int64{5, 6},
-			NodeID:       7,
-			State:        datapb.ImportTaskStateV2_Pending,
-		},
+	taskProto := &datapb.ImportTaskV2{
+		JobID:        1,
+		TaskID:       2,
+		CollectionID: 3,
+		SegmentIDs:   []int64{5, 6},
+		NodeID:       7,
+		State:        datapb.ImportTaskStateV2_Pending,
 	}
+	task := &importTask{}
+	task.task.Store(taskProto)
 
 	err = im.AddTask(context.TODO(), task)
 	assert.Error(t, err)
@@ -299,19 +299,17 @@ func TestTaskStatsJSON(t *testing.T) {
 	statsJSON := im.TaskStatsJSON(context.TODO())
 	assert.Equal(t, "[]", statsJSON)
 
-	task1 := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			TaskID: 1,
-		},
+	taskProto := &datapb.ImportTaskV2{
+		TaskID: 1,
 	}
+	task1 := &importTask{}
+	task1.task.Store(taskProto)
 	err = im.AddTask(context.TODO(), task1)
 	assert.NoError(t, err)
 
-	task2 := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			TaskID: 2,
-		},
-	}
+	taskProto.TaskID = 2
+	task2 := &importTask{}
+	task2.task.Store(taskProto)
 	err = im.AddTask(context.TODO(), task2)
 	assert.NoError(t, err)
 

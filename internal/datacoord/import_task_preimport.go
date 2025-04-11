@@ -18,9 +18,9 @@ package datacoord
 
 import (
 	"context"
+	"sync/atomic"
 
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/internal/datacoord/task"
@@ -33,15 +33,52 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 var _ ImportTask = (*preImportTask)(nil)
 
 type preImportTask struct {
-	*datapb.PreImportTask
+	task atomic.Pointer[datapb.PreImportTask]
 
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
+}
+
+func (p *preImportTask) GetJobID() int64 {
+	return p.task.Load().GetJobID()
+}
+
+func (p *preImportTask) GetTaskID() int64 {
+	return p.task.Load().GetTaskID()
+}
+
+func (p *preImportTask) GetCollectionID() int64 {
+	return p.task.Load().GetCollectionID()
+}
+
+func (p *preImportTask) GetNodeID() int64 {
+	return p.task.Load().GetNodeID()
+}
+
+func (p *preImportTask) GetState() datapb.ImportTaskStateV2 {
+	return p.task.Load().GetState()
+}
+
+func (p *preImportTask) GetReason() string {
+	return p.task.Load().GetReason()
+}
+
+func (p *preImportTask) GetFileStats() []*datapb.ImportFileStats {
+	return p.task.Load().GetFileStats()
+}
+
+func (p *preImportTask) GetCreatedTime() string {
+	return p.task.Load().GetCreatedTime()
+}
+
+func (p *preImportTask) GetCompleteTime() string {
+	return p.task.Load().GetCompleteTime()
 }
 
 func (p *preImportTask) GetTaskType() task.Type {
@@ -135,11 +172,12 @@ func (p *preImportTask) GetTR() *timerecord.TimeRecorder {
 }
 
 func (p *preImportTask) Clone() ImportTask {
-	return &preImportTask{
-		PreImportTask: proto.Clone(p.PreImportTask).(*datapb.PreImportTask),
-		imeta:         p.imeta,
-		tr:            p.tr,
+	cloned := &preImportTask{
+		imeta: p.imeta,
+		tr:    p.tr,
 	}
+	cloned.task.Store(typeutil.Clone(p.task.Load()))
+	return cloned
 }
 
 func (p *preImportTask) GetSource() datapb.ImportTaskSourceV2 {

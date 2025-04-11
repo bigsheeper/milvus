@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/datacoord/task"
+
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
 
@@ -93,6 +95,7 @@ type compactionInspector struct {
 	cluster          Cluster
 	analyzeScheduler *taskScheduler
 	handler          Handler
+	scheduler        task.GlobalScheduler
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -198,7 +201,7 @@ func (c *compactionInspector) getCompactionTasksNumBySignalID(triggerID int64) i
 }
 
 func newCompactionInspector(cluster Cluster, meta CompactionMeta,
-	allocator allocator.Allocator, handler Handler,
+	allocator allocator.Allocator, handler Handler, scheduler task.GlobalScheduler,
 ) *compactionInspector {
 	// Higher capacity will have better ordering in priority, but consumes more memory.
 	// TODO[GOOSE]: Higher capacity makes tasks waiting longer, which need to be get rid of.
@@ -212,6 +215,7 @@ func newCompactionInspector(cluster Cluster, meta CompactionMeta,
 		executingTasks: make(map[int64]CompactionTask),
 		cleaningTasks:  make(map[int64]CompactionTask),
 		handler:        handler,
+		scheduler:      scheduler,
 	}
 }
 
@@ -317,7 +321,7 @@ func (c *compactionInspector) schedule() []CompactionTask {
 			}
 		}
 		c.executingTasks[t.GetTaskProto().GetPlanID()] = t
-		globalScheduler.Enqueue(t)
+		c.scheduler.Enqueue(t)
 		c.executingGuard.Unlock()
 		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Dec()
 		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", t.GetTaskProto().GetNodeID()), t.GetTaskProto().GetType().String(), metrics.Executing).Inc()

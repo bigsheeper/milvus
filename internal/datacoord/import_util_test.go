@@ -19,11 +19,12 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"math/rand"
 	"path"
 	"testing"
 	"time"
+
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -196,14 +197,15 @@ func TestImportUtil_AssembleRequest(t *testing.T) {
 		ImportJob: &datapb.ImportJob{JobID: 0, CollectionID: 1, PartitionIDs: []int64{2}, Vchannels: []string{"v0"}},
 	}
 
-	var pt ImportTask = &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:        0,
-			TaskID:       3,
-			CollectionID: 1,
-			State:        datapb.ImportTaskStateV2_Pending,
-		},
+	preImportTaskProto := &datapb.PreImportTask{
+		JobID:        0,
+		TaskID:       3,
+		CollectionID: 1,
+		State:        datapb.ImportTaskStateV2_Pending,
 	}
+
+	var pt ImportTask = &preImportTask{}
+	pt.(*preImportTask).task.Store(preImportTaskProto)
 	preimportReq := AssemblePreImportRequest(pt, job)
 	assert.Equal(t, pt.GetJobID(), preimportReq.GetJobID())
 	assert.Equal(t, pt.GetTaskID(), preimportReq.GetTaskID())
@@ -211,14 +213,14 @@ func TestImportUtil_AssembleRequest(t *testing.T) {
 	assert.Equal(t, job.GetPartitionIDs(), preimportReq.GetPartitionIDs())
 	assert.Equal(t, job.GetVchannels(), preimportReq.GetVchannels())
 
-	var task ImportTask = &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:        0,
-			TaskID:       4,
-			CollectionID: 1,
-			SegmentIDs:   []int64{5, 6},
-		},
+	importTaskProto := &datapb.ImportTaskV2{
+		JobID:        0,
+		TaskID:       4,
+		CollectionID: 1,
+		SegmentIDs:   []int64{5, 6},
 	}
+	var task ImportTask = &importTask{}
+	task.(*importTask).task.Store(importTaskProto)
 
 	catalog := mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListChannelCheckpoint(mock.Anything).Return(nil, nil)
@@ -264,14 +266,15 @@ func TestImportUtil_AssembleRequestWithDataTt(t *testing.T) {
 		ImportJob: &datapb.ImportJob{JobID: 0, CollectionID: 1, PartitionIDs: []int64{2}, Vchannels: []string{"v0"}, DataTs: 100},
 	}
 
-	var pt ImportTask = &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:        0,
-			TaskID:       3,
-			CollectionID: 1,
-			State:        datapb.ImportTaskStateV2_Pending,
-		},
+	preImportTaskProto := &datapb.PreImportTask{
+		JobID:        0,
+		TaskID:       3,
+		CollectionID: 1,
+		State:        datapb.ImportTaskStateV2_Pending,
 	}
+
+	var pt ImportTask = &preImportTask{}
+	pt.(*preImportTask).task.Store(preImportTaskProto)
 	preimportReq := AssemblePreImportRequest(pt, job)
 	assert.Equal(t, pt.GetJobID(), preimportReq.GetJobID())
 	assert.Equal(t, pt.GetTaskID(), preimportReq.GetTaskID())
@@ -279,14 +282,14 @@ func TestImportUtil_AssembleRequestWithDataTt(t *testing.T) {
 	assert.Equal(t, job.GetPartitionIDs(), preimportReq.GetPartitionIDs())
 	assert.Equal(t, job.GetVchannels(), preimportReq.GetVchannels())
 
-	var task ImportTask = &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:        0,
-			TaskID:       4,
-			CollectionID: 1,
-			SegmentIDs:   []int64{5, 6},
-		},
+	importTaskProto := &datapb.ImportTaskV2{
+		JobID:        0,
+		TaskID:       4,
+		CollectionID: 1,
+		SegmentIDs:   []int64{5, 6},
 	}
+	var task ImportTask = &importTask{}
+	task.(*importTask).task.Store(importTaskProto)
 
 	catalog := mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListChannelCheckpoint(mock.Anything).Return(nil, nil)
@@ -399,16 +402,16 @@ func TestImportUtil_CheckDiskQuota(t *testing.T) {
 	err = imeta.AddJob(context.TODO(), job)
 	assert.NoError(t, err)
 
-	pit := &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:  job.GetJobID(),
-			TaskID: 1,
-			FileStats: []*datapb.ImportFileStats{
-				{TotalMemorySize: 1000 * 1024 * 1024},
-				{TotalMemorySize: 2000 * 1024 * 1024},
-			},
+	preImportTaskProto := &datapb.PreImportTask{
+		JobID:  job.GetJobID(),
+		TaskID: 1,
+		FileStats: []*datapb.ImportFileStats{
+			{TotalMemorySize: 1000 * 1024 * 1024},
+			{TotalMemorySize: 2000 * 1024 * 1024},
 		},
 	}
+	pit := &preImportTask{}
+	pit.task.Store(preImportTaskProto)
 	err = imeta.AddTask(context.TODO(), pit)
 	assert.NoError(t, err)
 
@@ -467,12 +470,12 @@ func TestImportUtil_DropImportTask(t *testing.T) {
 	imeta, err := NewImportMeta(context.TODO(), catalog, nil, nil)
 	assert.NoError(t, err)
 
-	task := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:  0,
-			TaskID: 1,
-		},
+	taskProto := &datapb.ImportTaskV2{
+		JobID:  0,
+		TaskID: 1,
 	}
+	task := &importTask{}
+	task.task.Store(taskProto)
 	err = imeta.AddTask(context.TODO(), task)
 	assert.NoError(t, err)
 
@@ -601,58 +604,59 @@ func TestImportUtil_GetImportProgress(t *testing.T) {
 	err = imeta.AddJob(context.TODO(), job)
 	assert.NoError(t, err)
 
-	pit1 := &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:  job.GetJobID(),
-			TaskID: 1,
-			State:  datapb.ImportTaskStateV2_Completed,
-			Reason: mockErr,
-			FileStats: []*datapb.ImportFileStats{
-				{
-					ImportFile: file1,
-				},
-				{
-					ImportFile: file2,
-				},
+	preImportTaskProto := &datapb.PreImportTask{
+		JobID:  job.GetJobID(),
+		TaskID: 1,
+		State:  datapb.ImportTaskStateV2_Completed,
+		Reason: mockErr,
+		FileStats: []*datapb.ImportFileStats{
+			{
+				ImportFile: file1,
+			},
+			{
+				ImportFile: file2,
 			},
 		},
 	}
+
+	pit1 := &preImportTask{}
+	pit1.task.Store(preImportTaskProto)
 	err = imeta.AddTask(context.TODO(), pit1)
 	assert.NoError(t, err)
 
-	pit2 := &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:  job.GetJobID(),
-			TaskID: 2,
-			State:  datapb.ImportTaskStateV2_Completed,
-			FileStats: []*datapb.ImportFileStats{
-				{
-					ImportFile: file3,
-				},
+	preImportTaskProto2 := &datapb.PreImportTask{
+		JobID:  job.GetJobID(),
+		TaskID: 2,
+		State:  datapb.ImportTaskStateV2_Completed,
+		FileStats: []*datapb.ImportFileStats{
+			{
+				ImportFile: file3,
 			},
 		},
 	}
+	pit2 := &preImportTask{}
+	pit2.task.Store(preImportTaskProto2)
 	err = imeta.AddTask(context.TODO(), pit2)
 	assert.NoError(t, err)
 
-	it1 := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:      job.GetJobID(),
-			TaskID:     3,
-			SegmentIDs: []int64{10, 11, 12},
-			State:      datapb.ImportTaskStateV2_Pending,
-			FileStats: []*datapb.ImportFileStats{
-				{
-					ImportFile: file1,
-					TotalRows:  100,
-				},
-				{
-					ImportFile: file2,
-					TotalRows:  200,
-				},
+	taskProto1 := &datapb.ImportTaskV2{
+		JobID:      job.GetJobID(),
+		TaskID:     3,
+		SegmentIDs: []int64{10, 11, 12},
+		State:      datapb.ImportTaskStateV2_Pending,
+		FileStats: []*datapb.ImportFileStats{
+			{
+				ImportFile: file1,
+				TotalRows:  100,
+			},
+			{
+				ImportFile: file2,
+				TotalRows:  200,
 			},
 		},
 	}
+	it1 := &importTask{}
+	it1.task.Store(taskProto1)
 	err = imeta.AddTask(context.TODO(), it1)
 	assert.NoError(t, err)
 	err = meta.AddSegment(ctx, &SegmentInfo{
@@ -668,20 +672,20 @@ func TestImportUtil_GetImportProgress(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	it2 := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:      job.GetJobID(),
-			TaskID:     4,
-			SegmentIDs: []int64{20, 21, 22},
-			State:      datapb.ImportTaskStateV2_Pending,
-			FileStats: []*datapb.ImportFileStats{
-				{
-					ImportFile: file3,
-					TotalRows:  300,
-				},
+	taskProto2 := &datapb.ImportTaskV2{
+		JobID:      job.GetJobID(),
+		TaskID:     4,
+		SegmentIDs: []int64{20, 21, 22},
+		State:      datapb.ImportTaskStateV2_Pending,
+		FileStats: []*datapb.ImportFileStats{
+			{
+				ImportFile: file3,
+				TotalRows:  300,
 			},
 		},
 	}
+	it2 := &importTask{}
+	it2.task.Store(taskProto2)
 	err = imeta.AddTask(context.TODO(), it2)
 	assert.NoError(t, err)
 	err = meta.AddSegment(ctx, &SegmentInfo{
@@ -793,20 +797,20 @@ func TestImportUtil_GetImportProgress(t *testing.T) {
 }
 
 func TestPreImportTask_MarshalJSON(t *testing.T) {
+	taskProto := &datapb.PreImportTask{
+		JobID:        1,
+		TaskID:       2,
+		CollectionID: 3,
+		NodeID:       4,
+		State:        datapb.ImportTaskStateV2_Pending,
+		Reason:       "test reason",
+		CreatedTime:  time.Now().Format(time.RFC3339),
+		CompleteTime: time.Now().Add(time.Hour).Format(time.RFC3339),
+	}
 	task := &preImportTask{
-		PreImportTask: &datapb.PreImportTask{
-			JobID:        1,
-			TaskID:       2,
-			CollectionID: 3,
-			NodeID:       4,
-			State:        datapb.ImportTaskStateV2_Pending,
-			Reason:       "test reason",
-			CreatedTime:  time.Now().Format(time.RFC3339),
-			CompleteTime: time.Now().Add(time.Hour).Format(time.RFC3339),
-		},
 		tr: timerecord.NewTimeRecorder("test"),
 	}
-
+	task.task.Store(taskProto)
 	jsonData, err := task.MarshalJSON()
 	assert.NoError(t, err)
 
@@ -826,20 +830,20 @@ func TestPreImportTask_MarshalJSON(t *testing.T) {
 }
 
 func TestImportTask_MarshalJSON(t *testing.T) {
+	taskProto := &datapb.ImportTaskV2{
+		JobID:        1,
+		TaskID:       2,
+		CollectionID: 3,
+		NodeID:       4,
+		State:        datapb.ImportTaskStateV2_Pending,
+		Reason:       "test reason",
+		CreatedTime:  time.Now().Format(time.RFC3339),
+		CompleteTime: time.Now().Add(time.Hour).Format(time.RFC3339),
+	}
 	task := &importTask{
-		ImportTaskV2: &datapb.ImportTaskV2{
-			JobID:        1,
-			TaskID:       2,
-			CollectionID: 3,
-			NodeID:       4,
-			State:        datapb.ImportTaskStateV2_Pending,
-			Reason:       "test reason",
-			CreatedTime:  time.Now().Format(time.RFC3339),
-			CompleteTime: time.Now().Add(time.Hour).Format(time.RFC3339),
-		},
 		tr: timerecord.NewTimeRecorder("test"),
 	}
-
+	task.task.Store(taskProto)
 	jsonData, err := task.MarshalJSON()
 	assert.NoError(t, err)
 

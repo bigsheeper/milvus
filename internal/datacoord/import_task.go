@@ -81,9 +81,9 @@ func UpdateState(state datapb.ImportTaskStateV2) UpdateAction {
 	return func(t ImportTask) {
 		switch t.GetType() {
 		case PreImportTaskType:
-			t.(*preImportTask).PreImportTask.State = state
+			t.(*preImportTask).task.Load().State = state
 		case ImportTaskType:
-			t.(*importTask).ImportTaskV2.State = state
+			t.(*importTask).task.Load().State = state
 		}
 	}
 }
@@ -92,9 +92,9 @@ func UpdateReason(reason string) UpdateAction {
 	return func(t ImportTask) {
 		switch t.GetType() {
 		case PreImportTaskType:
-			t.(*preImportTask).PreImportTask.Reason = reason
+			t.(*preImportTask).task.Load().Reason = reason
 		case ImportTaskType:
-			t.(*importTask).ImportTaskV2.Reason = reason
+			t.(*importTask).task.Load().Reason = reason
 		}
 	}
 }
@@ -103,9 +103,9 @@ func UpdateCompleteTime(completeTime string) UpdateAction {
 	return func(t ImportTask) {
 		switch t.GetType() {
 		case PreImportTaskType:
-			t.(*preImportTask).PreImportTask.CompleteTime = completeTime
+			t.(*preImportTask).task.Load().CompleteTime = completeTime
 		case ImportTaskType:
-			t.(*importTask).ImportTaskV2.CompleteTime = completeTime
+			t.(*importTask).task.Load().CompleteTime = completeTime
 		}
 	}
 }
@@ -114,9 +114,9 @@ func UpdateNodeID(nodeID int64) UpdateAction {
 	return func(t ImportTask) {
 		switch t.GetType() {
 		case PreImportTaskType:
-			t.(*preImportTask).PreImportTask.NodeID = nodeID
+			t.(*preImportTask).task.Load().NodeID = nodeID
 		case ImportTaskType:
-			t.(*importTask).ImportTaskV2.NodeID = nodeID
+			t.(*importTask).task.Load().NodeID = nodeID
 		}
 	}
 }
@@ -124,7 +124,7 @@ func UpdateNodeID(nodeID int64) UpdateAction {
 func UpdateFileStats(fileStats []*datapb.ImportFileStats) UpdateAction {
 	return func(t ImportTask) {
 		if task, ok := t.(*preImportTask); ok {
-			task.PreImportTask.FileStats = fileStats
+			task.task.Load().FileStats = fileStats
 		}
 	}
 }
@@ -132,7 +132,7 @@ func UpdateFileStats(fileStats []*datapb.ImportFileStats) UpdateAction {
 func UpdateSegmentIDs(segmentIDs []UniqueID) UpdateAction {
 	return func(t ImportTask) {
 		if task, ok := t.(*importTask); ok {
-			task.ImportTaskV2.SegmentIDs = segmentIDs
+			task.task.Load().SegmentIDs = segmentIDs
 		}
 	}
 }
@@ -140,7 +140,7 @@ func UpdateSegmentIDs(segmentIDs []UniqueID) UpdateAction {
 func UpdateStatsSegmentIDs(segmentIDs []UniqueID) UpdateAction {
 	return func(t ImportTask) {
 		if task, ok := t.(*importTask); ok {
-			task.ImportTaskV2.StatsSegmentIDs = segmentIDs
+			task.task.Load().StatsSegmentIDs = segmentIDs
 		}
 	}
 }

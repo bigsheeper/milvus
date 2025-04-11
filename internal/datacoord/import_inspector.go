@@ -18,6 +18,7 @@ package datacoord
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"sort"
 	"sync"
 	"time"
@@ -40,18 +41,20 @@ type ImportInspector interface {
 }
 
 type importInspector struct {
-	meta  *meta
-	alloc allocator.Allocator
-	imeta ImportMeta
+	meta      *meta
+	alloc     allocator.Allocator
+	imeta     ImportMeta
+	scheduler task.GlobalScheduler
 
 	closeOnce sync.Once
 	closeChan chan struct{}
 }
 
-func NewImportInspector(meta *meta, imeta ImportMeta) ImportInspector {
+func NewImportInspector(meta *meta, imeta ImportMeta, scheduler task.GlobalScheduler) ImportInspector {
 	return &importInspector{
 		meta:      meta,
 		imeta:     imeta,
+		scheduler: scheduler,
 		closeChan: make(chan struct{}),
 	}
 }
@@ -102,11 +105,11 @@ func (s *importInspector) inspect() {
 }
 
 func (s *importInspector) processPendingPreImport(task ImportTask) {
-	globalScheduler.Enqueue(task)
+	s.scheduler.Enqueue(task)
 }
 
 func (s *importInspector) processPendingImport(task ImportTask) {
-	globalScheduler.Enqueue(task)
+	s.scheduler.Enqueue(task)
 }
 
 func (s *importInspector) processFailed(task ImportTask) {

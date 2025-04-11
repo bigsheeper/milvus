@@ -69,18 +69,19 @@ func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
 				ImportFile: f,
 			}
 		})
+		taskProto := &datapb.PreImportTask{
+			JobID:        job.GetJobID(),
+			TaskID:       idStart + int64(i),
+			CollectionID: job.GetCollectionID(),
+			State:        datapb.ImportTaskStateV2_Pending,
+			FileStats:    fileStats,
+			CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
+		}
 		task := &preImportTask{
-			PreImportTask: &datapb.PreImportTask{
-				JobID:        job.GetJobID(),
-				TaskID:       idStart + int64(i),
-				CollectionID: job.GetCollectionID(),
-				State:        datapb.ImportTaskStateV2_Pending,
-				FileStats:    fileStats,
-				CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
-			},
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("preimport task"),
 		}
+		task.task.Store(taskProto)
 		tasks = append(tasks, task)
 	}
 	return tasks, nil
@@ -95,33 +96,34 @@ func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
 	}
 	tasks := make([]ImportTask, 0, len(fileGroups))
 	for i, group := range fileGroups {
+		taskProto := &datapb.ImportTaskV2{
+			JobID:        job.GetJobID(),
+			TaskID:       idBegin + int64(i),
+			CollectionID: job.GetCollectionID(),
+			NodeID:       NullNodeID,
+			State:        datapb.ImportTaskStateV2_Pending,
+			FileStats:    group,
+			CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
+		}
 		task := &importTask{
-			ImportTaskV2: &datapb.ImportTaskV2{
-				JobID:        job.GetJobID(),
-				TaskID:       idBegin + int64(i),
-				CollectionID: job.GetCollectionID(),
-				NodeID:       NullNodeID,
-				State:        datapb.ImportTaskStateV2_Pending,
-				FileStats:    group,
-				CreatedTime:  time.Now().Format("2006-01-02T15:04:05Z07:00"),
-			},
 			alloc: alloc,
 			meta:  meta,
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("import task"),
 		}
+		task.task.Store(taskProto)
 		segments, err := AssignSegments(job, task, alloc, meta)
 		if err != nil {
 			return nil, err
 		}
-		task.SegmentIDs = segments
+		taskProto.SegmentIDs = segments
 		if paramtable.Get().DataCoordCfg.EnableStatsTask.GetAsBool() {
 			statsSegIDBegin, _, err := alloc.AllocN(int64(len(segments)))
 			if err != nil {
 				return nil, err
 			}
-			task.StatsSegmentIDs = lo.RangeFrom(statsSegIDBegin, len(segments))
-			log.Info("preallocate stats segment ids", WrapTaskLog(task, zap.Int64s("segmentIDs", task.StatsSegmentIDs))...)
+			taskProto.StatsSegmentIDs = lo.RangeFrom(statsSegIDBegin, len(segments))
+			log.Info("preallocate stats segment ids", WrapTaskLog(task, zap.Int64s("segmentIDs", taskProto.StatsSegmentIDs))...)
 		}
 		tasks = append(tasks, task)
 	}

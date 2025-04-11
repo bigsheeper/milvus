@@ -94,9 +94,6 @@ var _ types.DataCoord = (*Server)(nil)
 
 var Params = paramtable.Get()
 
-// TODO: sheep, singleton or server's object
-var globalScheduler task.GlobalScheduler
-
 // Server implements `types.DataCoord`
 // handles Data Coordinator related jobs
 type Server struct {
@@ -157,8 +154,9 @@ type Server struct {
 	indexNodeManager          session.WorkerManager
 	indexEngineVersionManager IndexEngineVersionManager
 
-	taskScheduler *taskScheduler
-	jobManager    StatsJobManager
+	taskScheduler   *taskScheduler
+	jobManager      StatsJobManager
+	globalScheduler task.GlobalScheduler
 
 	// manage ways that data coord access other coord
 	broker broker.Broker
@@ -378,7 +376,7 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("init service discovery done")
 
-	globalScheduler = task.NewGlobalTaskScheduler(s.ctx, session.Cluster{DataNodeManager: s.sessionManager, WorkerManager: s.indexNodeManager})
+	s.globalScheduler = task.NewGlobalTaskScheduler(s.ctx, session.Cluster{DataNodeManager: s.sessionManager, WorkerManager: s.indexNodeManager})
 
 	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta)
 	if err != nil {
@@ -400,7 +398,7 @@ func (s *Server) initDataCoord() error {
 
 	s.initGarbageCollection(storageCli)
 
-	s.importInspector = NewImportInspector(s.meta, s.importMeta)
+	s.importInspector = NewImportInspector(s.meta, s.importMeta, s.globalScheduler)
 	s.importChecker = NewImportChecker(s.meta, s.broker, s.cluster, s.allocator, s.importMeta, s.jobManager, s.compactionTriggerManager)
 
 	s.syncSegmentsScheduler = newSyncSegmentsScheduler(s.meta, s.channelManager, s.sessionManager)
@@ -691,7 +689,7 @@ func (s *Server) initIndexNodeManager() {
 }
 
 func (s *Server) initCompaction() {
-	cph := newCompactionInspector(s.cluster, s.meta, s.allocator, s.handler)
+	cph := newCompactionInspector(s.cluster, s.meta, s.allocator, s.handler, s.globalScheduler)
 	cph.loadMeta()
 	s.compactionInspector = cph
 	s.compactionTriggerManager = NewCompactionTriggerManager(s.allocator, s.handler, s.compactionInspector, s.meta, s.importMeta)
@@ -733,7 +731,7 @@ func (s *Server) startServerLoop() {
 	s.serverLoopWg.Add(2)
 	s.startWatchService(s.serverLoopCtx)
 	s.startFlushLoop(s.serverLoopCtx)
-	globalScheduler.Start()
+	s.globalScheduler.Start()
 	go s.importInspector.Start()
 	go s.importChecker.Start()
 	s.garbageCollector.start()
@@ -1053,7 +1051,7 @@ func (s *Server) Stop() error {
 	s.stopServerLoop()
 	log.Info("datacoord stopServerLoop stopped")
 
-	globalScheduler.Stop()
+	s.globalScheduler.Stop()
 	s.importInspector.Close()
 	s.importChecker.Close()
 	s.syncSegmentsScheduler.Stop()

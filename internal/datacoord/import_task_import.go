@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
@@ -38,17 +38,66 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 var _ ImportTask = (*importTask)(nil)
 
 type importTask struct {
-	*datapb.ImportTaskV2
+	task atomic.Pointer[datapb.ImportTaskV2]
 
 	alloc allocator.Allocator
 	meta  *meta
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
+}
+
+func (t *importTask) GetJobID() int64 {
+	return t.task.Load().GetJobID()
+}
+
+func (t *importTask) GetTaskID() int64 {
+	return t.task.Load().GetTaskID()
+}
+
+func (t *importTask) GetCollectionID() int64 {
+	return t.task.Load().GetCollectionID()
+}
+
+func (t *importTask) GetNodeID() int64 {
+	return t.task.Load().GetNodeID()
+}
+
+func (t *importTask) GetState() datapb.ImportTaskStateV2 {
+	return t.task.Load().GetState()
+}
+
+func (t *importTask) GetReason() string {
+	return t.task.Load().GetReason()
+}
+
+func (t *importTask) GetFileStats() []*datapb.ImportFileStats {
+	return t.task.Load().GetFileStats()
+}
+
+func (t *importTask) GetSegmentIDs() []int64 {
+	return t.task.Load().GetSegmentIDs()
+}
+
+func (t *importTask) GetStatsSegmentIDs() []int64 {
+	return t.task.Load().GetStatsSegmentIDs()
+}
+
+func (t *importTask) GetSource() datapb.ImportTaskSourceV2 {
+	return t.task.Load().GetSource()
+}
+
+func (t *importTask) GetCreatedTime() string {
+	return t.task.Load().GetCreatedTime()
+}
+
+func (t *importTask) GetCompleteTime() string {
+	return t.task.Load().GetCompleteTime()
 }
 
 func (t *importTask) GetTaskType() task.Type {
@@ -211,13 +260,14 @@ func (t *importTask) GetTR() *timerecord.TimeRecorder {
 }
 
 func (t *importTask) Clone() ImportTask {
-	return &importTask{
-		ImportTaskV2: proto.Clone(t.ImportTaskV2).(*datapb.ImportTaskV2),
-		alloc:        t.alloc,
-		meta:         t.meta,
-		imeta:        t.imeta,
-		tr:           t.tr,
+	cloned := &importTask{
+		alloc: t.alloc,
+		meta:  t.meta,
+		imeta: t.imeta,
+		tr:    t.tr,
 	}
+	cloned.task.Store(typeutil.Clone(t.task.Load()))
+	return cloned
 }
 
 func (t *importTask) MarshalJSON() ([]byte, error) {

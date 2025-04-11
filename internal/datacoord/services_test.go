@@ -2,9 +2,10 @@ package datacoord
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"testing"
 	"time"
+
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -23,7 +24,6 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/broker"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/internal/distributed/streaming"
 	"github.com/milvus-io/milvus/internal/metastore/mocks"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	mocks2 "github.com/milvus-io/milvus/internal/mocks"
@@ -1449,8 +1449,8 @@ func TestImportV2(t *testing.T) {
 		wal := mock_streaming.NewMockWALAccesser(t)
 		b := mock_streaming.NewMockBroadcast(t)
 		wal.EXPECT().Broadcast().Return(b).Maybe()
-		streaming.SetWALForTest(wal)
-		defer streaming.RecoverWALForTest()
+		// streaming.SetWALForTest(wal)
+		// defer streaming.RecoverWALForTest()
 
 		s.importMeta, err = NewImportMeta(context.TODO(), catalog, nil, nil)
 		assert.NoError(t, err)
@@ -1506,13 +1506,13 @@ func TestImportV2(t *testing.T) {
 		}
 		err = s.importMeta.AddJob(context.TODO(), job)
 		assert.NoError(t, err)
-		var task ImportTask = &preImportTask{
-			PreImportTask: &datapb.PreImportTask{
-				JobID:  0,
-				TaskID: 1,
-				State:  datapb.ImportTaskStateV2_Failed,
-			},
+		taskProto := &datapb.PreImportTask{
+			JobID:  0,
+			TaskID: 1,
+			State:  datapb.ImportTaskStateV2_Failed,
 		}
+		var task ImportTask = &preImportTask{}
+		task.(*preImportTask).task.Store(taskProto)
 		err = s.importMeta.AddTask(context.TODO(), task)
 		assert.NoError(t, err)
 		resp, err = s.ListImports(ctx, &internalpb.ListImportsRequestInternal{

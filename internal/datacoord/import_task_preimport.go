@@ -147,7 +147,7 @@ func (p *preImportTask) QueryTaskOnWorker(cluster session.Cluster) {
 		log.Warn("update preimport task failed", WrapTaskLog(p, zap.Error(err))...)
 		return
 	}
-	log.Info("query preimport", WrapTaskLog(p, zap.String("state", resp.GetState().String()),
+	log.Info("query preimport", WrapTaskLog(p, zap.String("respState", resp.GetState().String()),
 		zap.Any("fileStats", resp.GetFileStats()))...)
 	if resp.GetState() == datapb.ImportTaskStateV2_Completed {
 		preimportDuration := p.GetTR().RecordSpan()
@@ -160,7 +160,9 @@ func (p *preImportTask) DropTaskOnWorker(cluster session.Cluster) {
 	err := DropImportTask(p, cluster, p.imeta)
 	if err != nil {
 		log.Warn("drop import failed", WrapTaskLog(p, zap.Error(err))...)
+		return
 	}
+	log.Info("drop preimport task done", WrapTaskLog(p, zap.Int64("nodeID", p.GetNodeID()))...)
 }
 
 func (p *preImportTask) GetType() TaskType {

@@ -234,14 +234,22 @@ func TestImportMeta_ImportTask(t *testing.T) {
 	assert.Equal(t, task2.GetTaskID(), tasks[0].GetTaskID())
 
 	err = im.UpdateTask(context.TODO(), task1.GetTaskID(), UpdateNodeID(9),
-		UpdateState(datapb.ImportTaskStateV2_Failed),
+		UpdateState(datapb.ImportTaskStateV2_InProgress),
 		UpdateFileStats([]*datapb.ImportFileStats{1: {
 			FileSize: 100,
 		}}))
 	assert.NoError(t, err)
 	task := im.GetTask(context.TODO(), task1.GetTaskID())
 	assert.Equal(t, int64(9), task.GetNodeID())
-	assert.Equal(t, datapb.ImportTaskStateV2_Failed, task.GetState())
+	assert.Equal(t, datapb.ImportTaskStateV2_InProgress, task.GetState())
+	assert.Equal(t, int64(9), task1.GetNodeID())
+	assert.Equal(t, datapb.ImportTaskStateV2_InProgress, task1.GetState())
+
+	err = im.UpdateTask(context.TODO(), task1.GetTaskID(), UpdateNodeID(10),
+		UpdateState(datapb.ImportTaskStateV2_Completed))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), task1.GetNodeID())
+	assert.Equal(t, datapb.ImportTaskStateV2_Completed, task1.GetState())
 
 	err = im.RemoveTask(context.TODO(), task1.GetTaskID())
 	assert.NoError(t, err)

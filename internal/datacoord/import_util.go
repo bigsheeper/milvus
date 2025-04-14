@@ -49,6 +49,7 @@ func WrapTaskLog(task ImportTask, fields ...zap.Field) []zap.Field {
 		zap.Int64("jobID", task.GetJobID()),
 		zap.Int64("collectionID", task.GetCollectionID()),
 		zap.String("type", task.GetType().String()),
+		zap.String("state", task.GetTaskState().String()),
 		zap.Int64("nodeID", task.GetNodeID()),
 	}
 	res = append(res, fields...)

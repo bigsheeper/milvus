@@ -259,7 +259,6 @@ func (m *importMeta) UpdateTask(ctx context.Context, taskID int64, actions ...Up
 			if err != nil {
 				return err
 			}
-			m.tasks.add(updatedTask)
 			// update memory task
 			task.(*preImportTask).task.Store(updatedTask.(*preImportTask).task.Load())
 		case ImportTaskType:
@@ -267,7 +266,6 @@ func (m *importMeta) UpdateTask(ctx context.Context, taskID int64, actions ...Up
 			if err != nil {
 				return err
 			}
-			m.tasks.add(updatedTask)
 			// update memory task
 			task.(*importTask).task.Store(updatedTask.(*importTask).task.Load())
 		}

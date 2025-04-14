@@ -240,7 +240,7 @@ func (t *importTask) QueryTaskOnWorker(cluster session.Cluster) {
 		metrics.ImportTaskLatency.WithLabelValues(metrics.ImportStageImport).Observe(float64(importDuration.Milliseconds()))
 		log.Info("import done", WrapTaskLog(t, zap.Duration("taskTimeCost/import", importDuration))...)
 	}
-	log.Info("query import", WrapTaskLog(t, zap.String("state", resp.GetState().String()),
+	log.Info("query import", WrapTaskLog(t, zap.String("respState", resp.GetState().String()),
 		zap.String("reason", resp.GetReason()))...)
 }
 
@@ -248,7 +248,9 @@ func (t *importTask) DropTaskOnWorker(cluster session.Cluster) {
 	err := DropImportTask(t, cluster, t.imeta)
 	if err != nil {
 		log.Warn("drop import failed", WrapTaskLog(t, zap.Error(err))...)
+		return
 	}
+	log.Info("drop import task done", WrapTaskLog(t, zap.Int64("nodeID", t.GetNodeID()))...)
 }
 
 func (t *importTask) GetType() TaskType {

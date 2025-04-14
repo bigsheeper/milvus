@@ -66,7 +66,7 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 }
 
 func (s *globalTaskScheduler) AbortAndRemoveTask(taskID int64) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -145,6 +145,7 @@ func (s *globalTaskScheduler) schedule() {
 	nodeSlots := s.cluster.QuerySlots()
 	log.Ctx(s.ctx).Info("scheduling pending tasks...", zap.Int("num", pendingNum), zap.Any("nodeSlots", nodeSlots))
 
+	futures := make([]*conc.Future[struct{}], 0)
 	for {
 		task := s.pendingTasks.Pop()
 		if task == nil {
@@ -153,9 +154,10 @@ func (s *globalTaskScheduler) schedule() {
 		taskSlot := task.GetTaskSlot()
 		nodeID := s.pickNode(nodeSlots, taskSlot)
 		if nodeID == NullNodeID {
+			s.notify()
 			break
 		}
-		s.execPool.Submit(func() (struct{}, error) {
+		future := s.execPool.Submit(func() (struct{}, error) {
 			log.Ctx(s.ctx).Info("processing task...", WrapTaskLog(task)...)
 			if task.GetTaskState() == Pending {
 				task.CreateTaskOnWorker(nodeID, s.cluster)
@@ -168,7 +170,9 @@ func (s *globalTaskScheduler) schedule() {
 			}
 			return struct{}{}, nil
 		})
+		futures = append(futures, future)
 	}
+	_ = conc.AwaitAll(futures...)
 }
 
 func (s *globalTaskScheduler) check() {
@@ -178,8 +182,9 @@ func (s *globalTaskScheduler) check() {
 	log.Ctx(s.ctx).Info("check running tasks", zap.Int("num", s.runningTasks.Len()))
 
 	tasks := s.runningTasks.Values()
+	futures := make([]*conc.Future[struct{}], 0, len(tasks))
 	for _, task := range tasks {
-		s.checkPool.Submit(func() (struct{}, error) {
+		future := s.checkPool.Submit(func() (struct{}, error) {
 			task.QueryTaskOnWorker(s.cluster)
 			switch task.GetTaskState() {
 			case Retry:
@@ -190,7 +195,9 @@ func (s *globalTaskScheduler) check() {
 			}
 			return struct{}{}, nil
 		})
+		futures = append(futures, future)
 	}
+	_ = conc.AwaitAll(futures...)
 }
 
 func NewGlobalTaskScheduler(ctx context.Context, cluster session.Cluster) GlobalScheduler {

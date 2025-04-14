@@ -24,8 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/datacoord/session"
-
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -36,6 +34,7 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/broker"
 	broker2 "github.com/milvus-io/milvus/internal/datacoord/broker"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/metastore/mocks"
 	mocks2 "github.com/milvus-io/milvus/internal/mocks"

@@ -19,7 +19,6 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"math"
 	"path"
 	"sort"
@@ -32,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/importutilv2"
 	"github.com/milvus-io/milvus/pkg/v2/log"

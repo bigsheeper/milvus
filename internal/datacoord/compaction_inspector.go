@@ -23,14 +23,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/datacoord/task"
-
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
@@ -104,10 +103,10 @@ type compactionInspector struct {
 
 func (c *compactionInspector) getCompactionInfo(ctx context.Context, triggerID int64) *compactionInfo {
 	tasks := c.meta.GetCompactionTasksByTriggerID(ctx, triggerID)
-	return summaryCompactionState(tasks)
+	return summaryCompactionState(triggerID, tasks)
 }
 
-func summaryCompactionState(tasks []*datapb.CompactionTask) *compactionInfo {
+func summaryCompactionState(triggerID int64, tasks []*datapb.CompactionTask) *compactionInfo {
 	ret := &compactionInfo{}
 	var executingCnt, pipeliningCnt, completedCnt, failedCnt, timeoutCnt, analyzingCnt, indexingCnt, cleanedCnt, metaSavedCnt, stats int
 	mergeInfos := make(map[int64]*milvuspb.CompactionMergeInfo)
@@ -155,6 +154,7 @@ func summaryCompactionState(tasks []*datapb.CompactionTask) *compactionInfo {
 	}
 
 	log.Info("compaction states",
+		zap.Int64("triggerID", triggerID),
 		zap.String("state", ret.state.String()),
 		zap.Int("executingCnt", executingCnt),
 		zap.Int("pipeliningCnt", pipeliningCnt),

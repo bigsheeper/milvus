@@ -18,13 +18,13 @@ package datacoord
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/samber/lo"
 	"golang.org/x/exp/maps"
 
+	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"

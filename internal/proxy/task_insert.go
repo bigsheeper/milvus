@@ -3,10 +3,11 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 	"strconv"
 	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"

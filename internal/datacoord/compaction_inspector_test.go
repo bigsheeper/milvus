@@ -21,9 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/internal/datacoord/task"
-
 	"github.com/cockroachdb/errors"
 	"github.com/magiconair/properties/assert"
 	"github.com/samber/lo"
@@ -32,6 +29,8 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
+	"github.com/milvus-io/milvus/internal/datacoord/session"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"

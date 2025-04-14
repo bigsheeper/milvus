@@ -115,10 +115,6 @@ func (s *ImportInspectorSuite) TestProcessPreImport() {
 	s.NoError(err)
 
 	// pending -> inProgress
-	const nodeID = 10
-	s.dnMgr.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
-		Slots: 1,
-	}, nil)
 	s.dnMgr.EXPECT().PreImport(mock.Anything, mock.Anything).Return(nil)
 	cluster := session.Cluster{DataNodeManager: s.dnMgr}
 	task.CreateTaskOnWorker(1, cluster)

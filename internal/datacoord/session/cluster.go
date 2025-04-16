@@ -270,6 +270,7 @@ func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateReques
 		return nil, err
 	}
 	var ret *datapb.CompactionPlanResult
+	// TODO: sheep, wrap marshal and unmarshal function in common package
 	for _, rst := range result.GetResults() {
 		if rst.GetPlanID() != in.GetPlanID() {
 			continue

@@ -113,7 +113,8 @@ type Server struct {
 	// self host id allocator, to avoid get unique id from rootcoord
 	idAllocator      *globalIDAllocator.GlobalIDAllocator
 	cluster          Cluster
-	sessionManager   session.DataNodeManager
+	sessionManager   session.DataNodeManager // TODO: sheep, remove sessionManager and cluster
+	cluster2         session.Cluster
 	channelManager   ChannelManager
 	mixCoord         types.MixCoord
 	garbageCollector *garbageCollector
@@ -148,6 +149,7 @@ type Server struct {
 	// indexCoord             types.IndexCoord
 
 	// segReferManager  *SegmentReferenceManager
+	// TODO: sheep, remove indexNodeManager
 	indexNodeManager          session.WorkerManager
 	indexEngineVersionManager IndexEngineVersionManager
 
@@ -293,7 +295,7 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("init service discovery done")
 
-	s.globalScheduler = task.NewGlobalTaskScheduler(s.ctx, session.Cluster{DataNodeManager: s.sessionManager, WorkerManager: s.indexNodeManager})
+	s.globalScheduler = task.NewGlobalTaskScheduler(s.ctx, s.cluster2)
 
 	s.importMeta, err = NewImportMeta(s.ctx, s.meta.catalog, s.allocator, s.meta)
 	if err != nil {
@@ -316,7 +318,7 @@ func (s *Server) initDataCoord() error {
 	s.initGarbageCollection(storageCli)
 
 	s.importInspector = NewImportInspector(s.meta, s.importMeta, s.globalScheduler)
-	s.importChecker = NewImportChecker(s.meta, s.broker, s.cluster, s.allocator, s.importMeta, s.jobManager, s.compactionTriggerManager)
+	s.importChecker = NewImportChecker(s.meta, s.broker, s.allocator, s.importMeta, s.jobManager, s.compactionTriggerManager)
 
 	s.syncSegmentsScheduler = newSyncSegmentsScheduler(s.meta, s.channelManager, s.sessionManager)
 
@@ -376,6 +378,7 @@ func (s *Server) initCluster() error {
 		return err
 	}
 	s.cluster = NewClusterImpl(s.sessionManager, s.channelManager)
+	s.cluster2 = session.NewCluster(s.dataNodeCreator)
 	return nil
 }
 
@@ -591,7 +594,7 @@ func (s *Server) initIndexNodeManager() {
 }
 
 func (s *Server) initCompaction() {
-	cph := newCompactionInspector(s.cluster, s.meta, s.allocator, s.handler, s.globalScheduler)
+	cph := newCompactionInspector(s.meta, s.allocator, s.handler, s.globalScheduler)
 	cph.loadMeta()
 	s.compactionInspector = cph
 	s.compactionTriggerManager = NewCompactionTriggerManager(s.allocator, s.handler, s.compactionInspector, s.meta, s.importMeta)
@@ -783,6 +786,9 @@ func (s *Server) handleSessionEvent(ctx context.Context, role string, event *ses
 					zap.String("event type", event.EventType.String()))
 				return nil
 			}
+			if err := s.cluster2.AddNode(event.Session.ServerID, event.Session.Address); err != nil {
+				return err
+			}
 			return s.indexNodeManager.AddNode(event.Session.ServerID, event.Session.Address)
 		case sessionutil.SessionDelEvent:
 			log.Info("received datanode unregister",
@@ -800,6 +806,7 @@ func (s *Server) handleSessionEvent(ctx context.Context, role string, event *ses
 					zap.String("event type", event.EventType.String()))
 				return nil
 			}
+			s.cluster2.RemoveNode(event.Session.ServerID)
 			s.indexNodeManager.RemoveNode(event.Session.ServerID)
 		case sessionutil.SessionUpdateEvent:
 			if Params.DataCoordCfg.BindIndexNodeMode.GetAsBool() {

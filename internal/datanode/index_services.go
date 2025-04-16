@@ -39,6 +39,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
+// CreateJob is CreateIndex
 func (node *DataNode) CreateJob(ctx context.Context, req *workerpb.CreateJobRequest) (*commonpb.Status, error) {
 	log := log.Ctx(ctx).With(
 		zap.String("clusterID", req.GetClusterID()),

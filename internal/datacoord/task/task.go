@@ -17,47 +17,16 @@
 package task
 
 import (
-	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"go.uber.org/zap"
+
+	"github.com/milvus-io/milvus/internal/datacoord/session"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 )
-
-type Type string
-
-const (
-	Import     Type = "Import"
-	Compaction Type = "Compaction"
-	Index      Type = "Index"
-	Stats      Type = "Stats"
-)
-
-type State int32
-
-const (
-	Invalid State = iota
-	Pending
-	InProgress
-	Finished
-	Failed
-	Retry
-)
-
-var stateName = map[State]string{
-	0: "Invalid",
-	1: "Pending",
-	2: "InProgress",
-	3: "Finished",
-	4: "Failed",
-	5: "Retry",
-}
-
-func (s State) String() string {
-	return stateName[s]
-}
 
 type Task interface {
 	GetTaskID() int64
-	GetTaskType() Type
-	GetTaskState() State
+	GetTaskType() task.Type
+	GetTaskState() task.State
 	GetTaskSlot() int64
 
 	CreateTaskOnWorker(nodeID int64, cluster session.Cluster)

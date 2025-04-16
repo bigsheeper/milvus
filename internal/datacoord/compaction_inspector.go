@@ -91,7 +91,6 @@ type compactionInspector struct {
 
 	meta             CompactionMeta
 	allocator        allocator.Allocator
-	cluster          Cluster
 	analyzeScheduler *taskScheduler
 	handler          Handler
 	scheduler        task.GlobalScheduler
@@ -200,7 +199,7 @@ func (c *compactionInspector) getCompactionTasksNumBySignalID(triggerID int64) i
 	return cnt
 }
 
-func newCompactionInspector(cluster Cluster, meta CompactionMeta,
+func newCompactionInspector(meta CompactionMeta,
 	allocator allocator.Allocator, handler Handler, scheduler task.GlobalScheduler,
 ) *compactionInspector {
 	// Higher capacity will have better ordering in priority, but consumes more memory.
@@ -211,7 +210,6 @@ func newCompactionInspector(cluster Cluster, meta CompactionMeta,
 		meta:           meta,
 		allocator:      allocator,
 		stopCh:         make(chan struct{}),
-		cluster:        cluster,
 		executingTasks: make(map[int64]CompactionTask),
 		cleaningTasks:  make(map[int64]CompactionTask),
 		handler:        handler,

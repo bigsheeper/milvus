@@ -1666,7 +1666,7 @@ func TestGetCompactionState(t *testing.T) {
 				{State: datapb.CompactionTaskState_timeout},
 				{State: datapb.CompactionTaskState_timeout},
 			})
-		mockHandler := newCompactionInspector(nil, mockMeta, nil, nil, nil)
+		mockHandler := newCompactionInspector(mockMeta, nil, nil, nil)
 		svr.compactionInspector = mockHandler
 		resp, err := svr.GetCompactionState(context.Background(), &milvuspb.GetCompactionStateRequest{CompactionID: 1})
 		assert.NoError(t, err)
@@ -1852,6 +1852,10 @@ func TestHandleSessionEvent(t *testing.T) {
 	defer cluster.Close()
 
 	svr := newTestServer(t, WithCluster(cluster))
+	cluster2 := session.NewMockCluster(t)
+	cluster2.EXPECT().AddNode(mock.Anything, mock.Anything).Return(nil)
+	cluster2.EXPECT().RemoveNode(mock.Anything).Return()
+	svr.cluster2 = cluster2
 	defer closeTestServer(t, svr)
 	t.Run("handle events", func(t *testing.T) {
 		// None event

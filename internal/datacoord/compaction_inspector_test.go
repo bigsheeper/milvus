@@ -34,6 +34,7 @@ import (
 	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	taskcommon "github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -49,7 +50,6 @@ type CompactionPlanHandlerSuite struct {
 	mockMeta    *MockCompactionMeta
 	mockAlloc   *allocator.MockAllocator
 	mockCm      *MockChannelManager
-	mockSessMgr *session.MockDataNodeManager
 	handler     *compactionInspector
 	mockHandler *NMockHandler
 	cluster     *MockCluster
@@ -60,10 +60,9 @@ func (s *CompactionPlanHandlerSuite) SetupTest() {
 	s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(nil).Maybe()
 	s.mockAlloc = allocator.NewMockAllocator(s.T())
 	s.mockCm = NewMockChannelManager(s.T())
-	s.mockSessMgr = session.NewMockDataNodeManager(s.T())
 	s.cluster = NewMockCluster(s.T())
 	mockScheduler := task.NewMockGlobalScheduler(s.T())
-	s.handler = newCompactionInspector(s.cluster, s.mockMeta, s.mockAlloc, nil, mockScheduler)
+	s.handler = newCompactionInspector(s.mockMeta, s.mockAlloc, nil, mockScheduler)
 	s.mockHandler = NewNMockHandler(s.T())
 	s.mockHandler.EXPECT().GetCollection(mock.Anything, mock.Anything).Return(&collectionInfo{}, nil).Maybe()
 }
@@ -506,12 +505,12 @@ func (s *CompactionPlanHandlerSuite) TestCompactionQueueFull() {
 
 	mockScheduler := task.NewMockGlobalScheduler(s.T())
 	mockScheduler.EXPECT().Enqueue(mock.Anything).Run(func(t task.Task) {
-		if t.GetTaskState() == task.Pending {
-			cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
+		if t.GetTaskState() == taskcommon.Pending {
+			cluster := session.NewMockCluster(s.T())
 			t.QueryTaskOnWorker(cluster)
 		}
 	}).Maybe()
-	s.handler = newCompactionInspector(s.cluster, s.mockMeta, s.mockAlloc, nil, mockScheduler)
+	s.handler = newCompactionInspector(s.mockMeta, s.mockAlloc, nil, mockScheduler)
 
 	t1 := newMixCompactionTask(&datapb.CompactionTask{
 		TriggerID: 1,
@@ -540,12 +539,12 @@ func (s *CompactionPlanHandlerSuite) TestExecCompactionPlan() {
 
 	mockScheduler := task.NewMockGlobalScheduler(s.T())
 	mockScheduler.EXPECT().Enqueue(mock.Anything).Run(func(t task.Task) {
-		if t.GetTaskState() == task.Pending {
-			cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
+		if t.GetTaskState() == taskcommon.Pending {
+			cluster := session.NewMockCluster(s.T())
 			t.QueryTaskOnWorker(cluster)
 		}
 	}).Maybe()
-	handler := newCompactionInspector(nil, s.mockMeta, s.mockAlloc, nil, mockScheduler)
+	handler := newCompactionInspector(s.mockMeta, s.mockAlloc, nil, mockScheduler)
 
 	task := &datapb.CompactionTask{
 		TriggerID: 1,
@@ -565,9 +564,9 @@ func (s *CompactionPlanHandlerSuite) TestExecCompactionPlan() {
 func (s *CompactionPlanHandlerSuite) TestCheckCompaction() {
 	s.SetupTest()
 
+	cluster := session.NewMockCluster(s.T())
 	s.handler.scheduler.(*task.MockGlobalScheduler).EXPECT().Enqueue(mock.Anything).Run(func(t task.Task) {
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
-		if t.GetTaskState() == task.InProgress {
+		if t.GetTaskState() == taskcommon.InProgress {
 			t.QueryTaskOnWorker(cluster)
 		}
 		if t.(CompactionTask).GetTaskProto().GetState() == datapb.CompactionTaskState_completed {
@@ -575,17 +574,17 @@ func (s *CompactionPlanHandlerSuite) TestCheckCompaction() {
 		}
 	})
 
-	s.mockSessMgr.EXPECT().GetCompactionPlanResult(UniqueID(111), int64(1)).Return(
+	cluster.EXPECT().QueryCompaction(UniqueID(111), &datapb.CompactionStateRequest{PlanID: 1}).Return(
 		&datapb.CompactionPlanResult{PlanID: 1, State: datapb.CompactionTaskState_executing}, nil).Once()
 
-	s.mockSessMgr.EXPECT().GetCompactionPlanResult(UniqueID(111), int64(2)).Return(
+	cluster.EXPECT().QueryCompaction(UniqueID(111), &datapb.CompactionStateRequest{PlanID: 2}).Return(
 		&datapb.CompactionPlanResult{
 			PlanID:   2,
 			State:    datapb.CompactionTaskState_completed,
 			Segments: []*datapb.CompactionSegment{{PlanID: 2}},
 		}, nil).Once()
 
-	s.mockSessMgr.EXPECT().GetCompactionPlanResult(UniqueID(111), int64(6)).Return(
+	cluster.EXPECT().QueryCompaction(UniqueID(111), &datapb.CompactionStateRequest{PlanID: 6}).Return(
 		&datapb.CompactionPlanResult{
 			PlanID:   6,
 			Channel:  "ch-2",
@@ -593,7 +592,7 @@ func (s *CompactionPlanHandlerSuite) TestCheckCompaction() {
 			Segments: []*datapb.CompactionSegment{{PlanID: 6}},
 		}, nil).Once()
 
-	s.mockSessMgr.EXPECT().DropCompactionPlan(mock.Anything, mock.Anything).Return(nil)
+	cluster.EXPECT().DropCompaction(mock.Anything, mock.Anything).Return(nil)
 	s.mockMeta.EXPECT().SetSegmentsCompacting(mock.Anything, mock.Anything, mock.Anything).Return()
 
 	t1 := newMixCompactionTask(&datapb.CompactionTask{
@@ -727,9 +726,9 @@ func (s *CompactionPlanHandlerSuite) TestCompactionGC() {
 func (s *CompactionPlanHandlerSuite) TestProcessCompleteCompaction() {
 	s.SetupTest()
 
+	cluster := session.NewMockCluster(s.T())
 	s.handler.scheduler.(*task.MockGlobalScheduler).EXPECT().Enqueue(mock.Anything).Run(func(t task.Task) {
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
-		if t.GetTaskState() == task.InProgress {
+		if t.GetTaskState() == taskcommon.InProgress {
 			t.QueryTaskOnWorker(cluster)
 		}
 		if t.(CompactionTask).GetTaskProto().GetState() == datapb.CompactionTaskState_completed {
@@ -802,8 +801,8 @@ func (s *CompactionPlanHandlerSuite) TestProcessCompleteCompaction() {
 		},
 	}
 
-	s.mockSessMgr.EXPECT().GetCompactionPlanResult(UniqueID(111), int64(1)).Return(&compactionResult, nil).Once()
-	s.mockSessMgr.EXPECT().DropCompactionPlan(mock.Anything, mock.Anything).Return(nil)
+	cluster.EXPECT().QueryCompaction(UniqueID(111), &datapb.CompactionStateRequest{PlanID: 1}).Return(&compactionResult, nil).Once()
+	cluster.EXPECT().DropCompaction(mock.Anything, mock.Anything).Return(nil)
 
 	s.handler.submitTask(task)
 
@@ -891,9 +890,9 @@ func (s *CompactionPlanHandlerSuite) TestCleanClusteringCompaction() {
 func (s *CompactionPlanHandlerSuite) TestCleanClusteringCompactionCommitFail() {
 	s.SetupTest()
 
+	cluster := session.NewMockCluster(s.T())
 	s.handler.scheduler.(*task.MockGlobalScheduler).EXPECT().Enqueue(mock.Anything).Run(func(t task.Task) {
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
-		if t.GetTaskState() == task.InProgress {
+		if t.GetTaskState() == taskcommon.InProgress {
 			t.QueryTaskOnWorker(cluster)
 		}
 		if t.(CompactionTask).GetTaskProto().GetState() == datapb.CompactionTaskState_completed {
@@ -923,7 +922,7 @@ func (s *CompactionPlanHandlerSuite) TestCleanClusteringCompactionCommitFail() {
 
 	s.mockMeta.EXPECT().GetHealthySegment(mock.Anything, mock.Anything).Return(nil)
 	s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(nil)
-	s.mockSessMgr.EXPECT().GetCompactionPlanResult(UniqueID(1), int64(1)).Return(
+	cluster.EXPECT().QueryCompaction(UniqueID(1), &datapb.CompactionStateRequest{PlanID: 1}).Return(
 		&datapb.CompactionPlanResult{
 			PlanID: 1,
 			State:  datapb.CompactionTaskState_completed,

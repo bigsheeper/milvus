@@ -65,7 +65,6 @@ func (s *ImportCheckerSuite) SetupTest() {
 	catalog.EXPECT().ListPartitionStatsInfos(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
 
-	cluster := NewMockCluster(s.T())
 	s.alloc = allocator.NewMockAllocator(s.T())
 
 	broker := broker2.NewMockBroker(s.T())
@@ -85,7 +84,7 @@ func (s *ImportCheckerSuite) SetupTest() {
 	l0CompactionTrigger.EXPECT().GetPauseCompactionChan(mock.Anything, mock.Anything).Return(compactionChan).Maybe()
 	l0CompactionTrigger.EXPECT().GetResumeCompactionChan(mock.Anything, mock.Anything).Return(compactionChan).Maybe()
 
-	checker := NewImportChecker(meta, broker, cluster, s.alloc, imeta, sjm, l0CompactionTrigger).(*importChecker)
+	checker := NewImportChecker(meta, broker, s.alloc, imeta, sjm, l0CompactionTrigger).(*importChecker)
 	s.checker = checker
 
 	job := &importJob{
@@ -547,7 +546,6 @@ func TestImportCheckerCompaction(t *testing.T) {
 	catalog.EXPECT().ListPartitionStatsInfos(mock.Anything).Return(nil, nil)
 	catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
 
-	cluster := NewMockCluster(t)
 	alloc := allocator.NewMockAllocator(t)
 
 	broker := broker2.NewMockBroker(t)
@@ -566,7 +564,7 @@ func TestImportCheckerCompaction(t *testing.T) {
 	l0CompactionTrigger.EXPECT().GetPauseCompactionChan(mock.Anything, mock.Anything).Return(compactionChan).Maybe()
 	l0CompactionTrigger.EXPECT().GetResumeCompactionChan(mock.Anything, mock.Anything).Return(compactionChan).Maybe()
 
-	checker := NewImportChecker(meta, broker, cluster, alloc, imeta, sjm, l0CompactionTrigger).(*importChecker)
+	checker := NewImportChecker(meta, broker, alloc, imeta, sjm, l0CompactionTrigger).(*importChecker)
 
 	job := &importJob{
 		ImportJob: &datapb.ImportJob{

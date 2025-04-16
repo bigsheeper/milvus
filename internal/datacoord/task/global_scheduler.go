@@ -25,6 +25,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/pkg/v2/log"
+	taskcommon "github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -62,7 +63,12 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 	if s.pendingTasks.Get(task.GetTaskID()) != nil {
 		return
 	}
-	s.pendingTasks.Push(task)
+	switch task.GetTaskState() {
+	case taskcommon.Pending:
+		s.pendingTasks.Push(task)
+	case taskcommon.InProgress:
+		s.runningTasks.Insert(task.GetTaskID(), task)
+	}
 }
 
 func (s *globalTaskScheduler) AbortAndRemoveTask(taskID int64) {
@@ -142,7 +148,7 @@ func (s *globalTaskScheduler) schedule() {
 	if pendingNum == 0 {
 		return
 	}
-	nodeSlots := s.cluster.QuerySlots()
+	nodeSlots := s.cluster.QuerySlot()
 	log.Ctx(s.ctx).Info("scheduling pending tasks...", zap.Int("num", pendingNum), zap.Any("nodeSlots", nodeSlots))
 
 	futures := make([]*conc.Future[struct{}], 0)
@@ -159,12 +165,12 @@ func (s *globalTaskScheduler) schedule() {
 		}
 		future := s.execPool.Submit(func() (struct{}, error) {
 			log.Ctx(s.ctx).Info("processing task...", WrapTaskLog(task)...)
-			if task.GetTaskState() == Pending {
+			if task.GetTaskState() == taskcommon.Pending {
 				task.CreateTaskOnWorker(nodeID, s.cluster)
 				switch task.GetTaskState() {
-				case Pending, Retry:
+				case taskcommon.Pending, taskcommon.Retry:
 					s.pendingTasks.Push(task)
-				case InProgress:
+				case taskcommon.InProgress:
 					s.runningTasks.Insert(task.GetTaskID(), task)
 				}
 			}
@@ -187,9 +193,9 @@ func (s *globalTaskScheduler) check() {
 		future := s.checkPool.Submit(func() (struct{}, error) {
 			task.QueryTaskOnWorker(s.cluster)
 			switch task.GetTaskState() {
-			case Retry:
+			case taskcommon.Retry:
 				s.pendingTasks.Push(task)
-			case Finished, Failed:
+			case taskcommon.Finished, taskcommon.Failed:
 				task.DropTaskOnWorker(s.cluster)
 				s.runningTasks.Remove(task.GetTaskID())
 			}

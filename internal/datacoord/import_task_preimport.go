@@ -23,12 +23,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -82,7 +82,7 @@ func (p *preImportTask) GetCompleteTime() string {
 }
 
 func (p *preImportTask) GetTaskType() task.Type {
-	return task.Import
+	return task.PreImport
 }
 
 func (p *preImportTask) GetTaskState() task.State {
@@ -98,7 +98,7 @@ func (p *preImportTask) CreateTaskOnWorker(nodeID int64, cluster session.Cluster
 	job := p.imeta.GetJob(context.TODO(), p.GetJobID())
 	req := AssemblePreImportRequest(p, job)
 
-	err := cluster.PreImport(nodeID, req)
+	err := cluster.CreatePreImport(nodeID, req)
 	if err != nil {
 		log.Warn("preimport failed", WrapTaskLog(p, zap.Error(err))...)
 		return

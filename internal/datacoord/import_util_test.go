@@ -454,11 +454,8 @@ func TestImportUtil_CheckDiskQuota(t *testing.T) {
 }
 
 func TestImportUtil_DropImportTask(t *testing.T) {
-	manager := session.NewMockDataNodeManager(t)
-	manager.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
-	cluster := session.Cluster{
-		DataNodeManager: manager,
-	}
+	cluster := session.NewMockCluster(t)
+	cluster.EXPECT().DropImport(mock.Anything, mock.Anything).Return(nil)
 
 	catalog := mocks.NewDataCoordCatalog(t)
 	catalog.EXPECT().ListImportJobs(mock.Anything).Return(nil, nil)

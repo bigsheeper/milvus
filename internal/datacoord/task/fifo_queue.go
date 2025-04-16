@@ -16,7 +16,9 @@
 
 package task
 
-import "sync"
+import (
+	"sync"
+)
 
 type FIFOQueue interface {
 	Push(task Task)

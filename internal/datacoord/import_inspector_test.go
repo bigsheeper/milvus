@@ -44,7 +44,6 @@ type ImportInspectorSuite struct {
 	catalog   *mocks.DataCoordCatalog
 	alloc     *allocator.MockAllocator
 	cluster   *MockCluster
-	dnMgr     *session.MockDataNodeManager
 	meta      *meta
 	imeta     ImportMeta
 	inspector *importInspector
@@ -68,7 +67,6 @@ func (s *ImportInspectorSuite) SetupTest() {
 	s.catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
 
 	s.cluster = NewMockCluster(s.T())
-	s.dnMgr = session.NewMockDataNodeManager(s.T())
 	s.alloc = allocator.NewMockAllocator(s.T())
 	broker := broker.NewMockBroker(s.T())
 	broker.EXPECT().ShowCollectionIDs(mock.Anything).Return(nil, nil)
@@ -115,14 +113,14 @@ func (s *ImportInspectorSuite) TestProcessPreImport() {
 	s.NoError(err)
 
 	// pending -> inProgress
-	s.dnMgr.EXPECT().PreImport(mock.Anything, mock.Anything).Return(nil)
-	cluster := session.Cluster{DataNodeManager: s.dnMgr}
+	cluster := session.NewMockCluster(s.T())
+	cluster.EXPECT().CreatePreImport(mock.Anything, mock.Anything).Return(nil)
 	task.CreateTaskOnWorker(1, cluster)
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_InProgress, task.GetState())
 
 	// inProgress -> completed
-	s.dnMgr.EXPECT().QueryPreImport(mock.Anything, mock.Anything).Return(&datapb.QueryPreImportResponse{
+	cluster.EXPECT().QueryPreImport(mock.Anything, mock.Anything).Return(&datapb.QueryPreImportResponse{
 		State: datapb.ImportTaskStateV2_Completed,
 	}, nil)
 	task.QueryTaskOnWorker(cluster)
@@ -182,20 +180,20 @@ func (s *ImportInspectorSuite) TestProcessImport() {
 	const nodeID = 10
 	s.alloc.EXPECT().AllocN(mock.Anything).Return(100, 200, nil)
 	s.alloc.EXPECT().AllocTimestamp(mock.Anything).Return(300, nil)
-	s.dnMgr.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
+	cluster := session.NewMockCluster(s.T())
+	cluster.EXPECT().CreateImport(mock.Anything, mock.Anything).Return(nil)
+	cluster.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
 		Slots: 1,
 	}, nil)
-	s.dnMgr.EXPECT().ImportV2(mock.Anything, mock.Anything).Return(nil)
-	cluster := session.Cluster{DataNodeManager: s.dnMgr}
 	task.CreateTaskOnWorker(1, cluster)
 	task = s.imeta.GetTask(context.TODO(), task.GetTaskID())
 	s.Equal(datapb.ImportTaskStateV2_InProgress, task.GetState())
 
 	// inProgress -> completed
-	s.dnMgr.ExpectedCalls = lo.Filter(s.dnMgr.ExpectedCalls, func(call *mock.Call, _ int) bool {
+	cluster.ExpectedCalls = lo.Filter(cluster.ExpectedCalls, func(call *mock.Call, _ int) bool {
 		return call.Method != "QueryImport"
 	})
-	s.dnMgr.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
+	cluster.EXPECT().QueryImport(mock.Anything, mock.Anything).Return(&datapb.QueryImportResponse{
 		State: datapb.ImportTaskStateV2_Completed,
 	}, nil)
 	task.QueryTaskOnWorker(cluster)

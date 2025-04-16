@@ -62,10 +62,8 @@ func TestPreImportTask_CreateTaskOnWorker(t *testing.T) {
 	err = im.AddTask(context.TODO(), task)
 	assert.NoError(t, err)
 
-	mockDNM := session.NewMockDataNodeManager(t)
-	mockDNM.EXPECT().PreImport(mock.Anything, mock.Anything).Return(nil)
-
-	cluster := session.Cluster{DataNodeManager: mockDNM}
+	cluster := session.NewMockCluster(t)
+	cluster.EXPECT().CreatePreImport(mock.Anything, mock.Anything).Return(nil)
 	task.CreateTaskOnWorker(1, cluster)
 	assert.Equal(t, datapb.ImportTaskStateV2_InProgress, task.GetState())
 }
@@ -95,12 +93,10 @@ func TestPreImportTask_QueryTaskOnWorker(t *testing.T) {
 	err = im.AddTask(context.TODO(), task)
 	assert.NoError(t, err)
 
-	mockDNM := session.NewMockDataNodeManager(t)
-	mockDNM.EXPECT().QueryPreImport(mock.Anything, mock.Anything).Return(&datapb.QueryPreImportResponse{
+	cluster := session.NewMockCluster(t)
+	cluster.EXPECT().QueryPreImport(mock.Anything, mock.Anything).Return(&datapb.QueryPreImportResponse{
 		State: datapb.ImportTaskStateV2_Completed,
 	}, nil)
-
-	cluster := session.Cluster{DataNodeManager: mockDNM}
 	task.QueryTaskOnWorker(cluster)
 	assert.Equal(t, datapb.ImportTaskStateV2_Completed, task.GetState())
 }

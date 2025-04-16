@@ -241,12 +241,12 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		}).Twice()
 		s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(nil)
 
-		s.mockSessMgr.EXPECT().Compaction(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nodeID int64, plan *datapb.CompactionPlan) error {
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().CreateCompaction(mock.Anything, mock.Anything).RunAndReturn(func(nodeID int64, plan *datapb.CompactionPlan) error {
 			s.Require().EqualValues(t.GetTaskProto().NodeID, nodeID)
 			return errors.New("mock error")
 		})
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.CreateTaskOnWorker(100, cluster)
 		s.Equal(datapb.CompactionTaskState_pipelining, t.GetTaskProto().State)
 		s.EqualValues(NullNodeID, t.GetTaskProto().NodeID)
@@ -280,12 +280,12 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 			}}
 		}).Twice()
 
-		s.mockSessMgr.EXPECT().Compaction(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nodeID int64, plan *datapb.CompactionPlan) error {
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().CreateCompaction(mock.Anything, mock.Anything).RunAndReturn(func(nodeID int64, plan *datapb.CompactionPlan) error {
 			s.Require().EqualValues(t.GetTaskProto().NodeID, nodeID)
 			return nil
 		})
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.CreateTaskOnWorker(100, cluster)
 		s.Equal(datapb.CompactionTaskState_executing, t.GetTaskProto().GetState())
 	})
@@ -297,9 +297,9 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).Return(nil, merr.WrapErrNodeNotFound(t.GetTaskProto().NodeID)).Once()
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).Return(nil, merr.WrapErrNodeNotFound(t.GetTaskProto().NodeID)).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_pipelining, t.GetTaskProto().GetState())
 		s.EqualValues(NullNodeID, t.GetTaskProto().GetNodeID())
@@ -312,8 +312,8 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).Return(nil, errors.New("mock error")).Times(12)
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).Return(nil, errors.New("mock error")).Times(12)
 		for i := 0; i < 12; i++ {
 			t.QueryTaskOnWorker(cluster)
 			s.Equal(datapb.CompactionTaskState_executing, t.GetTaskProto().GetState())
@@ -326,13 +326,13 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t := s.generateTestL0Task(datapb.CompactionTaskState_executing)
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_executing,
 			}, nil).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 	})
 
@@ -342,7 +342,8 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_completed,
@@ -352,7 +353,6 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(nil).Times(2)
 		s.mockMeta.EXPECT().SetSegmentsCompacting(mock.Anything, mock.Anything, false).Return().Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_completed, t.GetTaskProto().GetState())
 	})
@@ -362,7 +362,8 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_completed,
@@ -371,7 +372,6 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		s.mockMeta.EXPECT().UpdateSegmentsInfo(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(errors.New("mock error")).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_executing, t.GetTaskProto().GetState())
 	})
@@ -381,7 +381,8 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_completed,
@@ -390,7 +391,6 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		s.mockMeta.EXPECT().UpdateSegmentsInfo(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 		s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(errors.New("mock error")).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_executing, t.GetTaskProto().GetState())
 	})
@@ -401,13 +401,13 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_failed,
 			}, nil).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_failed, t.GetTaskProto().GetState())
 	})
@@ -417,14 +417,14 @@ func (s *L0CompactionTaskSuite) TestPorcessStateTrans() {
 		t.updateAndSaveTaskMeta(setNodeID(100))
 		s.Require().True(t.GetTaskProto().GetNodeID() > 0)
 
-		s.mockSessMgr.EXPECT().GetCompactionPlanResult(t.GetTaskProto().NodeID, mock.Anything).
+		cluster := session.NewMockCluster(s.T())
+		cluster.EXPECT().QueryCompaction(t.GetTaskProto().NodeID, mock.Anything).
 			Return(&datapb.CompactionPlanResult{
 				PlanID: t.GetTaskProto().GetPlanID(),
 				State:  datapb.CompactionTaskState_failed,
 			}, nil).Once()
 		s.mockMeta.EXPECT().SaveCompactionTask(mock.Anything, mock.Anything).Return(errors.New("mock error")).Once()
 
-		cluster := session.Cluster{DataNodeManager: s.mockSessMgr}
 		t.QueryTaskOnWorker(cluster)
 		s.Equal(datapb.CompactionTaskState_executing, t.GetTaskProto().GetState())
 	})

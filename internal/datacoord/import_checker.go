@@ -45,7 +45,6 @@ type ImportChecker interface {
 type importChecker struct {
 	meta                *meta
 	broker              broker.Broker
-	cluster             Cluster
 	alloc               allocator.Allocator
 	imeta               ImportMeta
 	sjm                 StatsJobManager
@@ -57,7 +56,6 @@ type importChecker struct {
 
 func NewImportChecker(meta *meta,
 	broker broker.Broker,
-	cluster Cluster,
 	alloc allocator.Allocator,
 	imeta ImportMeta,
 	sjm StatsJobManager,
@@ -66,7 +64,6 @@ func NewImportChecker(meta *meta,
 	return &importChecker{
 		meta:                meta,
 		broker:              broker,
-		cluster:             cluster,
 		alloc:               alloc,
 		imeta:               imeta,
 		sjm:                 sjm,

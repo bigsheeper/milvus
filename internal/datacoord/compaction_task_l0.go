@@ -31,11 +31,11 @@ import (
 	"github.com/milvus-io/milvus/internal/compaction"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/pkg/v2/common"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
@@ -77,7 +77,7 @@ func (t *l0CompactionTask) CreateTaskOnWorker(nodeID int64, cluster session.Clus
 		return
 	}
 
-	err = cluster.Compaction(context.TODO(), nodeID, plan)
+	err = cluster.CreateCompaction(nodeID, plan)
 	if err != nil {
 		originNodeID := t.GetTaskProto().GetNodeID()
 		log.Warn("l0CompactionTask failed to notify compaction tasks to DataNode",
@@ -102,7 +102,9 @@ func (t *l0CompactionTask) CreateTaskOnWorker(nodeID int64, cluster session.Clus
 
 func (t *l0CompactionTask) QueryTaskOnWorker(cluster session.Cluster) {
 	log := log.With(zap.Int64("planID", t.GetTaskProto().GetPlanID()), zap.Int64("nodeID", t.GetTaskProto().GetNodeID()))
-	result, err := cluster.GetCompactionPlanResult(t.GetTaskProto().GetNodeID(), t.GetTaskProto().GetPlanID())
+	result, err := cluster.QueryCompaction(t.GetTaskProto().GetNodeID(), &datapb.CompactionStateRequest{
+		PlanID: t.GetTaskProto().GetPlanID(),
+	})
 	if err != nil || result == nil {
 		if errors.Is(err, merr.ErrNodeNotFound) {
 			t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_pipelining), setNodeID(NullNodeID))
@@ -133,7 +135,7 @@ func (t *l0CompactionTask) QueryTaskOnWorker(cluster session.Cluster) {
 
 func (t *l0CompactionTask) DropTaskOnWorker(cluster session.Cluster) {
 	if t.hasAssignedWorker() {
-		err := cluster.DropCompactionPlan(t.GetTaskProto().GetNodeID(), &datapb.DropCompactionPlanRequest{
+		err := cluster.DropCompaction(t.GetTaskProto().GetNodeID(), &datapb.DropCompactionPlanRequest{
 			PlanID: t.GetTaskProto().GetPlanID(),
 		})
 		if err != nil {

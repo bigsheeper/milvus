@@ -264,13 +264,24 @@ func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateReques
 	if err != nil {
 		return nil, err
 	}
-	result := &datapb.CompactionPlanResult{}
+	result := &datapb.CompactionStateResponse{}
 	err = proto.Unmarshal(resp.GetPayload(), result)
 	if err != nil {
 		return nil, err
 	}
-	err = binlog.CompressCompactionBinlogs(result.GetSegments())
-	return result, err
+	var ret *datapb.CompactionPlanResult
+	for _, rst := range result.GetResults() {
+		if rst.GetPlanID() != in.GetPlanID() {
+			continue
+		}
+		err = binlog.CompressCompactionBinlogs(rst.GetSegments())
+		if err != nil {
+			return nil, err
+		}
+		ret = rst
+		break
+	}
+	return ret, err
 }
 
 func (c *cluster) DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error {

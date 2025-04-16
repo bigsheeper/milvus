@@ -66,7 +66,7 @@ func GetTaskTypeFromProperties(properties map[string]string) Type {
 	}
 
 	switch Type(taskType) {
-	case PreImport, Import, Compaction, Index, Stats:
+	case QuerySlot, PreImport, Import, Compaction, Index, Stats:
 		return Type(taskType)
 	default:
 		return None
@@ -81,7 +81,7 @@ func NewProperties() Properties {
 
 func (p Properties) AppendType(t Type) {
 	switch t {
-	case PreImport, Import, Compaction, Index, Stats:
+	case QuerySlot, PreImport, Import, Compaction, Index, Stats:
 		p[TypeKey] = string(t)
 	default:
 		p[TypeKey] = string(None)

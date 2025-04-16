@@ -654,7 +654,9 @@ func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTa
 			},
 		})
 	default:
-		return merr.Status(fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())), nil
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("CreateTask failed", zap.Error(err))
+		return merr.Status(err), nil
 	}
 }
 
@@ -707,9 +709,13 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 		return handleQueryTask(ctx, request, &datapb.CompactionStateRequest{}, node.GetCompactionState)
 	case task.Index, task.Stats, task.Analyze:
 		return handleQueryTask(ctx, request, &workerpb.QueryJobsV2Request{}, node.QueryJobsV2)
+	case task.QuerySlot:
+		return handleQueryTask(ctx, request, &workerpb.GetJobStatsRequest{}, node.GetJobStats)
 	default:
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("QueryTask failed", zap.Error(err))
 		return &workerpb.QueryTaskResponse{
-			Status: merr.Status(fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())),
+			Status: merr.Status(err),
 		}, nil
 	}
 }
@@ -743,6 +749,8 @@ func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRe
 		}
 		return node.DropJobsV2(ctx, req)
 	default:
-		return merr.Status(fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())), nil
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("DropTask failed", zap.Error(err))
+		return merr.Status(err), nil
 	}
 }

@@ -16,6 +16,8 @@
 
 package task
 
+import "github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+
 const TypeKey = "task_type"
 
 type Type string
@@ -66,10 +68,24 @@ func GetTaskTypeFromProperties(properties map[string]string) Type {
 	}
 
 	switch Type(taskType) {
-	case QuerySlot, PreImport, Import, Compaction, Index, Stats:
+	case QuerySlot, PreImport, Import, Compaction, Index, Stats, Analyze:
 		return Type(taskType)
 	default:
 		return None
+	}
+}
+
+func GetJobTypeFromProperties(properties map[string]string) indexpb.JobType {
+	taskType := GetTaskTypeFromProperties(properties)
+	switch taskType {
+	case Index:
+		return indexpb.JobType_JobTypeIndexJob
+	case Stats:
+		return indexpb.JobType_JobTypeStatsJob
+	case Analyze:
+		return indexpb.JobType_JobTypeAnalyzeJob
+	default:
+		return indexpb.JobType_JobTypeNone
 	}
 }
 
@@ -81,7 +97,7 @@ func NewProperties() Properties {
 
 func (p Properties) AppendType(t Type) {
 	switch t {
-	case QuerySlot, PreImport, Import, Compaction, Index, Stats:
+	case QuerySlot, PreImport, Import, Compaction, Index, Stats, Analyze:
 		p[TypeKey] = string(t)
 	default:
 		p[TypeKey] = string(None)

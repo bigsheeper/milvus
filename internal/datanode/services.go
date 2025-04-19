@@ -707,8 +707,12 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 		return handleQueryTask(ctx, request, &datapb.QueryImportRequest{}, node.QueryImport)
 	case task.Compaction:
 		return handleQueryTask(ctx, request, &datapb.CompactionStateRequest{}, node.GetCompactionState)
-	case task.Index, task.Stats, task.Analyze:
-		return handleQueryTask(ctx, request, &workerpb.QueryJobsV2Request{}, node.QueryJobsV2)
+	case task.Index:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{}, node.queryIndexTask)
+	case task.Stats:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{}, node.queryStatsTask)
+	case task.Analyze:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{}, node.queryAnalyzeTask)
 	case task.QuerySlot:
 		return handleQueryTask(ctx, request, &workerpb.GetJobStatsRequest{}, node.GetJobStats)
 	default:
@@ -742,12 +746,17 @@ func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRe
 		}
 		return node.DropCompactionPlan(ctx, req)
 	case task.Index, task.Stats, task.Analyze:
-		req := &workerpb.DropJobsV2Request{}
+		req := &workerpb.DropJobsRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
 			return merr.Status(err), nil
 		}
-		return node.DropJobsV2(ctx, req)
+		jobType := task.GetJobTypeFromProperties(request.GetProperties())
+		return node.DropJobsV2(ctx, &workerpb.DropJobsV2Request{
+			ClusterID: req.GetClusterID(),
+			TaskIDs:   req.GetTaskIDs(),
+			JobType:   jobType,
+		})
 	default:
 		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
 		log.Ctx(ctx).Warn("DropTask failed", zap.Error(err))

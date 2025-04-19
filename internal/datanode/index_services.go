@@ -497,6 +497,124 @@ func (node *DataNode) QueryJobsV2(ctx context.Context, req *workerpb.QueryJobsV2
 	}
 }
 
+func (node *DataNode) queryIndexTask(ctx context.Context, req *workerpb.QueryJobsRequest) (*workerpb.QueryJobsV2Response, error) {
+	log := log.Ctx(ctx).With(
+		zap.String("clusterID", req.GetClusterID()), zap.Int64s("taskIDs", req.GetTaskIDs()),
+	).WithRateGroup("QueryResult", 1, 60)
+
+	infos := make(map[typeutil.UniqueID]*index.IndexTaskInfo)
+	node.taskManager.ForeachIndexTaskInfo(func(ClusterID string, buildID typeutil.UniqueID, info *index.IndexTaskInfo) {
+		if ClusterID == req.GetClusterID() {
+			infos[buildID] = &index.IndexTaskInfo{
+				State:                     info.State,
+				FileKeys:                  common.CloneStringList(info.FileKeys),
+				SerializedSize:            info.SerializedSize,
+				MemSize:                   info.MemSize,
+				FailReason:                info.FailReason,
+				CurrentIndexVersion:       info.CurrentIndexVersion,
+				IndexStoreVersion:         info.IndexStoreVersion,
+				CurrentScalarIndexVersion: info.CurrentScalarIndexVersion,
+			}
+		}
+	})
+	results := make([]*workerpb.IndexTaskInfo, 0, len(req.GetTaskIDs()))
+	for i, buildID := range req.GetTaskIDs() {
+		results = append(results, &workerpb.IndexTaskInfo{
+			BuildID:        buildID,
+			State:          commonpb.IndexState_IndexStateNone,
+			IndexFileKeys:  nil,
+			SerializedSize: 0,
+		})
+		if info, ok := infos[buildID]; ok {
+			results[i].State = info.State
+			results[i].IndexFileKeys = info.FileKeys
+			results[i].SerializedSize = info.SerializedSize
+			results[i].MemSize = info.MemSize
+			results[i].FailReason = info.FailReason
+			results[i].CurrentIndexVersion = info.CurrentIndexVersion
+			results[i].IndexStoreVersion = info.IndexStoreVersion
+			results[i].CurrentScalarIndexVersion = info.CurrentScalarIndexVersion
+		}
+	}
+	log.Debug("query index jobs result success", zap.Any("results", results))
+	return &workerpb.QueryJobsV2Response{
+		Status:    merr.Success(),
+		ClusterID: req.GetClusterID(),
+		Result: &workerpb.QueryJobsV2Response_IndexJobResults{
+			IndexJobResults: &workerpb.IndexJobResults{
+				Results: results,
+			},
+		},
+	}, nil
+}
+
+func (node *DataNode) queryStatsTask(ctx context.Context, req *workerpb.QueryJobsRequest) (*workerpb.QueryJobsV2Response, error) {
+	log := log.Ctx(ctx).With(
+		zap.String("clusterID", req.GetClusterID()), zap.Int64s("taskIDs", req.GetTaskIDs()),
+	).WithRateGroup("QueryResult", 1, 60)
+
+	results := make([]*workerpb.StatsResult, 0, len(req.GetTaskIDs()))
+	for _, taskID := range req.GetTaskIDs() {
+		info := node.taskManager.GetStatsTaskInfo(req.GetClusterID(), taskID)
+		if info != nil {
+			results = append(results, &workerpb.StatsResult{
+				TaskID:           taskID,
+				State:            info.State,
+				FailReason:       info.FailReason,
+				CollectionID:     info.CollID,
+				PartitionID:      info.PartID,
+				SegmentID:        info.SegID,
+				Channel:          info.InsertChannel,
+				InsertLogs:       info.InsertLogs,
+				StatsLogs:        info.StatsLogs,
+				TextStatsLogs:    info.TextStatsLogs,
+				Bm25Logs:         info.Bm25Logs,
+				NumRows:          info.NumRows,
+				JsonKeyStatsLogs: info.JSONKeyStatsLogs,
+			})
+		}
+	}
+	log.Debug("query stats job result success", zap.Any("results", results))
+	return &workerpb.QueryJobsV2Response{
+		Status:    merr.Success(),
+		ClusterID: req.GetClusterID(),
+		Result: &workerpb.QueryJobsV2Response_StatsJobResults{
+			StatsJobResults: &workerpb.StatsResults{
+				Results: results,
+			},
+		},
+	}, nil
+}
+
+func (node *DataNode) queryAnalyzeTask(ctx context.Context, req *workerpb.QueryJobsRequest) (*workerpb.QueryJobsV2Response, error) {
+	log := log.Ctx(ctx).With(
+		zap.String("clusterID", req.GetClusterID()), zap.Int64s("taskIDs", req.GetTaskIDs()),
+	).WithRateGroup("QueryResult", 1, 60)
+
+	results := make([]*workerpb.AnalyzeResult, 0, len(req.GetTaskIDs()))
+	for _, taskID := range req.GetTaskIDs() {
+		info := node.taskManager.GetAnalyzeTaskInfo(req.GetClusterID(), taskID)
+		if info != nil {
+			results = append(results, &workerpb.AnalyzeResult{
+				TaskID:        taskID,
+				State:         info.State,
+				FailReason:    info.FailReason,
+				CentroidsFile: info.CentroidsFile,
+			})
+		}
+	}
+	log.Debug("query analyze jobs result success", zap.Any("results", results))
+	return &workerpb.QueryJobsV2Response{
+		Status:    merr.Success(),
+		ClusterID: req.GetClusterID(),
+		Result: &workerpb.QueryJobsV2Response_AnalyzeJobResults{
+			AnalyzeJobResults: &workerpb.AnalyzeResults{
+				Results: results,
+			},
+		},
+	}, nil
+}
+
 func (node *DataNode) DropJobsV2(ctx context.Context, req *workerpb.DropJobsV2Request) (*commonpb.Status, error) {
 	log := log.Ctx(ctx).With(zap.String("clusterID", req.GetClusterID()),
 		zap.Int64s("taskIDs", req.GetTaskIDs()),

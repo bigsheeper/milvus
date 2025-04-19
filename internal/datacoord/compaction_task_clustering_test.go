@@ -52,10 +52,10 @@ func TestClusteringCompactionTaskSuite(t *testing.T) {
 type ClusteringCompactionTaskSuite struct {
 	suite.Suite
 
-	mockID           atomic.Int64
-	mockAlloc        *allocator.MockAllocator
-	meta             *meta
-	handler          *NMockHandler
+	mockID    atomic.Int64
+	mockAlloc *allocator.MockAllocator
+	meta      *meta
+	handler   *NMockHandler
 
 	mockSessionMgr   *session.MockDataNodeManager
 	analyzeScheduler task.GlobalScheduler

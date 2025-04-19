@@ -352,12 +352,12 @@ func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*work
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.IndexJobResults{}
+	result := &workerpb.QueryJobsV2Response{}
 	err = proto.Unmarshal(resp.GetPayload(), result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.GetIndexJobResults(), nil
 }
 
 func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
@@ -379,12 +379,12 @@ func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*work
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.StatsResults{}
+	result := &workerpb.QueryJobsV2Response{}
 	err = proto.Unmarshal(resp.GetPayload(), result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.GetStatsJobResults(), nil
 }
 
 func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
@@ -406,12 +406,12 @@ func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*wo
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.AnalyzeResults{}
+	result := &workerpb.QueryJobsV2Response{}
 	err = proto.Unmarshal(resp.GetPayload(), result)
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.GetAnalyzeJobResults(), nil
 }
 
 func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {

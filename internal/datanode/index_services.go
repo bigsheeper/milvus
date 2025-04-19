@@ -141,9 +141,9 @@ func (node *DataNode) QueryJobs(ctx context.Context, req *workerpb.QueryJobsRequ
 	ret := &workerpb.QueryJobsResponse{
 		Status:     merr.Success(),
 		ClusterID:  req.GetClusterID(),
-		IndexInfos: make([]*workerpb.IndexTaskInfo, 0, len(req.GetBuildIDs())),
+		IndexInfos: make([]*workerpb.IndexTaskInfo, 0, len(req.GetTaskIDs())),
 	}
-	for i, buildID := range req.GetBuildIDs() {
+	for i, buildID := range req.GetTaskIDs() {
 		ret.IndexInfos = append(ret.IndexInfos, &workerpb.IndexTaskInfo{
 			BuildID:        buildID,
 			State:          commonpb.IndexState_IndexStateNone,
@@ -171,16 +171,16 @@ func (node *DataNode) QueryJobs(ctx context.Context, req *workerpb.QueryJobsRequ
 func (node *DataNode) DropJobs(ctx context.Context, req *workerpb.DropJobsRequest) (*commonpb.Status, error) {
 	log.Ctx(ctx).Info("drop index build jobs",
 		zap.String("clusterID", req.ClusterID),
-		zap.Int64s("indexBuildIDs", req.BuildIDs),
+		zap.Int64s("indexBuildIDs", req.GetTaskIDs()),
 	)
 	if err := node.lifetime.Add(merr.IsHealthyOrStopping); err != nil {
 		log.Ctx(ctx).Warn("index node not ready", zap.Error(err), zap.String("clusterID", req.ClusterID))
 		return merr.Status(err), nil
 	}
 	defer node.lifetime.Done()
-	keys := make([]index.Key, 0, len(req.GetBuildIDs()))
-	for _, buildID := range req.GetBuildIDs() {
-		keys = append(keys, index.Key{ClusterID: req.GetClusterID(), TaskID: buildID})
+	keys := make([]index.Key, 0, len(req.GetTaskIDs()))
+	for _, taskID := range req.GetTaskIDs() {
+		keys = append(keys, index.Key{ClusterID: req.GetClusterID(), TaskID: taskID})
 	}
 	infos := node.taskManager.DeleteIndexTaskInfos(ctx, keys)
 	for _, info := range infos {
@@ -189,7 +189,7 @@ func (node *DataNode) DropJobs(ctx context.Context, req *workerpb.DropJobsReques
 		}
 	}
 	log.Ctx(ctx).Info("drop index build jobs success", zap.String("clusterID", req.GetClusterID()),
-		zap.Int64s("indexBuildIDs", req.GetBuildIDs()))
+		zap.Int64s("indexBuildIDs", req.GetTaskIDs()))
 	return merr.Success(), nil
 }
 

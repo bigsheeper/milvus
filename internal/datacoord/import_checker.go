@@ -47,7 +47,7 @@ type importChecker struct {
 	broker              broker.Broker
 	alloc               allocator.Allocator
 	imeta               ImportMeta
-	sjm                 StatsJobManager
+	sjm                 StatsInspector
 	l0CompactionTrigger TriggerManager
 
 	closeOnce sync.Once
@@ -58,7 +58,7 @@ func NewImportChecker(meta *meta,
 	broker broker.Broker,
 	alloc allocator.Allocator,
 	imeta ImportMeta,
-	sjm StatsJobManager,
+	sjm StatsInspector,
 	l0CompactionTrigger TriggerManager,
 ) ImportChecker {
 	return &importChecker{

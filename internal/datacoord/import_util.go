@@ -462,7 +462,7 @@ func getImportingProgress(jobID int64, imeta ImportMeta, meta *meta) (float32, i
 	return float32(importedRows) / float32(totalRows), importedRows, totalRows
 }
 
-func getStatsProgress(jobID int64, imeta ImportMeta, sjm StatsJobManager) float32 {
+func getStatsProgress(jobID int64, imeta ImportMeta, sjm StatsInspector) float32 {
 	if !Params.DataCoordCfg.EnableStatsTask.GetAsBool() {
 		return 1
 	}
@@ -515,7 +515,7 @@ func getIndexBuildingProgress(jobID int64, imeta ImportMeta, meta *meta) float32
 // 10%: Completed
 // TODO: Wrap a function to map status to user status.
 // TODO: Save these progress to job instead of recalculating.
-func GetJobProgress(jobID int64, imeta ImportMeta, meta *meta, sjm StatsJobManager) (int64, internalpb.ImportJobState, int64, int64, string) {
+func GetJobProgress(jobID int64, imeta ImportMeta, meta *meta, sjm StatsInspector) (int64, internalpb.ImportJobState, int64, int64, string) {
 	job := imeta.GetJob(context.TODO(), jobID)
 	if job == nil {
 		return 0, internalpb.ImportJobState_Failed, 0, 0, fmt.Sprintf("import job does not exist, jobID=%d", jobID)

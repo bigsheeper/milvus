@@ -352,7 +352,7 @@ func (_c *MockCluster_CreateStats_Call) RunAndReturn(run func(int64, *workerpb.C
 }
 
 // DropAnalyze provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (_m *MockCluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -360,7 +360,7 @@ func (_m *MockCluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsV2Request)
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsV2Request) error); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsRequest) error); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		r0 = ret.Error(0)
@@ -376,14 +376,14 @@ type MockCluster_DropAnalyze_Call struct {
 
 // DropAnalyze is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.DropJobsV2Request
+//   - in *workerpb.DropJobsRequest
 func (_e *MockCluster_Expecter) DropAnalyze(nodeID interface{}, in interface{}) *MockCluster_DropAnalyze_Call {
 	return &MockCluster_DropAnalyze_Call{Call: _e.mock.On("DropAnalyze", nodeID, in)}
 }
 
-func (_c *MockCluster_DropAnalyze_Call) Run(run func(nodeID int64, in *workerpb.DropJobsV2Request)) *MockCluster_DropAnalyze_Call {
+func (_c *MockCluster_DropAnalyze_Call) Run(run func(nodeID int64, in *workerpb.DropJobsRequest)) *MockCluster_DropAnalyze_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.DropJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.DropJobsRequest))
 	})
 	return _c
 }
@@ -393,7 +393,7 @@ func (_c *MockCluster_DropAnalyze_Call) Return(_a0 error) *MockCluster_DropAnaly
 	return _c
 }
 
-func (_c *MockCluster_DropAnalyze_Call) RunAndReturn(run func(int64, *workerpb.DropJobsV2Request) error) *MockCluster_DropAnalyze_Call {
+func (_c *MockCluster_DropAnalyze_Call) RunAndReturn(run func(int64, *workerpb.DropJobsRequest) error) *MockCluster_DropAnalyze_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -493,7 +493,7 @@ func (_c *MockCluster_DropImport_Call) RunAndReturn(run func(int64, *datapb.Drop
 }
 
 // DropIndex provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) DropIndex(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (_m *MockCluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -501,7 +501,7 @@ func (_m *MockCluster) DropIndex(nodeID int64, in *workerpb.DropJobsV2Request) e
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsV2Request) error); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsRequest) error); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		r0 = ret.Error(0)
@@ -517,14 +517,14 @@ type MockCluster_DropIndex_Call struct {
 
 // DropIndex is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.DropJobsV2Request
+//   - in *workerpb.DropJobsRequest
 func (_e *MockCluster_Expecter) DropIndex(nodeID interface{}, in interface{}) *MockCluster_DropIndex_Call {
 	return &MockCluster_DropIndex_Call{Call: _e.mock.On("DropIndex", nodeID, in)}
 }
 
-func (_c *MockCluster_DropIndex_Call) Run(run func(nodeID int64, in *workerpb.DropJobsV2Request)) *MockCluster_DropIndex_Call {
+func (_c *MockCluster_DropIndex_Call) Run(run func(nodeID int64, in *workerpb.DropJobsRequest)) *MockCluster_DropIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.DropJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.DropJobsRequest))
 	})
 	return _c
 }
@@ -534,13 +534,13 @@ func (_c *MockCluster_DropIndex_Call) Return(_a0 error) *MockCluster_DropIndex_C
 	return _c
 }
 
-func (_c *MockCluster_DropIndex_Call) RunAndReturn(run func(int64, *workerpb.DropJobsV2Request) error) *MockCluster_DropIndex_Call {
+func (_c *MockCluster_DropIndex_Call) RunAndReturn(run func(int64, *workerpb.DropJobsRequest) error) *MockCluster_DropIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DropStats provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) DropStats(nodeID int64, in *workerpb.DropJobsV2Request) error {
+func (_m *MockCluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -548,7 +548,7 @@ func (_m *MockCluster) DropStats(nodeID int64, in *workerpb.DropJobsV2Request) e
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsV2Request) error); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.DropJobsRequest) error); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		r0 = ret.Error(0)
@@ -564,14 +564,14 @@ type MockCluster_DropStats_Call struct {
 
 // DropStats is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.DropJobsV2Request
+//   - in *workerpb.DropJobsRequest
 func (_e *MockCluster_Expecter) DropStats(nodeID interface{}, in interface{}) *MockCluster_DropStats_Call {
 	return &MockCluster_DropStats_Call{Call: _e.mock.On("DropStats", nodeID, in)}
 }
 
-func (_c *MockCluster_DropStats_Call) Run(run func(nodeID int64, in *workerpb.DropJobsV2Request)) *MockCluster_DropStats_Call {
+func (_c *MockCluster_DropStats_Call) Run(run func(nodeID int64, in *workerpb.DropJobsRequest)) *MockCluster_DropStats_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.DropJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.DropJobsRequest))
 	})
 	return _c
 }
@@ -581,13 +581,13 @@ func (_c *MockCluster_DropStats_Call) Return(_a0 error) *MockCluster_DropStats_C
 	return _c
 }
 
-func (_c *MockCluster_DropStats_Call) RunAndReturn(run func(int64, *workerpb.DropJobsV2Request) error) *MockCluster_DropStats_Call {
+func (_c *MockCluster_DropStats_Call) RunAndReturn(run func(int64, *workerpb.DropJobsRequest) error) *MockCluster_DropStats_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // QueryAnalyze provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.AnalyzeResults, error) {
+func (_m *MockCluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error) {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -596,10 +596,10 @@ func (_m *MockCluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Reques
 
 	var r0 *workerpb.AnalyzeResults
 	var r1 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) (*workerpb.AnalyzeResults, error)); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error)); ok {
 		return rf(nodeID, in)
 	}
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) *workerpb.AnalyzeResults); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) *workerpb.AnalyzeResults); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		if ret.Get(0) != nil {
@@ -607,7 +607,7 @@ func (_m *MockCluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsV2Reques
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsV2Request) error); ok {
+	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsRequest) error); ok {
 		r1 = rf(nodeID, in)
 	} else {
 		r1 = ret.Error(1)
@@ -623,14 +623,14 @@ type MockCluster_QueryAnalyze_Call struct {
 
 // QueryAnalyze is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.QueryJobsV2Request
+//   - in *workerpb.QueryJobsRequest
 func (_e *MockCluster_Expecter) QueryAnalyze(nodeID interface{}, in interface{}) *MockCluster_QueryAnalyze_Call {
 	return &MockCluster_QueryAnalyze_Call{Call: _e.mock.On("QueryAnalyze", nodeID, in)}
 }
 
-func (_c *MockCluster_QueryAnalyze_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsV2Request)) *MockCluster_QueryAnalyze_Call {
+func (_c *MockCluster_QueryAnalyze_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsRequest)) *MockCluster_QueryAnalyze_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.QueryJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.QueryJobsRequest))
 	})
 	return _c
 }
@@ -640,7 +640,7 @@ func (_c *MockCluster_QueryAnalyze_Call) Return(_a0 *workerpb.AnalyzeResults, _a
 	return _c
 }
 
-func (_c *MockCluster_QueryAnalyze_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsV2Request) (*workerpb.AnalyzeResults, error)) *MockCluster_QueryAnalyze_Call {
+func (_c *MockCluster_QueryAnalyze_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error)) *MockCluster_QueryAnalyze_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -764,7 +764,7 @@ func (_c *MockCluster_QueryImport_Call) RunAndReturn(run func(int64, *datapb.Que
 }
 
 // QueryIndex provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.IndexJobResults, error) {
+func (_m *MockCluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error) {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -773,10 +773,10 @@ func (_m *MockCluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request)
 
 	var r0 *workerpb.IndexJobResults
 	var r1 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) (*workerpb.IndexJobResults, error)); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error)); ok {
 		return rf(nodeID, in)
 	}
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) *workerpb.IndexJobResults); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) *workerpb.IndexJobResults); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		if ret.Get(0) != nil {
@@ -784,7 +784,7 @@ func (_m *MockCluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsV2Request)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsV2Request) error); ok {
+	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsRequest) error); ok {
 		r1 = rf(nodeID, in)
 	} else {
 		r1 = ret.Error(1)
@@ -800,14 +800,14 @@ type MockCluster_QueryIndex_Call struct {
 
 // QueryIndex is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.QueryJobsV2Request
+//   - in *workerpb.QueryJobsRequest
 func (_e *MockCluster_Expecter) QueryIndex(nodeID interface{}, in interface{}) *MockCluster_QueryIndex_Call {
 	return &MockCluster_QueryIndex_Call{Call: _e.mock.On("QueryIndex", nodeID, in)}
 }
 
-func (_c *MockCluster_QueryIndex_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsV2Request)) *MockCluster_QueryIndex_Call {
+func (_c *MockCluster_QueryIndex_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsRequest)) *MockCluster_QueryIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.QueryJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.QueryJobsRequest))
 	})
 	return _c
 }
@@ -817,7 +817,7 @@ func (_c *MockCluster_QueryIndex_Call) Return(_a0 *workerpb.IndexJobResults, _a1
 	return _c
 }
 
-func (_c *MockCluster_QueryIndex_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsV2Request) (*workerpb.IndexJobResults, error)) *MockCluster_QueryIndex_Call {
+func (_c *MockCluster_QueryIndex_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error)) *MockCluster_QueryIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -929,7 +929,7 @@ func (_c *MockCluster_QuerySlot_Call) RunAndReturn(run func() map[int64]*WorkerS
 }
 
 // QueryStats provides a mock function with given fields: nodeID, in
-func (_m *MockCluster) QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request) (*workerpb.StatsResults, error) {
+func (_m *MockCluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error) {
 	ret := _m.Called(nodeID, in)
 
 	if len(ret) == 0 {
@@ -938,10 +938,10 @@ func (_m *MockCluster) QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request)
 
 	var r0 *workerpb.StatsResults
 	var r1 error
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) (*workerpb.StatsResults, error)); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)); ok {
 		return rf(nodeID, in)
 	}
-	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsV2Request) *workerpb.StatsResults); ok {
+	if rf, ok := ret.Get(0).(func(int64, *workerpb.QueryJobsRequest) *workerpb.StatsResults); ok {
 		r0 = rf(nodeID, in)
 	} else {
 		if ret.Get(0) != nil {
@@ -949,7 +949,7 @@ func (_m *MockCluster) QueryStats(nodeID int64, in *workerpb.QueryJobsV2Request)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsV2Request) error); ok {
+	if rf, ok := ret.Get(1).(func(int64, *workerpb.QueryJobsRequest) error); ok {
 		r1 = rf(nodeID, in)
 	} else {
 		r1 = ret.Error(1)
@@ -965,14 +965,14 @@ type MockCluster_QueryStats_Call struct {
 
 // QueryStats is a helper method to define mock.On call
 //   - nodeID int64
-//   - in *workerpb.QueryJobsV2Request
+//   - in *workerpb.QueryJobsRequest
 func (_e *MockCluster_Expecter) QueryStats(nodeID interface{}, in interface{}) *MockCluster_QueryStats_Call {
 	return &MockCluster_QueryStats_Call{Call: _e.mock.On("QueryStats", nodeID, in)}
 }
 
-func (_c *MockCluster_QueryStats_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsV2Request)) *MockCluster_QueryStats_Call {
+func (_c *MockCluster_QueryStats_Call) Run(run func(nodeID int64, in *workerpb.QueryJobsRequest)) *MockCluster_QueryStats_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(*workerpb.QueryJobsV2Request))
+		run(args[0].(int64), args[1].(*workerpb.QueryJobsRequest))
 	})
 	return _c
 }
@@ -982,7 +982,7 @@ func (_c *MockCluster_QueryStats_Call) Return(_a0 *workerpb.StatsResults, _a1 er
 	return _c
 }
 
-func (_c *MockCluster_QueryStats_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsV2Request) (*workerpb.StatsResults, error)) *MockCluster_QueryStats_Call {
+func (_c *MockCluster_QueryStats_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)) *MockCluster_QueryStats_Call {
 	_c.Call.Return(run)
 	return _c
 }

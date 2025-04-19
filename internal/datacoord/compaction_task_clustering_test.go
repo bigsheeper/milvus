@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/broker"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
+	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/internal/metastore/kv/datacoord"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/internal/storage"
@@ -55,7 +56,9 @@ type ClusteringCompactionTaskSuite struct {
 	mockAlloc        *allocator.MockAllocator
 	meta             *meta
 	handler          *NMockHandler
-	analyzeScheduler *taskScheduler
+
+	mockSessionMgr   *session.MockDataNodeManager
+	analyzeScheduler task.GlobalScheduler
 }
 
 func (s *ClusteringCompactionTaskSuite) SetupTest() {
@@ -82,8 +85,11 @@ func (s *ClusteringCompactionTaskSuite) SetupTest() {
 
 	s.handler = NewNMockHandler(s.T())
 	s.handler.EXPECT().GetCollection(mock.Anything, mock.Anything).Return(&collectionInfo{}, nil).Maybe()
+	// TODO @xiaocai2333: use mock cluster
+	s.mockSessionMgr = session.NewMockDataNodeManager(s.T())
+	cluster := session.NewMockCluster(s.T())
 
-	scheduler := newTaskScheduler(ctx, s.meta, nil, cm, newIndexEngineVersionManager(), nil, nil, nil)
+	scheduler := task.NewGlobalTaskScheduler(ctx, cluster)
 	s.analyzeScheduler = scheduler
 }
 

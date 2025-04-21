@@ -19,10 +19,11 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"github.com/cockroachdb/errors"
-	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"path"
 	"time"
+
+	"github.com/cockroachdb/errors"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 
 	"go.uber.org/zap"
 
@@ -276,6 +277,14 @@ func (it *indexBuildTask) prepareJobRequest(ctx context.Context, segment *Segmen
 
 	// Prepare optional fields for vector index
 	optionalFields, partitionKeyIsolation := it.prepareOptionalFields(ctx, collectionInfo, segment, schema, indexType, field)
+	indexNonEncoding := "false"
+	if it.indexEngineVersionManager.GetIndexNonEncoding() {
+		indexNonEncoding = "true"
+	}
+	indexParams = append(indexParams, &commonpb.KeyValuePair{
+		Key:   common.IndexNonEncoding,
+		Value: indexNonEncoding,
+	})
 
 	// Create the job request
 	req := &workerpb.CreateJobRequest{

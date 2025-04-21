@@ -49,6 +49,7 @@ type globalTaskScheduler struct {
 	wg         sync.WaitGroup
 	notifyChan chan struct{}
 
+	mu           sync.RWMutex
 	pendingTasks FIFOQueue
 	runningTasks *typeutil.ConcurrentMap[int64, Task]
 	execPool     *conc.Pool[struct{}]
@@ -72,8 +73,15 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 }
 
 func (s *globalTaskScheduler) AbortAndRemoveTask(taskID int64) {
-	// TODO implement me
-	panic("implement me")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if task, ok := s.runningTasks.GetAndRemove(taskID); ok {
+		task.DropTaskOnWorker(s.cluster)
+	}
+	if task := s.pendingTasks.Get(taskID); task != nil {
+		task.DropTaskOnWorker(s.cluster)
+		s.pendingTasks.Remove(taskID)
+	}
 }
 
 func (s *globalTaskScheduler) Start() {
@@ -144,6 +152,8 @@ func (s *globalTaskScheduler) pickNode(workerSlots map[int64]*session.WorkerSlot
 }
 
 func (s *globalTaskScheduler) schedule() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	pendingNum := len(s.pendingTasks.TaskIDs())
 	if pendingNum == 0 {
 		return
@@ -187,6 +197,8 @@ func (s *globalTaskScheduler) check() {
 	}
 	log.Ctx(s.ctx).Info("check running tasks", zap.Int("num", s.runningTasks.Len()))
 
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	tasks := s.runningTasks.Values()
 	futures := make([]*conc.Future[struct{}], 0, len(tasks))
 	for _, task := range tasks {

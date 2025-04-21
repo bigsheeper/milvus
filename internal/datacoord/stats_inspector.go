@@ -277,7 +277,6 @@ func (si *statsInspector) cleanupStatsTasksLoop() {
 
 			taskIDs := si.mt.statsTaskMeta.CanCleanedTasks()
 			for _, taskID := range taskIDs {
-				si.scheduler.AbortAndRemoveTask(taskID)
 				if err := si.mt.statsTaskMeta.DropStatsTask(si.ctx, taskID); err != nil {
 					// ignore err, if remove failed, wait next GC
 					log.Warn("clean up stats task failed", zap.Int64("taskID", taskID), zap.Error(err))

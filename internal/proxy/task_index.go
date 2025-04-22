@@ -765,6 +765,7 @@ func (dit *describeIndexTask) OnEnqueue() error {
 	dit.Base = commonpbutil.NewMsgBase()
 	dit.Base.MsgType = commonpb.MsgType_DescribeIndex
 	dit.Base.SourceID = paramtable.GetNodeID()
+	log.Ctx(dit.ctx).Info("describeIndexTask OnEnqueue")
 	return nil
 }
 

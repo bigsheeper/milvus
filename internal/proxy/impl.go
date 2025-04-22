@@ -2302,7 +2302,7 @@ func (node *Proxy) DescribeIndex(ctx context.Context, request *milvuspb.Describe
 		zap.String("field", request.FieldName),
 		zap.String("index name", request.IndexName))
 
-	log.Debug(rpcReceived(method))
+	log.Info(rpcReceived(method))
 
 	if err := node.sched.ddQueue.Enqueue(dit); err != nil {
 		log.Warn(
@@ -2317,7 +2317,7 @@ func (node *Proxy) DescribeIndex(ctx context.Context, request *milvuspb.Describe
 		}, nil
 	}
 
-	log.Debug(
+	log.Info(
 		rpcEnqueued(method),
 		zap.Uint64("BeginTs", dit.BeginTs()),
 		zap.Uint64("EndTs", dit.EndTs()))
@@ -2337,7 +2337,7 @@ func (node *Proxy) DescribeIndex(ctx context.Context, request *milvuspb.Describe
 		}, nil
 	}
 
-	log.Debug(
+	log.Info(
 		rpcDone(method),
 		zap.Uint64("BeginTs", dit.BeginTs()),
 		zap.Uint64("EndTs", dit.EndTs()))

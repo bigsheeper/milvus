@@ -185,6 +185,7 @@ func (i *indexInspector) createIndexForSegment(ctx context.Context, segment *Seg
 		NumRows:        segment.NumOfRows,
 		IndexID:        indexID,
 		BuildID:        buildID,
+		IndexState:     commonpb.IndexState_Unissued,
 		CreatedUTCTime: uint64(time.Now().Unix()),
 		WriteHandoff:   false,
 	}

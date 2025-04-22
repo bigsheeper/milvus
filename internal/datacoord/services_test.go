@@ -52,7 +52,8 @@ func WithChannelManager(cm ChannelManager) Option {
 		svr.sessionManager = session.NewDataNodeManagerImpl(session.WithDataNodeCreator(svr.dataNodeCreator))
 		svr.channelManager = cm
 		svr.cluster = NewClusterImpl(svr.sessionManager, svr.channelManager)
-		svr.cluster2 = session.NewCluster(svr.dataNodeCreator)
+		svr.nodeManager = session.NewNodeManager(svr.dataNodeCreator)
+		svr.cluster2 = session.NewCluster(svr.nodeManager)
 	}
 }
 

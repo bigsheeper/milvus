@@ -43,7 +43,7 @@ type CompactionTask interface {
 	ShadowClone(opts ...compactionTaskOpt) *datapb.CompactionTask
 
 	SetNodeID(UniqueID) error
-	NeedReAssignNodeID() bool // TODO: sheep, remove this
+	NeedReAssignNodeID() bool
 	SaveTaskMeta() error
 
 	PreparePlan() bool

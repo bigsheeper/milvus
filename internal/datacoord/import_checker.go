@@ -47,7 +47,7 @@ type importChecker struct {
 	broker              broker.Broker
 	alloc               allocator.Allocator
 	imeta               ImportMeta
-	sjm                 StatsInspector
+	si                  StatsInspector
 	l0CompactionTrigger TriggerManager
 
 	closeOnce sync.Once
@@ -58,7 +58,7 @@ func NewImportChecker(meta *meta,
 	broker broker.Broker,
 	alloc allocator.Allocator,
 	imeta ImportMeta,
-	sjm StatsInspector,
+	si StatsInspector,
 	l0CompactionTrigger TriggerManager,
 ) ImportChecker {
 	return &importChecker{
@@ -66,7 +66,7 @@ func NewImportChecker(meta *meta,
 		broker:              broker,
 		alloc:               alloc,
 		imeta:               imeta,
-		sjm:                 sjm,
+		si:                  si,
 		l0CompactionTrigger: l0CompactionTrigger,
 		closeChan:           make(chan struct{}),
 	}
@@ -336,10 +336,10 @@ func (c *importChecker) checkStatsJob(job ImportJob) {
 		taskCnt += len(originSegmentIDs)
 		for i, originSegmentID := range originSegmentIDs {
 			taskLogFields := WrapTaskLog(task, zap.Int64("origin", originSegmentID), zap.Int64("stats", statsSegmentIDs[i]))
-			t := c.sjm.GetStatsTask(originSegmentID, indexpb.StatsSubJob_Sort)
+			t := c.si.GetStatsTask(originSegmentID, indexpb.StatsSubJob_Sort)
 			switch t.GetState() {
 			case indexpb.JobState_JobStateNone:
-				err := c.sjm.SubmitStatsTask(originSegmentID, statsSegmentIDs[i], indexpb.StatsSubJob_Sort, false)
+				err := c.si.SubmitStatsTask(originSegmentID, statsSegmentIDs[i], indexpb.StatsSubJob_Sort, false)
 				if err != nil {
 					log.Warn("submit stats task failed", zap.Error(err))
 					continue
@@ -475,7 +475,7 @@ func (c *importChecker) checkFailedJob(job ImportJob) {
 		return t.(*importTask).GetSegmentIDs()
 	})
 	for _, originSegmentID := range originSegmentIDs {
-		err := c.sjm.DropStatsTask(originSegmentID, indexpb.StatsSubJob_Sort)
+		err := c.si.DropStatsTask(originSegmentID, indexpb.StatsSubJob_Sort)
 		if err != nil {
 			log.Warn("Drop stats task failed", zap.Int64("jobID", job.GetJobID()))
 			return

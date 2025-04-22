@@ -21,28 +21,26 @@ import (
 	"sync"
 	"time"
 
-	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
-	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/pkg/v2/log"
-	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
 	"github.com/milvus-io/milvus/pkg/v2/task"
-	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
-// TODO: sheep, sperate a node manager
-type Cluster interface {
-	AddNode(nodeID int64, address string) error
-	RemoveNode(nodeID int64)
+type WorkerSlots struct {
+	NodeID         int64
+	TotalSlots     int64
+	AvailableSlots int64
+}
 
+type Cluster interface {
 	// QuerySlot
 	QuerySlot() map[typeutil.UniqueID]*WorkerSlots
 
@@ -77,75 +75,21 @@ type Cluster interface {
 var _ Cluster = (*cluster)(nil)
 
 type cluster struct {
-	mu          lock.RWMutex
-	nodeClients map[int64]types.DataNodeClient
-	nodeCreator DataNodeCreatorFunc
+	nm NodeManager
 }
 
-func NewCluster(nodeCreator DataNodeCreatorFunc) Cluster {
+func NewCluster(nm NodeManager) Cluster {
 	c := &cluster{
-		nodeClients: make(map[int64]types.DataNodeClient),
-		nodeCreator: nodeCreator,
+		nm: nm,
 	}
 	return c
-}
-
-func (c *cluster) AddNode(nodeID int64, address string) error {
-	log := log.Ctx(context.Background()).With(zap.Int64("nodeID", nodeID), zap.String("address", address))
-	log.Info("adding node...")
-	nodeClient, err := c.nodeCreator(context.Background(), address, nodeID)
-	if err != nil {
-		log.Error("create client fail", zap.Error(err))
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.nodeClients[nodeID] = nodeClient
-	numNodes := len(c.nodeClients)
-	metrics.IndexNodeNum.WithLabelValues().Set(float64(numNodes))
-	metrics.DataCoordNumDataNodes.WithLabelValues().Set(float64(numNodes))
-	log.Info("node added", zap.Int("numNodes", numNodes))
-	return nil
-}
-
-func (c *cluster) RemoveNode(nodeID int64) {
-	log := log.Ctx(context.Background()).With(zap.Int64("nodeID", nodeID))
-	log.Info("removing node...")
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if client, ok := c.nodeClients[nodeID]; ok {
-		if err := client.Close(); err != nil {
-			log.Warn("failed to close client", zap.Error(err))
-		}
-		delete(c.nodeClients, nodeID)
-		numNodes := len(c.nodeClients)
-		metrics.IndexNodeNum.WithLabelValues().Set(float64(numNodes))
-		metrics.DataCoordNumDataNodes.WithLabelValues().Set(float64(numNodes))
-		log.Info("node removed", zap.Int("numNodes", numNodes))
-	}
-}
-
-func (c *cluster) getClientIDs() []int64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return lo.Keys(c.nodeClients)
-}
-
-func (c *cluster) getClient(nodeID int64) (types.DataNodeClient, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	client, ok := c.nodeClients[nodeID]
-	if !ok {
-		return nil, merr.WrapErrNodeNotFound(nodeID)
-	}
-	return client, nil
 }
 
 func (c *cluster) createTask(nodeID int64, in proto.Message, properties task.Properties) error {
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cli, err := c.getClient(nodeID)
+	cli, err := c.nm.GetClient(nodeID)
 	if err != nil {
 		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
 		return err
@@ -168,7 +112,7 @@ func (c *cluster) queryTask(nodeID int64, in proto.Message, properties task.Prop
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cli, err := c.getClient(nodeID)
+	cli, err := c.nm.GetClient(nodeID)
 	if err != nil {
 		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
 		return nil, err
@@ -194,7 +138,7 @@ func (c *cluster) dropTask(nodeID int64, in proto.Message, properties task.Prope
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cli, err := c.getClient(nodeID)
+	cli, err := c.nm.GetClient(nodeID)
 	if err != nil {
 		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
 		return err
@@ -221,7 +165,7 @@ func (c *cluster) QuerySlot() map[typeutil.UniqueID]*WorkerSlots {
 	)
 	properties := task.NewProperties()
 	properties.AppendType(task.QuerySlot)
-	for _, nodeID := range c.getClientIDs() {
+	for _, nodeID := range c.nm.GetClientIDs() {
 		wg.Add(1)
 		nodeID := nodeID
 		go func() {

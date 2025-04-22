@@ -22,53 +22,6 @@ func (_m *MockCluster) EXPECT() *MockCluster_Expecter {
 	return &MockCluster_Expecter{mock: &_m.Mock}
 }
 
-// AddNode provides a mock function with given fields: nodeID, address
-func (_m *MockCluster) AddNode(nodeID int64, address string) error {
-	ret := _m.Called(nodeID, address)
-
-	if len(ret) == 0 {
-		panic("no return value specified for AddNode")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(int64, string) error); ok {
-		r0 = rf(nodeID, address)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockCluster_AddNode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddNode'
-type MockCluster_AddNode_Call struct {
-	*mock.Call
-}
-
-// AddNode is a helper method to define mock.On call
-//   - nodeID int64
-//   - address string
-func (_e *MockCluster_Expecter) AddNode(nodeID interface{}, address interface{}) *MockCluster_AddNode_Call {
-	return &MockCluster_AddNode_Call{Call: _e.mock.On("AddNode", nodeID, address)}
-}
-
-func (_c *MockCluster_AddNode_Call) Run(run func(nodeID int64, address string)) *MockCluster_AddNode_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64), args[1].(string))
-	})
-	return _c
-}
-
-func (_c *MockCluster_AddNode_Call) Return(_a0 error) *MockCluster_AddNode_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockCluster_AddNode_Call) RunAndReturn(run func(int64, string) error) *MockCluster_AddNode_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // CreateAnalyze provides a mock function with given fields: nodeID, in
 func (_m *MockCluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error {
 	ret := _m.Called(nodeID, in)
@@ -983,39 +936,6 @@ func (_c *MockCluster_QueryStats_Call) Return(_a0 *workerpb.StatsResults, _a1 er
 }
 
 func (_c *MockCluster_QueryStats_Call) RunAndReturn(run func(int64, *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)) *MockCluster_QueryStats_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RemoveNode provides a mock function with given fields: nodeID
-func (_m *MockCluster) RemoveNode(nodeID int64) {
-	_m.Called(nodeID)
-}
-
-// MockCluster_RemoveNode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveNode'
-type MockCluster_RemoveNode_Call struct {
-	*mock.Call
-}
-
-// RemoveNode is a helper method to define mock.On call
-//   - nodeID int64
-func (_e *MockCluster_Expecter) RemoveNode(nodeID interface{}) *MockCluster_RemoveNode_Call {
-	return &MockCluster_RemoveNode_Call{Call: _e.mock.On("RemoveNode", nodeID)}
-}
-
-func (_c *MockCluster_RemoveNode_Call) Run(run func(nodeID int64)) *MockCluster_RemoveNode_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(int64))
-	})
-	return _c
-}
-
-func (_c *MockCluster_RemoveNode_Call) Return() *MockCluster_RemoveNode_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *MockCluster_RemoveNode_Call) RunAndReturn(run func(int64)) *MockCluster_RemoveNode_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -156,7 +156,7 @@ func (m *analyzeMeta) UpdateState(taskID int64, state indexpb.JobState, failReas
 	cloneT := proto.Clone(t).(*indexpb.AnalyzeTask)
 	cloneT.State = state
 	cloneT.FailReason = failReason
-	log.Info("update task state", zap.Int64("taskID", taskID), zap.String("state", state.String()),
+	log.Info("update analyze task state", zap.Int64("taskID", taskID), zap.String("state", state.String()),
 		zap.String("failReason", failReason))
 
 	return m.saveTask(cloneT)

@@ -114,6 +114,7 @@ type Server struct {
 	idAllocator      *globalIDAllocator.GlobalIDAllocator
 	cluster          Cluster
 	sessionManager   session.DataNodeManager // TODO: sheep, remove sessionManager and cluster
+	nodeManager      session.NodeManager
 	cluster2         session.Cluster
 	channelManager   ChannelManager
 	mixCoord         types.MixCoord
@@ -149,8 +150,6 @@ type Server struct {
 	// indexCoord             types.IndexCoord
 
 	// segReferManager  *SegmentReferenceManager
-	// TODO: sheep, remove indexNodeManager
-	indexNodeManager          session.WorkerManager
 	indexEngineVersionManager IndexEngineVersionManager
 
 	statsInspector   *statsInspector
@@ -289,8 +288,6 @@ func (s *Server) initDataCoord() error {
 	}
 	log.Info("init datanode cluster done")
 
-	s.initIndexNodeManager()
-
 	if err = s.initServiceDiscovery(); err != nil {
 		return err
 	}
@@ -383,7 +380,8 @@ func (s *Server) initCluster() error {
 		return err
 	}
 	s.cluster = NewClusterImpl(s.sessionManager, s.channelManager)
-	s.cluster2 = session.NewCluster(s.dataNodeCreator)
+	s.nodeManager = session.NewNodeManager(s.dataNodeCreator)
+	s.cluster2 = session.NewCluster(s.nodeManager)
 	return nil
 }
 
@@ -477,22 +475,6 @@ func (s *Server) initServiceDiscovery() error {
 
 	// TODO implement rewatch logic
 	s.dnEventCh = s.session.WatchServicesWithVersionRange(typeutil.DataNodeRole, r, rev+1, nil)
-
-	if Params.DataCoordCfg.BindIndexNodeMode.GetAsBool() {
-		if err = s.indexNodeManager.AddNode(Params.DataCoordCfg.IndexNodeID.GetAsInt64(), Params.DataCoordCfg.IndexNodeAddress.GetValue()); err != nil {
-			log.Error("add dataNode fail", zap.Int64("ServerID", Params.DataCoordCfg.IndexNodeID.GetAsInt64()),
-				zap.String("address", Params.DataCoordCfg.IndexNodeAddress.GetValue()), zap.Error(err))
-			return err
-		}
-		log.Info("add dataNode success", zap.String("DataNode address", Params.DataCoordCfg.IndexNodeAddress.GetValue()),
-			zap.Int64("nodeID", Params.DataCoordCfg.IndexNodeID.GetAsInt64()))
-	} else {
-		for _, session := range sessions {
-			if err := s.indexNodeManager.AddNode(session.ServerID, session.Address); err != nil {
-				return err
-			}
-		}
-	}
 
 	s.indexEngineVersionManager = newIndexEngineVersionManager()
 	qnSessions, qnRevision, err := s.session.GetSessions(typeutil.QueryNodeRole)
@@ -594,12 +576,6 @@ func (s *Server) initIndexInspector(storageCli storage.ChunkManager) {
 func (s *Server) initStatsInspector() {
 	if s.statsInspector == nil {
 		s.statsInspector = newStatsInspector(s.ctx, s.meta, s.globalScheduler, s.allocator, s.handler, s.compactionInspector)
-	}
-}
-
-func (s *Server) initIndexNodeManager() {
-	if s.indexNodeManager == nil {
-		s.indexNodeManager = session.NewNodeManager(s.ctx, s.dataNodeCreator)
 	}
 }
 
@@ -795,10 +771,7 @@ func (s *Server) handleSessionEvent(ctx context.Context, role string, event *ses
 					zap.String("event type", event.EventType.String()))
 				return nil
 			}
-			if err := s.cluster2.AddNode(event.Session.ServerID, event.Session.Address); err != nil {
-				return err
-			}
-			return s.indexNodeManager.AddNode(event.Session.ServerID, event.Session.Address)
+			return s.nodeManager.AddNode(event.Session.ServerID, event.Session.Address)
 		case sessionutil.SessionDelEvent:
 			log.Info("received datanode unregister",
 				zap.String("address", info.Address),
@@ -815,19 +788,7 @@ func (s *Server) handleSessionEvent(ctx context.Context, role string, event *ses
 					zap.String("event type", event.EventType.String()))
 				return nil
 			}
-			s.cluster2.RemoveNode(event.Session.ServerID)
-			s.indexNodeManager.RemoveNode(event.Session.ServerID)
-		case sessionutil.SessionUpdateEvent:
-			if Params.DataCoordCfg.BindIndexNodeMode.GetAsBool() {
-				log.Info("receive datanode session event, but adding indexnode by bind mode, skip it",
-					zap.String("address", event.Session.Address),
-					zap.Int64("serverID", event.Session.ServerID),
-					zap.String("event type", event.EventType.String()))
-				return nil
-			}
-			serverID := event.Session.ServerID
-			log.Info("received datanode SessionUpdateEvent", zap.Int64("serverID", serverID))
-			s.indexNodeManager.StoppingNode(serverID)
+			s.nodeManager.RemoveNode(event.Session.ServerID)
 		default:
 			log.Warn("receive unknown service event type",
 				zap.Any("type", event.EventType))

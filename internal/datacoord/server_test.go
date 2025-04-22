@@ -1852,10 +1852,10 @@ func TestHandleSessionEvent(t *testing.T) {
 	defer cluster.Close()
 
 	svr := newTestServer(t, WithCluster(cluster))
-	cluster2 := session.NewMockCluster(t)
-	cluster2.EXPECT().AddNode(mock.Anything, mock.Anything).Return(nil)
-	cluster2.EXPECT().RemoveNode(mock.Anything).Return()
-	svr.cluster2 = cluster2
+	manager := session.NewMockNodeManager(t)
+	manager.EXPECT().AddNode(mock.Anything, mock.Anything).Return(nil)
+	manager.EXPECT().RemoveNode(mock.Anything).Return()
+	svr.nodeManager = manager
 	defer closeTestServer(t, svr)
 	t.Run("handle events", func(t *testing.T) {
 		// None event

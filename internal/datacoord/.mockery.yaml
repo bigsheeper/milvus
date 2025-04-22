@@ -43,6 +43,7 @@ packages:
       DataNodeManager:
       WorkerManager:
       Cluster:
+      NodeManager:
   github.com/milvus-io/milvus/internal/datacoord/task:
     interfaces:
       GlobalScheduler:

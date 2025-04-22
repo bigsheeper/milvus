@@ -584,7 +584,6 @@ func (node *DataNode) DropCompactionPlan(ctx context.Context, req *datapb.DropCo
 }
 
 func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTaskRequest) (*commonpb.Status, error) {
-	// TODO: sheep remove healthy check in task implements
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}
@@ -695,7 +694,6 @@ func handleQueryTask[Req proto.Message, Resp proto.Message](ctx context.Context,
 }
 
 func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTaskRequest) (*workerpb.QueryTaskResponse, error) {
-	// TODO: sheep remove healthy check in task implements
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
@@ -725,7 +723,6 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 }
 
 func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRequest) (*commonpb.Status, error) {
-	// TODO: sheep remove healthy check in task implements
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}

@@ -225,7 +225,7 @@ func (s *ImportCheckerSuite) TestCheckJob() {
 
 	// test check stats job
 	alloc.EXPECT().AllocID(mock.Anything).Return(rand.Int63(), nil).Maybe()
-	sjm := s.checker.sjm.(*MockStatsJobManager)
+	sjm := s.checker.si.(*MockStatsJobManager)
 	sjm.EXPECT().SubmitStatsTask(mock.Anything, mock.Anything, mock.Anything, false).Return(nil)
 	sjm.EXPECT().GetStatsTask(mock.Anything, mock.Anything).Return(&indexpb.StatsTask{
 		State: indexpb.JobState_JobStateNone,
@@ -236,14 +236,14 @@ func (s *ImportCheckerSuite) TestCheckJob() {
 	sjm.EXPECT().GetStatsTask(mock.Anything, mock.Anything).Return(&indexpb.StatsTask{
 		State: indexpb.JobState_JobStateInProgress,
 	})
-	s.checker.sjm = sjm
+	s.checker.si = sjm
 	s.checker.checkStatsJob(job)
 	s.Equal(internalpb.ImportJobState_Stats, s.imeta.GetJob(context.TODO(), job.GetJobID()).GetState())
 	sjm = NewMockStatsJobManager(s.T())
 	sjm.EXPECT().GetStatsTask(mock.Anything, mock.Anything).Return(&indexpb.StatsTask{
 		State: indexpb.JobState_JobStateFinished,
 	})
-	s.checker.sjm = sjm
+	s.checker.si = sjm
 	s.checker.checkStatsJob(job)
 	s.Equal(internalpb.ImportJobState_IndexBuilding, s.imeta.GetJob(context.TODO(), job.GetJobID()).GetState())
 
@@ -366,7 +366,7 @@ func (s *ImportCheckerSuite) TestCheckFailure() {
 
 	sjm := NewMockStatsJobManager(s.T())
 	sjm.EXPECT().DropStatsTask(mock.Anything, mock.Anything).Return(errors.New("mock err"))
-	s.checker.sjm = sjm
+	s.checker.si = sjm
 	s.checker.checkFailedJob(s.imeta.GetJob(context.TODO(), s.jobID))
 	tasks := s.imeta.GetTaskBy(context.TODO(), WithJob(s.jobID), WithStates(datapb.ImportTaskStateV2_Failed))
 	s.Equal(0, len(tasks))

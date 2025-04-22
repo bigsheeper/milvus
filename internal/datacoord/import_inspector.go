@@ -60,13 +60,13 @@ func NewImportInspector(meta *meta, imeta ImportMeta, scheduler task.GlobalSched
 }
 
 func (s *importInspector) Start() {
-	log.Info("start import inspector")
+	log.Ctx(context.TODO()).Info("start import inspector")
 	ticker := time.NewTicker(Params.DataCoordCfg.ImportScheduleInterval.GetAsDuration(time.Second))
 	defer ticker.Stop()
 	for {
 		select {
 		case <-s.closeChan:
-			log.Info("import inspector exited")
+			log.Ctx(context.TODO()).Info("import inspector exited")
 			return
 		case <-ticker.C:
 			s.inspect()
@@ -91,7 +91,6 @@ func (s *importInspector) inspect() {
 			switch task.GetState() {
 			case datapb.ImportTaskStateV2_Pending:
 				switch task.GetType() {
-				// TODO: sheep, do not trigger many times
 				case PreImportTaskType:
 					s.processPendingPreImport(task)
 				case ImportTaskType:
@@ -121,14 +120,14 @@ func (s *importInspector) processFailed(task ImportTask) {
 			op := UpdateStatusOperator(segment, commonpb.SegmentState_Dropped)
 			err := s.meta.UpdateSegmentsInfo(context.TODO(), op)
 			if err != nil {
-				log.Warn("drop import segment failed", WrapTaskLog(task, zap.Int64("segment", segment), zap.Error(err))...)
+				log.Ctx(context.TODO()).Warn("drop import segment failed", WrapTaskLog(task, zap.Int64("segment", segment), zap.Error(err))...)
 				return
 			}
 		}
 		if len(segments) > 0 {
 			err := s.imeta.UpdateTask(context.TODO(), task.GetTaskID(), UpdateSegmentIDs(nil), UpdateStatsSegmentIDs(nil))
 			if err != nil {
-				log.Warn("update import task segments failed", WrapTaskLog(task, zap.Error(err))...)
+				log.Ctx(context.TODO()).Warn("update import task segments failed", WrapTaskLog(task, zap.Error(err))...)
 			}
 		}
 	}

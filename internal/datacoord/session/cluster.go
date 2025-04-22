@@ -34,50 +34,66 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
+// WorkerSlots represents the slot information for a worker node
 type WorkerSlots struct {
 	NodeID         int64
 	TotalSlots     int64
 	AvailableSlots int64
 }
 
+// Cluster defines the interface for tasks
 type Cluster interface {
-	// QuerySlot
+	// QuerySlot returns the slot information for all worker nodes
 	QuerySlot() map[typeutil.UniqueID]*WorkerSlots
 
-	// Compaction
+	// CreateCompaction creates a new compaction task on the specified node
 	CreateCompaction(nodeID int64, in *datapb.CompactionPlan) error
+	// QueryCompaction queries the status of a compaction task
 	QueryCompaction(nodeID int64, in *datapb.CompactionStateRequest) (*datapb.CompactionPlanResult, error)
+	// DropCompaction drops a compaction task
 	DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error
 
-	// Import
+	// CreatePreImport creates a pre-import task
 	CreatePreImport(nodeID int64, in *datapb.PreImportRequest) error
+	// CreateImport creates an import task
 	CreateImport(nodeID int64, in *datapb.ImportRequest) error
+	// QueryPreImport queries the status of a pre-import task
 	QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest) (*datapb.QueryPreImportResponse, error)
+	// QueryImport queries the status of an import task
 	QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*datapb.QueryImportResponse, error)
+	// DropImport drops an import task
 	DropImport(nodeID int64, in *datapb.DropImportRequest) error
 
-	// Index
+	// CreateIndex creates an index building task
 	CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
+	// QueryIndex queries the status of index building tasks
 	QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error)
+	// DropIndex drops an index building task
 	DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error
 
-	// Stats
+	// CreateStats creates a statistics collection task
 	CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) error
+	// QueryStats queries the status of statistics collection tasks
 	QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)
+	// DropStats drops a statistics collection task
 	DropStats(nodeID int64, in *workerpb.DropJobsRequest) error
 
-	// Analyze
+	// CreateAnalyze creates an analysis task
 	CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
+	// QueryAnalyze queries the status of analysis tasks
 	QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error)
+	// DropAnalyze drops an analysis task
 	DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error
 }
 
 var _ Cluster = (*cluster)(nil)
 
+// cluster implements the Cluster interface
 type cluster struct {
 	nm NodeManager
 }
 
+// NewCluster creates a new instance of cluster
 func NewCluster(nm NodeManager) Cluster {
 	c := &cluster{
 		nm: nm,

@@ -44,7 +44,7 @@ func (t *mixCompactionTask) GetTaskState() task.State {
 }
 
 func (t *mixCompactionTask) GetTaskSlot() int64 {
-	return 4 // TODO: sheep, make it configurable
+	return 4 // TODO: sheep, update slot, make it configurable
 }
 
 func (t *mixCompactionTask) CreateTaskOnWorker(nodeID int64, cluster session.Cluster) {

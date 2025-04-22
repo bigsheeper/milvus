@@ -491,15 +491,16 @@ func (node *DataNode) QueryPreImport(ctx context.Context, req *datapb.QueryPreIm
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &datapb.QueryPreImportResponse{Status: merr.Status(err)}, nil
 	}
-	status := merr.Success()
 	task := node.importTaskMgr.Get(req.GetTaskID())
 	if task == nil {
-		status = merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID()))
+		return &datapb.QueryPreImportResponse{
+			Status: merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID())),
+		}, nil
 	}
 	log.RatedInfo(10, "datanode query preimport", zap.String("state", task.GetState().String()),
 		zap.String("reason", task.GetReason()))
 	return &datapb.QueryPreImportResponse{
-		Status: status,
+		Status: merr.Success(),
 		TaskID: task.GetTaskID(),
 		State:  task.GetState(),
 		Reason: task.GetReason(),
@@ -517,12 +518,10 @@ func (node *DataNode) QueryImport(ctx context.Context, req *datapb.QueryImportRe
 		return &datapb.QueryImportResponse{Status: merr.Status(err)}, nil
 	}
 
-	status := merr.Success()
-
 	// query slot
 	if req.GetQuerySlot() {
 		return &datapb.QueryImportResponse{
-			Status: status,
+			Status: merr.Success(),
 			Slots:  node.importScheduler.Slots(),
 		}, nil
 	}
@@ -530,12 +529,14 @@ func (node *DataNode) QueryImport(ctx context.Context, req *datapb.QueryImportRe
 	// query import
 	task := node.importTaskMgr.Get(req.GetTaskID())
 	if task == nil {
-		status = merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID()))
+		return &datapb.QueryImportResponse{
+			Status: merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID())),
+		}, nil
 	}
 	log.RatedInfo(10, "datanode query import", zap.String("state", task.GetState().String()),
 		zap.String("reason", task.GetReason()))
 	return &datapb.QueryImportResponse{
-		Status: status,
+		Status: merr.Success(),
 		TaskID: task.GetTaskID(),
 		State:  task.GetState(),
 		Reason: task.GetReason(),
@@ -583,6 +584,7 @@ func (node *DataNode) DropCompactionPlan(ctx context.Context, req *datapb.DropCo
 	return merr.Success(), nil
 }
 
+// CreateTask creates different types of tasks based on task type
 func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTaskRequest) (*commonpb.Status, error) {
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
@@ -693,6 +695,7 @@ func handleQueryTask[Req proto.Message, Resp proto.Message](ctx context.Context,
 	}, nil
 }
 
+// QueryTask queries task status
 func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTaskRequest) (*workerpb.QueryTaskResponse, error) {
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
@@ -722,6 +725,7 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 	}
 }
 
+// DropTask deletes specified type of task
 func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRequest) (*commonpb.Status, error) {
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil

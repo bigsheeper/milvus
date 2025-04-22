@@ -29,21 +29,28 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 )
 
+// NodeManager defines the interface for managing DataNode clients in the cluster
 type NodeManager interface {
+	// AddNode adds a new DataNode to the cluster with the given nodeID and address
 	AddNode(nodeID int64, address string) error
+	// RemoveNode removes a DataNode from the cluster by its nodeID
 	RemoveNode(nodeID int64)
+	// GetClient returns the DataNode client for the given nodeID
 	GetClient(nodeID int64) (types.DataNodeClient, error)
+	// GetClientIDs returns a list of all DataNode IDs in the cluster
 	GetClientIDs() []int64
 }
 
 var _ NodeManager = (*nodeManager)(nil)
 
+// nodeManager implements the NodeManager interface
 type nodeManager struct {
 	mu          lock.RWMutex
 	nodeClients map[int64]types.DataNodeClient
 	nodeCreator DataNodeCreatorFunc
 }
 
+// NewNodeManager creates a new instance of nodeManager
 func NewNodeManager(nodeCreator DataNodeCreatorFunc) NodeManager {
 	c := &nodeManager{
 		nodeClients: make(map[int64]types.DataNodeClient),

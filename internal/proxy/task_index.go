@@ -778,7 +778,6 @@ func (dit *describeIndexTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	dit.collectionID = collID
-	log.Ctx(ctx).Info("describeIndexTask PreExecute done", zap.Int64("collectionID", collID))
 	return nil
 }
 

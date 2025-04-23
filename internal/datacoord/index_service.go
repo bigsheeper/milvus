@@ -650,7 +650,7 @@ func (s *Server) completeIndexInfo(indexInfo *indexpb.IndexInfo, index *model.In
 		indexInfo.State = commonpb.IndexState_Finished
 	}
 
-	log.Info("completeIndexInfo success", zap.Int64("collectionID", index.CollectionID), zap.Int64("indexID", index.IndexID),
+	log.RatedInfo(60, "completeIndexInfo success", zap.Int64("collectionID", index.CollectionID), zap.Int64("indexID", index.IndexID),
 		zap.Int64("totalRows", indexInfo.TotalRows), zap.Int64("indexRows", indexInfo.IndexedRows),
 		zap.Int64("pendingIndexRows", indexInfo.PendingIndexRows),
 		zap.String("state", indexInfo.State.String()), zap.String("failReason", indexInfo.IndexStateFailReason))
@@ -737,12 +737,10 @@ func (s *Server) DescribeIndex(ctx context.Context, req *indexpb.DescribeIndexRe
 		}, nil
 	}
 
-	log.Info("receive DescribeIndex request")
-
 	indexes := s.meta.indexMeta.GetIndexesForCollection(req.GetCollectionID(), req.GetIndexName())
 	if len(indexes) == 0 {
 		err := merr.WrapErrIndexNotFound(req.GetIndexName())
-		log.Warn("DescribeIndex fail", zap.Error(err))
+		log.RatedWarn(60, "DescribeIndex fail", zap.Error(err))
 		return &indexpb.DescribeIndexResponse{
 			Status: merr.Status(err),
 		}, nil
@@ -776,8 +774,6 @@ func (s *Server) DescribeIndex(ctx context.Context, req *indexpb.DescribeIndexRe
 		s.completeIndexInfo(indexInfo, index, segments, false, createTs)
 		indexInfos = append(indexInfos, indexInfo)
 	}
-
-	log.Info("DescribeIndex done", zap.Any("indexes", indexInfos))
 	return &indexpb.DescribeIndexResponse{
 		Status:     merr.Success(),
 		IndexInfos: indexInfos,

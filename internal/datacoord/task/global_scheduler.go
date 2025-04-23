@@ -25,6 +25,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	taskcommon "github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
@@ -66,8 +67,10 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 	}
 	switch task.GetTaskState() {
 	case taskcommon.Pending:
+		task.SetTaskTime(taskcommon.TaskTimeQueue, time.Now())
 		s.pendingTasks.Push(task)
 	case taskcommon.InProgress:
+		task.SetTaskTime(taskcommon.TaskTimeStart, time.Now())
 		s.runningTasks.Insert(task.GetTaskID(), task)
 	}
 }
@@ -86,7 +89,7 @@ func (s *globalTaskScheduler) AbortAndRemoveTask(taskID int64) {
 
 func (s *globalTaskScheduler) Start() {
 	dur := paramtable.Get().DataCoordCfg.TaskScheduleInterval.GetAsDuration(time.Millisecond)
-	s.wg.Add(2)
+	s.wg.Add(3)
 	go func() {
 		defer s.wg.Done()
 		t := time.NewTicker(dur)
@@ -110,6 +113,19 @@ func (s *globalTaskScheduler) Start() {
 				return
 			case <-t.C:
 				s.check()
+			}
+		}
+	}()
+	go func() {
+		defer s.wg.Done()
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-t.C:
+				s.updateTaskTimeMetrics()
 			}
 		}
 	}()
@@ -172,6 +188,7 @@ func (s *globalTaskScheduler) schedule() {
 				case taskcommon.Pending, taskcommon.Retry:
 					s.pendingTasks.Push(task)
 				case taskcommon.InProgress:
+					task.SetTaskTime(taskcommon.TaskTimeStart, time.Now())
 					s.runningTasks.Insert(task.GetTaskID(), task)
 				}
 			}
@@ -199,6 +216,7 @@ func (s *globalTaskScheduler) check() {
 			case taskcommon.Pending, taskcommon.Retry:
 				s.pendingTasks.Push(task)
 			case taskcommon.Finished, taskcommon.Failed:
+				task.SetTaskTime(taskcommon.TaskTimeEnd, time.Now())
 				task.DropTaskOnWorker(s.cluster)
 				s.runningTasks.Remove(task.GetTaskID())
 			}
@@ -207,6 +225,69 @@ func (s *globalTaskScheduler) check() {
 		futures = append(futures, future)
 	}
 	_ = conc.AwaitAll(futures...)
+}
+
+func (s *globalTaskScheduler) updateTaskTimeMetrics() {
+	maxTaskQueueingTime := make(map[string]int64)
+	maxTaskRunningTime := make(map[string]int64)
+
+	collectPendingMetricsFunc := func(taskID int64) {
+		task := s.pendingTasks.Get(taskID)
+		if task == nil {
+			return
+		}
+
+		s.mu.Lock(taskID)
+		defer s.mu.Unlock(taskID)
+
+		queueingTime := time.Since(task.GetTaskTime(taskcommon.TaskTimeQueue))
+		if queueingTime > paramtable.Get().DataCoordCfg.TaskSlowThreshold.GetAsDuration(time.Second) {
+			log.Ctx(s.ctx).Warn("task queueing time is too long", zap.Int64("taskID", taskID),
+				zap.Int64("queueing time(ms)", queueingTime.Milliseconds()))
+		}
+
+		maxQueueingTime, ok := maxTaskQueueingTime[task.GetTaskType()]
+		if !ok || maxQueueingTime < queueingTime.Milliseconds() {
+			maxTaskQueueingTime[task.GetTaskType()] = queueingTime.Milliseconds()
+		}
+	}
+
+	collectRunningMetricsFunc := func(task Task) {
+		s.mu.Lock(task.GetTaskID())
+		defer s.mu.Unlock(task.GetTaskID())
+
+		runningTime := time.Since(task.GetTaskTime(taskcommon.TaskTimeStart))
+		if runningTime > paramtable.Get().DataCoordCfg.TaskSlowThreshold.GetAsDuration(time.Second) {
+			log.Ctx(s.ctx).Warn("task running time is too long", zap.Int64("taskID", task.GetTaskID()),
+				zap.Int64("running time(ms)", runningTime.Milliseconds()))
+		}
+
+		maxRunningTime, ok := maxTaskRunningTime[task.GetTaskType()]
+		if !ok || maxRunningTime < runningTime.Milliseconds() {
+			maxTaskRunningTime[task.GetTaskType()] = runningTime.Milliseconds()
+		}
+	}
+
+	taskIDs := s.pendingTasks.TaskIDs()
+
+	for _, taskID := range taskIDs {
+		collectPendingMetricsFunc(taskID)
+	}
+
+	allRunningTasks := s.runningTasks.Values()
+	for _, task := range allRunningTasks {
+		collectRunningMetricsFunc(task)
+	}
+
+	for taskType, queueingTime := range maxTaskQueueingTime {
+		metrics.DataCoordTaskExecuteLatency.
+			WithLabelValues(taskType, metrics.Pending).Observe(float64(queueingTime))
+	}
+
+	for taskType, runningTime := range maxTaskRunningTime {
+		metrics.DataCoordTaskExecuteLatency.
+			WithLabelValues(taskType, metrics.Executing).Observe(float64(runningTime))
+	}
 }
 
 func NewGlobalTaskScheduler(ctx context.Context, cluster session.Cluster) GlobalScheduler {

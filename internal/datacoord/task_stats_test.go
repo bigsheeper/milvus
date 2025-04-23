@@ -34,7 +34,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	taskpkg "github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -154,22 +154,22 @@ func (s *statsTaskSuite) TestBasicTaskOperations() {
 	}, 1, s.mt, nil, nil, nil)
 
 	s.Run("task type and state", func() {
-		s.Equal(taskpkg.Stats, st.GetTaskType())
-		s.Equal(taskpkg.State(st.GetState()), st.GetTaskState())
+		s.Equal(task.Stats, st.GetTaskType())
+		s.Equal(task.State(st.GetState()), st.GetTaskState())
 		s.Equal(int64(1), st.GetTaskSlot())
 	})
 
 	s.Run("time management", func() {
 		now := time.Now()
 
-		st.SetQueueTime(now)
-		s.Equal(now, st.GetQueueTime())
+		st.SetTaskTime(task.TaskTimeQueue, now)
+		s.Equal(now, st.GetTaskTime(task.TaskTimeQueue))
 
-		st.SetStartTime(now)
-		s.Equal(now, st.GetStartTime())
+		st.SetTaskTime(task.TaskTimeStart, now)
+		s.Equal(now, st.GetTaskTime(task.TaskTimeStart))
 
-		st.SetEndTime(now)
-		s.Equal(now, st.GetEndTime())
+		st.SetTaskTime(task.TaskTimeEnd, now)
+		s.Equal(now, st.GetTaskTime(task.TaskTimeEnd))
 	})
 
 	s.Run("state management", func() {

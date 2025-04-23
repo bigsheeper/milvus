@@ -50,6 +50,10 @@ type importTask struct {
 	meta  *meta
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
+
+	queueTime time.Time
+	startTime time.Time
+	endTime   time.Time
 }
 
 func (t *importTask) GetJobID() int64 {
@@ -70,6 +74,29 @@ func (t *importTask) GetNodeID() int64 {
 
 func (t *importTask) GetState() datapb.ImportTaskStateV2 {
 	return t.task.Load().GetState()
+}
+
+func (t *importTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		t.queueTime = time
+	case task.TaskTimeStart:
+		t.startTime = time
+	case task.TaskTimeEnd:
+		t.endTime = time
+	}
+}
+
+func (t *importTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return t.queueTime
+	case task.TaskTimeStart:
+		return t.startTime
+	case task.TaskTimeEnd:
+		return t.endTime
+	}
+	return time.Time{}
 }
 
 func (t *importTask) GetReason() string {

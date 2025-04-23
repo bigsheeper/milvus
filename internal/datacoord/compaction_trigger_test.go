@@ -2844,7 +2844,7 @@ func Test_compactionTrigger_generatePlans(t *testing.T) {
 				expectedSize: 1024 * 1024 * 1024,
 			},
 			want: []*typeutil.Pair[int64, []int64]{
-				{100, []int64{1}}, {100, []int64{2}},
+				{A: 100, B: []int64{1}}, {A: 100, B: []int64{2}},
 			},
 		},
 	}

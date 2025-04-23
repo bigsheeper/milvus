@@ -57,6 +57,14 @@ func (s State) String() string {
 	return stateName[s]
 }
 
+type TaskTimeType string
+
+const (
+	TaskTimeQueue TaskTimeType = "QueueTime"
+	TaskTimeStart TaskTimeType = "StartTime"
+	TaskTimeEnd   TaskTimeType = "EndTime"
+)
+
 func GetTaskTypeFromProperties(properties map[string]string) Type {
 	if properties == nil {
 		return None

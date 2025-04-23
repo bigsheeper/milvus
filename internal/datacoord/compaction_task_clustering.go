@@ -60,6 +60,10 @@ type clusteringCompactionTask struct {
 	analyzeScheduler globalTask.GlobalScheduler
 
 	maxRetryTimes int32
+
+	queueTime time.Time
+	startTime time.Time
+	endTime   time.Time
 }
 
 func (t *clusteringCompactionTask) GetTaskID() int64 {
@@ -76,6 +80,29 @@ func (t *clusteringCompactionTask) GetTaskState() task.State {
 
 func (t *clusteringCompactionTask) GetTaskSlot() int64 {
 	return 8 // TODO: sheep, update slot
+}
+
+func (t *clusteringCompactionTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		t.queueTime = time
+	case task.TaskTimeStart:
+		t.startTime = time
+	case task.TaskTimeEnd:
+		t.endTime = time
+	}
+}
+
+func (t *clusteringCompactionTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return t.queueTime
+	case task.TaskTimeStart:
+		return t.startTime
+	case task.TaskTimeEnd:
+		return t.endTime
+	}
+	return time.Time{}
 }
 
 func (t *clusteringCompactionTask) retryOnError(err error) {

@@ -107,14 +107,14 @@ func (s *indexTaskSuite) TestBasicTaskOperations() {
 	s.Run("time management", func() {
 		now := time.Now()
 
-		it.SetQueueTime(now)
-		s.Equal(now, it.GetQueueTime())
+		it.SetTaskTime(task.TaskTimeQueue, now)
+		s.Equal(now, it.GetTaskTime(task.TaskTimeQueue))
 
-		it.SetStartTime(now)
-		s.Equal(now, it.GetStartTime())
+		it.SetTaskTime(task.TaskTimeStart, now)
+		s.Equal(now, it.GetTaskTime(task.TaskTimeStart))
 
-		it.SetEndTime(now)
-		s.Equal(now, it.GetEndTime())
+		it.SetTaskTime(task.TaskTimeEnd, now)
+		s.Equal(now, it.GetTaskTime(task.TaskTimeEnd))
 	})
 
 	s.Run("state management", func() {

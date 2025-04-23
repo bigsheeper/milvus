@@ -18,6 +18,9 @@ package datacoord
 
 import (
 	"context"
+	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
@@ -53,6 +56,13 @@ func (ai *analyzeInspector) reloadFromMeta() {
 			task.GetState() == indexpb.JobState_JobStateFailed {
 			continue
 		}
-		ai.scheduler.Enqueue(newAnalyzeTask(task, ai.mt))
+		analyzeTask := &analyzeTask{
+			AnalyzeTask: proto.Clone(task).(*indexpb.AnalyzeTask),
+			queueTime:   time.Now(),
+			startTime:   time.Now(),
+			endTime:     time.Now(),
+			meta:        ai.mt,
+		}
+		ai.scheduler.Enqueue(analyzeTask)
 	}
 }

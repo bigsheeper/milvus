@@ -191,7 +191,7 @@ func (i *indexInspector) createIndexForSegment(ctx context.Context, segment *Seg
 	if err = i.meta.indexMeta.AddSegmentIndex(ctx, segIndex); err != nil {
 		return err
 	}
-	i.scheduler.Enqueue(newIndexBuildTask(segIndex,
+	i.scheduler.Enqueue(newIndexBuildTask(model.CloneSegmentIndex(segIndex),
 		taskSlot,
 		i.meta,
 		i.handler,
@@ -208,8 +208,9 @@ func (i *indexInspector) reloadFromMeta() {
 				segIndex.IndexState == commonpb.IndexState_Failed {
 				continue
 			}
-			task := &indexBuildTask{
-				SegmentIndex:              segIndex,
+
+			i.scheduler.Enqueue(&indexBuildTask{
+				SegmentIndex:              model.CloneSegmentIndex(segIndex),
 				taskSlot:                  calculateIndexTaskSlot(segment.getSegmentSize()),
 				queueTime:                 time.Now(),
 				startTime:                 time.Now(),
@@ -218,8 +219,7 @@ func (i *indexInspector) reloadFromMeta() {
 				handler:                   i.handler,
 				chunkManager:              i.storageCli,
 				indexEngineVersionManager: i.indexEngineVersionManager,
-			}
-			i.scheduler.Enqueue(task)
+			})
 		}
 	}
 }

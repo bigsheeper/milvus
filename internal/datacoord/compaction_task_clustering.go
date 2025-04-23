@@ -743,16 +743,7 @@ func (t *clusteringCompactionTask) doAnalyze() error {
 		return err
 	}
 
-	t.analyzeScheduler.Enqueue(newAnalyzeTask(&indexpb.AnalyzeTask{
-		CollectionID: t.GetTaskProto().GetCollectionID(),
-		PartitionID:  t.GetTaskProto().GetPartitionID(),
-		FieldID:      t.GetTaskProto().GetClusteringKeyField().FieldID,
-		FieldName:    t.GetTaskProto().GetClusteringKeyField().Name,
-		FieldType:    t.GetTaskProto().GetClusteringKeyField().DataType,
-		SegmentIDs:   t.GetTaskProto().GetInputSegments(),
-		TaskID:       t.GetTaskProto().GetAnalyzeTaskID(),
-		State:        indexpb.JobState_JobStateInit,
-	}, t.meta.(*meta)))
+	t.analyzeScheduler.Enqueue(newAnalyzeTask(proto.Clone(analyzeTask).(*indexpb.AnalyzeTask), t.meta.(*meta)))
 
 	log.Info("submit analyze task", zap.Int64("planID", t.GetTaskProto().GetPlanID()), zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()), zap.Int64("id", t.GetTaskProto().GetAnalyzeTaskID()))
 	return t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_analyzing))

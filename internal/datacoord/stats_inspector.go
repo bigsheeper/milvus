@@ -23,6 +23,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/task"
@@ -103,8 +104,8 @@ func (si *statsInspector) reloadFromMeta() {
 		if segment != nil {
 			taskSlot = calculateStatsTaskSlot(segment.getSegmentSize())
 		}
-		task := &statsTask{
-			StatsTask:           st,
+		si.scheduler.Enqueue(&statsTask{
+			StatsTask:           proto.Clone(st).(*indexpb.StatsTask),
 			taskSlot:            taskSlot,
 			queueTime:           time.Now(),
 			startTime:           time.Now(),
@@ -113,8 +114,7 @@ func (si *statsInspector) reloadFromMeta() {
 			handler:             si.handler,
 			allocator:           si.allocator,
 			compactionInspector: si.compactionInspector,
-		}
-		si.scheduler.Enqueue(task)
+		})
 	}
 }
 
@@ -327,7 +327,7 @@ func (si *statsInspector) SubmitStatsTask(originSegmentID, targetSegmentID int64
 		}
 		return err
 	}
-	si.scheduler.Enqueue(newStatsTask(t, taskSlot, si.mt, si.compactionInspector, si.handler, si.allocator))
+	si.scheduler.Enqueue(newStatsTask(proto.Clone(t).(*indexpb.StatsTask), taskSlot, si.mt, si.compactionInspector, si.handler, si.allocator))
 	log.Ctx(si.ctx).Info("submit stats task success", zap.Int64("taskID", taskID),
 		zap.String("subJobType", subJobType.String()),
 		zap.Int64("collectionID", originSegment.GetCollectionID()),

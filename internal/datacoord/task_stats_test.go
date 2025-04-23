@@ -18,10 +18,10 @@ package datacoord
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/atomic"
@@ -203,7 +203,7 @@ func (s *statsTaskSuite) TestUpdateStateAndVersion() {
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		s.mt.statsTaskMeta.catalog = catalog
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).
-			Return(fmt.Errorf("mock error"))
+			Return(errors.New("mock error"))
 		err := st.UpdateStateWithMeta(indexpb.JobState_JobStateFailed, "error")
 		s.Error(err)
 	})
@@ -222,7 +222,7 @@ func (s *statsTaskSuite) TestUpdateStateAndVersion() {
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		s.mt.statsTaskMeta.catalog = catalog
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).
-			Return(fmt.Errorf("mock error"))
+			Return(errors.New("mock error"))
 		err := st.UpdateTaskVersion(200)
 		s.Error(err)
 	})
@@ -249,7 +249,7 @@ func (s *statsTaskSuite) TestResetTask() {
 
 	s.Run("reset with update failure", func() {
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).
-			Return(fmt.Errorf("mock error"))
+			Return(errors.New("mock error"))
 		st.resetTask(context.Background())
 		// State remains unchanged on error
 		s.Equal(indexpb.JobState_JobStateInit, st.GetState())
@@ -280,7 +280,7 @@ func (s *statsTaskSuite) TestHandleEmptySegment() {
 		s.mt.statsTaskMeta.catalog = catalog
 		s.mt.segments.segments[s.segID].State = commonpb.SegmentState_Flushed
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).
-			Return(fmt.Errorf("mock error"))
+			Return(errors.New("mock error"))
 		err := st.handleEmptySegment(context.Background())
 		s.Error(err)
 	})
@@ -299,7 +299,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		s.mt.segments.segments[s.segID].isCompacting = true
 		s.Run("drop task failed", func() {
 			catalog := catalogmocks.NewDataCoordCatalog(s.T())
-			catalog.EXPECT().DropStatsTask(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error"))
+			catalog.EXPECT().DropStatsTask(mock.Anything, mock.Anything).Return(errors.New("mock error"))
 			st.meta.statsTaskMeta.catalog = catalog
 			st.CreateTaskOnWorker(1, session.NewMockCluster(s.T()))
 			s.Equal(indexpb.JobState_JobStateInit, st.GetState())
@@ -336,7 +336,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		s.Run("drop task failed", func() {
 			catalog := catalogmocks.NewDataCoordCatalog(s.T())
 			catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil)
-			catalog.EXPECT().DropStatsTask(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error"))
+			catalog.EXPECT().DropStatsTask(mock.Anything, mock.Anything).Return(errors.New("mock error"))
 			st.meta.statsTaskMeta.catalog = catalog
 			s.NoError(s.mt.statsTaskMeta.AddStatsTask(st.StatsTask))
 			st.CreateTaskOnWorker(1, session.NewMockCluster(s.T()))
@@ -375,7 +375,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		s.mt.segments.segments[s.segID].NumOfRows = 1000
 		compactionInspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
-		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error"))
+		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(errors.New("mock error"))
 		st.meta.statsTaskMeta.catalog = catalog
 
 		st.CreateTaskOnWorker(1, session.NewMockCluster(s.T()))
@@ -391,7 +391,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil)
 		st.meta.statsTaskMeta.catalog = catalog
 		handler := NewNMockHandler(s.T())
-		handler.EXPECT().GetCollection(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("mock error"))
+		handler.EXPECT().GetCollection(mock.Anything, mock.Anything).Return(nil, errors.New("mock error"))
 		st.handler = handler
 
 		cluster := session.NewMockCluster(s.T())
@@ -421,7 +421,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		st.allocator = ac
 
 		cluster := session.NewMockCluster(s.T())
-		cluster.EXPECT().CreateStats(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error"))
+		cluster.EXPECT().CreateStats(mock.Anything, mock.Anything).Return(errors.New("mock error"))
 		cluster.EXPECT().DropStats(mock.Anything, mock.Anything).Return(nil)
 
 		st.CreateTaskOnWorker(1, cluster)
@@ -435,7 +435,7 @@ func (s *statsTaskSuite) TestCreateTaskOnWorker() {
 		compactionInspector.EXPECT().checkAndSetSegmentStating(mock.Anything, mock.Anything).Return(true)
 		catalog := catalogmocks.NewDataCoordCatalog(s.T())
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil).Once()
-		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error")).Once()
+		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(errors.New("mock error")).Once()
 		catalog.EXPECT().SaveStatsTask(mock.Anything, mock.Anything).Return(nil).Once()
 		st.meta.statsTaskMeta.catalog = catalog
 
@@ -508,7 +508,7 @@ func (s *statsTaskSuite) TestQueryTaskOnWorker() {
 	s.Run("query with error", func() {
 		st.SetState(indexpb.JobState_JobStateInProgress, "")
 		cluster := session.NewMockCluster(s.T())
-		cluster.EXPECT().QueryStats(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("mock error"))
+		cluster.EXPECT().QueryStats(mock.Anything, mock.Anything).Return(nil, errors.New("mock error"))
 
 		st.QueryTaskOnWorker(cluster)
 		s.Equal(indexpb.JobState_JobStateInProgress, st.GetState()) // No change
@@ -534,7 +534,7 @@ func (s *statsTaskSuite) TestDropTaskOnWorker() {
 
 	s.Run("drop with error from worker", func() {
 		cluster := session.NewMockCluster(s.T())
-		cluster.EXPECT().DropStats(mock.Anything, mock.Anything).Return(fmt.Errorf("mock error"))
+		cluster.EXPECT().DropStats(mock.Anything, mock.Anything).Return(errors.New("mock error"))
 
 		st.DropTaskOnWorker(cluster)
 		s.Equal(indexpb.JobState_JobStateInProgress, st.GetState())
@@ -624,7 +624,7 @@ func (s *statsTaskSuite) TestPrepareJobRequest() {
 	s.Run("get collection failed", func() {
 		// Create a handler that returns nil collection
 		handler := NewNMockHandler(s.T())
-		handler.EXPECT().GetCollection(mock.Anything, s.collID).Return(nil, fmt.Errorf("collection not found"))
+		handler.EXPECT().GetCollection(mock.Anything, s.collID).Return(nil, errors.New("collection not found"))
 		st.handler = handler
 
 		_, err := st.prepareJobRequest(context.Background(), segment)
@@ -664,7 +664,7 @@ func (s *statsTaskSuite) TestPrepareJobRequest() {
 
 		// Create allocator that fails
 		ac := allocator.NewMockAllocator(s.T())
-		ac.EXPECT().AllocN(mock.Anything).Return(int64(0), int64(0), fmt.Errorf("allocation failed"))
+		ac.EXPECT().AllocN(mock.Anything).Return(int64(0), int64(0), errors.New("allocation failed"))
 
 		st.handler = handler
 		st.allocator = ac

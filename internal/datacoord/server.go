@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tikv/client-go/v2/txnkv"
@@ -410,7 +411,7 @@ func (s *Server) SetSession(session sessionutil.SessionInterface) error {
 	s.session = session
 	s.icSession = session
 	if s.session == nil {
-		return fmt.Errorf("session is nil, the etcd client connection may have failed")
+		return errors.New("session is nil, the etcd client connection may have failed")
 	}
 	return nil
 }

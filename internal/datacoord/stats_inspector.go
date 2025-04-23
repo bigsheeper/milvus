@@ -298,7 +298,12 @@ func (si *statsInspector) SubmitStatsTask(originSegmentID, targetSegmentID int64
 	if err != nil {
 		return err
 	}
-	taskSlot := calculateStatsTaskSlot(originSegment.getSegmentSize())
+	originSegmentSize := originSegment.getSegmentSize()
+	if subJobType == indexpb.StatsSubJob_JsonKeyIndexJob {
+		originSegmentSize = originSegment.getSegmentSize() * 2
+	}
+
+	taskSlot := calculateStatsTaskSlot(originSegmentSize)
 	t := &indexpb.StatsTask{
 		CollectionID:    originSegment.GetCollectionID(),
 		PartitionID:     originSegment.GetPartitionID(),

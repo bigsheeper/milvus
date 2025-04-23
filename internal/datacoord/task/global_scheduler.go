@@ -59,9 +59,11 @@ type globalTaskScheduler struct {
 
 func (s *globalTaskScheduler) Enqueue(task Task) {
 	if s.runningTasks.Contain(task.GetTaskID()) {
+		log.Ctx(s.ctx).Info("task already in running", WrapTaskLog(task)...)
 		return
 	}
 	if s.pendingTasks.Get(task.GetTaskID()) != nil {
+		log.Ctx(s.ctx).Info("task already in pending", WrapTaskLog(task)...)
 		return
 	}
 	switch task.GetTaskState() {
@@ -69,6 +71,8 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 		s.pendingTasks.Push(task)
 	case taskcommon.InProgress:
 		s.runningTasks.Insert(task.GetTaskID(), task)
+	default:
+		log.Ctx(s.ctx).Warn("task state is not valid", WrapTaskLog(task)...)
 	}
 }
 

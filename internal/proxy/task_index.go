@@ -765,6 +765,7 @@ func (dit *describeIndexTask) OnEnqueue() error {
 	dit.Base = commonpbutil.NewMsgBase()
 	dit.Base.MsgType = commonpb.MsgType_DescribeIndex
 	dit.Base.SourceID = paramtable.GetNodeID()
+	log.Ctx(dit.ctx).Info("describeIndexTask OnEnqueue")
 	return nil
 }
 
@@ -778,6 +779,7 @@ func (dit *describeIndexTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	dit.collectionID = collID
+	log.Ctx(ctx).Info("describeIndexTask PreExecute done", zap.Int64("collectionID", collID))
 	return nil
 }
 

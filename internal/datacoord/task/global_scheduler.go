@@ -197,6 +197,7 @@ func (s *globalTaskScheduler) check() {
 			task.QueryTaskOnWorker(s.cluster)
 			switch task.GetTaskState() {
 			case taskcommon.Pending, taskcommon.Retry:
+				s.runningTasks.Remove(task.GetTaskID())
 				s.pendingTasks.Push(task)
 			case taskcommon.Finished, taskcommon.Failed:
 				task.DropTaskOnWorker(s.cluster)

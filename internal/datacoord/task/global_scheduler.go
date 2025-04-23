@@ -159,7 +159,7 @@ func (s *globalTaskScheduler) schedule() {
 		taskSlot := task.GetTaskSlot()
 		nodeID := s.pickNode(nodeSlots, taskSlot)
 		if nodeID == NullNodeID {
-			s.runningTasks.Insert(task.GetTaskID(), task)
+			s.pendingTasks.Push(task)
 			break
 		}
 		future := s.execPool.Submit(func() (struct{}, error) {

@@ -86,28 +86,27 @@ func (st *statsTask) GetTaskSlot() int64 {
 	return st.taskSlot
 }
 
-func (st *statsTask) SetQueueTime(t time.Time) {
-	st.queueTime = t
+func (st *statsTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		st.queueTime = time
+	case task.TaskTimeStart:
+		st.startTime = time
+	case task.TaskTimeEnd:
+		st.endTime = time
+	}
 }
 
-func (st *statsTask) GetQueueTime() time.Time {
-	return st.queueTime
-}
-
-func (st *statsTask) SetStartTime(t time.Time) {
-	st.startTime = t
-}
-
-func (st *statsTask) GetStartTime() time.Time {
-	return st.startTime
-}
-
-func (st *statsTask) SetEndTime(t time.Time) {
-	st.endTime = t
-}
-
-func (st *statsTask) GetEndTime() time.Time {
-	return st.endTime
+func (st *statsTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return st.queueTime
+	case task.TaskTimeStart:
+		return st.startTime
+	case task.TaskTimeEnd:
+		return st.endTime
+	}
+	return time.Time{}
 }
 
 func (st *statsTask) SetState(state indexpb.JobState, failReason string) {
@@ -404,7 +403,7 @@ func (st *statsTask) SetJobInfo(ctx context.Context, result *workerpb.StatsResul
 		metricMutation.commit()
 
 		select {
-		case getBuildIndexChSingleton() <- st.GetSegmentID():
+		case getBuildIndexChSingleton() <- result.GetSegmentID():
 		default:
 		}
 	case indexpb.StatsSubJob_TextIndexJob:

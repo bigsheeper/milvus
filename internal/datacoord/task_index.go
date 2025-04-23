@@ -90,28 +90,27 @@ func (it *indexBuildTask) GetTaskState() task.State {
 	return task.State(it.IndexState)
 }
 
-func (it *indexBuildTask) SetQueueTime(t time.Time) {
-	it.queueTime = t
+func (it *indexBuildTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		it.queueTime = time
+	case task.TaskTimeStart:
+		it.startTime = time
+	case task.TaskTimeEnd:
+		it.endTime = time
+	}
 }
 
-func (it *indexBuildTask) GetQueueTime() time.Time {
-	return it.queueTime
-}
-
-func (it *indexBuildTask) SetStartTime(t time.Time) {
-	it.startTime = t
-}
-
-func (it *indexBuildTask) GetStartTime() time.Time {
-	return it.startTime
-}
-
-func (it *indexBuildTask) SetEndTime(t time.Time) {
-	it.endTime = t
-}
-
-func (it *indexBuildTask) GetEndTime() time.Time {
-	return it.endTime
+func (it *indexBuildTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return it.queueTime
+	case task.TaskTimeStart:
+		return it.startTime
+	case task.TaskTimeEnd:
+		return it.endTime
+	}
+	return time.Time{}
 }
 
 func (it *indexBuildTask) GetTaskType() task.Type {
@@ -174,8 +173,8 @@ func (it *indexBuildTask) CreateTaskOnWorker(nodeID int64, cluster session.Clust
 	if isNoTrainIndex(indexType) || segIndex.NumRows < Params.DataCoordCfg.MinSegmentNumRowsToEnableIndex.GetAsInt64() {
 		log.Info("segment does not need index really, marking as finished", zap.Int64("numRows", segIndex.NumRows))
 		now := time.Now()
-		it.SetStartTime(now)
-		it.SetEndTime(now)
+		it.SetTaskTime(task.TaskTimeStart, now)
+		it.SetTaskTime(task.TaskTimeEnd, now)
 		it.UpdateStateWithMeta(indexpb.JobState_JobStateFinished, "fake finished index success")
 		return
 	}

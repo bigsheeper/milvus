@@ -47,6 +47,10 @@ type l0CompactionTask struct {
 
 	allocator allocator.Allocator
 	meta      CompactionMeta
+
+	queueTime time.Time
+	startTime time.Time
+	endTime   time.Time
 }
 
 func (t *l0CompactionTask) GetTaskID() int64 {
@@ -63,6 +67,27 @@ func (t *l0CompactionTask) GetTaskState() task.State {
 
 func (t *l0CompactionTask) GetTaskSlot() int64 { // TODO: sheep, update slot
 	return 4
+}
+
+func (t *l0CompactionTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		t.queueTime = time
+	case task.TaskTimeStart:
+		t.startTime = time
+	case task.TaskTimeEnd:
+		t.endTime = time
+	}
+}
+
+func (t *l0CompactionTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return t.queueTime
+	case task.TaskTimeStart:
+		return t.startTime
+	}
+	return time.Time{}
 }
 
 func (t *l0CompactionTask) CreateTaskOnWorker(nodeID int64, cluster session.Cluster) {

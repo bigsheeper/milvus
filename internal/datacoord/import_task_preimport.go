@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -43,6 +44,10 @@ type preImportTask struct {
 
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
+
+	queueTime time.Time
+	startTime time.Time
+	endTime   time.Time
 }
 
 func (p *preImportTask) GetJobID() int64 {
@@ -91,6 +96,29 @@ func (p *preImportTask) GetTaskState() task.State {
 
 func (p *preImportTask) GetTaskSlot() int64 {
 	return int64(funcutil.Min(len(p.GetFileStats()), paramtable.Get().DataNodeCfg.MaxTaskSlotNum.GetAsInt()))
+}
+
+func (p *preImportTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		p.queueTime = time
+	case task.TaskTimeStart:
+		p.startTime = time
+	case task.TaskTimeEnd:
+		p.endTime = time
+	}
+}
+
+func (p *preImportTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return p.queueTime
+	case task.TaskTimeStart:
+		return p.startTime
+	case task.TaskTimeEnd:
+		return p.endTime
+	}
+	return time.Time{}
 }
 
 func (p *preImportTask) CreateTaskOnWorker(nodeID int64, cluster session.Cluster) {

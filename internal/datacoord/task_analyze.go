@@ -51,36 +51,27 @@ func newAnalyzeTask(task *indexpb.AnalyzeTask, meta *meta) *analyzeTask {
 	}
 }
 
-func (at *analyzeTask) GetTaskID() int64 {
-	return at.TaskID
+func (at *analyzeTask) SetTaskTime(timeType task.TaskTimeType, time time.Time) {
+	switch timeType {
+	case task.TaskTimeQueue:
+		at.queueTime = time
+	case task.TaskTimeStart:
+		at.startTime = time
+	case task.TaskTimeEnd:
+		at.endTime = time
+	}
 }
 
-func (at *analyzeTask) GetNodeID() int64 {
-	return at.NodeID
-}
-
-func (at *analyzeTask) SetQueueTime(t time.Time) {
-	at.queueTime = t
-}
-
-func (at *analyzeTask) GetQueueTime() time.Time {
-	return at.queueTime
-}
-
-func (at *analyzeTask) SetStartTime(t time.Time) {
-	at.startTime = t
-}
-
-func (at *analyzeTask) GetStartTime() time.Time {
-	return at.startTime
-}
-
-func (at *analyzeTask) SetEndTime(t time.Time) {
-	at.endTime = t
-}
-
-func (at *analyzeTask) GetEndTime() time.Time {
-	return at.endTime
+func (at *analyzeTask) GetTaskTime(timeType task.TaskTimeType) time.Time {
+	switch timeType {
+	case task.TaskTimeQueue:
+		return at.queueTime
+	case task.TaskTimeStart:
+		return at.startTime
+	case task.TaskTimeEnd:
+		return at.endTime
+	}
+	return time.Time{}
 }
 
 func (at *analyzeTask) GetTaskType() task.Type {

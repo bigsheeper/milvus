@@ -90,6 +90,15 @@ func Test_NewClient(t *testing.T) {
 
 		r14, err := client.DropCompactionPlan(ctx, nil)
 		retCheck(retNotNil, r14, err)
+
+		r15, err := client.CreateTask(ctx, nil)
+		retCheck(retNotNil, r15, err)
+
+		r16, err := client.QueryTask(ctx, nil)
+		retCheck(retNotNil, r16, err)
+
+		r17, err := client.DropTask(ctx, nil)
+		retCheck(retNotNil, r17, err)
 	}
 
 	client.(*Client).grpcClient = &mock2.GRPCClientBase[DataNodeClient]{

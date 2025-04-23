@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	taskcommon "github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
+	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -44,12 +45,11 @@ type GlobalScheduler interface {
 var _ GlobalScheduler = (*globalTaskScheduler)(nil)
 
 type globalTaskScheduler struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	notifyChan chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
-	mu           sync.RWMutex
+	mu           *lock.KeyLock[int64]
 	pendingTasks FIFOQueue
 	runningTasks *typeutil.ConcurrentMap[int64, Task]
 	execPool     *conc.Pool[struct{}]
@@ -73,8 +73,8 @@ func (s *globalTaskScheduler) Enqueue(task Task) {
 }
 
 func (s *globalTaskScheduler) AbortAndRemoveTask(taskID int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.Lock(taskID)
+	defer s.mu.Unlock(taskID)
 	if task, ok := s.runningTasks.GetAndRemove(taskID); ok {
 		task.DropTaskOnWorker(s.cluster)
 	}
@@ -97,8 +97,6 @@ func (s *globalTaskScheduler) Start() {
 				return
 			case <-t.C:
 				s.schedule()
-			case <-s.notifyChan:
-				s.schedule()
 			}
 		}
 	}()
@@ -120,13 +118,6 @@ func (s *globalTaskScheduler) Start() {
 func (s *globalTaskScheduler) Stop() {
 	s.cancel()
 	s.wg.Wait()
-}
-
-func (s *globalTaskScheduler) notify() {
-	select {
-	case s.notifyChan <- struct{}{}:
-	default:
-	}
 }
 
 func (s *globalTaskScheduler) pickNode(workerSlots map[int64]*session.WorkerSlots, taskSlot int64) int64 {
@@ -152,8 +143,6 @@ func (s *globalTaskScheduler) pickNode(workerSlots map[int64]*session.WorkerSlot
 }
 
 func (s *globalTaskScheduler) schedule() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	pendingNum := len(s.pendingTasks.TaskIDs())
 	if pendingNum == 0 {
 		return
@@ -170,10 +159,12 @@ func (s *globalTaskScheduler) schedule() {
 		taskSlot := task.GetTaskSlot()
 		nodeID := s.pickNode(nodeSlots, taskSlot)
 		if nodeID == NullNodeID {
-			s.notify()
+			s.runningTasks.Insert(task.GetTaskID(), task)
 			break
 		}
 		future := s.execPool.Submit(func() (struct{}, error) {
+			s.mu.RLock(task.GetTaskID())
+			defer s.mu.RUnlock(task.GetTaskID())
 			log.Ctx(s.ctx).Info("processing task...", WrapTaskLog(task)...)
 			if task.GetTaskState() == taskcommon.Pending {
 				task.CreateTaskOnWorker(nodeID, s.cluster)
@@ -197,12 +188,12 @@ func (s *globalTaskScheduler) check() {
 	}
 	log.Ctx(s.ctx).Info("check running tasks", zap.Int("num", s.runningTasks.Len()))
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	tasks := s.runningTasks.Values()
 	futures := make([]*conc.Future[struct{}], 0, len(tasks))
 	for _, task := range tasks {
 		future := s.checkPool.Submit(func() (struct{}, error) {
+			s.mu.RLock(task.GetTaskID())
+			defer s.mu.RUnlock(task.GetTaskID())
 			task.QueryTaskOnWorker(s.cluster)
 			switch task.GetTaskState() {
 			case taskcommon.Pending, taskcommon.Retry:
@@ -226,7 +217,7 @@ func NewGlobalTaskScheduler(ctx context.Context, cluster session.Cluster) Global
 		ctx:          ctx1,
 		cancel:       cancel,
 		wg:           sync.WaitGroup{},
-		notifyChan:   make(chan struct{}, 1),
+		mu:           lock.NewKeyLock[int64](),
 		pendingTasks: NewFIFOQueue(),
 		runningTasks: typeutil.NewConcurrentMap[int64, Task](),
 		execPool:     execPool,

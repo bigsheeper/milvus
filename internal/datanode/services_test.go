@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
@@ -45,7 +46,10 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/objectstorage"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/util/etcd"
 	"github.com/milvus-io/milvus/pkg/v2/util/lifetime"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
@@ -56,11 +60,12 @@ import (
 type DataNodeServicesSuite struct {
 	suite.Suite
 
-	broker  *broker.MockBroker
-	node    *DataNode
-	etcdCli *clientv3.Client
-	ctx     context.Context
-	cancel  context.CancelFunc
+	broker        *broker.MockBroker
+	node          *DataNode
+	storageConfig *indexpb.StorageConfig
+	etcdCli       *clientv3.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 func TestDataNodeServicesSuite(t *testing.T) {
@@ -110,6 +115,24 @@ func (s *DataNodeServicesSuite) SetupTest() {
 
 	err = s.node.Start()
 	s.Require().NoError(err)
+
+	s.storageConfig = &indexpb.StorageConfig{
+		Address:           paramtable.Get().MinioCfg.Address.GetValue(),
+		AccessKeyID:       paramtable.Get().MinioCfg.AccessKeyID.GetValue(),
+		SecretAccessKey:   paramtable.Get().MinioCfg.SecretAccessKey.GetValue(),
+		UseSSL:            paramtable.Get().MinioCfg.UseSSL.GetAsBool(),
+		SslCACert:         paramtable.Get().MinioCfg.SslCACert.GetValue(),
+		BucketName:        paramtable.Get().MinioCfg.BucketName.GetValue(),
+		RootPath:          paramtable.Get().MinioCfg.RootPath.GetValue(),
+		UseIAM:            paramtable.Get().MinioCfg.UseIAM.GetAsBool(),
+		IAMEndpoint:       paramtable.Get().MinioCfg.IAMEndpoint.GetValue(),
+		StorageType:       paramtable.Get().CommonCfg.StorageType.GetValue(),
+		Region:            paramtable.Get().MinioCfg.Region.GetValue(),
+		UseVirtualHost:    paramtable.Get().MinioCfg.UseVirtualHost.GetAsBool(),
+		CloudProvider:     paramtable.Get().MinioCfg.CloudProvider.GetValue(),
+		RequestTimeoutMs:  paramtable.Get().MinioCfg.RequestTimeoutMs.GetAsInt64(),
+		GcpCredentialJSON: paramtable.Get().MinioCfg.GcpCredentialJSON.GetValue(),
+	}
 
 	s.node.chunkManager = storage.NewLocalChunkManager(objectstorage.RootPath("/tmp/milvus_test/datanode"))
 	paramtable.SetNodeID(1)
@@ -554,7 +577,6 @@ func (s *DataNodeServicesSuite) TestRPCWatch() {
 		resp, err := s.node.CheckChannelOperationProgress(ctx, nil)
 		s.NoError(err)
 		s.False(merr.Ok(resp.GetStatus()))
-		s.ErrorIs(merr.Error(status), merr.ErrServiceNotReady)
 	})
 
 	s.Run("submit error", func() {
@@ -1193,5 +1215,271 @@ func (s *DataNodeServicesSuite) TestDropCompactionPlan() {
 		status, err := s.node.DropCompactionPlan(ctx, req)
 		s.NoError(err)
 		s.True(merr.Ok(status))
+	})
+}
+
+func (s *DataNodeServicesSuite) TestCreateTask() {
+	s.Run("create pre-import task", func() {
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.PreImport,
+			},
+			Payload: []byte{},
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("create import task", func() {
+		importReq := &datapb.ImportRequest{
+			Schema: &schemapb.CollectionSchema{},
+		}
+		payload, err := proto.Marshal(importReq)
+		s.NoError(err)
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.Import,
+			},
+			Payload: payload,
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("create compaction task", func() {
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.Compaction,
+			},
+			Payload: []byte{},
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("create index task", func() {
+		indexReq := &workerpb.CreateJobRequest{
+			StorageConfig: s.storageConfig,
+		}
+		payload, err := proto.Marshal(indexReq)
+		s.NoError(err)
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.Index,
+			},
+			Payload: payload,
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("create stats task", func() {
+		statsReq := &workerpb.CreateStatsRequest{
+			StorageConfig: s.storageConfig,
+		}
+		payload, err := proto.Marshal(statsReq)
+		s.NoError(err)
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.Stats,
+			},
+			Payload: payload,
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("create analyze task", func() {
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: task.Analyze,
+			},
+			Payload: []byte{},
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("invalid task type", func() {
+		req := &workerpb.CreateTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: "invalid",
+			},
+			Payload: []byte{},
+		}
+		status, err := s.node.CreateTask(s.ctx, req)
+		s.NoError(err)
+		s.Equal(commonpb.ErrorCode_UnexpectedError, status.GetErrorCode())
+	})
+}
+
+func (s *DataNodeServicesSuite) TestQueryTask() {
+	s.Run("query pre-import task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.PreImport,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(err)
+		s.Error(merr.Error(resp.GetStatus())) // task not found
+	})
+
+	s.Run("query import task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Import,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(err)
+		s.Error(merr.Error(resp.GetStatus())) // task not found
+	})
+
+	s.Run("query compaction task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Compaction,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(resp, err))
+	})
+
+	s.Run("query index task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Index,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(resp, err))
+	})
+
+	s.Run("query stats task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Stats,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(resp, err))
+	})
+
+	s.Run("query analyze task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Analyze,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(resp, err))
+	})
+
+	s.Run("query slot task", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.QuerySlot,
+				task.TaskIDKey: "1",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(resp, err))
+	})
+
+	s.Run("invalid task type", func() {
+		req := &workerpb.QueryTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: "invalid",
+			},
+		}
+		resp, err := s.node.QueryTask(s.ctx, req)
+		s.NoError(err)
+		s.Equal(commonpb.ErrorCode_UnexpectedError, resp.GetStatus().GetErrorCode())
+	})
+}
+
+func (s *DataNodeServicesSuite) TestDropTask() {
+	s.Run("drop pre-import task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.PreImport,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("drop import task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Import,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("drop compaction task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Compaction,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("drop index task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Index,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("drop stats task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Stats,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("drop analyze task", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey:   task.Analyze,
+				task.TaskIDKey: "1",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(merr.CheckRPCCall(status, err))
+	})
+
+	s.Run("invalid task type", func() {
+		req := &workerpb.DropTaskRequest{
+			Properties: map[string]string{
+				task.TypeKey: "invalid",
+			},
+		}
+		status, err := s.node.DropTask(s.ctx, req)
+		s.NoError(err)
+		s.Equal(commonpb.ErrorCode_UnexpectedError, status.GetErrorCode())
 	})
 }

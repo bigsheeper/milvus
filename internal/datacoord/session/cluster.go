@@ -1,0 +1,408 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package session
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
+)
+
+// WorkerSlots represents the slot information for a worker node
+type WorkerSlots struct {
+	NodeID         int64
+	TotalSlots     int64
+	AvailableSlots int64
+}
+
+// Cluster defines the interface for tasks
+type Cluster interface {
+	// QuerySlot returns the slot information for all worker nodes
+	QuerySlot() map[typeutil.UniqueID]*WorkerSlots
+
+	// CreateCompaction creates a new compaction task on the specified node
+	CreateCompaction(nodeID int64, in *datapb.CompactionPlan) error
+	// QueryCompaction queries the status of a compaction task
+	QueryCompaction(nodeID int64, in *datapb.CompactionStateRequest) (*datapb.CompactionPlanResult, error)
+	// DropCompaction drops a compaction task
+	DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error
+
+	// CreatePreImport creates a pre-import task
+	CreatePreImport(nodeID int64, in *datapb.PreImportRequest, taskSlot int64) error
+	// CreateImport creates an import task
+	CreateImport(nodeID int64, in *datapb.ImportRequest, taskSlot int64) error
+	// QueryPreImport queries the status of a pre-import task
+	QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest) (*datapb.QueryPreImportResponse, error)
+	// QueryImport queries the status of an import task
+	QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*datapb.QueryImportResponse, error)
+	// DropImport drops an import task
+	DropImport(nodeID int64, in *datapb.DropImportRequest) error
+
+	// CreateIndex creates an index building task
+	CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
+	// QueryIndex queries the status of index building tasks
+	QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error)
+	// DropIndex drops an index building task
+	DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error
+
+	// CreateStats creates a statistics collection task
+	CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) error
+	// QueryStats queries the status of statistics collection tasks
+	QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error)
+	// DropStats drops a statistics collection task
+	DropStats(nodeID int64, in *workerpb.DropJobsRequest) error
+
+	// CreateAnalyze creates an analysis task
+	CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
+	// QueryAnalyze queries the status of analysis tasks
+	QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error)
+	// DropAnalyze drops an analysis task
+	DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error
+}
+
+var _ Cluster = (*cluster)(nil)
+
+// cluster implements the Cluster interface
+type cluster struct {
+	nm NodeManager
+}
+
+// NewCluster creates a new instance of cluster
+func NewCluster(nm NodeManager) Cluster {
+	c := &cluster{
+		nm: nm,
+	}
+	return c
+}
+
+func (c *cluster) createTask(nodeID int64, in proto.Message, properties task.Properties) error {
+	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cli, err := c.nm.GetClient(nodeID)
+	if err != nil {
+		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
+		return err
+	}
+
+	payload, err := proto.Marshal(in)
+	if err != nil {
+		log.Ctx(ctx).Warn("marshal request failed", zap.Error(err))
+		return err
+	}
+
+	status, err := cli.CreateTask(ctx, &workerpb.CreateTaskRequest{
+		Payload:    payload,
+		Properties: properties,
+	})
+	return merr.CheckRPCCall(status, err)
+}
+
+func (c *cluster) queryTask(nodeID int64, properties task.Properties) (*workerpb.QueryTaskResponse, error) {
+	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cli, err := c.nm.GetClient(nodeID)
+	if err != nil {
+		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
+		return nil, err
+	}
+
+	resp, err := cli.QueryTask(ctx, &workerpb.QueryTaskRequest{
+		Properties: properties,
+	})
+	if err = merr.CheckRPCCall(resp.GetStatus(), err); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *cluster) dropTask(nodeID int64, properties task.Properties) error {
+	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cli, err := c.nm.GetClient(nodeID)
+	if err != nil {
+		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
+		return err
+	}
+
+	status, err := cli.DropTask(ctx, &workerpb.DropTaskRequest{
+		Properties: properties,
+	})
+	return merr.CheckRPCCall(status, err)
+}
+
+func (c *cluster) QuerySlot() map[typeutil.UniqueID]*WorkerSlots {
+	var (
+		mu        = &sync.Mutex{}
+		wg        = &sync.WaitGroup{}
+		nodeSlots = make(map[int64]*WorkerSlots)
+	)
+	properties := task.NewProperties(nil)
+	properties.AppendType(task.QuerySlot)
+	for _, nodeID := range c.nm.GetClientIDs() {
+		wg.Add(1)
+		nodeID := nodeID
+		go func() {
+			defer wg.Done()
+			resp, err := c.queryTask(nodeID, properties)
+			if err = merr.CheckRPCCall(resp.GetStatus(), err); err != nil {
+				log.Ctx(context.TODO()).Warn("failed to get node slot", zap.Int64("nodeID", nodeID), zap.Error(err))
+				return
+			}
+			result := &workerpb.GetJobStatsResponse{}
+			err = proto.Unmarshal(resp.GetPayload(), result)
+			if err != nil {
+				log.Ctx(context.TODO()).Warn("failed to unmarshal result", zap.Int64("nodeID", nodeID), zap.Error(err))
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			nodeSlots[nodeID] = &WorkerSlots{
+				NodeID:         nodeID,
+				TotalSlots:     result.GetTotalSlots(),
+				AvailableSlots: result.GetAvailableSlots(),
+			}
+		}()
+	}
+	wg.Wait()
+	log.Ctx(context.TODO()).Debug("query slot done", zap.Any("nodeSlots", nodeSlots))
+	return nodeSlots
+}
+
+func (c *cluster) CreateCompaction(nodeID int64, in *datapb.CompactionPlan) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetPlanID())
+	properties.AppendType(task.Compaction)
+	properties.AppendTaskSlot(in.GetSlotUsage())
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateRequest) (*datapb.CompactionPlanResult, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetPlanID())
+	properties.AppendType(task.Compaction)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &datapb.CompactionStateResponse{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	var ret *datapb.CompactionPlanResult
+	// TODO: sheep, wrap marshal and unmarshal function in common package
+	for _, rst := range result.GetResults() {
+		if rst.GetPlanID() != in.GetPlanID() {
+			continue
+		}
+		err = binlog.CompressCompactionBinlogs(rst.GetSegments())
+		if err != nil {
+			return nil, err
+		}
+		ret = rst
+		break
+	}
+	return ret, err
+}
+
+func (c *cluster) DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetPlanID())
+	properties.AppendType(task.Compaction)
+	return c.dropTask(nodeID, properties)
+}
+
+func (c *cluster) CreatePreImport(nodeID int64, in *datapb.PreImportRequest, taskSlot int64) error {
+	// TODO: sheep, use taskSlot in request
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.PreImport)
+	properties.AppendTaskSlot(taskSlot)
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) CreateImport(nodeID int64, in *datapb.ImportRequest, taskSlot int64) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.Import)
+	properties.AppendTaskSlot(taskSlot)
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest) (*datapb.QueryPreImportResponse, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.PreImport)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &datapb.QueryPreImportResponse{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *cluster) QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*datapb.QueryImportResponse, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.Import)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &datapb.QueryImportResponse{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *cluster) DropImport(nodeID int64, in *datapb.DropImportRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.Import)
+	return c.dropTask(nodeID, properties)
+}
+
+func (c *cluster) CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetBuildID())
+	properties.AppendType(task.Index)
+	properties.AppendTaskSlot(in.GetTaskSlot())
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Index)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &workerpb.QueryJobsV2Response{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	return result.GetIndexJobResults(), nil
+}
+
+func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Index)
+	return c.dropTask(nodeID, properties)
+}
+
+func (c *cluster) CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.Stats)
+	properties.AppendTaskSlot(in.GetTaskSlot())
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Stats)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &workerpb.QueryJobsV2Response{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	return result.GetStatsJobResults(), nil
+}
+
+func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Stats)
+	return c.dropTask(nodeID, properties)
+}
+
+func (c *cluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskID())
+	properties.AppendType(task.Analyze)
+	properties.AppendTaskSlot(in.GetTaskSlot())
+	return c.createTask(nodeID, in, properties)
+}
+
+func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error) {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Analyze)
+	resp, err := c.queryTask(nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+	result := &workerpb.QueryJobsV2Response{}
+	err = proto.Unmarshal(resp.GetPayload(), result)
+	if err != nil {
+		return nil, err
+	}
+	return result.GetAnalyzeJobResults(), nil
+}
+
+func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {
+	properties := task.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(in.GetTaskIDs()[0])
+	properties.AppendType(task.Analyze)
+	return c.dropTask(nodeID, properties)
+}

@@ -373,7 +373,6 @@ func (st *statsTask) prepareJobRequest(ctx context.Context, segment *SegmentInfo
 		TaskSlot:                  st.taskSlot,
 		StorageVersion:            segment.GetStorageVersion(),
 		CurrentScalarIndexVersion: st.ievm.GetCurrentScalarIndexEngineVersion(),
-		InsertLogs:                segment.GetBinlogs(),
 	}
 
 	return req, nil

@@ -453,26 +453,40 @@ func (s *Server) initServiceDiscovery() error {
 	if err != nil {
 		log.Warn("DataCoord failed to init service discovery", zap.Error(err))
 	}
+	if Params.DataCoordCfg.BindIndexNodeMode.GetAsBool() {
+		log.Info("initServiceDiscovery adding datanode with bind mode",
+			zap.Int64("nodeID", Params.DataCoordCfg.IndexNodeID.GetAsInt64()),
+			zap.String("address", Params.DataCoordCfg.IndexNodeAddress.GetValue()))
+		if err := s.nodeManager.AddNode(Params.DataCoordCfg.IndexNodeID.GetAsInt64(),
+			Params.DataCoordCfg.IndexNodeAddress.GetValue()); err != nil {
+			log.Warn("DataCoord failed to add datanode", zap.Error(err))
+			return err
+		}
+	} else {
+		for _, ss := range sessions {
+			info := &session.NodeInfo{
+				NodeID:  ss.ServerID,
+				Address: ss.Address,
+			}
 
-	for _, s := range sessions {
-		info := &session.NodeInfo{
-			NodeID:  s.ServerID,
-			Address: s.Address,
+			if ss.Version.LTE(legacyVersion) {
+				info.IsLegacy = true
+			}
+
+			datanodes = append(datanodes, info)
+			if err := s.nodeManager.AddNode(info.NodeID, info.Address); err != nil {
+				log.Warn("DataCoord failed to add datanode", zap.Error(err))
+				return err
+			}
 		}
 
-		if s.Version.LTE(legacyVersion) {
-			info.IsLegacy = true
+		log.Info("DataCoord Cluster Manager start up")
+		if err := s.cluster.Startup(s.ctx, datanodes); err != nil {
+			log.Warn("DataCoord Cluster Manager failed to start up", zap.Error(err))
+			return err
 		}
-
-		datanodes = append(datanodes, info)
+		log.Info("DataCoord Cluster Manager start up successfully")
 	}
-
-	log.Info("DataCoord Cluster Manager start up")
-	if err := s.cluster.Startup(s.ctx, datanodes); err != nil {
-		log.Warn("DataCoord Cluster Manager failed to start up", zap.Error(err))
-		return err
-	}
-	log.Info("DataCoord Cluster Manager start up successfully")
 
 	// TODO implement rewatch logic
 	s.dnEventCh = s.session.WatchServicesWithVersionRange(typeutil.DataNodeRole, r, rev+1, nil)

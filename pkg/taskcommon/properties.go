@@ -26,10 +26,13 @@ import (
 // properties keys
 const (
 	// request
-	ClusterIDKey = "cluster_id"
-	TaskIDKey    = "task_id"
-	TypeKey      = "task_type"
-	SlotKey      = "task_slot"
+	ClusterIDKey   = "cluster_id"
+	TaskIDKey      = "task_id"
+	TypeKey        = "task_type"
+	SubTypeKey     = "task_sub_type" // optional, only for Stats
+	SlotKey        = "task_slot"
+	NumRowsKey     = "num_row"      // optional, only for Index, Stats
+	TaskVersionKey = "task_version" // optional, only for Index, Stats and Analyze
 
 	// result
 	StateKey  = "task_state"
@@ -66,8 +69,20 @@ func (p Properties) AppendType(t Type) {
 	}
 }
 
+func (p Properties) AppendSubType(subType string) {
+	p[SubTypeKey] = subType
+}
+
 func (p Properties) AppendTaskSlot(slot int64) {
 	p[SlotKey] = fmt.Sprintf("%d", slot)
+}
+
+func (p Properties) AppendNumRows(rows int64) {
+	p[NumRowsKey] = fmt.Sprintf("%d", rows)
+}
+
+func (p Properties) AppendTaskVersion(version int64) {
+	p[TaskVersionKey] = fmt.Sprintf("%d", version)
 }
 
 func (p Properties) GetTaskType() (Type, error) {
@@ -80,6 +95,27 @@ func (p Properties) GetTaskType() (Type, error) {
 	default:
 		return p[TypeKey], fmt.Errorf("unrecognized task type '%s', taskID=%s", p[TypeKey], p[TaskIDKey])
 	}
+}
+
+func (p Properties) GetJobType() (indexpb.JobType, error) {
+	taskType, err := p.GetTaskType()
+	if err != nil {
+		return indexpb.JobType_JobTypeNone, err
+	}
+	switch taskType {
+	case Index:
+		return indexpb.JobType_JobTypeIndexJob, nil
+	case Stats:
+		return indexpb.JobType_JobTypeStatsJob, nil
+	case Analyze:
+		return indexpb.JobType_JobTypeAnalyzeJob, nil
+	default:
+		return indexpb.JobType_JobTypeNone, nil
+	}
+}
+
+func (p Properties) GetSubTaskType() string {
+	return p[SubTypeKey]
 }
 
 func (p Properties) GetClusterID() (string, error) {
@@ -118,19 +154,24 @@ func (p Properties) GetTaskSlot() (int64, error) {
 	return strconv.ParseInt(p[SlotKey], 10, 64)
 }
 
-func (p Properties) GetJobType() (indexpb.JobType, error) {
-	taskType, err := p.GetTaskType()
+func (p Properties) GetNumRows() int64 {
+	if _, ok := p[NumRowsKey]; !ok {
+		return 0
+	}
+	rows, err := strconv.ParseInt(p[NumRowsKey], 10, 64)
 	if err != nil {
-		return indexpb.JobType_JobTypeNone, err
+		return 0
 	}
-	switch taskType {
-	case Index:
-		return indexpb.JobType_JobTypeIndexJob, nil
-	case Stats:
-		return indexpb.JobType_JobTypeStatsJob, nil
-	case Analyze:
-		return indexpb.JobType_JobTypeAnalyzeJob, nil
-	default:
-		return indexpb.JobType_JobTypeNone, nil
+	return rows
+}
+
+func (p Properties) GetTaskVersion() int64 {
+	if _, ok := p[TaskVersionKey]; !ok {
+		return 0
 	}
+	version, err := strconv.ParseInt(p[TaskVersionKey], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return version
 }

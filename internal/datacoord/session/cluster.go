@@ -311,6 +311,8 @@ func (c *cluster) CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
 	properties.AppendTaskID(in.GetBuildID())
 	properties.AppendType(taskcommon.Index)
 	properties.AppendTaskSlot(in.GetTaskSlot())
+	properties.AppendNumRows(in.GetNumRows())
+	properties.AppendTaskVersion(in.GetIndexVersion())
 	return c.createTask(nodeID, in, properties)
 }
 
@@ -344,7 +346,10 @@ func (c *cluster) CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) err
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
 	properties.AppendType(taskcommon.Stats)
+	properties.AppendSubType(in.GetSubJobType().String())
 	properties.AppendTaskSlot(in.GetTaskSlot())
+	properties.AppendNumRows(in.GetNumRows())
+	properties.AppendTaskVersion(in.GetTaskVersion())
 	return c.createTask(nodeID, in, properties)
 }
 
@@ -379,6 +384,7 @@ func (c *cluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
 	properties.AppendTaskID(in.GetTaskID())
 	properties.AppendType(taskcommon.Analyze)
 	properties.AppendTaskSlot(in.GetTaskSlot())
+	properties.AppendTaskVersion(in.GetVersion())
 	return c.createTask(nodeID, in, properties)
 }
 

@@ -22,16 +22,16 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/datacoord/session"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 )
 
 type Task interface {
 	GetTaskID() int64
-	GetTaskType() task.Type
-	GetTaskState() task.State
+	GetTaskType() taskcommon.Type
+	GetTaskState() taskcommon.State
 	GetTaskSlot() int64
-	SetTaskTime(timeType task.TimeType, time time.Time)
-	GetTaskTime(timeType task.TimeType) time.Time
+	SetTaskTime(timeType taskcommon.TimeType, time time.Time)
+	GetTaskTime(timeType taskcommon.TimeType) time.Time
 
 	CreateTaskOnWorker(nodeID int64, cluster session.Cluster)
 	QueryTaskOnWorker(cluster session.Cluster)

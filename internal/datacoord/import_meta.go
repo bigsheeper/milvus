@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/metastore"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
@@ -116,6 +117,7 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, allo
 		t := &preImportTask{
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("preimport task"),
+			times: taskcommon.NewTimes(),
 		}
 		t.task.Store(task)
 		tasks.add(t)
@@ -126,6 +128,7 @@ func NewImportMeta(ctx context.Context, catalog metastore.DataCoordCatalog, allo
 			meta:  meta,
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("import task"),
+			times: taskcommon.NewTimes(),
 		}
 		t.task.Store(task)
 		tasks.add(t)

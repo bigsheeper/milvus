@@ -28,14 +28,14 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 )
 
 type analyzeTask struct {
 	*indexpb.AnalyzeTask
 
-	times *task.Times
+	times *taskcommon.Times
 
 	meta *meta
 }
@@ -45,25 +45,25 @@ var _ globalTask.Task = (*analyzeTask)(nil)
 func newAnalyzeTask(t *indexpb.AnalyzeTask, meta *meta) *analyzeTask {
 	return &analyzeTask{
 		AnalyzeTask: t,
-		times:       task.NewTimes(),
+		times:       taskcommon.NewTimes(),
 		meta:        meta,
 	}
 }
 
-func (at *analyzeTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (at *analyzeTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	at.times.SetTaskTime(timeType, time)
 }
 
-func (at *analyzeTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (at *analyzeTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(at.times)
 }
 
-func (at *analyzeTask) GetTaskType() task.Type {
-	return task.Analyze
+func (at *analyzeTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Analyze
 }
 
-func (at *analyzeTask) GetTaskState() task.State {
-	return task.State(at.State)
+func (at *analyzeTask) GetTaskState() taskcommon.State {
+	return taskcommon.State(at.State)
 }
 
 func (at *analyzeTask) GetTaskSlot() int64 {

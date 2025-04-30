@@ -38,7 +38,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/indexparams"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -49,7 +49,7 @@ type indexBuildTask struct {
 
 	taskSlot int64
 
-	times *task.Times
+	times *taskcommon.Times
 
 	meta                      *meta
 	handler                   Handler
@@ -69,7 +69,7 @@ func newIndexBuildTask(segIndex *model.SegmentIndex,
 	return &indexBuildTask{
 		SegmentIndex:              segIndex,
 		taskSlot:                  taskSlot,
-		times:                     task.NewTimes(),
+		times:                     taskcommon.NewTimes(),
 		meta:                      meta,
 		handler:                   handler,
 		chunkManager:              chunkManager,
@@ -85,20 +85,20 @@ func (it *indexBuildTask) GetTaskSlot() int64 {
 	return it.taskSlot
 }
 
-func (it *indexBuildTask) GetTaskState() task.State {
-	return task.State(it.IndexState)
+func (it *indexBuildTask) GetTaskState() taskcommon.State {
+	return taskcommon.State(it.IndexState)
 }
 
-func (it *indexBuildTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (it *indexBuildTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	it.times.SetTaskTime(timeType, time)
 }
 
-func (it *indexBuildTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (it *indexBuildTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(it.times)
 }
 
-func (it *indexBuildTask) GetTaskType() task.Type {
-	return task.Index
+func (it *indexBuildTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Index
 }
 
 func (it *indexBuildTask) SetState(state indexpb.JobState, failReason string) {
@@ -157,8 +157,8 @@ func (it *indexBuildTask) CreateTaskOnWorker(nodeID int64, cluster session.Clust
 	if isNoTrainIndex(indexType) || segIndex.NumRows < Params.DataCoordCfg.MinSegmentNumRowsToEnableIndex.GetAsInt64() {
 		log.Info("segment does not need index really, marking as finished", zap.Int64("numRows", segIndex.NumRows))
 		now := time.Now()
-		it.SetTaskTime(task.TimeStart, now)
-		it.SetTaskTime(task.TimeEnd, now)
+		it.SetTaskTime(taskcommon.TimeStart, now)
+		it.SetTaskTime(taskcommon.TimeEnd, now)
 		it.UpdateStateWithMeta(indexpb.JobState_JobStateFinished, "fake finished index success")
 		return
 	}

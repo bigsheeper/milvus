@@ -35,7 +35,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
@@ -48,18 +48,18 @@ type l0CompactionTask struct {
 	allocator allocator.Allocator
 	meta      CompactionMeta
 
-	times *task.Times
+	times *taskcommon.Times
 }
 
 func (t *l0CompactionTask) GetTaskID() int64 {
 	return t.GetTaskProto().GetPlanID()
 }
 
-func (t *l0CompactionTask) GetTaskType() task.Type {
-	return task.Compaction
+func (t *l0CompactionTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Compaction
 }
 
-func (t *l0CompactionTask) GetTaskState() task.State {
+func (t *l0CompactionTask) GetTaskState() taskcommon.State {
 	return compactionStateToTaskState(t.GetTaskProto().GetState())
 }
 
@@ -67,11 +67,11 @@ func (t *l0CompactionTask) GetTaskSlot() int64 { // TODO: sheep, update slot
 	return 4
 }
 
-func (t *l0CompactionTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (t *l0CompactionTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	t.times.SetTaskTime(timeType, time)
 }
 
-func (t *l0CompactionTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (t *l0CompactionTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(t.times)
 }
 
@@ -166,7 +166,7 @@ func newL0CompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator
 	task := &l0CompactionTask{
 		allocator: allocator,
 		meta:      meta,
-		times:     task.NewTimes(),
+		times:     taskcommon.NewTimes(),
 	}
 	task.taskProto.Store(t)
 	return task

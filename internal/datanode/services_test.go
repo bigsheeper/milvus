@@ -49,7 +49,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/etcd"
 	"github.com/milvus-io/milvus/pkg/v2/util/lifetime"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
@@ -1222,7 +1222,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 	s.Run("create pre-import task", func() {
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.PreImport,
+				taskcommon.TypeKey: taskcommon.PreImport,
 			},
 			Payload: []byte{},
 		}
@@ -1238,7 +1238,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 		s.NoError(err)
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.Import,
+				taskcommon.TypeKey: taskcommon.Import,
 			},
 			Payload: payload,
 		}
@@ -1249,7 +1249,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 	s.Run("create compaction task", func() {
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.Compaction,
+				taskcommon.TypeKey: taskcommon.Compaction,
 			},
 			Payload: []byte{},
 		}
@@ -1265,7 +1265,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 		s.NoError(err)
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.Index,
+				taskcommon.TypeKey: taskcommon.Index,
 			},
 			Payload: payload,
 		}
@@ -1281,7 +1281,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 		s.NoError(err)
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.Stats,
+				taskcommon.TypeKey: taskcommon.Stats,
 			},
 			Payload: payload,
 		}
@@ -1292,7 +1292,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 	s.Run("create analyze task", func() {
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: task.Analyze,
+				taskcommon.TypeKey: taskcommon.Analyze,
 			},
 			Payload: []byte{},
 		}
@@ -1303,7 +1303,7 @@ func (s *DataNodeServicesSuite) TestCreateTask() {
 	s.Run("invalid task type", func() {
 		req := &workerpb.CreateTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: "invalid",
+				taskcommon.TypeKey: "invalid",
 			},
 			Payload: []byte{},
 		}
@@ -1317,8 +1317,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query pre-import task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.PreImport,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.PreImport,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1329,8 +1329,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query import task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Import,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Import,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1341,8 +1341,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query compaction task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Compaction,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Compaction,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1352,8 +1352,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query index task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Index,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Index,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1363,8 +1363,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query stats task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Stats,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Stats,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1374,8 +1374,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query analyze task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Analyze,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Analyze,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1385,8 +1385,8 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("query slot task", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.QuerySlot,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.QuerySlot,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1396,7 +1396,7 @@ func (s *DataNodeServicesSuite) TestQueryTask() {
 	s.Run("invalid task type", func() {
 		req := &workerpb.QueryTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: "invalid",
+				taskcommon.TypeKey: "invalid",
 			},
 		}
 		resp, err := s.node.QueryTask(s.ctx, req)
@@ -1409,8 +1409,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop pre-import task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.PreImport,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.PreImport,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1420,8 +1420,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop import task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Import,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Import,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1431,8 +1431,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop compaction task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Compaction,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Compaction,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1442,8 +1442,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop index task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Index,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Index,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1453,8 +1453,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop stats task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Stats,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Stats,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1464,8 +1464,8 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("drop analyze task", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey:   task.Analyze,
-				task.TaskIDKey: "1",
+				taskcommon.TypeKey:   taskcommon.Analyze,
+				taskcommon.TaskIDKey: "1",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)
@@ -1475,7 +1475,7 @@ func (s *DataNodeServicesSuite) TestDropTask() {
 	s.Run("invalid task type", func() {
 		req := &workerpb.DropTaskRequest{
 			Properties: map[string]string{
-				task.TypeKey: "invalid",
+				taskcommon.TypeKey: "invalid",
 			},
 		}
 		status, err := s.node.DropTask(s.ctx, req)

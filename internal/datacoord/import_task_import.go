@@ -33,7 +33,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -50,8 +50,7 @@ type importTask struct {
 	meta  *meta
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
-
-	times *task.Times
+	times *taskcommon.Times
 }
 
 func (t *importTask) GetJobID() int64 {
@@ -74,11 +73,11 @@ func (t *importTask) GetState() datapb.ImportTaskStateV2 {
 	return t.task.Load().GetState()
 }
 
-func (t *importTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (t *importTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	t.times.SetTaskTime(timeType, time)
 }
 
-func (t *importTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (t *importTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(t.times)
 }
 
@@ -110,25 +109,25 @@ func (t *importTask) GetCompleteTime() string {
 	return t.task.Load().GetCompleteTime()
 }
 
-func (t *importTask) GetTaskType() task.Type {
-	return task.Import
+func (t *importTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Import
 }
 
-func importStateToTaskState(s datapb.ImportTaskStateV2) task.State {
+func importStateToTaskState(s datapb.ImportTaskStateV2) taskcommon.State {
 	switch s {
 	case datapb.ImportTaskStateV2_Pending:
-		return task.Init
+		return taskcommon.Init
 	case datapb.ImportTaskStateV2_InProgress:
-		return task.InProgress
+		return taskcommon.InProgress
 	case datapb.ImportTaskStateV2_Failed:
-		return task.Failed
+		return taskcommon.Failed
 	case datapb.ImportTaskStateV2_Completed:
-		return task.Finished
+		return taskcommon.Finished
 	}
-	return task.None
+	return taskcommon.None
 }
 
-func (t *importTask) GetTaskState() task.State {
+func (t *importTask) GetTaskState() taskcommon.State {
 	return importStateToTaskState(t.GetState())
 }
 

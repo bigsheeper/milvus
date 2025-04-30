@@ -19,25 +19,25 @@ package datacoord
 import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
 
-func compactionStateToTaskState(s datapb.CompactionTaskState) task.State {
+func compactionStateToTaskState(s datapb.CompactionTaskState) taskcommon.State {
 	switch s {
 	case datapb.CompactionTaskState_pipelining:
-		return task.Init
+		return taskcommon.Init
 	case datapb.CompactionTaskState_executing:
-		return task.InProgress
+		return taskcommon.InProgress
 	case datapb.CompactionTaskState_completed, datapb.CompactionTaskState_meta_saved,
 		datapb.CompactionTaskState_statistic, datapb.CompactionTaskState_indexing, datapb.CompactionTaskState_cleaned:
-		return task.Finished
+		return taskcommon.Finished
 	case datapb.CompactionTaskState_failed:
-		return task.Failed
+		return taskcommon.Failed
 	case datapb.CompactionTaskState_timeout:
-		return task.Retry
+		return taskcommon.Retry
 	}
-	return task.None
+	return taskcommon.None
 }
 
 // PreAllocateBinlogIDs pre-allocates binlog IDs based on the total number of binlogs from

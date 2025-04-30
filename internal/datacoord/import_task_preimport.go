@@ -29,7 +29,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -44,8 +44,7 @@ type preImportTask struct {
 
 	imeta ImportMeta
 	tr    *timerecord.TimeRecorder
-
-	times *task.Times
+	times *taskcommon.Times
 }
 
 func (p *preImportTask) GetJobID() int64 {
@@ -84,11 +83,11 @@ func (p *preImportTask) GetCompleteTime() string {
 	return p.task.Load().GetCompleteTime()
 }
 
-func (p *preImportTask) GetTaskType() task.Type {
-	return task.PreImport
+func (p *preImportTask) GetTaskType() taskcommon.Type {
+	return taskcommon.PreImport
 }
 
-func (p *preImportTask) GetTaskState() task.State {
+func (p *preImportTask) GetTaskState() taskcommon.State {
 	return importStateToTaskState(p.GetState())
 }
 
@@ -96,11 +95,11 @@ func (p *preImportTask) GetTaskSlot() int64 {
 	return int64(funcutil.Min(len(p.GetFileStats()), paramtable.Get().DataNodeCfg.MaxTaskSlotNum.GetAsInt()))
 }
 
-func (p *preImportTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (p *preImportTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	p.times.SetTaskTime(timeType, time)
 }
 
-func (p *preImportTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (p *preImportTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(p.times)
 }
 

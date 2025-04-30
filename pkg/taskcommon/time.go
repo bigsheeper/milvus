@@ -14,17 +14,51 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package task
+package taskcommon
 
-import "github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+import "time"
 
-type State = indexpb.JobState
+type Times struct {
+	queueTime time.Time
+	startTime time.Time
+	endTime   time.Time
+}
+
+func NewTimes() *Times {
+	return &Times{
+		queueTime: time.Now(),
+		startTime: time.Now(),
+		endTime:   time.Now(),
+	}
+}
+
+func (t *Times) SetTaskTime(timeType TimeType, time time.Time) {
+	switch timeType {
+	case TimeQueue:
+		t.queueTime = time
+	case TimeStart:
+		t.startTime = time
+	case TimeEnd:
+		t.endTime = time
+	}
+}
+
+type TimeType string
 
 const (
-	None       = indexpb.JobState_JobStateNone
-	Init       = indexpb.JobState_JobStateInit
-	InProgress = indexpb.JobState_JobStateInProgress
-	Finished   = indexpb.JobState_JobStateFinished
-	Failed     = indexpb.JobState_JobStateFailed
-	Retry      = indexpb.JobState_JobStateRetry
+	TimeQueue TimeType = "QueueTime"
+	TimeStart TimeType = "StartTime"
+	TimeEnd   TimeType = "EndTime"
 )
+
+func (t TimeType) GetTaskTime(times *Times) time.Time {
+	switch t {
+	case TimeQueue:
+		return times.queueTime
+	case TimeStart:
+		return times.startTime
+	case TimeEnd:
+		return times.endTime
+	}
+	return time.Time{}
+}

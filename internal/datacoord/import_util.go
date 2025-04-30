@@ -38,6 +38,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
@@ -81,6 +82,7 @@ func NewPreImportTasks(fileGroups [][]*internalpb.ImportFile,
 		task := &preImportTask{
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("preimport task"),
+			times: taskcommon.NewTimes(),
 		}
 		task.task.Store(taskProto)
 		tasks = append(tasks, task)
@@ -111,6 +113,7 @@ func NewImportTasks(fileGroups [][]*datapb.ImportFileStats,
 			meta:  meta,
 			imeta: imeta,
 			tr:    timerecord.NewTimeRecorder("import task"),
+			times: taskcommon.NewTimes(),
 		}
 		task.task.Store(taskProto)
 		segments, err := AssignSegments(job, task, alloc, meta)

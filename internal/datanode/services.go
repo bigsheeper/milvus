@@ -44,7 +44,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/tracer"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
@@ -589,34 +589,34 @@ func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTa
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}
-	properties := task.NewProperties(request.GetProperties())
+	properties := taskcommon.NewProperties(request.GetProperties())
 	taskType, err := properties.GetTaskType()
 	if err != nil {
 		return merr.Status(err), nil
 	}
 	switch taskType {
-	case task.PreImport:
+	case taskcommon.PreImport:
 		req := &datapb.PreImportRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
 			return merr.Status(err), nil
 		}
 		return node.PreImport(ctx, req)
-	case task.Import:
+	case taskcommon.Import:
 		req := &datapb.ImportRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
 			return merr.Status(err), nil
 		}
 		return node.ImportV2(ctx, req)
-	case task.Compaction:
+	case taskcommon.Compaction:
 		req := &datapb.CompactionPlan{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
 			return merr.Status(err), nil
 		}
 		return node.CompactionV2(ctx, req)
-	case task.Index:
+	case taskcommon.Index:
 		req := &workerpb.CreateJobRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
@@ -630,7 +630,7 @@ func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTa
 				IndexRequest: req,
 			},
 		})
-	case task.Stats:
+	case taskcommon.Stats:
 		req := &workerpb.CreateStatsRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
@@ -644,7 +644,7 @@ func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTa
 				StatsRequest: req,
 			},
 		})
-	case task.Analyze:
+	case taskcommon.Analyze:
 		req := &workerpb.AnalyzeRequest{}
 		err := proto.Unmarshal(request.GetPayload(), req)
 		if err != nil {
@@ -699,7 +699,7 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
-	properties := task.NewProperties(request.GetProperties())
+	properties := taskcommon.NewProperties(request.GetProperties())
 	taskType, err := properties.GetTaskType()
 	if err != nil {
 		return &workerpb.QueryTaskResponse{
@@ -713,19 +713,19 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 		}, nil
 	}
 	switch taskType {
-	case task.PreImport:
+	case taskcommon.PreImport:
 		return handleQueryTask(ctx, request, &datapb.QueryPreImportRequest{TaskID: taskID}, node.QueryPreImport)
-	case task.Import:
+	case taskcommon.Import:
 		return handleQueryTask(ctx, request, &datapb.QueryImportRequest{TaskID: taskID}, node.QueryImport)
-	case task.Compaction:
+	case taskcommon.Compaction:
 		return handleQueryTask(ctx, request, &datapb.CompactionStateRequest{PlanID: taskID}, node.GetCompactionState)
-	case task.Index:
+	case taskcommon.Index:
 		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryIndexTask)
-	case task.Stats:
+	case taskcommon.Stats:
 		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryStatsTask)
-	case task.Analyze:
+	case taskcommon.Analyze:
 		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryAnalyzeTask)
-	case task.QuerySlot:
+	case taskcommon.QuerySlot:
 		return handleQueryTask(ctx, request, &workerpb.GetJobStatsRequest{}, node.GetJobStats)
 	default:
 		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
@@ -741,7 +741,7 @@ func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRe
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}
-	properties := task.NewProperties(request.GetProperties())
+	properties := taskcommon.NewProperties(request.GetProperties())
 	taskType, err := properties.GetTaskType()
 	if err != nil {
 		return merr.Status(err), nil
@@ -751,11 +751,11 @@ func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRe
 		return merr.Status(err), nil
 	}
 	switch taskType {
-	case task.PreImport, task.Import:
+	case taskcommon.PreImport, taskcommon.Import:
 		return node.DropImport(ctx, &datapb.DropImportRequest{TaskID: taskID})
-	case task.Compaction:
+	case taskcommon.Compaction:
 		return node.DropCompactionPlan(ctx, &datapb.DropCompactionPlanRequest{PlanID: taskID})
-	case task.Index, task.Stats, task.Analyze:
+	case taskcommon.Index, taskcommon.Stats, taskcommon.Analyze:
 		jobType, err := properties.GetJobType()
 		if err != nil {
 			return merr.Status(err), nil

@@ -17,7 +17,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
@@ -30,18 +30,18 @@ type mixCompactionTask struct {
 	allocator allocator.Allocator
 	meta      CompactionMeta
 
-	times *task.Times
+	times *taskcommon.Times
 }
 
 func (t *mixCompactionTask) GetTaskID() int64 {
 	return t.GetTaskProto().GetPlanID()
 }
 
-func (t *mixCompactionTask) GetTaskType() task.Type {
-	return task.Compaction
+func (t *mixCompactionTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Compaction
 }
 
-func (t *mixCompactionTask) GetTaskState() task.State {
+func (t *mixCompactionTask) GetTaskState() taskcommon.State {
 	return compactionStateToTaskState(t.GetTaskProto().GetState())
 }
 
@@ -49,11 +49,11 @@ func (t *mixCompactionTask) GetTaskSlot() int64 {
 	return 4 // TODO: sheep, update slot, make it configurable
 }
 
-func (t *mixCompactionTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (t *mixCompactionTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	t.times.SetTaskTime(timeType, time)
 }
 
-func (t *mixCompactionTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (t *mixCompactionTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(t.times)
 }
 
@@ -169,7 +169,7 @@ func newMixCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocato
 	task := &mixCompactionTask{
 		allocator: allocator,
 		meta:      meta,
-		times:     task.NewTimes(),
+		times:     taskcommon.NewTimes(),
 	}
 	task.taskProto.Store(t)
 	return task

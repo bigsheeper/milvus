@@ -40,7 +40,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/metautil"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -61,18 +61,18 @@ type clusteringCompactionTask struct {
 
 	maxRetryTimes int32
 
-	times *task.Times
+	times *taskcommon.Times
 }
 
 func (t *clusteringCompactionTask) GetTaskID() int64 {
 	return t.GetTaskProto().GetPlanID()
 }
 
-func (t *clusteringCompactionTask) GetTaskType() task.Type {
-	return task.Compaction
+func (t *clusteringCompactionTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Compaction
 }
 
-func (t *clusteringCompactionTask) GetTaskState() task.State {
+func (t *clusteringCompactionTask) GetTaskState() taskcommon.State {
 	return compactionStateToTaskState(t.GetTaskProto().GetState())
 }
 
@@ -80,11 +80,11 @@ func (t *clusteringCompactionTask) GetTaskSlot() int64 {
 	return 8 // TODO: sheep, update slot
 }
 
-func (t *clusteringCompactionTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (t *clusteringCompactionTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	t.times.SetTaskTime(timeType, time)
 }
 
-func (t *clusteringCompactionTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (t *clusteringCompactionTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(t.times)
 }
 
@@ -237,7 +237,7 @@ func newClusteringCompactionTask(t *datapb.CompactionTask, allocator allocator.A
 		handler:          handler,
 		analyzeScheduler: analyzeScheduler,
 		maxRetryTimes:    3,
-		times:            task.NewTimes(),
+		times:            taskcommon.NewTimes(),
 	}
 	task.taskProto.Store(t)
 	return task

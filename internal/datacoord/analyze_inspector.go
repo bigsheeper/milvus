@@ -23,7 +23,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/datacoord/task"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
-	taskcommon "github.com/milvus-io/milvus/pkg/v2/task"
+	taskcommon "github.com/milvus-io/milvus/pkg/v2/taskcommon"
 )
 
 type analyzeInspector struct {

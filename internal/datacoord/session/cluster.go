@@ -28,7 +28,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -101,7 +101,7 @@ func NewCluster(nm NodeManager) Cluster {
 	return c
 }
 
-func (c *cluster) createTask(nodeID int64, in proto.Message, properties task.Properties) error {
+func (c *cluster) createTask(nodeID int64, in proto.Message, properties taskcommon.Properties) error {
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -124,7 +124,7 @@ func (c *cluster) createTask(nodeID int64, in proto.Message, properties task.Pro
 	return merr.CheckRPCCall(status, err)
 }
 
-func (c *cluster) queryTask(nodeID int64, properties task.Properties) (*workerpb.QueryTaskResponse, error) {
+func (c *cluster) queryTask(nodeID int64, properties taskcommon.Properties) (*workerpb.QueryTaskResponse, error) {
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -143,7 +143,7 @@ func (c *cluster) queryTask(nodeID int64, properties task.Properties) (*workerpb
 	return resp, nil
 }
 
-func (c *cluster) dropTask(nodeID int64, properties task.Properties) error {
+func (c *cluster) dropTask(nodeID int64, properties taskcommon.Properties) error {
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -165,8 +165,8 @@ func (c *cluster) QuerySlot() map[typeutil.UniqueID]*WorkerSlots {
 		wg        = &sync.WaitGroup{}
 		nodeSlots = make(map[int64]*WorkerSlots)
 	)
-	properties := task.NewProperties(nil)
-	properties.AppendType(task.QuerySlot)
+	properties := taskcommon.NewProperties(nil)
+	properties.AppendType(taskcommon.QuerySlot)
 	for _, nodeID := range c.nm.GetClientIDs() {
 		wg.Add(1)
 		nodeID := nodeID
@@ -198,19 +198,19 @@ func (c *cluster) QuerySlot() map[typeutil.UniqueID]*WorkerSlots {
 }
 
 func (c *cluster) CreateCompaction(nodeID int64, in *datapb.CompactionPlan) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetPlanID())
-	properties.AppendType(task.Compaction)
+	properties.AppendType(taskcommon.Compaction)
 	properties.AppendTaskSlot(in.GetSlotUsage())
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateRequest) (*datapb.CompactionPlanResult, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetPlanID())
-	properties.AppendType(task.Compaction)
+	properties.AppendType(taskcommon.Compaction)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -237,37 +237,37 @@ func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateReques
 }
 
 func (c *cluster) DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetPlanID())
-	properties.AppendType(task.Compaction)
+	properties.AppendType(taskcommon.Compaction)
 	return c.dropTask(nodeID, properties)
 }
 
 func (c *cluster) CreatePreImport(nodeID int64, in *datapb.PreImportRequest, taskSlot int64) error {
 	// TODO: sheep, use taskSlot in request
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.PreImport)
+	properties.AppendType(taskcommon.PreImport)
 	properties.AppendTaskSlot(taskSlot)
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) CreateImport(nodeID int64, in *datapb.ImportRequest, taskSlot int64) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.Import)
+	properties.AppendType(taskcommon.Import)
 	properties.AppendTaskSlot(taskSlot)
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest) (*datapb.QueryPreImportResponse, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.PreImport)
+	properties.AppendType(taskcommon.PreImport)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -281,10 +281,10 @@ func (c *cluster) QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest)
 }
 
 func (c *cluster) QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*datapb.QueryImportResponse, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.Import)
+	properties.AppendType(taskcommon.Import)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -298,27 +298,27 @@ func (c *cluster) QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*dat
 }
 
 func (c *cluster) DropImport(nodeID int64, in *datapb.DropImportRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.Import)
+	properties.AppendType(taskcommon.Import)
 	return c.dropTask(nodeID, properties)
 }
 
 func (c *cluster) CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetBuildID())
-	properties.AppendType(task.Index)
+	properties.AppendType(taskcommon.Index)
 	properties.AppendTaskSlot(in.GetTaskSlot())
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Index)
+	properties.AppendType(taskcommon.Index)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -332,27 +332,27 @@ func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*work
 }
 
 func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Index)
+	properties.AppendType(taskcommon.Index)
 	return c.dropTask(nodeID, properties)
 }
 
 func (c *cluster) CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.Stats)
+	properties.AppendType(taskcommon.Stats)
 	properties.AppendTaskSlot(in.GetTaskSlot())
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Stats)
+	properties.AppendType(taskcommon.Stats)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -366,27 +366,27 @@ func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*work
 }
 
 func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Stats)
+	properties.AppendType(taskcommon.Stats)
 	return c.dropTask(nodeID, properties)
 }
 
 func (c *cluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(task.Analyze)
+	properties.AppendType(taskcommon.Analyze)
 	properties.AppendTaskSlot(in.GetTaskSlot())
 	return c.createTask(nodeID, in, properties)
 }
 
 func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error) {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Analyze)
+	properties.AppendType(taskcommon.Analyze)
 	resp, err := c.queryTask(nodeID, properties)
 	if err != nil {
 		return nil, err
@@ -400,9 +400,9 @@ func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*wo
 }
 
 func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {
-	properties := task.NewProperties(nil)
+	properties := taskcommon.NewProperties(nil)
 	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
 	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(task.Analyze)
+	properties.AppendType(taskcommon.Analyze)
 	return c.dropTask(nodeID, properties)
 }

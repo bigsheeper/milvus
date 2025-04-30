@@ -30,7 +30,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
@@ -41,7 +41,7 @@ type statsTask struct {
 
 	taskSlot int64
 
-	times *task.Times
+	times *taskcommon.Times
 
 	meta                *meta
 	handler             Handler
@@ -63,7 +63,7 @@ func newStatsTask(t *indexpb.StatsTask,
 	return &statsTask{
 		StatsTask:           t,
 		taskSlot:            taskSlot,
-		times:               task.NewTimes(),
+		times:               taskcommon.NewTimes(),
 		meta:                mt,
 		handler:             handler,
 		allocator:           allocator,
@@ -76,23 +76,23 @@ func (st *statsTask) GetTaskID() int64 {
 	return st.TaskID
 }
 
-func (st *statsTask) GetTaskType() task.Type {
-	return task.Stats
+func (st *statsTask) GetTaskType() taskcommon.Type {
+	return taskcommon.Stats
 }
 
-func (st *statsTask) GetTaskState() task.State {
-	return task.State(st.GetState())
+func (st *statsTask) GetTaskState() taskcommon.State {
+	return taskcommon.State(st.GetState())
 }
 
 func (st *statsTask) GetTaskSlot() int64 {
 	return st.taskSlot
 }
 
-func (st *statsTask) SetTaskTime(timeType task.TimeType, time time.Time) {
+func (st *statsTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
 	st.times.SetTaskTime(timeType, time)
 }
 
-func (st *statsTask) GetTaskTime(timeType task.TimeType) time.Time {
+func (st *statsTask) GetTaskTime(timeType taskcommon.TimeType) time.Time {
 	return timeType.GetTaskTime(st.times)
 }
 

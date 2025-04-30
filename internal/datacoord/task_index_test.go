@@ -33,7 +33,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
-	"github.com/milvus-io/milvus/pkg/v2/task"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 )
 
@@ -99,22 +99,22 @@ func (s *indexTaskSuite) TestBasicTaskOperations() {
 	it := newIndexBuildTask(t, 1, s.mt, nil, nil, nil)
 
 	s.Run("task type and state", func() {
-		s.Equal(task.Index, it.GetTaskType())
-		s.Equal(task.State(it.IndexState), it.GetTaskState())
+		s.Equal(taskcommon.Index, it.GetTaskType())
+		s.Equal(taskcommon.State(it.IndexState), it.GetTaskState())
 		s.Equal(int64(1), it.GetTaskSlot())
 	})
 
 	s.Run("time management", func() {
 		now := time.Now()
 
-		it.SetTaskTime(task.TimeQueue, now)
-		s.Equal(now, it.GetTaskTime(task.TimeQueue))
+		it.SetTaskTime(taskcommon.TimeQueue, now)
+		s.Equal(now, it.GetTaskTime(taskcommon.TimeQueue))
 
-		it.SetTaskTime(task.TimeStart, now)
-		s.Equal(now, it.GetTaskTime(task.TimeStart))
+		it.SetTaskTime(taskcommon.TimeStart, now)
+		s.Equal(now, it.GetTaskTime(taskcommon.TimeStart))
 
-		it.SetTaskTime(task.TimeEnd, now)
-		s.Equal(now, it.GetTaskTime(task.TimeEnd))
+		it.SetTaskTime(taskcommon.TimeEnd, now)
+		s.Equal(now, it.GetTaskTime(taskcommon.TimeEnd))
 	})
 
 	s.Run("state management", func() {

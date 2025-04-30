@@ -73,7 +73,7 @@ func (t *clusteringCompactionTask) GetTaskType() taskcommon.Type {
 }
 
 func (t *clusteringCompactionTask) GetTaskState() taskcommon.State {
-	return compactionStateToTaskState(t.GetTaskProto().GetState())
+	return taskcommon.FromCompactionState(t.GetTaskProto().GetState())
 }
 
 func (t *clusteringCompactionTask) GetTaskSlot() int64 {

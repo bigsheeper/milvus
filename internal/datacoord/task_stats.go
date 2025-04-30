@@ -81,7 +81,7 @@ func (st *statsTask) GetTaskType() taskcommon.Type {
 }
 
 func (st *statsTask) GetTaskState() taskcommon.State {
-	return taskcommon.State(st.GetState())
+	return st.GetState()
 }
 
 func (st *statsTask) GetTaskSlot() int64 {
@@ -263,6 +263,7 @@ func (st *statsTask) QueryTaskOnWorker(cluster session.Cluster) {
 			}
 			st.UpdateStateWithMeta(state, result.GetFailReason())
 		case indexpb.JobState_JobStateRetry:
+			log.Warn("retry task")
 			st.DropTaskOnWorker(cluster)
 			st.resetTask(ctx)
 		case indexpb.JobState_JobStateFailed:
@@ -275,6 +276,7 @@ func (st *statsTask) QueryTaskOnWorker(cluster session.Cluster) {
 	}
 
 	// Task not found in results
+	log.Warn("task not found in results")
 	st.resetTask(ctx)
 }
 

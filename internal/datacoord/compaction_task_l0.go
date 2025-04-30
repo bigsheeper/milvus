@@ -60,7 +60,7 @@ func (t *l0CompactionTask) GetTaskType() taskcommon.Type {
 }
 
 func (t *l0CompactionTask) GetTaskState() taskcommon.State {
-	return compactionStateToTaskState(t.GetTaskProto().GetState())
+	return taskcommon.FromCompactionState(t.GetTaskProto().GetState())
 }
 
 func (t *l0CompactionTask) GetTaskSlot() int64 { // TODO: sheep, update slot

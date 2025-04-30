@@ -42,7 +42,7 @@ func (t *mixCompactionTask) GetTaskType() taskcommon.Type {
 }
 
 func (t *mixCompactionTask) GetTaskState() taskcommon.State {
-	return compactionStateToTaskState(t.GetTaskProto().GetState())
+	return taskcommon.FromCompactionState(t.GetTaskProto().GetState())
 }
 
 func (t *mixCompactionTask) GetTaskSlot() int64 {

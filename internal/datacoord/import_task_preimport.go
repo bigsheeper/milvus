@@ -88,7 +88,7 @@ func (p *preImportTask) GetTaskType() taskcommon.Type {
 }
 
 func (p *preImportTask) GetTaskState() taskcommon.State {
-	return importStateToTaskState(p.GetState())
+	return taskcommon.FromImportState(p.GetState())
 }
 
 func (p *preImportTask) GetTaskSlot() int64 {

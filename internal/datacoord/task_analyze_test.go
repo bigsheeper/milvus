@@ -92,7 +92,7 @@ func (s *analyzeTaskSuite) TestBasicTaskOperations() {
 
 	s.Run("task type and state", func() {
 		s.Equal(taskcommon.Analyze, at.GetTaskType())
-		s.Equal(taskcommon.State(at.GetState()), at.GetTaskState())
+		s.Equal(at.GetState(), at.GetTaskState())
 		s.Equal(Params.DataCoordCfg.AnalyzeTaskSlotUsage.GetAsInt64(), at.GetTaskSlot())
 	})
 

@@ -85,6 +85,14 @@ func (p Properties) AppendTaskVersion(version int64) {
 	p[TaskVersionKey] = fmt.Sprintf("%d", version)
 }
 
+func (p Properties) AppendReason(reason string) {
+	p[ReasonKey] = reason
+}
+
+func (p Properties) AppendTaskState(state State) {
+	p[StateKey] = state.String()
+}
+
 func (p Properties) GetTaskType() (Type, error) {
 	if _, ok := p[TypeKey]; !ok {
 		return "", WrapErrTaskPropertyLack(TypeKey, p[TaskIDKey])
@@ -132,15 +140,15 @@ func (p Properties) GetTaskID() (int64, error) {
 	return strconv.ParseInt(p[TaskIDKey], 10, 64)
 }
 
-func (p Properties) GetTaskState() (indexpb.JobState, error) {
+func (p Properties) GetTaskState() (State, error) {
 	if _, ok := p[StateKey]; !ok {
 		return 0, WrapErrTaskPropertyLack(StateKey, p[TaskIDKey])
 	}
 	stateStr := p[StateKey]
 	if _, ok := indexpb.JobState_value[stateStr]; !ok {
-		return indexpb.JobState_JobStateNone, fmt.Errorf("invalid task state '%v', taskID=%s", stateStr, p[TaskIDKey])
+		return None, fmt.Errorf("invalid task state '%v', taskID=%s", stateStr, p[TaskIDKey])
 	}
-	return indexpb.JobState(indexpb.JobState_value[stateStr]), nil
+	return State(indexpb.JobState_value[stateStr]), nil
 }
 
 func (p Properties) GetTaskReason() string {

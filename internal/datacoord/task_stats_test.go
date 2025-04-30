@@ -155,7 +155,7 @@ func (s *statsTaskSuite) TestBasicTaskOperations() {
 
 	s.Run("task type and state", func() {
 		s.Equal(taskcommon.Stats, st.GetTaskType())
-		s.Equal(taskcommon.State(st.GetState()), st.GetTaskState())
+		s.Equal(st.GetState(), st.GetTaskState())
 		s.Equal(int64(1), st.GetTaskSlot())
 	})
 

@@ -586,6 +586,7 @@ func (node *DataNode) DropCompactionPlan(ctx context.Context, req *datapb.DropCo
 
 // CreateTask creates different types of tasks based on task type
 func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTaskRequest) (*commonpb.Status, error) {
+	log.Ctx(ctx).Info("CreateTask received", zap.Any("properties", request.GetProperties()))
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}
@@ -669,28 +670,19 @@ type ResponseWithStatus interface {
 	GetStatus() *commonpb.Status
 }
 
-func handleQueryTask[Req proto.Message, Resp proto.Message](ctx context.Context,
-	request *workerpb.QueryTaskRequest, req Req,
-	handler func(context.Context, Req) (Resp, error),
-) (*workerpb.QueryTaskResponse, error) {
-	resp, err := handler(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
+func wrapQueryTaskResult[Resp proto.Message](resp Resp, properties taskcommon.Properties) (*workerpb.QueryTaskResponse, error) {
 	payload, err := proto.Marshal(resp)
 	if err != nil {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
-
 	statusResp, ok := any(resp).(ResponseWithStatus)
 	if !ok {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(fmt.Errorf("response does not implement GetStatus"))}, nil
 	}
-
 	return &workerpb.QueryTaskResponse{
-		Status:  statusResp.GetStatus(),
-		Payload: payload,
+		Status:     statusResp.GetStatus(),
+		Payload:    payload,
+		Properties: properties,
 	}, nil
 }
 
@@ -699,34 +691,79 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
-	properties := taskcommon.NewProperties(request.GetProperties())
-	taskType, err := properties.GetTaskType()
+	reqProperties := taskcommon.NewProperties(request.GetProperties())
+	clusterID, err := reqProperties.GetClusterID()
 	if err != nil {
-		return &workerpb.QueryTaskResponse{
-			Status: merr.Status(err),
-		}, nil
+		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
-	taskID, err := properties.GetTaskID()
+	taskType, err := reqProperties.GetTaskType()
 	if err != nil {
-		return &workerpb.QueryTaskResponse{
-			Status: merr.Status(err),
-		}, nil
+		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
+	}
+	taskID, err := reqProperties.GetTaskID()
+	if err != nil {
+		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
 	}
 	switch taskType {
 	case taskcommon.PreImport:
-		return handleQueryTask(ctx, request, &datapb.QueryPreImportRequest{TaskID: taskID}, node.QueryPreImport)
+		resp, err := node.QueryPreImport(ctx, &datapb.QueryPreImportRequest{ClusterID: clusterID, TaskID: taskID})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(taskcommon.FromImportState(resp.GetState()))
+		resProperties.AppendReason(resp.GetReason())
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.Import:
-		return handleQueryTask(ctx, request, &datapb.QueryImportRequest{TaskID: taskID}, node.QueryImport)
+		resp, err := node.QueryImport(ctx, &datapb.QueryImportRequest{ClusterID: clusterID, TaskID: taskID})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(taskcommon.FromImportState(resp.GetState()))
+		resProperties.AppendReason(resp.GetReason())
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.Compaction:
-		return handleQueryTask(ctx, request, &datapb.CompactionStateRequest{PlanID: taskID}, node.GetCompactionState)
+		resp, err := node.GetCompactionState(ctx, &datapb.CompactionStateRequest{PlanID: taskID})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(taskcommon.FromCompactionState(resp.GetResults()[0].GetState()))
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.Index:
-		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryIndexTask)
+		resp, err := node.queryIndexTask(ctx, &workerpb.QueryJobsRequest{ClusterID: clusterID, TaskIDs: []int64{taskID}})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(taskcommon.State(resp.GetIndexJobResults().GetResults()[0].GetState()))
+		resProperties.AppendReason(resp.GetIndexJobResults().GetResults()[0].GetFailReason())
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.Stats:
-		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryStatsTask)
+		resp, err := node.queryStatsTask(ctx, &workerpb.QueryJobsRequest{ClusterID: clusterID, TaskIDs: []int64{taskID}})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(resp.GetStatsJobResults().GetResults()[0].GetState())
+		resProperties.AppendReason(resp.GetStatsJobResults().GetResults()[0].GetFailReason())
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.Analyze:
-		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryAnalyzeTask)
+		resp, err := node.queryAnalyzeTask(ctx, &workerpb.QueryJobsRequest{ClusterID: clusterID, TaskIDs: []int64{taskID}})
+		if err != nil {
+			return nil, err
+		}
+		resProperties := taskcommon.NewProperties(nil)
+		resProperties.AppendTaskState(resp.GetAnalyzeJobResults().GetResults()[0].GetState())
+		resProperties.AppendReason(resp.GetAnalyzeJobResults().GetResults()[0].GetFailReason())
+		return wrapQueryTaskResult(resp, resProperties)
 	case taskcommon.QuerySlot:
-		return handleQueryTask(ctx, request, &workerpb.GetJobStatsRequest{}, node.GetJobStats)
+		resp, err := node.GetJobStats(ctx, &workerpb.GetJobStatsRequest{})
+		if err != nil {
+			return nil, err
+		}
+		return wrapQueryTaskResult(resp, nil)
 	default:
 		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
 		log.Ctx(ctx).Warn("QueryTask failed", zap.Error(err))
@@ -738,6 +775,7 @@ func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTask
 
 // DropTask deletes specified type of task
 func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRequest) (*commonpb.Status, error) {
+	log.Ctx(ctx).Info("DropTask received", zap.Any("properties", request.GetProperties()))
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return merr.Status(err), nil
 	}

@@ -63,7 +63,7 @@ func (at *analyzeTask) GetTaskType() taskcommon.Type {
 }
 
 func (at *analyzeTask) GetTaskState() taskcommon.State {
-	return taskcommon.State(at.State)
+	return at.State
 }
 
 func (at *analyzeTask) GetTaskSlot() int64 {

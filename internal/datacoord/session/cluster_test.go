@@ -26,6 +26,7 @@ import (
 	"github.com/milvus-io/milvus/internal/mocks"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
@@ -116,10 +117,13 @@ func TestCluster_Compaction(t *testing.T) {
 				},
 			},
 		}
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test
@@ -182,11 +186,14 @@ func TestCluster_Import(t *testing.T) {
 		mockNodeManager.EXPECT().GetClient(mock.Anything).Return(mockClient, nil)
 
 		// Mock response
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		expectedResult := &datapb.QueryPreImportResponse{}
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test
@@ -204,11 +211,14 @@ func TestCluster_Import(t *testing.T) {
 		mockNodeManager.EXPECT().GetClient(mock.Anything).Return(mockClient, nil)
 
 		// Mock response
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		expectedResult := &datapb.QueryImportResponse{}
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test
@@ -256,6 +266,8 @@ func TestCluster_Index(t *testing.T) {
 		mockNodeManager.EXPECT().GetClient(mock.Anything).Return(mockClient, nil)
 
 		// Mock response
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		expectedResult := &workerpb.QueryJobsV2Response{
 			Result: &workerpb.QueryJobsV2Response_IndexJobResults{
 				IndexJobResults: &workerpb.IndexJobResults{},
@@ -263,8 +275,9 @@ func TestCluster_Index(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test
@@ -312,6 +325,8 @@ func TestCluster_Stats(t *testing.T) {
 		mockNodeManager.EXPECT().GetClient(mock.Anything).Return(mockClient, nil)
 
 		// Mock response
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		expectedResult := &workerpb.QueryJobsV2Response{
 			Result: &workerpb.QueryJobsV2Response_StatsJobResults{
 				StatsJobResults: &workerpb.StatsResults{},
@@ -319,8 +334,9 @@ func TestCluster_Stats(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test
@@ -368,6 +384,8 @@ func TestCluster_Analyze(t *testing.T) {
 		mockNodeManager.EXPECT().GetClient(mock.Anything).Return(mockClient, nil)
 
 		// Mock response
+		properties := taskcommon.NewProperties(nil)
+		properties.AppendTaskState(taskcommon.Finished)
 		expectedResult := &workerpb.QueryJobsV2Response{
 			Result: &workerpb.QueryJobsV2Response_AnalyzeJobResults{
 				AnalyzeJobResults: &workerpb.AnalyzeResults{},
@@ -375,8 +393,9 @@ func TestCluster_Analyze(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(expectedResult)
 		mockClient.EXPECT().QueryTask(mock.Anything, mock.Anything).Return(&workerpb.QueryTaskResponse{
-			Status:  merr.Success(),
-			Payload: payload,
+			Status:     merr.Success(),
+			Payload:    payload,
+			Properties: properties,
 		}, nil)
 
 		// Test

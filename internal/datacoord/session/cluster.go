@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
@@ -166,6 +167,8 @@ func (c *cluster) QuerySlot() map[typeutil.UniqueID]*WorkerSlots {
 		nodeSlots = make(map[int64]*WorkerSlots)
 	)
 	properties := taskcommon.NewProperties(nil)
+	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	properties.AppendTaskID(-1)
 	properties.AppendType(taskcommon.QuerySlot)
 	for _, nodeID := range c.nm.GetClientIDs() {
 		wg.Add(1)
@@ -207,33 +210,45 @@ func (c *cluster) CreateCompaction(nodeID int64, in *datapb.CompactionPlan) erro
 }
 
 func (c *cluster) QueryCompaction(nodeID int64, in *datapb.CompactionStateRequest) (*datapb.CompactionPlanResult, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetPlanID())
-	properties.AppendType(taskcommon.Compaction)
-	resp, err := c.queryTask(nodeID, properties)
+	reqProperties := taskcommon.NewProperties(nil)
+	reqProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	reqProperties.AppendTaskID(in.GetPlanID())
+	reqProperties.AppendType(taskcommon.Compaction)
+	resp, err := c.queryTask(nodeID, reqProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &datapb.CompactionStateResponse{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	var ret *datapb.CompactionPlanResult
-	// TODO: sheep, wrap marshal and unmarshal function in common package
-	for _, rst := range result.GetResults() {
-		if rst.GetPlanID() != in.GetPlanID() {
-			continue
-		}
-		err = binlog.CompressCompactionBinlogs(rst.GetSegments())
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &datapb.CompactionPlanResult{State: taskcommon.ToCompactionState(state)}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &datapb.CompactionStateResponse{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
 		if err != nil {
 			return nil, err
 		}
-		ret = rst
-		break
+		var ret *datapb.CompactionPlanResult
+		for _, rst := range result.GetResults() {
+			if rst.GetPlanID() != in.GetPlanID() {
+				continue
+			}
+			err = binlog.CompressCompactionBinlogs(rst.GetSegments())
+			if err != nil {
+				return nil, err
+			}
+			ret = rst
+			break
+		}
+		return ret, err
+	default:
+		panic("should not happen")
 	}
-	return ret, err
 }
 
 func (c *cluster) DropCompaction(nodeID int64, in *datapb.DropCompactionPlanRequest) error {
@@ -264,37 +279,65 @@ func (c *cluster) CreateImport(nodeID int64, in *datapb.ImportRequest, taskSlot 
 }
 
 func (c *cluster) QueryPreImport(nodeID int64, in *datapb.QueryPreImportRequest) (*datapb.QueryPreImportResponse, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(taskcommon.PreImport)
-	resp, err := c.queryTask(nodeID, properties)
+	repProperties := taskcommon.NewProperties(nil)
+	repProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	repProperties.AppendTaskID(in.GetTaskID())
+	repProperties.AppendType(taskcommon.PreImport)
+	resp, err := c.queryTask(nodeID, repProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &datapb.QueryPreImportResponse{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	reason := resProperties.GetTaskReason()
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &datapb.QueryPreImportResponse{State: taskcommon.ToImportState(state), Reason: reason}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &datapb.QueryPreImportResponse{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	default:
+		panic("should not happen")
+	}
 }
 
 func (c *cluster) QueryImport(nodeID int64, in *datapb.QueryImportRequest) (*datapb.QueryImportResponse, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetTaskID())
-	properties.AppendType(taskcommon.Import)
-	resp, err := c.queryTask(nodeID, properties)
+	reqProperties := taskcommon.NewProperties(nil)
+	reqProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	reqProperties.AppendTaskID(in.GetTaskID())
+	reqProperties.AppendType(taskcommon.Import)
+	resp, err := c.queryTask(nodeID, reqProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &datapb.QueryImportResponse{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	reason := resProperties.GetTaskReason()
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &datapb.QueryImportResponse{State: taskcommon.ToImportState(state), Reason: reason}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &datapb.QueryImportResponse{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	default:
+		panic("should not happen")
+	}
 }
 
 func (c *cluster) DropImport(nodeID int64, in *datapb.DropImportRequest) error {
@@ -317,20 +360,42 @@ func (c *cluster) CreateIndex(nodeID int64, in *workerpb.CreateJobRequest) error
 }
 
 func (c *cluster) QueryIndex(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.IndexJobResults, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(taskcommon.Index)
-	resp, err := c.queryTask(nodeID, properties)
+	reqProperties := taskcommon.NewProperties(nil)
+	reqProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	reqProperties.AppendTaskID(in.GetTaskIDs()[0])
+	reqProperties.AppendType(taskcommon.Index)
+	resp, err := c.queryTask(nodeID, reqProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.QueryJobsV2Response{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	return result.GetIndexJobResults(), nil
+	reason := resProperties.GetTaskReason()
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &workerpb.IndexJobResults{
+			Results: []*workerpb.IndexTaskInfo{
+				{
+					BuildID:    in.GetTaskIDs()[0],
+					State:      commonpb.IndexState(state),
+					FailReason: reason,
+				},
+			},
+		}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &workerpb.QueryJobsV2Response{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
+		if err != nil {
+			return nil, err
+		}
+		return result.GetIndexJobResults(), nil
+	default:
+		panic("should not happen")
+	}
 }
 
 func (c *cluster) DropIndex(nodeID int64, in *workerpb.DropJobsRequest) error {
@@ -354,20 +419,42 @@ func (c *cluster) CreateStats(nodeID int64, in *workerpb.CreateStatsRequest) err
 }
 
 func (c *cluster) QueryStats(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.StatsResults, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(taskcommon.Stats)
-	resp, err := c.queryTask(nodeID, properties)
+	reqProperties := taskcommon.NewProperties(nil)
+	reqProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	reqProperties.AppendTaskID(in.GetTaskIDs()[0])
+	reqProperties.AppendType(taskcommon.Stats)
+	resp, err := c.queryTask(nodeID, reqProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.QueryJobsV2Response{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	return result.GetStatsJobResults(), nil
+	reason := resProperties.GetTaskReason()
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &workerpb.StatsResults{
+			Results: []*workerpb.StatsResult{
+				{
+					TaskID:     in.GetTaskIDs()[0],
+					State:      state,
+					FailReason: reason,
+				},
+			},
+		}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &workerpb.QueryJobsV2Response{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
+		if err != nil {
+			return nil, err
+		}
+		return result.GetStatsJobResults(), nil
+	default:
+		panic("should not happen")
+	}
 }
 
 func (c *cluster) DropStats(nodeID int64, in *workerpb.DropJobsRequest) error {
@@ -389,20 +476,42 @@ func (c *cluster) CreateAnalyze(nodeID int64, in *workerpb.AnalyzeRequest) error
 }
 
 func (c *cluster) QueryAnalyze(nodeID int64, in *workerpb.QueryJobsRequest) (*workerpb.AnalyzeResults, error) {
-	properties := taskcommon.NewProperties(nil)
-	properties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
-	properties.AppendTaskID(in.GetTaskIDs()[0])
-	properties.AppendType(taskcommon.Analyze)
-	resp, err := c.queryTask(nodeID, properties)
+	reqProperties := taskcommon.NewProperties(nil)
+	reqProperties.AppendClusterID(paramtable.Get().CommonCfg.ClusterPrefix.GetValue())
+	reqProperties.AppendTaskID(in.GetTaskIDs()[0])
+	reqProperties.AppendType(taskcommon.Analyze)
+	resp, err := c.queryTask(nodeID, reqProperties)
 	if err != nil {
 		return nil, err
 	}
-	result := &workerpb.QueryJobsV2Response{}
-	err = proto.Unmarshal(resp.GetPayload(), result)
+
+	resProperties := taskcommon.NewProperties(resp.GetProperties())
+	state, err := resProperties.GetTaskState()
 	if err != nil {
 		return nil, err
 	}
-	return result.GetAnalyzeJobResults(), nil
+	reason := resProperties.GetTaskReason()
+	switch state {
+	case taskcommon.None, taskcommon.Init, taskcommon.InProgress, taskcommon.Retry:
+		return &workerpb.AnalyzeResults{
+			Results: []*workerpb.AnalyzeResult{
+				{
+					TaskID:     in.GetTaskIDs()[0],
+					State:      state,
+					FailReason: reason,
+				},
+			},
+		}, nil
+	case taskcommon.Finished, taskcommon.Failed:
+		result := &workerpb.QueryJobsV2Response{}
+		err = proto.Unmarshal(resp.GetPayload(), result)
+		if err != nil {
+			return nil, err
+		}
+		return result.GetAnalyzeJobResults(), nil
+	default:
+		panic("should not happen")
+	}
 }
 
 func (c *cluster) DropAnalyze(nodeID int64, in *workerpb.DropJobsRequest) error {

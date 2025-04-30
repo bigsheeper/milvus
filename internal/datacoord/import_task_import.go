@@ -113,22 +113,8 @@ func (t *importTask) GetTaskType() taskcommon.Type {
 	return taskcommon.Import
 }
 
-func importStateToTaskState(s datapb.ImportTaskStateV2) taskcommon.State {
-	switch s {
-	case datapb.ImportTaskStateV2_Pending:
-		return taskcommon.Init
-	case datapb.ImportTaskStateV2_InProgress:
-		return taskcommon.InProgress
-	case datapb.ImportTaskStateV2_Failed:
-		return taskcommon.Failed
-	case datapb.ImportTaskStateV2_Completed:
-		return taskcommon.Finished
-	}
-	return taskcommon.None
-}
-
 func (t *importTask) GetTaskState() taskcommon.State {
-	return importStateToTaskState(t.GetState())
+	return taskcommon.FromImportState(t.GetState())
 }
 
 func (t *importTask) GetTaskNodeID() int64 {

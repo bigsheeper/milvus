@@ -25,6 +25,7 @@ import (
 
 	"github.com/samber/lo"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
@@ -40,7 +41,10 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
+	"github.com/milvus-io/milvus/pkg/v2/task"
 	"github.com/milvus-io/milvus/pkg/v2/tracer"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
@@ -487,15 +491,16 @@ func (node *DataNode) QueryPreImport(ctx context.Context, req *datapb.QueryPreIm
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
 		return &datapb.QueryPreImportResponse{Status: merr.Status(err)}, nil
 	}
-	status := merr.Success()
 	task := node.importTaskMgr.Get(req.GetTaskID())
 	if task == nil {
-		status = merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID()))
+		return &datapb.QueryPreImportResponse{
+			Status: merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID())),
+		}, nil
 	}
 	log.RatedInfo(10, "datanode query preimport", zap.String("state", task.GetState().String()),
 		zap.String("reason", task.GetReason()))
 	return &datapb.QueryPreImportResponse{
-		Status: status,
+		Status: merr.Success(),
 		TaskID: task.GetTaskID(),
 		State:  task.GetState(),
 		Reason: task.GetReason(),
@@ -513,12 +518,10 @@ func (node *DataNode) QueryImport(ctx context.Context, req *datapb.QueryImportRe
 		return &datapb.QueryImportResponse{Status: merr.Status(err)}, nil
 	}
 
-	status := merr.Success()
-
 	// query slot
 	if req.GetQuerySlot() {
 		return &datapb.QueryImportResponse{
-			Status: status,
+			Status: merr.Success(),
 			Slots:  node.importScheduler.Slots(),
 		}, nil
 	}
@@ -526,12 +529,14 @@ func (node *DataNode) QueryImport(ctx context.Context, req *datapb.QueryImportRe
 	// query import
 	task := node.importTaskMgr.Get(req.GetTaskID())
 	if task == nil {
-		status = merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID()))
+		return &datapb.QueryImportResponse{
+			Status: merr.Status(importv2.WrapTaskNotFoundError(req.GetTaskID())),
+		}, nil
 	}
 	log.RatedInfo(10, "datanode query import", zap.String("state", task.GetState().String()),
 		zap.String("reason", task.GetReason()))
 	return &datapb.QueryImportResponse{
-		Status: status,
+		Status: merr.Success(),
 		TaskID: task.GetTaskID(),
 		State:  task.GetState(),
 		Reason: task.GetReason(),
@@ -577,4 +582,191 @@ func (node *DataNode) DropCompactionPlan(ctx context.Context, req *datapb.DropCo
 	node.compactionExecutor.RemoveTask(req.GetPlanID())
 	log.Ctx(ctx).Info("DropCompactionPlans success", zap.Int64("planID", req.GetPlanID()))
 	return merr.Success(), nil
+}
+
+// CreateTask creates different types of tasks based on task type
+func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTaskRequest) (*commonpb.Status, error) {
+	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
+		return merr.Status(err), nil
+	}
+	properties := task.NewProperties(request.GetProperties())
+	taskType, err := properties.GetTaskType()
+	if err != nil {
+		return merr.Status(err), nil
+	}
+	switch taskType {
+	case task.PreImport:
+		req := &datapb.PreImportRequest{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.PreImport(ctx, req)
+	case task.Import:
+		req := &datapb.ImportRequest{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.ImportV2(ctx, req)
+	case task.Compaction:
+		req := &datapb.CompactionPlan{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.CompactionV2(ctx, req)
+	case task.Index:
+		req := &workerpb.CreateJobRequest{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.CreateJobV2(ctx, &workerpb.CreateJobV2Request{
+			ClusterID: req.GetClusterID(),
+			TaskID:    req.GetBuildID(),
+			JobType:   indexpb.JobType_JobTypeIndexJob,
+			Request: &workerpb.CreateJobV2Request_IndexRequest{
+				IndexRequest: req,
+			},
+		})
+	case task.Stats:
+		req := &workerpb.CreateStatsRequest{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.CreateJobV2(ctx, &workerpb.CreateJobV2Request{
+			ClusterID: req.GetClusterID(),
+			TaskID:    req.GetTaskID(),
+			JobType:   indexpb.JobType_JobTypeStatsJob,
+			Request: &workerpb.CreateJobV2Request_StatsRequest{
+				StatsRequest: req,
+			},
+		})
+	case task.Analyze:
+		req := &workerpb.AnalyzeRequest{}
+		err := proto.Unmarshal(request.GetPayload(), req)
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.CreateJobV2(ctx, &workerpb.CreateJobV2Request{
+			ClusterID: req.GetClusterID(),
+			TaskID:    req.GetTaskID(),
+			JobType:   indexpb.JobType_JobTypeAnalyzeJob,
+			Request: &workerpb.CreateJobV2Request_AnalyzeRequest{
+				AnalyzeRequest: req,
+			},
+		})
+	default:
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("CreateTask failed", zap.Error(err))
+		return merr.Status(err), nil
+	}
+}
+
+type ResponseWithStatus interface {
+	GetStatus() *commonpb.Status
+}
+
+func handleQueryTask[Req proto.Message, Resp proto.Message](ctx context.Context,
+	request *workerpb.QueryTaskRequest, req Req,
+	handler func(context.Context, Req) (Resp, error),
+) (*workerpb.QueryTaskResponse, error) {
+	resp, err := handler(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := proto.Marshal(resp)
+	if err != nil {
+		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
+	}
+
+	statusResp, ok := any(resp).(ResponseWithStatus)
+	if !ok {
+		return &workerpb.QueryTaskResponse{Status: merr.Status(fmt.Errorf("response does not implement GetStatus"))}, nil
+	}
+
+	return &workerpb.QueryTaskResponse{
+		Status:  statusResp.GetStatus(),
+		Payload: payload,
+	}, nil
+}
+
+// QueryTask queries task status
+func (node *DataNode) QueryTask(ctx context.Context, request *workerpb.QueryTaskRequest) (*workerpb.QueryTaskResponse, error) {
+	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
+		return &workerpb.QueryTaskResponse{Status: merr.Status(err)}, nil
+	}
+	properties := task.NewProperties(request.GetProperties())
+	taskType, err := properties.GetTaskType()
+	if err != nil {
+		return &workerpb.QueryTaskResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+	taskID, err := properties.GetTaskID()
+	if err != nil {
+		return &workerpb.QueryTaskResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+	switch taskType {
+	case task.PreImport:
+		return handleQueryTask(ctx, request, &datapb.QueryPreImportRequest{TaskID: taskID}, node.QueryPreImport)
+	case task.Import:
+		return handleQueryTask(ctx, request, &datapb.QueryImportRequest{TaskID: taskID}, node.QueryImport)
+	case task.Compaction:
+		return handleQueryTask(ctx, request, &datapb.CompactionStateRequest{PlanID: taskID}, node.GetCompactionState)
+	case task.Index:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryIndexTask)
+	case task.Stats:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryStatsTask)
+	case task.Analyze:
+		return handleQueryTask(ctx, request, &workerpb.QueryJobsRequest{TaskIDs: []int64{taskID}}, node.queryAnalyzeTask)
+	case task.QuerySlot:
+		return handleQueryTask(ctx, request, &workerpb.GetJobStatsRequest{}, node.GetJobStats)
+	default:
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("QueryTask failed", zap.Error(err))
+		return &workerpb.QueryTaskResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+}
+
+// DropTask deletes specified type of task
+func (node *DataNode) DropTask(ctx context.Context, request *workerpb.DropTaskRequest) (*commonpb.Status, error) {
+	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {
+		return merr.Status(err), nil
+	}
+	properties := task.NewProperties(request.GetProperties())
+	taskType, err := properties.GetTaskType()
+	if err != nil {
+		return merr.Status(err), nil
+	}
+	taskID, err := properties.GetTaskID()
+	if err != nil {
+		return merr.Status(err), nil
+	}
+	switch taskType {
+	case task.PreImport, task.Import:
+		return node.DropImport(ctx, &datapb.DropImportRequest{TaskID: taskID})
+	case task.Compaction:
+		return node.DropCompactionPlan(ctx, &datapb.DropCompactionPlanRequest{PlanID: taskID})
+	case task.Index, task.Stats, task.Analyze:
+		jobType, err := properties.GetJobType()
+		if err != nil {
+			return merr.Status(err), nil
+		}
+		return node.DropJobsV2(ctx, &workerpb.DropJobsV2Request{
+			TaskIDs: []int64{taskID},
+			JobType: jobType,
+		})
+	default:
+		err := fmt.Errorf("unrecognized task type '%s', properties=%v", taskType, request.GetProperties())
+		log.Ctx(ctx).Warn("DropTask failed", zap.Error(err))
+		return merr.Status(err), nil
+	}
 }

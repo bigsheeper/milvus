@@ -304,9 +304,10 @@ func (it *indexBuildTask) prepareJobRequest(ctx context.Context, segment *Segmen
 		OptionalScalarFields:      optionalFields,
 		Field:                     field,
 		PartitionKeyIsolation:     partitionKeyIsolation,
-		StorageVersion:            segment.StorageVersion,
+		StorageVersion:            segment.GetStorageVersion(),
 		TaskSlot:                  it.taskSlot,
 		LackBinlogRows:            segIndex.NumRows - totalRows,
+		InsertLogs:                segment.GetBinlogs(),
 	}
 
 	return req, nil

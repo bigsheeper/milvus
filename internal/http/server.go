@@ -243,7 +243,7 @@ func ServeHTTP() {
 		log.Info("management listen", zap.String("addr", bindAddr))
 		server = &http.Server{Handler: metricsServer, Addr: bindAddr, ReadTimeout: 10 * time.Second}
 		// enable mutex && block profile, sampling rate 10%
-		runtime.SetMutexProfileFraction(10)
+		runtime.SetMutexProfileFraction(0)
 		runtime.SetBlockProfileRate(0)
 
 		if err := server.ListenAndServe(); err != nil {

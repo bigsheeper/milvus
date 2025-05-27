@@ -174,11 +174,13 @@ func (c *compactionInspector) checkAndSetSegmentStating(channel string, segmentI
 	for _, t := range c.executingTasks {
 		if t.GetTaskProto().GetType() == datapb.CompactionType_Level0DeleteCompaction {
 			if t.GetTaskProto().GetChannel() == channel && t.CheckCompactionContainsSegment(segmentID) {
+				log.Info("checkAndSetSegmentStating found compacting segment", zap.Int64("segmentID", segmentID), zap.Int64("planID", t.GetTaskProto().GetPlanID()))
 				return false
 			}
 		}
 	}
 	c.meta.SetSegmentStating(segmentID, true)
+	log.Info("checkAndSetSegmentStating done", zap.Int64("segmentID", segmentID))
 	return true
 }
 

@@ -1496,12 +1496,14 @@ func (m *meta) CheckSegmentsStating(ctx context.Context, segmentIDs []UniqueID) 
 		if seg != nil {
 			if seg.isStating {
 				hasStating = true
+				log.Info("CheckSegmentsStating found stating segment", zap.Int64("segmentID", segmentID))
 			}
 		} else {
 			exist = false
 			break
 		}
 	}
+	log.Info("CheckSegmentsStating done", zap.Int64s("segmentIDs", segmentIDs), zap.Bool("exist", exist), zap.Bool("hasStating", hasStating))
 	return exist, hasStating
 }
 

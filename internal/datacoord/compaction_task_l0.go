@@ -269,11 +269,13 @@ func (t *l0CompactionTask) selectSealedSegment() ([]*SegmentInfo, []*datapb.Comp
 		}
 	})
 
+	log.Info("selectSealedSegment done", zap.Int64("planID", taskProto.GetPlanID()), zap.Int("sealedSegments", len(sealedSegments)))
 	return sealedSegments, sealedSegBinlogs
 }
 
 func (t *l0CompactionTask) CheckCompactionContainsSegment(segmentID int64) bool {
 	sealedSegmentIDs, _ := t.selectSealedSegment()
+	log.Info("CheckCompactionContainsSegment", zap.Int64("planID", t.GetTaskProto().GetPlanID()), zap.Int64("segmentID", segmentID), zap.Int("sealedSegments", len(sealedSegmentIDs)))
 	for _, sealedSegment := range sealedSegmentIDs {
 		if sealedSegment.GetID() == segmentID {
 			return true
@@ -287,6 +289,7 @@ func (t *l0CompactionTask) PreparePlan() bool {
 	sealedSegmentIDs := lo.Map(sealedSegments, func(info *SegmentInfo, _ int) int64 {
 		return info.GetID()
 	})
+	log.Info("PreparePlan", zap.Int64("planID", t.GetTaskProto().GetPlanID()), zap.Int64s("sealedSegmentIDs", sealedSegmentIDs))
 	exist, hasStating := t.meta.CheckSegmentsStating(context.TODO(), sealedSegmentIDs)
 	return exist && !hasStating
 }
@@ -335,6 +338,8 @@ func (t *l0CompactionTask) BuildCompactionRequest() (*datapb.CompactionPlan, err
 		log.Info("l0Compaction available non-L0 Segments is empty ")
 		return nil, errors.Errorf("Selected zero L1/L2 segments for the position=%v", taskProto.GetPos())
 	}
+
+	log.Info("BuildCompactionRequest", zap.Int64("planID", taskProto.GetPlanID()), zap.Int("segments", len(segments)))
 
 	segments = append(segments, sealedSegments...)
 	logIDRange, err := PreAllocateBinlogIDs(t.allocator, segments)

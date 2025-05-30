@@ -211,6 +211,7 @@ func (s *BulkInsertSuite) run() {
 	params := integration.GetSearchParams(s.indexType, s.metricType)
 	searchReq := integration.ConstructSearchRequest("", collectionName, expr,
 		"embeddings", s.vecType, nil, s.metricType, params, nq, dim, topk, roundDecimal)
+	searchReq.ConsistencyLevel = commonpb.ConsistencyLevel_Eventually
 
 	searchResult, err := c.Proxy.Search(ctx, searchReq)
 	s.NoError(err)

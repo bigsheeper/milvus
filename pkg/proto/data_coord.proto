@@ -106,7 +106,9 @@ service DataNode {
   rpc GetComponentStates(milvus.GetComponentStatesRequest) returns (milvus.ComponentStates) {}
   rpc GetStatisticsChannel(internal.GetStatisticsChannelRequest) returns (milvus.StringResponse) {}
 
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc WatchDmChannels(WatchDmChannelsRequest) returns (common.Status) {}
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc FlushSegments(FlushSegmentsRequest) returns(common.Status) {}
 
   rpc ShowConfigurations(internal.ShowConfigurationsRequest) returns (internal.ShowConfigurationsResponse){}
@@ -115,13 +117,18 @@ service DataNode {
 
   rpc CompactionV2(CompactionPlan) returns (common.Status) {}
   rpc GetCompactionState(CompactionStateRequest) returns (CompactionStateResponse) {}
+
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc SyncSegments(SyncSegmentsRequest) returns (common.Status) {}
 
   // Deprecated
   rpc ResendSegmentStats(ResendSegmentStatsRequest) returns(ResendSegmentStatsResponse) {}
 
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc FlushChannels(FlushChannelsRequest) returns(common.Status) {}
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc NotifyChannelOperation(ChannelOperationsRequest) returns(common.Status) {}
+  // Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
   rpc CheckChannelOperationProgress(ChannelWatchInfo) returns(ChannelOperationProgressResponse) {}
 
   // import v2

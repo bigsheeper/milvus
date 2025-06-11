@@ -1819,18 +1819,24 @@ const (
 type DataNodeClient interface {
 	GetComponentStates(ctx context.Context, in *milvuspb.GetComponentStatesRequest, opts ...grpc.CallOption) (*milvuspb.ComponentStates, error)
 	GetStatisticsChannel(ctx context.Context, in *internalpb.GetStatisticsChannelRequest, opts ...grpc.CallOption) (*milvuspb.StringResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	WatchDmChannels(ctx context.Context, in *WatchDmChannelsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	FlushSegments(ctx context.Context, in *FlushSegmentsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
 	ShowConfigurations(ctx context.Context, in *internalpb.ShowConfigurationsRequest, opts ...grpc.CallOption) (*internalpb.ShowConfigurationsResponse, error)
 	// https://wiki.lfaidata.foundation/display/MIL/MEP+8+--+Add+metrics+for+proxy
 	GetMetrics(ctx context.Context, in *milvuspb.GetMetricsRequest, opts ...grpc.CallOption) (*milvuspb.GetMetricsResponse, error)
 	CompactionV2(ctx context.Context, in *CompactionPlan, opts ...grpc.CallOption) (*commonpb.Status, error)
 	GetCompactionState(ctx context.Context, in *CompactionStateRequest, opts ...grpc.CallOption) (*CompactionStateResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	SyncSegments(ctx context.Context, in *SyncSegmentsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
 	// Deprecated
 	ResendSegmentStats(ctx context.Context, in *ResendSegmentStatsRequest, opts ...grpc.CallOption) (*ResendSegmentStatsResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	FlushChannels(ctx context.Context, in *FlushChannelsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	NotifyChannelOperation(ctx context.Context, in *ChannelOperationsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	CheckChannelOperationProgress(ctx context.Context, in *ChannelWatchInfo, opts ...grpc.CallOption) (*ChannelOperationProgressResponse, error)
 	// import v2
 	PreImport(ctx context.Context, in *PreImportRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
@@ -2036,18 +2042,24 @@ func (c *dataNodeClient) DropCompactionPlan(ctx context.Context, in *DropCompact
 type DataNodeServer interface {
 	GetComponentStates(context.Context, *milvuspb.GetComponentStatesRequest) (*milvuspb.ComponentStates, error)
 	GetStatisticsChannel(context.Context, *internalpb.GetStatisticsChannelRequest) (*milvuspb.StringResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	WatchDmChannels(context.Context, *WatchDmChannelsRequest) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	FlushSegments(context.Context, *FlushSegmentsRequest) (*commonpb.Status, error)
 	ShowConfigurations(context.Context, *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error)
 	// https://wiki.lfaidata.foundation/display/MIL/MEP+8+--+Add+metrics+for+proxy
 	GetMetrics(context.Context, *milvuspb.GetMetricsRequest) (*milvuspb.GetMetricsResponse, error)
 	CompactionV2(context.Context, *CompactionPlan) (*commonpb.Status, error)
 	GetCompactionState(context.Context, *CompactionStateRequest) (*CompactionStateResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	SyncSegments(context.Context, *SyncSegmentsRequest) (*commonpb.Status, error)
 	// Deprecated
 	ResendSegmentStats(context.Context, *ResendSegmentStatsRequest) (*ResendSegmentStatsResponse, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	FlushChannels(context.Context, *FlushChannelsRequest) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	NotifyChannelOperation(context.Context, *ChannelOperationsRequest) (*commonpb.Status, error)
+	// Deprecated in 2.6.x, keep it for compatibility during rolling upgrade.
 	CheckChannelOperationProgress(context.Context, *ChannelWatchInfo) (*ChannelOperationProgressResponse, error)
 	// import v2
 	PreImport(context.Context, *PreImportRequest) (*commonpb.Status, error)

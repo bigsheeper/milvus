@@ -141,10 +141,6 @@ func (s *IndexServiceSuite) SetupTest() {
 
 	s.node = NewDataNode(ctx, factory)
 
-	dc := mocks.NewMockMixCoordClient(s.T())
-	dc.EXPECT().ReportDataNodeTtMsgs(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
-	s.node.mixCoord = dc
-
 	err = s.node.Init()
 	s.NoError(err)
 

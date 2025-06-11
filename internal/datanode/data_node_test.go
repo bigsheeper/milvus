@@ -31,10 +31,8 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/flushcommon/broker"
-	"github.com/milvus-io/milvus/internal/flushcommon/pipeline"
 	"github.com/milvus-io/milvus/internal/flushcommon/syncmgr"
 	util2 "github.com/milvus-io/milvus/internal/flushcommon/util"
-	"github.com/milvus-io/milvus/internal/flushcommon/writebuffer"
 	"github.com/milvus-io/milvus/internal/mocks"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
@@ -83,16 +81,8 @@ func NewIDLEDataNodeMock(ctx context.Context, pkType schemapb.DataType) *DataNod
 	node.SetSession(&sessionutil.Session{SessionRaw: sessionutil.SessionRaw{ServerID: 1}})
 	node.dispClient = msgdispatcher.NewClient(factory, typeutil.DataNodeRole, paramtable.GetNodeID())
 
-	broker := &broker.MockBroker{}
-	broker.EXPECT().ReportTimeTick(mock.Anything, mock.Anything).Return(nil).Maybe()
-	broker.EXPECT().GetSegmentInfo(mock.Anything, mock.Anything).Return([]*datapb.SegmentInfo{}, nil).Maybe()
-
-	node.broker = broker
-	node.timeTickSender = util2.NewTimeTickSender(broker, 0)
-
 	syncMgr := syncmgr.NewSyncManager(node.chunkManager)
 	node.syncMgr = syncMgr
-	node.writeBufferManager = writebuffer.NewManager(syncMgr)
 
 	return node
 }
@@ -158,7 +148,6 @@ func TestDataNode(t *testing.T) {
 	t.Run("Test getSystemInfoMetrics", func(t *testing.T) {
 		emptyNode := &DataNode{}
 		emptyNode.SetSession(&sessionutil.Session{SessionRaw: sessionutil.SessionRaw{ServerID: 1}})
-		emptyNode.flowgraphManager = pipeline.NewFlowgraphManager()
 
 		req, err := metricsinfo.ConstructRequestByMetricType(metricsinfo.SystemInfoMetrics)
 		assert.NoError(t, err)
@@ -170,7 +159,6 @@ func TestDataNode(t *testing.T) {
 	t.Run("Test getSystemInfoMetrics with quotaMetric error", func(t *testing.T) {
 		emptyNode := &DataNode{}
 		emptyNode.SetSession(&sessionutil.Session{SessionRaw: sessionutil.SessionRaw{ServerID: 1}})
-		emptyNode.flowgraphManager = pipeline.NewFlowgraphManager()
 
 		req, err := metricsinfo.ConstructRequestByMetricType(metricsinfo.SystemInfoMetrics)
 		assert.NoError(t, err)

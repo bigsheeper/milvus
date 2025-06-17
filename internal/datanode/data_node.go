@@ -22,7 +22,6 @@ package datanode
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"os"
 	"sync"
@@ -39,16 +38,12 @@ import (
 	"github.com/milvus-io/milvus/internal/datanode/importv2"
 	"github.com/milvus-io/milvus/internal/datanode/index"
 	"github.com/milvus-io/milvus/internal/flushcommon/syncmgr"
-	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/internal/util/initcore"
 	"github.com/milvus-io/milvus/internal/util/sessionutil"
-	"github.com/milvus-io/milvus/pkg/v2/kv"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
-	"github.com/milvus-io/milvus/pkg/v2/mq/msgdispatcher"
-	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/expr"
 	"github.com/milvus-io/milvus/pkg/v2/util/lifetime"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
@@ -99,16 +94,8 @@ type DataNode struct {
 	initOnce  sync.Once
 	startOnce sync.Once
 	stopOnce  sync.Once
-	sessionMu sync.Mutex // to fix data race
+	sessionMu sync.Mutex
 	session   *sessionutil.Session
-
-	closer io.Closer
-
-	dispClient msgdispatcher.Client
-	factory    dependency.Factory
-
-	reportImportRetryTimes uint // unitest set this value to 1 to save time, default is 10
-	pool                   *conc.Pool[any]
 
 	totalSlot int64
 
@@ -120,16 +107,13 @@ func NewDataNode(ctx context.Context, factory dependency.Factory) *DataNode {
 	rand.Seed(time.Now().UnixNano())
 	ctx2, cancel2 := context.WithCancel(ctx)
 	node := &DataNode{
-		ctx:      ctx2,
-		cancel:   cancel2,
-		Role:     typeutil.DataNodeRole,
-		lifetime: lifetime.NewLifetime(commonpb.StateCode_Abnormal),
-
-		factory:                factory,
-		compactionExecutor:     compactor.NewExecutor(),
-		reportImportRetryTimes: 10,
-		metricsRequest:         metricsinfo.NewMetricsRequest(),
-		totalSlot:              index.CalculateNodeSlots(),
+		ctx:                ctx2,
+		cancel:             cancel2,
+		Role:               typeutil.DataNodeRole,
+		lifetime:           lifetime.NewLifetime(commonpb.StateCode_Abnormal),
+		compactionExecutor: compactor.NewExecutor(),
+		metricsRequest:     metricsinfo.NewMetricsRequest(),
+		totalSlot:          index.CalculateNodeSlots(),
 	}
 	sc := index.NewTaskScheduler(ctx2)
 	node.storageFactory = NewChunkMgrFactory()
@@ -204,19 +188,6 @@ func (node *DataNode) Init() error {
 		serverID := node.GetNodeID()
 		log := log.Ctx(node.ctx).With(zap.String("role", typeutil.DataNodeRole), zap.Int64("nodeID", serverID))
 
-		node.dispClient = msgdispatcher.NewClient(node.factory, typeutil.DataNodeRole, serverID)
-		log.Info("DataNode server init dispatcher client done")
-
-		node.factory.Init(Params)
-		log.Info("DataNode server init succeeded")
-
-		chunkManager, err := node.factory.NewPersistentStorageChunkManager(node.ctx)
-		if err != nil {
-			initError = err
-			return
-		}
-
-		node.chunkManager = chunkManager
 		syncMgr := syncmgr.NewSyncManager(node.chunkManager)
 		node.syncMgr = syncMgr
 
@@ -225,7 +196,7 @@ func (node *DataNode) Init() error {
 
 		index.InitSegcore()
 		// init storage v2 file system.
-		err = initcore.InitStorageV2FileSystem(paramtable.Get())
+		err := initcore.InitStorageV2FileSystem(paramtable.Get())
 		if err != nil {
 			initError = err
 			return
@@ -302,10 +273,6 @@ func (node *DataNode) Stop() error {
 			if err != nil {
 				log.Error("sync manager close failed", zap.Error(err))
 			}
-		}
-
-		if node.closer != nil {
-			node.closer.Close()
 		}
 
 		if node.session != nil {

@@ -162,6 +162,65 @@ func (_c *MixCoord_AddCollectionField_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// AddUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MixCoord) AddUserTags(_a0 context.Context, _a1 *milvuspb.AddUserTagsRequest) (*commonpb.Status, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddUserTags")
+	}
+
+	var r0 *commonpb.Status
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.AddUserTagsRequest) *commonpb.Status); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*commonpb.Status)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.AddUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MixCoord_AddUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddUserTags'
+type MixCoord_AddUserTags_Call struct {
+	*mock.Call
+}
+
+// AddUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.AddUserTagsRequest
+func (_e *MixCoord_Expecter) AddUserTags(_a0 interface{}, _a1 interface{}) *MixCoord_AddUserTags_Call {
+	return &MixCoord_AddUserTags_Call{Call: _e.mock.On("AddUserTags", _a0, _a1)}
+}
+
+func (_c *MixCoord_AddUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.AddUserTagsRequest)) *MixCoord_AddUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.AddUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MixCoord_AddUserTags_Call) Return(_a0 *commonpb.Status, _a1 error) *MixCoord_AddUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MixCoord_AddUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error)) *MixCoord_AddUserTags_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AllocID provides a mock function with given fields: _a0, _a1
 func (_m *MixCoord) AllocID(_a0 context.Context, _a1 *rootcoordpb.AllocIDRequest) (*rootcoordpb.AllocIDResponse, error) {
 	ret := _m.Called(_a0, _a1)
@@ -1633,6 +1692,65 @@ func (_c *MixCoord_DeleteCredential_Call) Return(_a0 *commonpb.Status, _a1 error
 }
 
 func (_c *MixCoord_DeleteCredential_Call) RunAndReturn(run func(context.Context, *milvuspb.DeleteCredentialRequest) (*commonpb.Status, error)) *MixCoord_DeleteCredential_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MixCoord) DeleteUserTags(_a0 context.Context, _a1 *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteUserTags")
+	}
+
+	var r0 *commonpb.Status
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.DeleteUserTagsRequest) *commonpb.Status); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*commonpb.Status)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.DeleteUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MixCoord_DeleteUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteUserTags'
+type MixCoord_DeleteUserTags_Call struct {
+	*mock.Call
+}
+
+// DeleteUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.DeleteUserTagsRequest
+func (_e *MixCoord_Expecter) DeleteUserTags(_a0 interface{}, _a1 interface{}) *MixCoord_DeleteUserTags_Call {
+	return &MixCoord_DeleteUserTags_Call{Call: _e.mock.On("DeleteUserTags", _a0, _a1)}
+}
+
+func (_c *MixCoord_DeleteUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.DeleteUserTagsRequest)) *MixCoord_DeleteUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.DeleteUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MixCoord_DeleteUserTags_Call) Return(_a0 *commonpb.Status, _a1 error) *MixCoord_DeleteUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MixCoord_DeleteUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error)) *MixCoord_DeleteUserTags_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -4764,6 +4882,65 @@ func (_c *MixCoord_GetTimeTickChannel_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// GetUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MixCoord) GetUserTags(_a0 context.Context, _a1 *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserTags")
+	}
+
+	var r0 *milvuspb.GetUserTagsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.GetUserTagsRequest) *milvuspb.GetUserTagsResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*milvuspb.GetUserTagsResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.GetUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MixCoord_GetUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserTags'
+type MixCoord_GetUserTags_Call struct {
+	*mock.Call
+}
+
+// GetUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.GetUserTagsRequest
+func (_e *MixCoord_Expecter) GetUserTags(_a0 interface{}, _a1 interface{}) *MixCoord_GetUserTags_Call {
+	return &MixCoord_GetUserTags_Call{Call: _e.mock.On("GetUserTags", _a0, _a1)}
+}
+
+func (_c *MixCoord_GetUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.GetUserTagsRequest)) *MixCoord_GetUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.GetUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MixCoord_GetUserTags_Call) Return(_a0 *milvuspb.GetUserTagsResponse, _a1 error) *MixCoord_GetUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MixCoord_GetUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error)) *MixCoord_GetUserTags_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GracefulStop provides a mock function with no fields
 func (_m *MixCoord) GracefulStop() {
 	_m.Called()
@@ -5722,6 +5899,65 @@ func (_c *MixCoord_ListResourceGroups_Call) Return(_a0 *milvuspb.ListResourceGro
 }
 
 func (_c *MixCoord_ListResourceGroups_Call) RunAndReturn(run func(context.Context, *milvuspb.ListResourceGroupsRequest) (*milvuspb.ListResourceGroupsResponse, error)) *MixCoord_ListResourceGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListUsersWithTag provides a mock function with given fields: _a0, _a1
+func (_m *MixCoord) ListUsersWithTag(_a0 context.Context, _a1 *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUsersWithTag")
+	}
+
+	var r0 *milvuspb.ListUsersWithTagResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.ListUsersWithTagRequest) *milvuspb.ListUsersWithTagResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*milvuspb.ListUsersWithTagResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.ListUsersWithTagRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MixCoord_ListUsersWithTag_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListUsersWithTag'
+type MixCoord_ListUsersWithTag_Call struct {
+	*mock.Call
+}
+
+// ListUsersWithTag is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.ListUsersWithTagRequest
+func (_e *MixCoord_Expecter) ListUsersWithTag(_a0 interface{}, _a1 interface{}) *MixCoord_ListUsersWithTag_Call {
+	return &MixCoord_ListUsersWithTag_Call{Call: _e.mock.On("ListUsersWithTag", _a0, _a1)}
+}
+
+func (_c *MixCoord_ListUsersWithTag_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.ListUsersWithTagRequest)) *MixCoord_ListUsersWithTag_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.ListUsersWithTagRequest))
+	})
+	return _c
+}
+
+func (_c *MixCoord_ListUsersWithTag_Call) Return(_a0 *milvuspb.ListUsersWithTagResponse, _a1 error) *MixCoord_ListUsersWithTag_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MixCoord_ListUsersWithTag_Call) RunAndReturn(run func(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error)) *MixCoord_ListUsersWithTag_Call {
 	_c.Call.Return(run)
 	return _c
 }

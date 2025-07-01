@@ -81,6 +81,10 @@ const (
 	RootCoord_DescribeDatabase_FullMethodName              = "/milvus.proto.rootcoord.RootCoord/DescribeDatabase"
 	RootCoord_AlterDatabase_FullMethodName                 = "/milvus.proto.rootcoord.RootCoord/AlterDatabase"
 	RootCoord_GetQuotaMetrics_FullMethodName               = "/milvus.proto.rootcoord.RootCoord/GetQuotaMetrics"
+	RootCoord_AddUserTags_FullMethodName                   = "/milvus.proto.rootcoord.RootCoord/AddUserTags"
+	RootCoord_DeleteUserTags_FullMethodName                = "/milvus.proto.rootcoord.RootCoord/DeleteUserTags"
+	RootCoord_GetUserTags_FullMethodName                   = "/milvus.proto.rootcoord.RootCoord/GetUserTags"
+	RootCoord_ListUsersWithTag_FullMethodName              = "/milvus.proto.rootcoord.RootCoord/ListUsersWithTag"
 )
 
 // RootCoordClient is the client API for RootCoord service.
@@ -201,6 +205,11 @@ type RootCoordClient interface {
 	DescribeDatabase(ctx context.Context, in *DescribeDatabaseRequest, opts ...grpc.CallOption) (*DescribeDatabaseResponse, error)
 	AlterDatabase(ctx context.Context, in *AlterDatabaseRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
 	GetQuotaMetrics(ctx context.Context, in *internalpb.GetQuotaMetricsRequest, opts ...grpc.CallOption) (*internalpb.GetQuotaMetricsResponse, error)
+	// Row Level Security (RLS) - User Tag Management APIs
+	AddUserTags(ctx context.Context, in *milvuspb.AddUserTagsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	DeleteUserTags(ctx context.Context, in *milvuspb.DeleteUserTagsRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	GetUserTags(ctx context.Context, in *milvuspb.GetUserTagsRequest, opts ...grpc.CallOption) (*milvuspb.GetUserTagsResponse, error)
+	ListUsersWithTag(ctx context.Context, in *milvuspb.ListUsersWithTagRequest, opts ...grpc.CallOption) (*milvuspb.ListUsersWithTagResponse, error)
 }
 
 type rootCoordClient struct {
@@ -733,6 +742,42 @@ func (c *rootCoordClient) GetQuotaMetrics(ctx context.Context, in *internalpb.Ge
 	return out, nil
 }
 
+func (c *rootCoordClient) AddUserTags(ctx context.Context, in *milvuspb.AddUserTagsRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
+	out := new(commonpb.Status)
+	err := c.cc.Invoke(ctx, RootCoord_AddUserTags_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rootCoordClient) DeleteUserTags(ctx context.Context, in *milvuspb.DeleteUserTagsRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
+	out := new(commonpb.Status)
+	err := c.cc.Invoke(ctx, RootCoord_DeleteUserTags_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rootCoordClient) GetUserTags(ctx context.Context, in *milvuspb.GetUserTagsRequest, opts ...grpc.CallOption) (*milvuspb.GetUserTagsResponse, error) {
+	out := new(milvuspb.GetUserTagsResponse)
+	err := c.cc.Invoke(ctx, RootCoord_GetUserTags_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rootCoordClient) ListUsersWithTag(ctx context.Context, in *milvuspb.ListUsersWithTagRequest, opts ...grpc.CallOption) (*milvuspb.ListUsersWithTagResponse, error) {
+	out := new(milvuspb.ListUsersWithTagResponse)
+	err := c.cc.Invoke(ctx, RootCoord_ListUsersWithTag_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RootCoordServer is the server API for RootCoord service.
 // All implementations should embed UnimplementedRootCoordServer
 // for forward compatibility
@@ -851,6 +896,11 @@ type RootCoordServer interface {
 	DescribeDatabase(context.Context, *DescribeDatabaseRequest) (*DescribeDatabaseResponse, error)
 	AlterDatabase(context.Context, *AlterDatabaseRequest) (*commonpb.Status, error)
 	GetQuotaMetrics(context.Context, *internalpb.GetQuotaMetricsRequest) (*internalpb.GetQuotaMetricsResponse, error)
+	// Row Level Security (RLS) - User Tag Management APIs
+	AddUserTags(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error)
+	DeleteUserTags(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error)
+	GetUserTags(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error)
+	ListUsersWithTag(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error)
 }
 
 // UnimplementedRootCoordServer should be embedded to have forward compatible implementations.
@@ -1030,6 +1080,18 @@ func (UnimplementedRootCoordServer) AlterDatabase(context.Context, *AlterDatabas
 }
 func (UnimplementedRootCoordServer) GetQuotaMetrics(context.Context, *internalpb.GetQuotaMetricsRequest) (*internalpb.GetQuotaMetricsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetQuotaMetrics not implemented")
+}
+func (UnimplementedRootCoordServer) AddUserTags(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddUserTags not implemented")
+}
+func (UnimplementedRootCoordServer) DeleteUserTags(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteUserTags not implemented")
+}
+func (UnimplementedRootCoordServer) GetUserTags(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserTags not implemented")
+}
+func (UnimplementedRootCoordServer) ListUsersWithTag(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUsersWithTag not implemented")
 }
 
 // UnsafeRootCoordServer may be embedded to opt out of forward compatibility for this service.
@@ -2087,6 +2149,78 @@ func _RootCoord_GetQuotaMetrics_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RootCoord_AddUserTags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(milvuspb.AddUserTagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).AddUserTags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_AddUserTags_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).AddUserTags(ctx, req.(*milvuspb.AddUserTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RootCoord_DeleteUserTags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(milvuspb.DeleteUserTagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).DeleteUserTags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_DeleteUserTags_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).DeleteUserTags(ctx, req.(*milvuspb.DeleteUserTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RootCoord_GetUserTags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(milvuspb.GetUserTagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).GetUserTags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_GetUserTags_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).GetUserTags(ctx, req.(*milvuspb.GetUserTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RootCoord_ListUsersWithTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(milvuspb.ListUsersWithTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).ListUsersWithTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_ListUsersWithTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).ListUsersWithTag(ctx, req.(*milvuspb.ListUsersWithTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RootCoord_ServiceDesc is the grpc.ServiceDesc for RootCoord service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2325,6 +2459,22 @@ var RootCoord_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQuotaMetrics",
 			Handler:    _RootCoord_GetQuotaMetrics_Handler,
+		},
+		{
+			MethodName: "AddUserTags",
+			Handler:    _RootCoord_AddUserTags_Handler,
+		},
+		{
+			MethodName: "DeleteUserTags",
+			Handler:    _RootCoord_DeleteUserTags_Handler,
+		},
+		{
+			MethodName: "GetUserTags",
+			Handler:    _RootCoord_GetUserTags_Handler,
+		},
+		{
+			MethodName: "ListUsersWithTag",
+			Handler:    _RootCoord_ListUsersWithTag_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

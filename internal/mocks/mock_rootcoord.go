@@ -95,6 +95,65 @@ func (_c *MockRootCoord_AddCollectionField_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// AddUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MockRootCoord) AddUserTags(_a0 context.Context, _a1 *milvuspb.AddUserTagsRequest) (*commonpb.Status, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddUserTags")
+	}
+
+	var r0 *commonpb.Status
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.AddUserTagsRequest) *commonpb.Status); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*commonpb.Status)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.AddUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRootCoord_AddUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddUserTags'
+type MockRootCoord_AddUserTags_Call struct {
+	*mock.Call
+}
+
+// AddUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.AddUserTagsRequest
+func (_e *MockRootCoord_Expecter) AddUserTags(_a0 interface{}, _a1 interface{}) *MockRootCoord_AddUserTags_Call {
+	return &MockRootCoord_AddUserTags_Call{Call: _e.mock.On("AddUserTags", _a0, _a1)}
+}
+
+func (_c *MockRootCoord_AddUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.AddUserTagsRequest)) *MockRootCoord_AddUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.AddUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MockRootCoord_AddUserTags_Call) Return(_a0 *commonpb.Status, _a1 error) *MockRootCoord_AddUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRootCoord_AddUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.AddUserTagsRequest) (*commonpb.Status, error)) *MockRootCoord_AddUserTags_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // AllocID provides a mock function with given fields: _a0, _a1
 func (_m *MockRootCoord) AllocID(_a0 context.Context, _a1 *rootcoordpb.AllocIDRequest) (*rootcoordpb.AllocIDResponse, error) {
 	ret := _m.Called(_a0, _a1)
@@ -1035,6 +1094,65 @@ func (_c *MockRootCoord_DeleteCredential_Call) Return(_a0 *commonpb.Status, _a1 
 }
 
 func (_c *MockRootCoord_DeleteCredential_Call) RunAndReturn(run func(context.Context, *milvuspb.DeleteCredentialRequest) (*commonpb.Status, error)) *MockRootCoord_DeleteCredential_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MockRootCoord) DeleteUserTags(_a0 context.Context, _a1 *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteUserTags")
+	}
+
+	var r0 *commonpb.Status
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.DeleteUserTagsRequest) *commonpb.Status); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*commonpb.Status)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.DeleteUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRootCoord_DeleteUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteUserTags'
+type MockRootCoord_DeleteUserTags_Call struct {
+	*mock.Call
+}
+
+// DeleteUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.DeleteUserTagsRequest
+func (_e *MockRootCoord_Expecter) DeleteUserTags(_a0 interface{}, _a1 interface{}) *MockRootCoord_DeleteUserTags_Call {
+	return &MockRootCoord_DeleteUserTags_Call{Call: _e.mock.On("DeleteUserTags", _a0, _a1)}
+}
+
+func (_c *MockRootCoord_DeleteUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.DeleteUserTagsRequest)) *MockRootCoord_DeleteUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.DeleteUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MockRootCoord_DeleteUserTags_Call) Return(_a0 *commonpb.Status, _a1 error) *MockRootCoord_DeleteUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRootCoord_DeleteUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.DeleteUserTagsRequest) (*commonpb.Status, error)) *MockRootCoord_DeleteUserTags_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -2042,6 +2160,65 @@ func (_c *MockRootCoord_GetTimeTickChannel_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// GetUserTags provides a mock function with given fields: _a0, _a1
+func (_m *MockRootCoord) GetUserTags(_a0 context.Context, _a1 *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserTags")
+	}
+
+	var r0 *milvuspb.GetUserTagsResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.GetUserTagsRequest) *milvuspb.GetUserTagsResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*milvuspb.GetUserTagsResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.GetUserTagsRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRootCoord_GetUserTags_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserTags'
+type MockRootCoord_GetUserTags_Call struct {
+	*mock.Call
+}
+
+// GetUserTags is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.GetUserTagsRequest
+func (_e *MockRootCoord_Expecter) GetUserTags(_a0 interface{}, _a1 interface{}) *MockRootCoord_GetUserTags_Call {
+	return &MockRootCoord_GetUserTags_Call{Call: _e.mock.On("GetUserTags", _a0, _a1)}
+}
+
+func (_c *MockRootCoord_GetUserTags_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.GetUserTagsRequest)) *MockRootCoord_GetUserTags_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.GetUserTagsRequest))
+	})
+	return _c
+}
+
+func (_c *MockRootCoord_GetUserTags_Call) Return(_a0 *milvuspb.GetUserTagsResponse, _a1 error) *MockRootCoord_GetUserTags_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRootCoord_GetUserTags_Call) RunAndReturn(run func(context.Context, *milvuspb.GetUserTagsRequest) (*milvuspb.GetUserTagsResponse, error)) *MockRootCoord_GetUserTags_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // HasCollection provides a mock function with given fields: _a0, _a1
 func (_m *MockRootCoord) HasCollection(_a0 context.Context, _a1 *milvuspb.HasCollectionRequest) (*milvuspb.BoolResponse, error) {
 	ret := _m.Called(_a0, _a1)
@@ -2555,6 +2732,65 @@ func (_c *MockRootCoord_ListPrivilegeGroups_Call) Return(_a0 *milvuspb.ListPrivi
 }
 
 func (_c *MockRootCoord_ListPrivilegeGroups_Call) RunAndReturn(run func(context.Context, *milvuspb.ListPrivilegeGroupsRequest) (*milvuspb.ListPrivilegeGroupsResponse, error)) *MockRootCoord_ListPrivilegeGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListUsersWithTag provides a mock function with given fields: _a0, _a1
+func (_m *MockRootCoord) ListUsersWithTag(_a0 context.Context, _a1 *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUsersWithTag")
+	}
+
+	var r0 *milvuspb.ListUsersWithTagResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *milvuspb.ListUsersWithTagRequest) *milvuspb.ListUsersWithTagResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*milvuspb.ListUsersWithTagResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *milvuspb.ListUsersWithTagRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRootCoord_ListUsersWithTag_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListUsersWithTag'
+type MockRootCoord_ListUsersWithTag_Call struct {
+	*mock.Call
+}
+
+// ListUsersWithTag is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *milvuspb.ListUsersWithTagRequest
+func (_e *MockRootCoord_Expecter) ListUsersWithTag(_a0 interface{}, _a1 interface{}) *MockRootCoord_ListUsersWithTag_Call {
+	return &MockRootCoord_ListUsersWithTag_Call{Call: _e.mock.On("ListUsersWithTag", _a0, _a1)}
+}
+
+func (_c *MockRootCoord_ListUsersWithTag_Call) Run(run func(_a0 context.Context, _a1 *milvuspb.ListUsersWithTagRequest)) *MockRootCoord_ListUsersWithTag_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*milvuspb.ListUsersWithTagRequest))
+	})
+	return _c
+}
+
+func (_c *MockRootCoord_ListUsersWithTag_Call) Return(_a0 *milvuspb.ListUsersWithTagResponse, _a1 error) *MockRootCoord_ListUsersWithTag_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRootCoord_ListUsersWithTag_Call) RunAndReturn(run func(context.Context, *milvuspb.ListUsersWithTagRequest) (*milvuspb.ListUsersWithTagResponse, error)) *MockRootCoord_ListUsersWithTag_Call {
 	_c.Call.Return(run)
 	return _c
 }

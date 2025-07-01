@@ -154,6 +154,12 @@ service RootCoord {
     rpc AlterDatabase(AlterDatabaseRequest) returns(common.Status){}
 
     rpc GetQuotaMetrics(internal.GetQuotaMetricsRequest) returns (internal.GetQuotaMetricsResponse) {}
+
+    // Row Level Security (RLS) - User Tag Management APIs
+    rpc AddUserTags(milvus.AddUserTagsRequest) returns (common.Status) {}
+    rpc DeleteUserTags(milvus.DeleteUserTagsRequest) returns (common.Status) {}
+    rpc GetUserTags(milvus.GetUserTagsRequest) returns (milvus.GetUserTagsResponse) {}
+    rpc ListUsersWithTag(milvus.ListUsersWithTagRequest) returns (milvus.ListUsersWithTagResponse) {}
 }
 
 message AllocTimestampRequest {
@@ -219,6 +225,8 @@ message GetCredentialResponse {
   string username = 2;
   // password stored in etcd/mysql
   string password = 3;
+  // user tags
+  map<string, string> tags = 4;
 }
 
 message DescribeDatabaseRequest {
@@ -276,4 +284,9 @@ message DBCollections {
 message ShowCollectionIDsResponse {
   common.Status status = 1;
   repeated DBCollections db_collections = 2;
+}
+
+message GetUserTagResponse {
+  common.Status status = 1;
+  string tag_value = 2;
 }

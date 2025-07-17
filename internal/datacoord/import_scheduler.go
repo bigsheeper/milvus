@@ -340,6 +340,7 @@ func (s *importScheduler) processInProgressImport(task ImportTask) {
 				log.Warn("update import segment binlogs failed", WrapTaskLog(task, zap.String("err", err.Error()))...)
 				return
 			}
+			log.Info("update import segment info done", WrapTaskLog(task, zap.Int64("segmentID", info.GetSegmentID()), zap.Any("segmentInfo", info))...)
 		}
 		completeTime := time.Now().Format("2006-01-02T15:04:05Z07:00")
 		err = s.importMeta.UpdateTask(s.ctx, task.GetTaskID(), UpdateState(datapb.ImportTaskStateV2_Completed), UpdateCompleteTime(completeTime))

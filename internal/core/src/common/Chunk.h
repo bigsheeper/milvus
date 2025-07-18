@@ -95,6 +95,7 @@ class Chunk {
     FixedVector<bool>
         valid_;  // parse null bitmap to valid_ to be compatible with SpanBase
 };
+
 // for fixed size data, includes fixed size array
 class FixedWidthChunk : public Chunk {
  public:
@@ -168,7 +169,10 @@ class StringChunk : public Chunk {
     std::string_view
     operator[](const int i) const {
         if (i < 0 || i >= row_nums_) {
-            PanicInfo(ErrorCode::OutOfRange, "index out of range");
+            PanicInfo(ErrorCode::OutOfRange,
+                      "index out of range {} at {}",
+                      i,
+                      row_nums_);
         }
 
         return {data_ + offsets_[i], offsets_[i + 1] - offsets_[i]};

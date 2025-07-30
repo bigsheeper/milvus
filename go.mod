@@ -19,7 +19,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/klauspost/compress v1.17.9
+	github.com/klauspost/compress v1.18.0
 	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.6.0-rc.1.0.20250716031043-88051c3893ce
 	github.com/minio/minio-go/v7 v7.0.73
@@ -45,12 +45,12 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.39.0
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
-	golang.org/x/net v0.38.0
+	golang.org/x/net v0.41.0
 	golang.org/x/oauth2 v0.27.0
-	golang.org/x/sync v0.12.0
-	golang.org/x/text v0.23.0
+	golang.org/x/sync v0.15.0
+	golang.org/x/text v0.26.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/grpc/examples v0.0.0-20220617181431-3e7b97febc7f
 )
@@ -69,6 +69,7 @@ require (
 	github.com/cockroachdb/redact v1.1.3
 	github.com/google/uuid v1.6.0
 	github.com/greatroar/blobloom v0.0.0-00010101000000-000000000000
+	github.com/hamba/avro/v2 v2.29.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jolestar/go-commons-pool/v2 v2.1.2
 	github.com/magiconair/properties v1.8.5
@@ -78,6 +79,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/tidwall/gjson v1.17.1
 	github.com/valyala/fastjson v1.6.4
+	github.com/wirelessr/avroschema v0.0.0-20250326014052-2f18cc0f8d38
 	github.com/zeebo/xxh3 v1.0.2
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0
 	google.golang.org/api v0.187.0
@@ -85,6 +87,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	mosn.io/holmes v1.0.2
 )
+
+require github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 
 require (
 	cloud.google.com/go v0.115.0 // indirect
@@ -159,7 +163,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
+	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
@@ -265,11 +269,11 @@ require (
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/automaxprocs v1.5.3 // indirect
 	golang.org/x/arch v0.11.0 // indirect
-	golang.org/x/mod v0.18.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
+	golang.org/x/mod v0.25.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.22.0 // indirect
+	golang.org/x/tools v0.34.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gonum.org/v1/gonum v0.15.0 // indirect
 	google.golang.org/genproto v0.0.0-20240624140628-dc46fd24d27d // indirect

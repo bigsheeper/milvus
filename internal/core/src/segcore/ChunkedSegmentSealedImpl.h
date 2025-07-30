@@ -69,6 +69,9 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     bool
     HasFieldData(FieldId field_id) const override;
 
+    std::pair<std::shared_ptr<ChunkedColumnInterface>, bool>
+    GetFieldDataIfExist(FieldId field_id) const;
+
     bool
     Contain(const PkType& pk) const override {
         return insert_record_.contain(pk);
@@ -200,6 +203,10 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     is_chunked() const override {
         return true;
     }
+
+    std::vector<std::pair<SegOffset, Timestamp>>
+    search_batch_pks(const std::vector<PkType>& pks,
+                     const Timestamp* timestamps) const;
 
  public:
     int64_t

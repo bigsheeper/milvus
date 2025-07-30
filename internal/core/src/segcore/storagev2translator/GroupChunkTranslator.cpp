@@ -203,10 +203,11 @@ GroupChunkTranslator::get_cells(const std::vector<cachinglayer::cid_t>& cids) {
         std::make_unique<ParallelDegreeSplitStrategy>(parallel_degree);
 
     auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+    auto channel = std::make_shared<ArrowReaderChannel>();
 
     auto load_future = pool.Submit([&]() {
         return LoadWithStrategy(insert_files_,
-                                column_group_info_.arrow_reader_channel,
+                                channel,
                                 DEFAULT_FIELD_MAX_MEMORY_LIMIT,
                                 std::move(strategy),
                                 row_group_lists,
@@ -222,7 +223,7 @@ GroupChunkTranslator::get_cells(const std::vector<cachinglayer::cid_t>& cids) {
     std::shared_ptr<milvus::ArrowDataWrapper> r;
     std::unordered_set<cachinglayer::cid_t> filled_cids;
     filled_cids.reserve(cids.size());
-    while (column_group_info_.arrow_reader_channel->pop(r)) {
+    while (channel->pop(r)) {
         for (const auto& table_info : r->arrow_tables) {
             // Convert file_index and row_group_index to global cid
             auto cid = get_cid_from_file_and_row_group_index(
@@ -231,6 +232,10 @@ GroupChunkTranslator::get_cells(const std::vector<cachinglayer::cid_t>& cids) {
             filled_cids.insert(cid);
         }
     }
+
+    // access underlying feature to get exception if any
+    load_future.get();
+
     // Verify all requested cids have been filled
     for (auto cid : cids) {
         AssertInfo(filled_cids.find(cid) != filled_cids.end(),
@@ -298,13 +303,6 @@ GroupChunkTranslator::load_group_chunk(
             std::filesystem::create_directories(filepath.parent_path());
 
             chunk = create_chunk(field_meta, array_vec, filepath.string());
-            auto ok = unlink(filepath.c_str());
-            AssertInfo(ok == 0,
-                       fmt::format("[StorageV2] translator {} failed to unlink "
-                                   "mmap data file {}, err: {}",
-                                   key_,
-                                   filepath.c_str(),
-                                   strerror(errno)));
         }
 
         chunks[fid] = std::move(chunk);

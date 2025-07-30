@@ -63,7 +63,7 @@ const (
 	TopKKey              = "topk"
 	NQKey                = "nq"
 	MetricTypeKey        = common.MetricTypeKey
-	SearchParamsKey      = "params"
+	ParamsKey            = common.ParamsKey
 	ExprParamsKey        = "expr_params"
 	RoundDecimalKey      = "round_decimal"
 	OffsetKey            = "offset"
@@ -85,6 +85,7 @@ const (
 	HasPartitionTaskName          = "HasPartitionTask"
 	ShowPartitionTaskName         = "ShowPartitionTask"
 	FlushTaskName                 = "FlushTask"
+	FlushAllTaskName              = "FlushAllTask"
 	LoadCollectionTaskName        = "LoadCollectionTask"
 	ReleaseCollectionTaskName     = "ReleaseCollectionTask"
 	LoadPartitionTaskName         = "LoadPartitionsTask"
@@ -119,7 +120,6 @@ const (
 	minFloat32 = -1 * float32(math.MaxFloat32)
 
 	RankTypeKey      = "strategy"
-	RankParamsKey    = "params"
 	RRFParamsKey     = "k"
 	WeightsParamsKey = "weights"
 	NormScoreKey     = "norm_score"

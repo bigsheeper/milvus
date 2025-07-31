@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -853,6 +854,7 @@ func (sw *SerializeWriterImpl[T]) WriteValue(value T) error {
 	sw.buffer[sw.pos] = value
 	sw.pos++
 	if sw.pos == sw.batchSize {
+		defer runtime.GC()
 		if err := sw.Flush(); err != nil {
 			return err
 		}

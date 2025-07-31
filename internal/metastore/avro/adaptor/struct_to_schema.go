@@ -217,9 +217,9 @@ func avroDefaultField(s avro.Schema) any {
 	case avro.Double:
 		return float64(0.0)
 	case avro.Map:
-		return make(map[string]any)
+		return nil
 	case avro.Array:
-		return []any{}
+		return nil
 	default:
 		return nil
 	}

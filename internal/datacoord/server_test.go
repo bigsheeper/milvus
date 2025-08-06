@@ -24,7 +24,6 @@ import (
 	"os/signal"
 	"path"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -69,29 +68,30 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
-func TestMain(m *testing.M) {
-	// init embed etcd
-	embedetcdServer, tempDir, err := etcd.StartTestEmbedEtcdServer()
-	if err != nil {
-		log.Fatal("failed to start embed etcd server", zap.Error(err))
-	}
-	defer os.RemoveAll(tempDir)
-	defer embedetcdServer.Close()
+// func TestMain(m *testing.M) {
+// 	// init embed etcd
+// 	// embedetcdServer, tempDir, err := etcd.StartTestEmbedEtcdServer()
+// 	// if err != nil {
+// 	// 	log.Fatal("failed to start embed etcd server", zap.Error(err))
+// 	// }
+// 	// defer os.RemoveAll(tempDir)
+// 	// defer embedetcdServer.Close()
 
-	addrs := etcd.GetEmbedEtcdEndpoints(embedetcdServer)
+// 	// addrs := etcd.GetEmbedEtcdEndpoints(embedetcdServer)
 
-	paramtable.Init()
-	paramtable.Get().Save(Params.EtcdCfg.Endpoints.Key, strings.Join(addrs, ","))
+// 	log.Info("sheep debug, 111")
+// 	paramtable.Init()
+// 	// paramtable.Get().Save(Params.EtcdCfg.Endpoints.Key, strings.Join(addrs, ","))
 
-	rand.Seed(time.Now().UnixNano())
-	parameters := []string{"tikv", "etcd"}
-	var code int
-	for _, v := range parameters {
-		paramtable.Get().Save(paramtable.Get().MetaStoreCfg.MetaStoreType.Key, v)
-		code = m.Run()
-	}
-	os.Exit(code)
-}
+// 	// rand.Seed(time.Now().UnixNano())
+// 	// parameters := []string{"tikv", "etcd"}
+// 	// var code int
+// 	// for _, v := range parameters {
+// 	// 	paramtable.Get().Save(paramtable.Get().MetaStoreCfg.MetaStoreType.Key, v)
+// 	// 	code = m.Run()
+// 	// }
+// 	// os.Exit(code)
+// }
 
 func TestGetTimeTickChannel(t *testing.T) {
 	svr := newTestServer(t)

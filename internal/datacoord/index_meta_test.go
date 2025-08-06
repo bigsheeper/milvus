@@ -19,6 +19,7 @@ package datacoord
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -34,7 +35,10 @@ import (
 	catalogmocks "github.com/milvus-io/milvus/internal/metastore/mocks"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/workerpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
@@ -1692,4 +1696,75 @@ func TestMeta_GetSegmentIndexStatus(t *testing.T) {
 		assert.False(t, isIndexed)
 		assert.Empty(t, segmentIndexes)
 	})
+}
+
+func TestHugeMeta(t *testing.T) {
+	log.Info("sheep debug, aaa")
+	svr := newTestServer(t)
+	log.Info("sheep debug, ccc")
+	defer closeTestServer(t, svr)
+
+	const (
+		partitionNum = 1024
+		vchannelNum  = 16
+		fileNum      = 10
+	)
+
+	segmentIDs := make([]int64, 0, partitionNum*vchannelNum)
+	sortedSegmentIDs := make([]int64, 0, partitionNum*vchannelNum)
+	for i := 0; i < partitionNum*vchannelNum; i++ {
+		segmentIDs = append(segmentIDs, int64(i))
+		sortedSegmentIDs = append(sortedSegmentIDs, int64(i))
+	}
+
+	fileStats := make([]*datapb.ImportFileStats, 0, fileNum)
+	for i := 0; i < fileNum; i++ {
+		partitionImportStats := make(map[string]*datapb.PartitionImportStats, vchannelNum)
+		for j := 0; j < vchannelNum; j++ {
+			partitionRowStats := make(map[int64]int64, partitionNum)
+			partitionDataSize := make(map[int64]int64, partitionNum)
+			for k := 0; k < partitionNum; k++ {
+				partitionRowStats[int64(k)] = 1024
+				partitionDataSize[int64(k)] = 1024 * 1024
+			}
+			partitionImportStats[fmt.Sprintf("by-dev-rootcoord-dml_3_459804690964198540v%d", j)] = &datapb.PartitionImportStats{
+				PartitionRows:     partitionRowStats,
+				PartitionDataSize: partitionDataSize,
+			}
+		}
+		fileStats = append(fileStats, &datapb.ImportFileStats{
+			ImportFile: &internalpb.ImportFile{
+				Id:    int64(i),
+				Paths: []string{fmt.Sprintf("test-data/66/data-00002-of-%d.parquet", i)},
+			},
+			FileSize:        1024 * 1024,
+			TotalRows:       1024 * 1024,
+			TotalMemorySize: 1024 * 1024,
+			HashedStats:     partitionImportStats,
+		})
+	}
+
+	taskProto := &datapb.ImportTaskV2{
+		JobID:            1,
+		TaskID:           1,
+		CollectionID:     1,
+		SegmentIDs:       segmentIDs,
+		NodeID:           1,
+		State:            datapb.ImportTaskStateV2_Completed,
+		Reason:           "fdkjfghkdjfhgkjdfhgkj",
+		CompleteTime:     "fsdkljghdflkgjlkdfjglkfd",
+		FileStats:        fileStats,
+		SortedSegmentIDs: sortedSegmentIDs,
+		CreatedTime:      "fjdkgdflkgjdlkfjgld",
+		Source:           datapb.ImportTaskSourceV2_L0Compaction,
+	}
+	log.Info("sheep debug, bbb")
+
+	task := &importTask{}
+	task.task.Store(taskProto)
+
+	err := svr.importMeta.AddTask(context.TODO(), task)
+	if err != nil {
+		panic(err)
+	}
 }

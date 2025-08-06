@@ -738,6 +738,52 @@ func (kc *Catalog) SaveImportTask(ctx context.Context, task *datapb.ImportTaskV2
 	if err != nil {
 		return err
 	}
+	log.Info("sheep debug, save import task, task info",
+		zap.Int64("jobID", task.GetJobID()),
+		zap.Int64("taskID", task.GetTaskID()),
+		zap.String("key", key),
+		zap.Int("len(value)", len(value)),
+		zap.Int64("collectionID", task.GetCollectionID()),
+		zap.Int("len(segmentIDs)", len(task.GetSegmentIDs())),
+		zap.Int64("nodeID", task.GetNodeID()),
+		zap.String("state", task.GetState().String()),
+		zap.String("reason", task.GetReason()),
+		zap.String("completeTime", task.GetCompleteTime()),
+		zap.Int("len(fileStats)", len(task.GetFileStats())),
+		zap.Int("len(sortedSegmentIDs)", len(task.GetSortedSegmentIDs())),
+		zap.String("createdTime", task.GetCreatedTime()),
+		zap.String("source", task.GetSource().String()),
+	)
+	for _, fileStat := range task.GetFileStats() {
+		totalHashedRows := 0
+		totalHashedSize := 0
+		hashedRows := make(map[string]int64)
+		hashedSize := make(map[string]int64)
+		for channel, stat := range fileStat.GetHashedStats() {
+			totalHashedRows += len(stat.GetPartitionRows())
+			totalHashedSize += len(stat.GetPartitionDataSize())
+			hashedRows[channel] = int64(len(stat.GetPartitionRows()))
+			hashedSize[channel] = int64(len(stat.GetPartitionDataSize()))
+		}
+		fileStatsValue, err := proto.Marshal(fileStat)
+		if err != nil {
+			return err
+		}
+		log.Info("sheep debug, save import task, file info",
+			zap.Int64("jobID", task.GetJobID()),
+			zap.Int64("taskID", task.GetTaskID()),
+			zap.Int("fileStatsProtoSize", len(fileStatsValue)),
+			zap.Any("file", fileStat.GetImportFile()),
+			zap.Int64("fileSize", fileStat.GetFileSize()),
+			zap.Int64("totalRows", fileStat.GetTotalRows()),
+			zap.Int64("totalMemorySize", fileStat.GetTotalMemorySize()),
+			zap.Int("len(hashedStats)", len(fileStat.GetHashedStats())),
+			zap.Int64("totalHashedRows", int64(totalHashedRows)),
+			zap.Int64("totalHashedSize", int64(totalHashedSize)),
+			zap.Any("hashedRows", hashedRows),
+			zap.Any("hashedSize", hashedSize),
+		)
+	}
 	return kc.MetaKv.Save(ctx, key, string(value))
 }
 

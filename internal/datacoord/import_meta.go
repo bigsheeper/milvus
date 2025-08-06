@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/json"
 	"github.com/milvus-io/milvus/internal/metastore"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v2/util/lock"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
@@ -229,6 +230,7 @@ func (m *importMeta) RemoveJob(ctx context.Context, jobID int64) error {
 }
 
 func (m *importMeta) AddTask(ctx context.Context, task ImportTask) error {
+	log.Info("sheep debug, add task")
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	switch task.GetType() {
@@ -239,6 +241,7 @@ func (m *importMeta) AddTask(ctx context.Context, task ImportTask) error {
 		}
 		m.tasks.add(task)
 	case ImportTaskType:
+		log.Info("sheep debug, add import task")
 		err := m.catalog.SaveImportTask(ctx, task.(*importTask).task.Load())
 		if err != nil {
 			return err

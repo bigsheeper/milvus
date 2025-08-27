@@ -23,7 +23,6 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus/internal/util/hookutil"
-	"github.com/milvus-io/milvus/internal/util/proxyutil"
 	"github.com/milvus-io/milvus/pkg/v2/util"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -85,7 +84,7 @@ func (t *renameCollectionTask) Execute(ctx context.Context) error {
 		return fmt.Errorf("duplicated new collection name %s in database %s with other collection name or alias", t.Req.GetNewName(), targetDB)
 	}
 
-	ts := t.GetTs()
+	// ts := t.GetTs()
 	redoTask := newBaseRedoTask(t.core.stepExecutor)
 
 	// Step 1: Rename collection in metadata catalog
@@ -99,14 +98,14 @@ func (t *renameCollectionTask) Execute(ctx context.Context) error {
 	// })
 
 	// Step 2: Expire cache for old collection name
-	redoTask.AddSyncStep(&expireCacheStep{
-		baseStep:        baseStep{core: t.core},
-		dbName:          t.Req.GetDbName(),
-		collectionNames: append(aliases, t.Req.GetOldName()),
-		collectionID:    collInfo.CollectionID,
-		ts:              ts,
-		opts:            []proxyutil.ExpireCacheOpt{proxyutil.SetMsgType(commonpb.MsgType_RenameCollection)},
-	})
+	//	redoTask.AddSyncStep(&expireCacheStep{
+	//		baseStep:        baseStep{core: t.core},
+	//		dbName:          t.Req.GetDbName(),
+	//		collectionNames: append(aliases, t.Req.GetOldName()),
+	//		collectionID:    collID,
+	//		ts:              ts,
+	//		opts:            []proxyutil.ExpireCacheOpt{proxyutil.SetMsgType(commonpb.MsgType_RenameCollection)},
+	//	})
 
 	return redoTask.Execute(ctx)
 }

@@ -91,7 +91,7 @@ type IMetaTable interface {
 	DescribeAlias(ctx context.Context, dbName string, alias string, ts Timestamp) (string, error)
 	ListAliases(ctx context.Context, dbName string, collectionName string, ts Timestamp) ([]string, error)
 
-	AlterCollection(ctx context.Context, oldColl *model.Collection, newColl *model.Collection, ts Timestamp, fieldModify bool) error
+	AlterCollection(ctx context.Context, result message.BroadcastResultAlterCollectionMessageV2) error
 	RenameCollection(ctx context.Context, dbName string, oldName string, newDBName string, newName string, ts Timestamp) error
 	GetGeneralCount(ctx context.Context) int
 
@@ -534,6 +534,8 @@ func (mt *MetaTable) DropCollection(ctx context.Context, collectionID UniqueID, 
 
 	clone := coll.Clone()
 	clone.State = pb.CollectionState_CollectionDropping
+	clone.UpdateTimestamp = ts
+
 	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
 	if err := mt.catalog.AlterCollection(ctx1, coll, clone, metastore.MODIFY, ts, false); err != nil {
 		return err
@@ -906,16 +908,38 @@ func (mt *MetaTable) ListCollectionPhysicalChannels(ctx context.Context) map[typ
 	return chanMap
 }
 
-func (mt *MetaTable) AlterCollection(ctx context.Context, oldColl *model.Collection, newColl *model.Collection, ts Timestamp, fieldModify bool) error {
+// AlterCollection is used to alter a collection in the meta table.
+func (mt *MetaTable) AlterCollection(ctx context.Context, result message.BroadcastResultAlterCollectionMessageV2) error {
+	header := result.Message.Header()
+	body := result.Message.MustBody()
+
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
 
+	coll, ok := mt.collID2Meta[header.CollectionId]
+	if !ok {
+		// collection not exists, return directly.
+		return nil
+	}
+
+	oldColl := coll.Clone()
+	newColl := coll.Clone()
+	newColl.ApplyUpdates(header, body)
+	fieldModify := false
+	for _, path := range header.UpdateMask.GetPaths() {
+		if path == message.FieldMaskCollectionSchema {
+			fieldModify = true
+			break
+		}
+	}
+	newColl.UpdateTimestamp = result.GetControlChannelResult().TimeTick
+
 	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
-	if err := mt.catalog.AlterCollection(ctx1, oldColl, newColl, metastore.MODIFY, ts, fieldModify); err != nil {
+	if err := mt.catalog.AlterCollection(ctx1, oldColl, newColl, metastore.MODIFY, newColl.UpdateTimestamp, fieldModify); err != nil {
 		return err
 	}
-	mt.collID2Meta[oldColl.CollectionID] = newColl
-	log.Ctx(ctx).Info("alter collection finished", zap.Int64("collectionID", oldColl.CollectionID), zap.Uint64("ts", ts))
+	mt.collID2Meta[header.CollectionId] = newColl
+	log.Ctx(ctx).Info("alter collection finished", zap.Int64("collectionID", oldColl.CollectionID), zap.Uint64("ts", newColl.UpdateTimestamp))
 	return nil
 }
 

@@ -33,11 +33,12 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/proxypb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
+	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 )
 
 type ReleaseCollectionJob struct {
 	*BaseJob
-	req               *querypb.ReleaseCollectionRequest
+	result            message.BroadcastResultDropLoadConfigMessageV2
 	dist              *meta.DistributionManager
 	meta              *meta.Meta
 	broker            meta.Broker
@@ -49,7 +50,7 @@ type ReleaseCollectionJob struct {
 }
 
 func NewReleaseCollectionJob(ctx context.Context,
-	req *querypb.ReleaseCollectionRequest,
+	result message.BroadcastResultDropLoadConfigMessageV2,
 	dist *meta.DistributionManager,
 	meta *meta.Meta,
 	broker meta.Broker,
@@ -59,8 +60,8 @@ func NewReleaseCollectionJob(ctx context.Context,
 	proxyManager proxyutil.ProxyClientManagerInterface,
 ) *ReleaseCollectionJob {
 	return &ReleaseCollectionJob{
-		BaseJob:           NewBaseJob(ctx, req.Base.GetMsgID(), req.GetCollectionID()),
-		req:               req,
+		BaseJob:           NewBaseJob(ctx, 0, result.Message.Header().GetCollectionId()),
+		result:            result,
 		dist:              dist,
 		meta:              meta,
 		broker:            broker,
@@ -72,43 +73,43 @@ func NewReleaseCollectionJob(ctx context.Context,
 }
 
 func (job *ReleaseCollectionJob) Execute() error {
-	req := job.req
-	log := log.Ctx(job.ctx).With(zap.Int64("collectionID", req.GetCollectionID()))
+	collectionID := job.result.Message.Header().GetCollectionId()
+	log := log.Ctx(job.ctx).With(zap.Int64("collectionID", collectionID))
 
-	if !job.meta.CollectionManager.Exist(job.ctx, req.GetCollectionID()) {
+	if !job.meta.CollectionManager.Exist(job.ctx, collectionID) {
 		log.Info("release collection end, the collection has not been loaded into QueryNode")
 		return nil
 	}
 
-	err := job.meta.CollectionManager.RemoveCollection(job.ctx, req.GetCollectionID())
+	err := job.meta.CollectionManager.RemoveCollection(job.ctx, collectionID)
 	if err != nil {
 		msg := "failed to remove collection"
 		log.Warn(msg, zap.Error(err))
 		return errors.Wrap(err, msg)
 	}
 
-	err = job.meta.ReplicaManager.RemoveCollection(job.ctx, req.GetCollectionID())
+	err = job.meta.ReplicaManager.RemoveCollection(job.ctx, collectionID)
 	if err != nil {
 		msg := "failed to remove replicas"
 		log.Warn(msg, zap.Error(err))
 	}
 
-	job.targetObserver.ReleaseCollection(req.GetCollectionID())
+	job.targetObserver.ReleaseCollection(collectionID)
 
 	// try best discard cache
 	// shall not affect releasing if failed
 	job.proxyManager.InvalidateCollectionMetaCache(job.ctx,
 		&proxypb.InvalidateCollMetaCacheRequest{
-			CollectionID: req.GetCollectionID(),
+			CollectionID: collectionID,
 		},
 		proxyutil.SetMsgType(commonpb.MsgType_ReleaseCollection))
 
 	// try best clean shard leader cache
 	job.proxyManager.InvalidateShardLeaderCache(job.ctx, &proxypb.InvalidateShardLeaderCacheRequest{
-		CollectionIDs: []int64{req.GetCollectionID()},
+		CollectionIDs: []int64{collectionID},
 	})
 
-	waitCollectionReleased(job.dist, job.checkerController, req.GetCollectionID())
+	waitCollectionReleased(job.dist, job.checkerController, collectionID)
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.TotalLabel).Inc()
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()
 	return nil

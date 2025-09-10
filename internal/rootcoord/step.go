@@ -174,23 +174,6 @@ func (s *unwatchChannelsStep) Weight() stepPriority {
 	return stepPriorityNormal
 }
 
-type changeCollectionStateStep struct {
-	baseStep
-	collectionID UniqueID
-	state        pb.CollectionState
-	ts           Timestamp
-}
-
-func (s *changeCollectionStateStep) Execute(ctx context.Context) ([]nestedStep, error) {
-	err := s.core.meta.ChangeCollectionState(ctx, s.collectionID, s.state, s.ts)
-	return nil, err
-}
-
-func (s *changeCollectionStateStep) Desc() string {
-	return fmt.Sprintf("change collection state, collection: %d, ts: %d, state: %s",
-		s.collectionID, s.ts, s.state.String())
-}
-
 type cleanupMetricsStep struct {
 	baseStep
 	dbName         string

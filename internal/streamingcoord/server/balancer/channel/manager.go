@@ -14,6 +14,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
+	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/replicateutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/syncutil"
@@ -23,6 +24,11 @@ import (
 var ErrChannelNotExist = errors.New("channel not exist")
 
 type (
+	AllocVChannelParam struct {
+		CollectionID int64
+		Num          int
+	}
+
 	WatchChannelAssignmentsCallbackParam struct {
 		Version                typeutil.VersionInt64Pair
 		CChannelAssignment     *streamingpb.CChannelAssignment
@@ -234,6 +240,22 @@ func (cm *ChannelManager) CurrentPChannelsView() *PChannelView {
 		cm.metrics.UpdateVChannelTotal(channel)
 	}
 	return view
+}
+
+// AllocVirtualChannels allocates virtual channels for a collection.
+func (cm *ChannelManager) AllocVirtualChannels(ctx context.Context, param AllocVChannelParam) ([]string, error) {
+	cm.cond.L.Lock()
+	defer cm.cond.L.Unlock()
+
+	// TODO: implement this function.
+	vchannels := make([]string, 0, param.Num)
+	for _, c := range cm.channels {
+		if len(vchannels) == param.Num {
+			break
+		}
+		vchannels = append(vchannels, funcutil.GetVirtualChannel(c.Name(), param.CollectionID, len(vchannels)))
+	}
+	return vchannels, nil
 }
 
 // AssignPChannels update the pchannels to servers and return the modified pchannels.

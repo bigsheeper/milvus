@@ -58,7 +58,7 @@ type IMetaTable interface {
 	AlterDatabase(ctx context.Context, oldDB *model.Database, newDB *model.Database, ts typeutil.Timestamp) error
 
 	AddCollection(ctx context.Context, coll *model.Collection) error
-	ChangeCollectionState(ctx context.Context, collectionID UniqueID, state pb.CollectionState, ts Timestamp) error
+	DropCollection(ctx context.Context, collectionID UniqueID, ts Timestamp) error
 	RemoveCollection(ctx context.Context, collectionID UniqueID, ts Timestamp) error
 	// GetCollectionID retrieves the corresponding collectionID based on the collectionName.
 	// If the collection does not exist, it will return InvalidCollectionID.
@@ -458,22 +458,29 @@ func (mt *MetaTable) AddCollection(ctx context.Context, coll *model.Collection) 
 	// Note:
 	// 1, idempotency check was already done outside;
 	// 2, no need to check time travel logic, since ts should always be the latest;
-
-	db, err := mt.getDatabaseByIDInternal(ctx, coll.DBID, typeutil.MaxTimestamp)
-	if err != nil {
-		return err
+	if coll.State != pb.CollectionState_CollectionCreated {
+		return fmt.Errorf("collection state should be created, collection name: %s, collection id: %d, state: %s", coll.Name, coll.CollectionID, coll.State)
 	}
 
-	if coll.State != pb.CollectionState_CollectionCreating {
-		return fmt.Errorf("collection state should be creating, collection name: %s, collection id: %d, state: %s", coll.Name, coll.CollectionID, coll.State)
+	// check if there's a collection meta with the same collection id.
+	// merge the collection meta together.
+	if _, ok := mt.collID2Meta[coll.CollectionID]; ok {
+		log.Ctx(ctx).Info("collection already created, skip add collection to meta table", zap.Int64("collectionID", coll.CollectionID))
+		return nil
 	}
+
 	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
 	if err := mt.catalog.CreateCollection(ctx1, coll, coll.CreateTime); err != nil {
 		return err
 	}
 
 	mt.collID2Meta[coll.CollectionID] = coll.Clone()
-	mt.names.insert(db.Name, coll.Name, coll.CollectionID)
+	mt.names.insert(coll.DBName, coll.Name, coll.CollectionID)
+
+	pn := coll.GetPartitionNum(true)
+	mt.generalCnt += pn * int(coll.ShardsNum)
+	metrics.RootCoordNumOfCollections.WithLabelValues(coll.DBName).Inc()
+	metrics.RootCoordNumOfPartitions.WithLabelValues().Add(float64(pn))
 
 	channel.StaticPChannelStatsManager.MustGet().AddVChannel(coll.VirtualChannelNames...)
 	log.Ctx(ctx).Info("add collection to meta table",
@@ -485,7 +492,7 @@ func (mt *MetaTable) AddCollection(ctx context.Context, coll *model.Collection) 
 	return nil
 }
 
-func (mt *MetaTable) ChangeCollectionState(ctx context.Context, collectionID UniqueID, state pb.CollectionState, ts Timestamp) error {
+func (mt *MetaTable) DropCollection(ctx context.Context, collectionID UniqueID, ts Timestamp) error {
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
 
@@ -493,8 +500,12 @@ func (mt *MetaTable) ChangeCollectionState(ctx context.Context, collectionID Uni
 	if !ok {
 		return nil
 	}
+	if coll.State == pb.CollectionState_CollectionDropping {
+		return nil
+	}
+
 	clone := coll.Clone()
-	clone.State = state
+	clone.State = pb.CollectionState_CollectionDropping
 	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
 	if err := mt.catalog.AlterCollection(ctx1, coll, clone, metastore.MODIFY, ts, false); err != nil {
 		return err
@@ -508,21 +519,13 @@ func (mt *MetaTable) ChangeCollectionState(ctx context.Context, collectionID Uni
 
 	pn := coll.GetPartitionNum(true)
 
-	switch state {
-	case pb.CollectionState_CollectionCreated:
-		mt.generalCnt += pn * int(coll.ShardsNum)
-		metrics.RootCoordNumOfCollections.WithLabelValues(db.Name).Inc()
-		metrics.RootCoordNumOfPartitions.WithLabelValues().Add(float64(pn))
-	case pb.CollectionState_CollectionDropping:
-		mt.generalCnt -= pn * int(coll.ShardsNum)
-		channel.StaticPChannelStatsManager.MustGet().RemoveVChannel(coll.VirtualChannelNames...)
-		metrics.RootCoordNumOfCollections.WithLabelValues(db.Name).Dec()
-		metrics.RootCoordNumOfPartitions.WithLabelValues().Sub(float64(pn))
-	}
+	mt.generalCnt -= pn * int(coll.ShardsNum)
+	channel.StaticPChannelStatsManager.MustGet().RemoveVChannel(coll.VirtualChannelNames...)
+	metrics.RootCoordNumOfCollections.WithLabelValues(db.Name).Dec()
+	metrics.RootCoordNumOfPartitions.WithLabelValues().Sub(float64(pn))
 
-	log.Ctx(ctx).Info("change collection state", zap.Int64("collection", collectionID),
-		zap.String("state", state.String()), zap.Uint64("ts", ts))
-
+	log.Ctx(ctx).Info("drop collection from meta table", zap.Int64("collection", collectionID),
+		zap.String("state", coll.State.String()), zap.Uint64("ts", ts))
 	return nil
 }
 

@@ -489,6 +489,8 @@ func (c *Core) Init() error {
 	c.initOnce.Do(func() {
 		initError = c.initInternal()
 	})
+
+	RegisterDDLCallbacks(c)
 	log.Info("RootCoord init successfully")
 
 	return initError
@@ -955,40 +957,18 @@ func (c *Core) CreateCollection(ctx context.Context, in *milvuspb.CreateCollecti
 		zap.String("name", in.GetCollectionName()),
 		zap.String("role", typeutil.RootCoordRole))
 
-	t := &createCollectionTask{
-		baseTask: newBaseTask(ctx, c),
-		Req:      in,
-	}
-
-	if err := c.scheduler.AddTask(t); err != nil {
-		log.Ctx(ctx).Info("failed to enqueue request to create collection",
-			zap.String("role", typeutil.RootCoordRole),
-			zap.Error(err),
-			zap.String("name", in.GetCollectionName()))
-
+	if err := c.broadcastCreateCollectionV1(ctx, in); err != nil {
 		metrics.RootCoordDDLReqCounter.WithLabelValues("CreateCollection", metrics.FailLabel).Inc()
-		return merr.Status(err), nil
-	}
-
-	if err := t.WaitToFinish(); err != nil {
-		log.Ctx(ctx).Info("failed to create collection",
-			zap.String("role", typeutil.RootCoordRole),
-			zap.Error(err),
-			zap.String("name", in.GetCollectionName()),
-			zap.Uint64("ts", t.GetTs()))
-
-		metrics.RootCoordDDLReqCounter.WithLabelValues("CreateCollection", metrics.FailLabel).Inc()
-		return merr.Status(err), nil
+		return nil, err
 	}
 
 	metrics.RootCoordDDLReqCounter.WithLabelValues("CreateCollection", metrics.SuccessLabel).Inc()
 	metrics.RootCoordDDLReqLatency.WithLabelValues("CreateCollection").Observe(float64(tr.ElapseSpan().Milliseconds()))
-	metrics.RootCoordDDLReqLatencyInQueue.WithLabelValues("CreateCollection").Observe(float64(t.queueDur.Milliseconds()))
+	// metrics.RootCoordDDLReqLatencyInQueue.WithLabelValues("CreateCollection").Observe(float64(t.queueDur.Milliseconds()))
 
 	log.Ctx(ctx).Info("done to create collection",
 		zap.String("role", typeutil.RootCoordRole),
-		zap.String("name", in.GetCollectionName()),
-		zap.Uint64("ts", t.GetTs()))
+		zap.String("name", in.GetCollectionName()))
 	return merr.Success(), nil
 }
 
@@ -1057,37 +1037,16 @@ func (c *Core) DropCollection(ctx context.Context, in *milvuspb.DropCollectionRe
 		zap.String("dbName", in.GetDbName()),
 		zap.String("name", in.GetCollectionName()))
 
-	t := &dropCollectionTask{
-		baseTask: newBaseTask(ctx, c),
-		Req:      in,
-	}
-
-	if err := c.scheduler.AddTask(t); err != nil {
-		log.Ctx(ctx).Info("failed to enqueue request to drop collection", zap.String("role", typeutil.RootCoordRole),
-			zap.Error(err),
-			zap.String("name", in.GetCollectionName()))
-
+	if err := c.broadcastDropCollectionV1(ctx, in); err != nil {
 		metrics.RootCoordDDLReqCounter.WithLabelValues("DropCollection", metrics.FailLabel).Inc()
-		return merr.Status(err), nil
-	}
-
-	if err := t.WaitToFinish(); err != nil {
-		log.Ctx(ctx).Info("failed to drop collection", zap.String("role", typeutil.RootCoordRole),
-			zap.Error(err),
-			zap.String("name", in.GetCollectionName()),
-			zap.Uint64("ts", t.GetTs()))
-
-		metrics.RootCoordDDLReqCounter.WithLabelValues("DropCollection", metrics.FailLabel).Inc()
-		return merr.Status(err), nil
+		return nil, err
 	}
 
 	metrics.RootCoordDDLReqCounter.WithLabelValues("DropCollection", metrics.SuccessLabel).Inc()
 	metrics.RootCoordDDLReqLatency.WithLabelValues("DropCollection").Observe(float64(tr.ElapseSpan().Milliseconds()))
-	metrics.RootCoordDDLReqLatencyInQueue.WithLabelValues("DropCollection").Observe(float64(t.queueDur.Milliseconds()))
-
+	// metrics.RootCoordDDLReqLatencyInQueue.WithLabelValues("DropCollection").Observe(float64(t.queueDur.Milliseconds()))
 	log.Ctx(ctx).Info("done to drop collection", zap.String("role", typeutil.RootCoordRole),
-		zap.String("name", in.GetCollectionName()),
-		zap.Uint64("ts", t.GetTs()))
+		zap.String("name", in.GetCollectionName()))
 	return merr.Success(), nil
 }
 

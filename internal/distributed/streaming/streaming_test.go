@@ -152,7 +152,7 @@ func TestStreamingBroadcast(t *testing.T) {
 			CollectionID:   1,
 			CollectionName: collectionName,
 		}).
-		WithBroadcast(vChannels, message.NewCollectionNameResourceKey(collectionName)).
+		WithBroadcast(vChannels, message.NewExclusiveCollectionNameResourceKey("db", collectionName)).
 		BuildBroadcast()
 
 	resp, err := streaming.WAL().Broadcast().Append(context.Background(), msg)

@@ -19,8 +19,8 @@ func RegisterDDLCallbacks(core *Core) {
 	registry.RegisterCreateCollectionV1AckCallback(ddlCallback.createCollectionV1AckCallback)
 	registry.RegisterDropCollectionV1AckCallback(ddlCallback.dropCollectionV1AckCallback)
 
-	// RBAC
 	ddlCallback.registerRBACCallbacks()
+	ddlCallback.registerAliasCallbacks()
 }
 
 // registerRBACCallbacks registers the rbac callbacks.
@@ -36,6 +36,12 @@ func (c *DDLCallback) registerRBACCallbacks() {
 	registry.RegisterAlterPrivilegeGroupV2AckCallback(c.alterPrivilegeGroupV2AckCallback)
 	registry.RegisterDropPrivilegeGroupV2AckCallback(c.dropPrivilegeGroupV2AckCallback)
 	registry.RegisterRestoreRBACV2AckCallback(c.restoreRBACV2AckCallback)
+}
+
+// registerAliasCallbacks registers the alias callbacks.
+func (c *DDLCallback) registerAliasCallbacks() {
+	registry.RegisterAlterAliasV2AckCallback(c.alterAliasV2AckCallback)
+	registry.RegisterDropAliasV2AckCallback(c.dropAliasV2AckCallback)
 }
 
 // DDLCallback is the callback of ddl.

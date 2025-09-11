@@ -49,7 +49,7 @@ func generateMetaTable(t *testing.T) *MetaTable {
 	return &MetaTable{catalog: rootcoord.NewCatalog(memkv.NewMemoryKV(), nil)}
 }
 
-func buildAlterUserMessage(credInfo *internalpb.CredentialInfo) message.ImmutablePutUserMessageV2 {
+func buildAlterUserMessage(credInfo *internalpb.CredentialInfo) message.ImmutableAlterUserMessageV2 {
 	msg := message.NewAlterUserMessageBuilderV2().
 		WithVChannel(message.ControlChannel).
 		WithHeader(&message.AlterUserMessageHeader{

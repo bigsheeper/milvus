@@ -80,11 +80,15 @@ type IMetaTable interface {
 	AddPartition(ctx context.Context, partition *model.Partition) error
 	ChangePartitionState(ctx context.Context, collectionID UniqueID, partitionID UniqueID, state pb.PartitionState, ts Timestamp) error
 	RemovePartition(ctx context.Context, dbID int64, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error
-	CreateAlias(ctx context.Context, dbName string, alias string, collectionName string, ts Timestamp) error
-	DropAlias(ctx context.Context, dbName string, alias string, ts Timestamp) error
-	AlterAlias(ctx context.Context, dbName string, alias string, collectionName string, ts Timestamp) error
+
+	// Alias
+	CheckIfAliasCreatable(ctx context.Context, dbName string, alias string, collectionName string) error
+	CheckIfAliasAlterable(ctx context.Context, dbName string, alias string, collectionName string) error
+	AlterAlias(ctx context.Context, result message.BroadcastResultAlterAliasMessageV2) error
+	DropAlias(ctx context.Context, result message.BroadcastResultDropAliasMessageV2) error
 	DescribeAlias(ctx context.Context, dbName string, alias string, ts Timestamp) (string, error)
 	ListAliases(ctx context.Context, dbName string, collectionName string, ts Timestamp) ([]string, error)
+
 	AlterCollection(ctx context.Context, oldColl *model.Collection, newColl *model.Collection, ts Timestamp, fieldModify bool) error
 	RenameCollection(ctx context.Context, dbName string, oldName string, newDBName string, newName string, ts Timestamp) error
 	GetGeneralCount(ctx context.Context) int
@@ -1087,9 +1091,9 @@ func (mt *MetaTable) RemovePartition(ctx context.Context, dbID int64, collection
 	return nil
 }
 
-func (mt *MetaTable) CreateAlias(ctx context.Context, dbName string, alias string, collectionName string, ts Timestamp) error {
-	mt.ddLock.Lock()
-	defer mt.ddLock.Unlock()
+func (mt *MetaTable) CheckIfAliasCreatable(ctx context.Context, dbName string, alias string, collectionName string) error {
+	mt.ddLock.RLock()
+	defer mt.ddLock.RUnlock()
 	// backward compatibility for rolling  upgrade
 	if dbName == "" {
 		log.Ctx(ctx).Warn("db name is empty", zap.String("alias", alias), zap.String("collection", collectionName))
@@ -1123,7 +1127,7 @@ func (mt *MetaTable) CreateAlias(ctx context.Context, dbName string, alias strin
 	// check if alias exists.
 	aliasedCollectionID, ok := mt.aliases.get(dbName, alias)
 	if ok && aliasedCollectionID == collectionID {
-		log.Ctx(ctx).Warn("add duplicate alias", zap.String("alias", alias), zap.String("collection", collectionName), zap.Uint64("ts", ts))
+		log.Ctx(ctx).Warn("add duplicate alias", zap.String("alias", alias), zap.String("collection", collectionName))
 		return nil
 	} else if ok {
 		// TODO: better to check if aliasedCollectionID exist or is available, though not very possible.
@@ -1138,63 +1142,59 @@ func (mt *MetaTable) CreateAlias(ctx context.Context, dbName string, alias strin
 		// you cannot alias to a non-existent collection.
 		return merr.WrapErrCollectionNotFoundWithDB(dbName, collectionName)
 	}
-
-	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
-	if err := mt.catalog.CreateAlias(ctx1, &model.Alias{
-		Name:         alias,
-		CollectionID: collectionID,
-		CreatedTime:  ts,
-		State:        pb.AliasState_AliasCreated,
-		DbID:         coll.DBID,
-	}, ts); err != nil {
-		return err
-	}
-
-	mt.aliases.insert(dbName, alias, collectionID)
-
-	log.Ctx(ctx).Info("create alias",
-		zap.String("db", dbName),
-		zap.String("alias", alias),
-		zap.String("collection", collectionName),
-		zap.Int64("id", coll.CollectionID),
-		zap.Uint64("ts", ts),
-	)
-
 	return nil
 }
 
-func (mt *MetaTable) DropAlias(ctx context.Context, dbName string, alias string, ts Timestamp) error {
+func (mt *MetaTable) DropAlias(ctx context.Context, result message.BroadcastResultDropAliasMessageV2) error {
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
-	// backward compatibility for rolling  upgrade
-	if dbName == "" {
-		log.Ctx(ctx).Warn("db name is empty", zap.String("alias", alias), zap.Uint64("ts", ts))
-		dbName = util.DefaultDBName
-	}
+
+	header := result.Message.Header()
 
 	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
-	db, err := mt.getDatabaseByNameInternal(ctx, dbName, typeutil.MaxTimestamp)
-	if err != nil {
+	if err := mt.catalog.DropAlias(ctx1, header.DbId, header.Alias, result.GetControlChannelResult().TimeTick); err != nil {
 		return err
 	}
-	if err := mt.catalog.DropAlias(ctx1, db.ID, alias, ts); err != nil {
-		return err
-	}
-
-	mt.aliases.remove(dbName, alias)
+	mt.aliases.remove(header.DbName, header.Alias)
 
 	log.Ctx(ctx).Info("drop alias",
-		zap.String("db", dbName),
-		zap.String("alias", alias),
-		zap.Uint64("ts", ts),
+		zap.String("db", header.DbName),
+		zap.String("alias", header.Alias),
+		zap.Uint64("ts", result.GetControlChannelResult().TimeTick),
 	)
-
 	return nil
 }
 
-func (mt *MetaTable) AlterAlias(ctx context.Context, dbName string, alias string, collectionName string, ts Timestamp) error {
+func (mt *MetaTable) AlterAlias(ctx context.Context, result message.BroadcastResultAlterAliasMessageV2) error {
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
+
+	header := result.Message.Header()
+	if err := mt.catalog.AlterAlias(ctx, &model.Alias{
+		Name:         header.Alias,
+		CollectionID: header.CollectionId,
+		CreatedTime:  result.GetControlChannelResult().TimeTick,
+		State:        pb.AliasState_AliasCreated,
+		DbID:         header.DbId,
+	}, result.GetControlChannelResult().TimeTick); err != nil {
+		return err
+	}
+
+	// alias switch to another collection anyway.
+	mt.aliases.insert(header.DbName, header.Alias, header.CollectionId)
+
+	log.Ctx(ctx).Info("alter alias",
+		zap.String("db", header.DbName),
+		zap.String("alias", header.Alias),
+		zap.String("collection", header.CollectionName),
+		zap.Uint64("ts", result.GetControlChannelResult().TimeTick),
+	)
+	return nil
+}
+
+func (mt *MetaTable) CheckIfAliasAlterable(ctx context.Context, dbName string, alias string, collectionName string) error {
+	mt.ddLock.RLock()
+	defer mt.ddLock.RUnlock()
 	// backward compatibility for rolling  upgrade
 	if dbName == "" {
 		log.Ctx(ctx).Warn("db name is empty", zap.String("alias", alias), zap.String("collection", collectionName))
@@ -1234,28 +1234,6 @@ func (mt *MetaTable) AlterAlias(ctx context.Context, dbName string, alias string
 		//
 		return merr.WrapErrAliasNotFound(dbName, alias)
 	}
-
-	ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
-	if err := mt.catalog.AlterAlias(ctx1, &model.Alias{
-		Name:         alias,
-		CollectionID: collectionID,
-		CreatedTime:  ts,
-		State:        pb.AliasState_AliasCreated,
-		DbID:         coll.DBID,
-	}, ts); err != nil {
-		return err
-	}
-
-	// alias switch to another collection anyway.
-	mt.aliases.insert(dbName, alias, collectionID)
-
-	log.Ctx(ctx).Info("alter alias",
-		zap.String("db", dbName),
-		zap.String("alias", alias),
-		zap.String("collection", collectionName),
-		zap.Uint64("ts", ts),
-	)
-
 	return nil
 }
 

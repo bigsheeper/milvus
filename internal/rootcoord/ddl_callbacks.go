@@ -40,6 +40,7 @@ func RegisterDDLCallbacks(core *Core) {
 	ddlCallback.registerDatabaseCallbacks()
 	// RBAC
 	ddlCallback.registerRBACCallbacks()
+	ddlCallback.registerAliasCallbacks()
 }
 
 // registerRBACCallbacks registers the rbac callbacks.
@@ -62,6 +63,12 @@ func (c *DDLCallback) registerDatabaseCallbacks() {
 	registry.RegisterCreateDatabaseV2AckCallback(c.createDatabaseV1AckCallback)
 	registry.RegisterAlterDatabaseV2AckCallback(c.alterDatabaseV1AckCallback)
 	registry.RegisterDropDatabaseV2AckCallback(c.dropDatabaseV1AckCallback)
+}
+
+// registerAliasCallbacks registers the alias callbacks.
+func (c *DDLCallback) registerAliasCallbacks() {
+	registry.RegisterAlterAliasV2AckCallback(c.alterAliasV2AckCallback)
+	registry.RegisterDropAliasV2AckCallback(c.dropAliasV2AckCallback)
 }
 
 // DDLCallback is the callback of ddl.

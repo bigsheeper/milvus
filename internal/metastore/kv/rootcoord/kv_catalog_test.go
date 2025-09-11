@@ -1563,7 +1563,7 @@ func TestRBAC_Credential(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				err := c.CreateCredential(ctx, &model.Credential{
+				err := c.AlterCredential(ctx, &model.Credential{
 					Username:          test.user,
 					EncryptedPassword: test.password,
 				})
@@ -2815,7 +2815,7 @@ func TestRBAC_Backup(t *testing.T) {
 			Privilege: &milvuspb.PrivilegeEntity{Name: "PrivilegeLoad"},
 		},
 	}, milvuspb.OperatePrivilegeType_Grant)
-	c.CreateCredential(ctx, &model.Credential{
+	c.AlterCredential(ctx, &model.Credential{
 		Username:          "user1",
 		EncryptedPassword: "passwd",
 	})

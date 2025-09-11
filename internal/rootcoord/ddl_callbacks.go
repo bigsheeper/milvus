@@ -18,6 +18,24 @@ func RegisterDDLCallbacks(core *Core) {
 	}
 	registry.RegisterCreateCollectionV1AckCallback(ddlCallback.createCollectionV1AckCallback)
 	registry.RegisterDropCollectionV1AckCallback(ddlCallback.dropCollectionV1AckCallback)
+
+	// RBAC
+	ddlCallback.registerRBACCallbacks()
+}
+
+// registerRBACCallbacks registers the rbac callbacks.
+func (c *DDLCallback) registerRBACCallbacks() {
+	registry.RegisterAlterUserV2AckCallback(c.alterUserV2AckCallback)
+	registry.RegisterDropUserV2AckCallback(c.dropUserV2AckCallback)
+	registry.RegisterAlterRoleV2AckCallback(c.alterRoleV2AckCallback)
+	registry.RegisterDropRoleV2AckCallback(c.dropRoleV2AckCallback)
+	registry.RegisterAlterUserRoleV2AckCallback(c.alterUserRoleV2AckCallback)
+	registry.RegisterDropUserRoleV2AckCallback(c.dropUserRoleV2AckCallback)
+	registry.RegisterAlterPrivilegeV2AckCallback(c.alterPrivilegeV2AckCallback)
+	registry.RegisterDropPrivilegeV2AckCallback(c.dropPrivilegeV2AckCallback)
+	registry.RegisterAlterPrivilegeGroupV2AckCallback(c.alterPrivilegeGroupV2AckCallback)
+	registry.RegisterDropPrivilegeGroupV2AckCallback(c.dropPrivilegeGroupV2AckCallback)
+	registry.RegisterRestoreRBACV2AckCallback(c.restoreRBACV2AckCallback)
 }
 
 // DDLCallback is the callback of ddl.

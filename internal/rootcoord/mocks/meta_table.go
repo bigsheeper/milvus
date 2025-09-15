@@ -5,9 +5,7 @@ package mockrootcoord
 import (
 	context "context"
 
-	etcdpb "github.com/milvus-io/milvus/pkg/v2/proto/etcdpb"
 	internalpb "github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
-
 	message "github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 
 	messagespb "github.com/milvus-io/milvus/pkg/v2/proto/messagespb"
@@ -328,56 +326,6 @@ func (_c *IMetaTable_BackupRBAC_Call) Return(_a0 *milvuspb.RBACMeta, _a1 error) 
 }
 
 func (_c *IMetaTable_BackupRBAC_Call) RunAndReturn(run func(context.Context, string) (*milvuspb.RBACMeta, error)) *IMetaTable_BackupRBAC_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ChangePartitionState provides a mock function with given fields: ctx, collectionID, partitionID, state, ts
-func (_m *IMetaTable) ChangePartitionState(ctx context.Context, collectionID int64, partitionID int64, state etcdpb.PartitionState, ts uint64) error {
-	ret := _m.Called(ctx, collectionID, partitionID, state, ts)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ChangePartitionState")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, etcdpb.PartitionState, uint64) error); ok {
-		r0 = rf(ctx, collectionID, partitionID, state, ts)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// IMetaTable_ChangePartitionState_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ChangePartitionState'
-type IMetaTable_ChangePartitionState_Call struct {
-	*mock.Call
-}
-
-// ChangePartitionState is a helper method to define mock.On call
-//   - ctx context.Context
-//   - collectionID int64
-//   - partitionID int64
-//   - state etcdpb.PartitionState
-//   - ts uint64
-func (_e *IMetaTable_Expecter) ChangePartitionState(ctx interface{}, collectionID interface{}, partitionID interface{}, state interface{}, ts interface{}) *IMetaTable_ChangePartitionState_Call {
-	return &IMetaTable_ChangePartitionState_Call{Call: _e.mock.On("ChangePartitionState", ctx, collectionID, partitionID, state, ts)}
-}
-
-func (_c *IMetaTable_ChangePartitionState_Call) Run(run func(ctx context.Context, collectionID int64, partitionID int64, state etcdpb.PartitionState, ts uint64)) *IMetaTable_ChangePartitionState_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(etcdpb.PartitionState), args[4].(uint64))
-	})
-	return _c
-}
-
-func (_c *IMetaTable_ChangePartitionState_Call) Return(_a0 error) *IMetaTable_ChangePartitionState_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *IMetaTable_ChangePartitionState_Call) RunAndReturn(run func(context.Context, int64, int64, etcdpb.PartitionState, uint64) error) *IMetaTable_ChangePartitionState_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1010,6 +958,55 @@ func (_c *IMetaTable_DropGrant_Call) Return(_a0 error) *IMetaTable_DropGrant_Cal
 }
 
 func (_c *IMetaTable_DropGrant_Call) RunAndReturn(run func(context.Context, string, *milvuspb.RoleEntity) error) *IMetaTable_DropGrant_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DropPartition provides a mock function with given fields: ctx, collectionID, partitionID, ts
+func (_m *IMetaTable) DropPartition(ctx context.Context, collectionID int64, partitionID int64, ts uint64) error {
+	ret := _m.Called(ctx, collectionID, partitionID, ts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DropPartition")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int64, int64, uint64) error); ok {
+		r0 = rf(ctx, collectionID, partitionID, ts)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// IMetaTable_DropPartition_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DropPartition'
+type IMetaTable_DropPartition_Call struct {
+	*mock.Call
+}
+
+// DropPartition is a helper method to define mock.On call
+//   - ctx context.Context
+//   - collectionID int64
+//   - partitionID int64
+//   - ts uint64
+func (_e *IMetaTable_Expecter) DropPartition(ctx interface{}, collectionID interface{}, partitionID interface{}, ts interface{}) *IMetaTable_DropPartition_Call {
+	return &IMetaTable_DropPartition_Call{Call: _e.mock.On("DropPartition", ctx, collectionID, partitionID, ts)}
+}
+
+func (_c *IMetaTable_DropPartition_Call) Run(run func(ctx context.Context, collectionID int64, partitionID int64, ts uint64)) *IMetaTable_DropPartition_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(int64), args[2].(int64), args[3].(uint64))
+	})
+	return _c
+}
+
+func (_c *IMetaTable_DropPartition_Call) Return(_a0 error) *IMetaTable_DropPartition_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *IMetaTable_DropPartition_Call) RunAndReturn(run func(context.Context, int64, int64, uint64) error) *IMetaTable_DropPartition_Call {
 	_c.Call.Return(run)
 	return _c
 }

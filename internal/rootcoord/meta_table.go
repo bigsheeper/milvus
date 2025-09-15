@@ -80,7 +80,7 @@ type IMetaTable interface {
 	GetCollectionVirtualChannels(ctx context.Context, colID int64) []string
 	GetPChannelInfo(ctx context.Context, pchannel string) *rootcoordpb.GetPChannelInfoResponse
 	AddPartition(ctx context.Context, partition *model.Partition) error
-	ChangePartitionState(ctx context.Context, collectionID UniqueID, partitionID UniqueID, state pb.PartitionState, ts Timestamp) error
+	DropPartition(ctx context.Context, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error
 	RemovePartition(ctx context.Context, dbID int64, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error
 
 	// Alias
@@ -1034,8 +1034,17 @@ func (mt *MetaTable) AddPartition(ctx context.Context, partition *model.Partitio
 	if !ok || !coll.Available() {
 		return fmt.Errorf("collection not exists: %d", partition.CollectionID)
 	}
-	if partition.State != pb.PartitionState_PartitionCreating {
+
+	if partition.State != pb.PartitionState_PartitionCreated {
 		return fmt.Errorf("partition state is not created, collection: %d, partition: %d, state: %s", partition.CollectionID, partition.PartitionID, partition.State)
+	}
+
+	// idempotency check here.
+	for _, part := range coll.Partitions {
+		if part.PartitionID == partition.PartitionID {
+			log.Ctx(ctx).Info("partition already exists, ignore the operation", zap.Int64("collection", partition.CollectionID), zap.Int64("partition", partition.PartitionID))
+			return nil
+		}
 	}
 	if err := mt.catalog.CreatePartition(ctx, coll.DBID, partition, partition.PartitionCreatedTimestamp); err != nil {
 		return err
@@ -1045,11 +1054,14 @@ func (mt *MetaTable) AddPartition(ctx context.Context, partition *model.Partitio
 	log.Ctx(ctx).Info("add partition to meta table",
 		zap.Int64("collection", partition.CollectionID), zap.String("partition", partition.PartitionName),
 		zap.Int64("partitionid", partition.PartitionID), zap.Uint64("ts", partition.PartitionCreatedTimestamp))
+	mt.generalCnt += int(coll.ShardsNum) // 1 partition * shardNum
+	// support Dynamic load/release partitions
+	metrics.RootCoordNumOfPartitions.WithLabelValues().Inc()
 
 	return nil
 }
 
-func (mt *MetaTable) ChangePartitionState(ctx context.Context, collectionID UniqueID, partitionID UniqueID, state pb.PartitionState, ts Timestamp) error {
+func (mt *MetaTable) DropPartition(ctx context.Context, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error {
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
 
@@ -1059,32 +1071,29 @@ func (mt *MetaTable) ChangePartitionState(ctx context.Context, collectionID Uniq
 	}
 	for idx, part := range coll.Partitions {
 		if part.PartitionID == partitionID {
+			if part.State == pb.PartitionState_PartitionDropping {
+				// promise idempotency here.
+				return nil
+			}
 			clone := part.Clone()
-			clone.State = state
+			clone.State = pb.PartitionState_PartitionDropping
 			ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
 			if err := mt.catalog.AlterPartition(ctx1, coll.DBID, part, clone, metastore.MODIFY, ts); err != nil {
 				return err
 			}
 			mt.collID2Meta[collectionID].Partitions[idx] = clone
 
-			switch state {
-			case pb.PartitionState_PartitionCreated:
-				mt.generalCnt += int(coll.ShardsNum) // 1 partition * shardNum
-				// support Dynamic load/release partitions
-				metrics.RootCoordNumOfPartitions.WithLabelValues().Inc()
-			case pb.PartitionState_PartitionDropping:
-				mt.generalCnt -= int(coll.ShardsNum) // 1 partition * shardNum
-				metrics.RootCoordNumOfPartitions.WithLabelValues().Dec()
-			}
-
-			log.Ctx(ctx).Info("change partition state", zap.Int64("collection", collectionID),
-				zap.Int64("partition", partitionID), zap.String("state", state.String()),
+			log.Ctx(ctx).Info("drop partition", zap.Int64("collection", collectionID),
+				zap.Int64("partition", partitionID),
 				zap.Uint64("ts", ts))
 
+			mt.generalCnt -= int(coll.ShardsNum) // 1 partition * shardNum
+			metrics.RootCoordNumOfPartitions.WithLabelValues().Dec()
 			return nil
 		}
 	}
-	return fmt.Errorf("partition not exist, collection: %d, partition: %d", collectionID, partitionID)
+	// partition not found, so promise idempotency here.
+	return nil
 }
 
 func (mt *MetaTable) RemovePartition(ctx context.Context, dbID int64, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error {

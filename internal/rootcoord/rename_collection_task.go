@@ -89,14 +89,14 @@ func (t *renameCollectionTask) Execute(ctx context.Context) error {
 	redoTask := newBaseRedoTask(t.core.stepExecutor)
 
 	// Step 1: Rename collection in metadata catalog
-	redoTask.AddSyncStep(&renameCollectionStep{
-		baseStep:  baseStep{core: t.core},
-		dbName:    t.Req.GetDbName(),
-		oldName:   t.Req.GetOldName(),
-		newDBName: t.Req.GetNewDBName(),
-		newName:   t.Req.GetNewName(),
-		ts:        ts,
-	})
+	// redoTask.AddSyncStep(&renameCollectionStep{
+	// 	baseStep:  baseStep{core: t.core},
+	// 	dbName:    t.Req.GetDbName(),
+	// 	oldName:   t.Req.GetOldName(),
+	// 	newDBName: t.Req.GetNewDBName(),
+	// 	newName:   t.Req.GetNewName(),
+	// 	ts:        ts,
+	// })
 
 	// Step 2: Expire cache for old collection name
 	redoTask.AddSyncStep(&expireCacheStep{

@@ -536,41 +536,6 @@ func (s *WriteSchemaChangeWALStep) Desc() string {
 	return fmt.Sprintf("write schema change WALcollectionID: %d, ts: %d", s.collection.CollectionID, s.ts)
 }
 
-type AlterDatabaseStep struct {
-	baseStep
-	oldDB *model.Database
-	newDB *model.Database
-	ts    Timestamp
-}
-
-func (a *AlterDatabaseStep) Execute(ctx context.Context) ([]nestedStep, error) {
-	err := a.core.meta.AlterDatabase(ctx, a.oldDB, a.newDB, a.ts)
-	return nil, err
-}
-
-func (a *AlterDatabaseStep) Desc() string {
-	return fmt.Sprintf("alter database, databaseID: %d, databaseName: %s, ts: %d", a.oldDB.ID, a.oldDB.Name, a.ts)
-}
-
-type renameCollectionStep struct {
-	baseStep
-	dbName    string
-	oldName   string
-	newDBName string
-	newName   string
-	ts        Timestamp
-}
-
-func (s *renameCollectionStep) Execute(ctx context.Context) ([]nestedStep, error) {
-	err := s.core.meta.RenameCollection(ctx, s.dbName, s.oldName, s.newDBName, s.newName, s.ts)
-	return nil, err
-}
-
-func (s *renameCollectionStep) Desc() string {
-	return fmt.Sprintf("rename collection from %s.%s to %s.%s, ts: %d",
-		s.dbName, s.oldName, s.newDBName, s.newName, s.ts)
-}
-
 var (
 	confirmGCInterval          = time.Minute * 20
 	allPartition      UniqueID = -1

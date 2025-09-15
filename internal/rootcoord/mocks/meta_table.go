@@ -225,17 +225,17 @@ func (_c *IMetaTable_AlterCredential_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
-// AlterDatabase provides a mock function with given fields: ctx, oldDB, newDB, ts
-func (_m *IMetaTable) AlterDatabase(ctx context.Context, oldDB *model.Database, newDB *model.Database, ts uint64) error {
-	ret := _m.Called(ctx, oldDB, newDB, ts)
+// AlterDatabase provides a mock function with given fields: ctx, newDB, ts
+func (_m *IMetaTable) AlterDatabase(ctx context.Context, newDB *model.Database, ts uint64) error {
+	ret := _m.Called(ctx, newDB, ts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AlterDatabase")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *model.Database, *model.Database, uint64) error); ok {
-		r0 = rf(ctx, oldDB, newDB, ts)
+	if rf, ok := ret.Get(0).(func(context.Context, *model.Database, uint64) error); ok {
+		r0 = rf(ctx, newDB, ts)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -250,16 +250,15 @@ type IMetaTable_AlterDatabase_Call struct {
 
 // AlterDatabase is a helper method to define mock.On call
 //   - ctx context.Context
-//   - oldDB *model.Database
 //   - newDB *model.Database
 //   - ts uint64
-func (_e *IMetaTable_Expecter) AlterDatabase(ctx interface{}, oldDB interface{}, newDB interface{}, ts interface{}) *IMetaTable_AlterDatabase_Call {
-	return &IMetaTable_AlterDatabase_Call{Call: _e.mock.On("AlterDatabase", ctx, oldDB, newDB, ts)}
+func (_e *IMetaTable_Expecter) AlterDatabase(ctx interface{}, newDB interface{}, ts interface{}) *IMetaTable_AlterDatabase_Call {
+	return &IMetaTable_AlterDatabase_Call{Call: _e.mock.On("AlterDatabase", ctx, newDB, ts)}
 }
 
-func (_c *IMetaTable_AlterDatabase_Call) Run(run func(ctx context.Context, oldDB *model.Database, newDB *model.Database, ts uint64)) *IMetaTable_AlterDatabase_Call {
+func (_c *IMetaTable_AlterDatabase_Call) Run(run func(ctx context.Context, newDB *model.Database, ts uint64)) *IMetaTable_AlterDatabase_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*model.Database), args[2].(*model.Database), args[3].(uint64))
+		run(args[0].(context.Context), args[1].(*model.Database), args[2].(uint64))
 	})
 	return _c
 }
@@ -269,7 +268,7 @@ func (_c *IMetaTable_AlterDatabase_Call) Return(_a0 error) *IMetaTable_AlterData
 	return _c
 }
 
-func (_c *IMetaTable_AlterDatabase_Call) RunAndReturn(run func(context.Context, *model.Database, *model.Database, uint64) error) *IMetaTable_AlterDatabase_Call {
+func (_c *IMetaTable_AlterDatabase_Call) RunAndReturn(run func(context.Context, *model.Database, uint64) error) *IMetaTable_AlterDatabase_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -477,6 +476,100 @@ func (_c *IMetaTable_CheckIfAliasCreatable_Call) Return(_a0 error) *IMetaTable_C
 }
 
 func (_c *IMetaTable_CheckIfAliasCreatable_Call) RunAndReturn(run func(context.Context, string, string, string) error) *IMetaTable_CheckIfAliasCreatable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CheckIfDatabaseCreatable provides a mock function with given fields: ctx, dbName
+func (_m *IMetaTable) CheckIfDatabaseCreatable(ctx context.Context, dbName string) error {
+	ret := _m.Called(ctx, dbName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckIfDatabaseCreatable")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, dbName)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// IMetaTable_CheckIfDatabaseCreatable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckIfDatabaseCreatable'
+type IMetaTable_CheckIfDatabaseCreatable_Call struct {
+	*mock.Call
+}
+
+// CheckIfDatabaseCreatable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - dbName string
+func (_e *IMetaTable_Expecter) CheckIfDatabaseCreatable(ctx interface{}, dbName interface{}) *IMetaTable_CheckIfDatabaseCreatable_Call {
+	return &IMetaTable_CheckIfDatabaseCreatable_Call{Call: _e.mock.On("CheckIfDatabaseCreatable", ctx, dbName)}
+}
+
+func (_c *IMetaTable_CheckIfDatabaseCreatable_Call) Run(run func(ctx context.Context, dbName string)) *IMetaTable_CheckIfDatabaseCreatable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfDatabaseCreatable_Call) Return(_a0 error) *IMetaTable_CheckIfDatabaseCreatable_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfDatabaseCreatable_Call) RunAndReturn(run func(context.Context, string) error) *IMetaTable_CheckIfDatabaseCreatable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CheckIfDatabaseDroppable provides a mock function with given fields: ctx, dbName
+func (_m *IMetaTable) CheckIfDatabaseDroppable(ctx context.Context, dbName string) error {
+	ret := _m.Called(ctx, dbName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckIfDatabaseDroppable")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, dbName)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// IMetaTable_CheckIfDatabaseDroppable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckIfDatabaseDroppable'
+type IMetaTable_CheckIfDatabaseDroppable_Call struct {
+	*mock.Call
+}
+
+// CheckIfDatabaseDroppable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - dbName string
+func (_e *IMetaTable_Expecter) CheckIfDatabaseDroppable(ctx interface{}, dbName interface{}) *IMetaTable_CheckIfDatabaseDroppable_Call {
+	return &IMetaTable_CheckIfDatabaseDroppable_Call{Call: _e.mock.On("CheckIfDatabaseDroppable", ctx, dbName)}
+}
+
+func (_c *IMetaTable_CheckIfDatabaseDroppable_Call) Run(run func(ctx context.Context, dbName string)) *IMetaTable_CheckIfDatabaseDroppable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfDatabaseDroppable_Call) Return(_a0 error) *IMetaTable_CheckIfDatabaseDroppable_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfDatabaseDroppable_Call) RunAndReturn(run func(context.Context, string) error) *IMetaTable_CheckIfDatabaseDroppable_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -2536,7 +2629,7 @@ func (_c *IMetaTable_OperateUserRole_Call) RunAndReturn(run func(context.Context
 }
 
 // PutAlias provides a mock function with given fields: ctx, result
-func (_m *IMetaTable) AlterAlias(ctx context.Context, result message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.PutAliasMessageBody]) error {
+func (_m *IMetaTable) AlterAlias(ctx context.Context, result message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.AlterAliasMessageBody]) error {
 	ret := _m.Called(ctx, result)
 
 	if len(ret) == 0 {
@@ -2565,7 +2658,7 @@ func (_e *IMetaTable_Expecter) PutAlias(ctx interface{}, result interface{}) *IM
 	return &IMetaTable_PutAlias_Call{Call: _e.mock.On("PutAlias", ctx, result)}
 }
 
-func (_c *IMetaTable_AlterAlias_Call) Run(run func(ctx context.Context, result message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.PutAliasMessageBody])) *IMetaTable_PutAlias_Call {
+func (_c *IMetaTable_AlterAlias_Call) Run(run func(ctx context.Context, result message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.AlterAliasMessageBody])) *IMetaTable_PutAlias_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.AlterAliasMessageBody]))
 	})
@@ -2577,7 +2670,7 @@ func (_c *IMetaTable_PutAlias_Call) Return(_a0 error) *IMetaTable_PutAlias_Call 
 	return _c
 }
 
-func (_c *IMetaTable_AlterAlias_Call) RunAndReturn(run func(context.Context, message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.PutAliasMessageBody]) error) *IMetaTable_PutAlias_Call {
+func (_c *IMetaTable_AlterAlias_Call) RunAndReturn(run func(context.Context, message.BroadcastResult[*messagespb.AlterAliasMessageHeader, *messagespb.AlterAliasMessageBody]) error) *IMetaTable_PutAlias_Call {
 	_c.Call.Return(run)
 	return _c
 }

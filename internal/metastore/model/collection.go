@@ -140,9 +140,9 @@ func (c *Collection) ApplyUpdates(header *message.AlterCollectionMessageHeader, 
 			c.DBID = updates.DbId
 			c.DBName = updates.DbName
 		case message.FieldMaskCollectionName:
-			c.Name = updates.Schema.Name
+			c.Name = updates.CollectionName
 		case message.FieldMaskCollectionDescription:
-			c.Description = updates.Schema.Description
+			c.Description = updates.Description
 		case message.FieldMaskCollectionConsistencyLevel:
 			c.ConsistencyLevel = updates.ConsistencyLevel
 		case message.FieldMaskCollectionProperties:

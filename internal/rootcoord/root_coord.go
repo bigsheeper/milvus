@@ -2607,19 +2607,9 @@ func (c *Core) RenameCollection(ctx context.Context, req *milvuspb.RenameCollect
 
 	metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.TotalLabel).Inc()
 	tr := timerecord.NewTimeRecorder("RenameCollection")
-	t := &renameCollectionTask{
-		baseTask: newBaseTask(ctx, c),
-		Req:      req,
-	}
 
-	if err := c.scheduler.AddTask(t); err != nil {
-		log.Warn("failed to enqueue request to rename collection", zap.Error(err))
-		metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.FailLabel).Inc()
-		return merr.Status(err), nil
-	}
-
-	if err := t.WaitToFinish(); err != nil {
-		log.Warn("failed to rename collection", zap.Uint64("ts", t.GetTs()), zap.Error(err))
+	if err := c.broadcastRenameCollection(ctx, req); err != nil {
+		log.Warn("failed to rename collection", zap.Error(err))
 		metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.FailLabel).Inc()
 		return merr.Status(err), nil
 	}
@@ -2627,7 +2617,7 @@ func (c *Core) RenameCollection(ctx context.Context, req *milvuspb.RenameCollect
 	metrics.RootCoordDDLReqCounter.WithLabelValues("RenameCollection", metrics.SuccessLabel).Inc()
 	metrics.RootCoordDDLReqLatency.WithLabelValues("RenameCollection").Observe(float64(tr.ElapseSpan().Milliseconds()))
 
-	log.Info("done to rename collection", zap.Uint64("ts", t.GetTs()))
+	log.Info("done to rename collection")
 	return merr.Success(), nil
 }
 

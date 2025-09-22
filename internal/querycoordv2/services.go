@@ -29,17 +29,14 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/internal/distributed/streaming"
 	"github.com/milvus-io/milvus/internal/querycoordv2/job"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
-	"github.com/milvus-io/milvus/internal/streamingcoord/server/broadcaster/broadcast"
 	"github.com/milvus-io/milvus/internal/util/componentutil"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/querypb"
-	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/metricsinfo"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -216,111 +213,23 @@ func (s *Server) LoadCollection(ctx context.Context, req *querypb.LoadCollection
 		metrics.QueryCoordLoadCount.WithLabelValues(metrics.FailLabel).Inc()
 		return merr.Status(errors.Wrap(err, msg)), nil
 	}
-
 	// If refresh mode is ON.
 	if req.GetRefresh() {
 		err := s.refreshCollection(ctx, req.GetCollectionID())
 		if err != nil {
 			log.Warn("failed to refresh collection", zap.Error(err))
+			return merr.Status(err), nil
 		}
+		return merr.Success(), nil
+	}
+
+	if err := s.broadcastAlterLoadConfigCollectionV2ForLoadCollection(ctx, req); err != nil {
+		metrics.QueryCoordLoadCount.WithLabelValues(metrics.FailLabel).Inc()
 		return merr.Status(err), nil
 	}
 
-	// if user specified the replica number in load request, load config changes won't be apply to the collection automatically
-	userSpecifiedReplicaMode := req.GetReplicaNumber() > 0
-	// to be compatible with old sdk, which set replica=1 if replica is not specified
-	// so only both replica and resource groups didn't set in request, it will turn to use the configured load info
-	if req.GetReplicaNumber() <= 0 && len(req.GetResourceGroups()) == 0 {
-		// when replica number or resource groups is not set, use pre-defined load config
-		rgs, replicas, err := s.broker.GetCollectionLoadInfo(ctx, req.GetCollectionID())
-		if err != nil {
-			log.Warn("failed to get pre-defined load info", zap.Error(err))
-		} else {
-			if req.GetReplicaNumber() <= 0 && replicas > 0 {
-				req.ReplicaNumber = int32(replicas)
-			}
-
-			if len(req.GetResourceGroups()) == 0 && len(rgs) > 0 {
-				req.ResourceGroups = rgs
-			}
-		}
-	}
-
-	if req.GetReplicaNumber() <= 0 {
-		log.Info("request doesn't indicate the number of replicas, set it to 1")
-		req.ReplicaNumber = 1
-	}
-
-	if len(req.GetResourceGroups()) == 0 {
-		log.Info(fmt.Sprintf("request doesn't indicate the resource groups, set it to %s", meta.DefaultResourceGroupName))
-		req.ResourceGroups = []string{meta.DefaultResourceGroupName}
-	}
-	broadcaster, err := broadcast.StartBroadcastWithResourceKeys(ctx, message.NewExclusiveCollectionNameResourceKey(req.Schema.GetDbName(), req.Schema.GetDbName()))
-	if err != nil {
-		return nil, err
-	}
-	defer broadcaster.Close()
-
-	var loadJob *job.LoadCollectionJobGenerator
-	collection := s.meta.GetCollection(ctx, req.GetCollectionID())
-	if collection != nil {
-		// if collection is loaded, check if collection is loaded with the same replica number and resource groups
-		// if replica number or resource group changes， switch to update load config
-		// collectionUsedRG := s.meta.ReplicaManager.GetResourceGroupByCollection(ctx, collection.GetCollectionID()).Collect()
-		// left, right := lo.Difference(collectionUsedRG, req.GetResourceGroups())
-		// rgChanged := len(left) > 0 || len(right) > 0
-		// replicaChanged := collection.GetReplicaNumber() != req.GetReplicaNumber()
-		// if replicaChanged || rgChanged {
-		// 	log.Warn("collection is loaded with different replica number or resource group, switch to update load config",
-		// 		zap.Int32("oldReplicaNumber", collection.GetReplicaNumber()),
-		// 		zap.Strings("oldResourceGroups", collectionUsedRG))
-		// 	updateReq := &querypb.UpdateLoadConfigRequest{
-		// 		CollectionIDs:  []int64{req.GetCollectionID()},
-		// 		ReplicaNumber:  req.GetReplicaNumber(),
-		// 		ResourceGroups: req.GetResourceGroups(),
-		// 	}
-		// 	loadJob = job.NewUpdateLoadConfigJob(
-		// 		ctx,
-		// 		updateReq,
-		// 		s.meta,
-		// 		s.targetMgr,
-		// 		s.targetObserver,
-		// 		s.collectionObserver,
-		// 		userSpecifiedReplicaMode,
-		// 	)
-		// }
-	}
-
-	if loadJob == nil {
-		loadJob = job.NewLoadCollectionJobGenerator(ctx, req, s.broker, s.meta, userSpecifiedReplicaMode)
-	}
-
-	// Do a verification here.
-	msg, err := loadJob.GenerateAlterLoadConfigMessage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = broadcaster.Broadcast(ctx, msg); err != nil {
-		return nil, err
-	}
-	return merr.Success(), nil
-}
-
-// alterLoadConfigCollectionV2AckCallback is called when the put load config message is acknowledged
-func (s *Server) alterLoadConfigCollectionV2AckCallback(ctx context.Context, result message.BroadcastResultAlterLoadConfigMessageV2) error {
-	// currently, we only sent the put load config message to the control channel
-	// TODO: after we support query view in 3.0, we should broadcast the put load config message to all vchannels.
-	job := job.NewLoadCollectionJob(ctx, result, s.dist, s.meta, s.broker, s.targetMgr, s.targetObserver, s.collectionObserver, s.nodeMgr)
-	s.jobScheduler.Add(job)
-	err := job.Wait()
-	if err != nil {
-		msg := "failed to load collection"
-		log.Warn(msg, zap.Error(err))
-		metrics.QueryCoordLoadCount.WithLabelValues(metrics.FailLabel).Inc()
-		return err
-	}
 	metrics.QueryCoordLoadCount.WithLabelValues(metrics.SuccessLabel).Inc()
-	return nil
+	return merr.Success(), nil
 }
 
 func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseCollectionRequest) (*commonpb.Status, error) {
@@ -337,62 +246,16 @@ func (s *Server) ReleaseCollection(ctx context.Context, req *querypb.ReleaseColl
 		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
 		return merr.Status(errors.Wrap(err, msg)), nil
 	}
-	coll, err := s.broker.DescribeCollection(ctx, req.GetCollectionID())
-	if err != nil {
+
+	if err := s.broadcastDropLoadConfigCollectionV2ForReleaseCollection(ctx, req); err != nil {
+		if errors.Is(err, errReleaseCollectionNotLoaded) {
+			return merr.Success(), nil
+		}
 		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
 		return merr.Status(err), nil
 	}
-
-	broadcaster, err := broadcast.StartBroadcastWithResourceKeys(ctx, message.NewExclusiveCollectionNameResourceKey(coll.GetDbName(), coll.GetCollectionName()))
-	if err != nil {
-		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
-		return merr.Status(err), nil
-	}
-	defer broadcaster.Close()
-
-	if !s.meta.CollectionManager.Exist(ctx, req.GetCollectionID()) {
-		log.Info("collection is not loaded, so skip collection releasing")
-		return merr.Success(), nil
-	}
-
-	msg := message.NewDropLoadConfigMessageBuilderV2().
-		WithHeader(&message.DropLoadConfigMessageHeader{
-			DbId:         coll.DbId,
-			CollectionId: coll.CollectionID,
-		}).
-		WithBody(&message.DropLoadConfigMessageBody{}).
-		WithBroadcast([]string{streaming.WAL().ControlChannel()}). // TODO: after we support query view in 3.0, we should broadcast the drop load config message to all vchannels.
-		MustBuildBroadcast()
-
-	_, err = broadcaster.Broadcast(ctx, msg)
-	if err != nil {
-		msg := "failed to release collection"
-		log.Warn(msg, zap.Error(err))
-		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
-		return merr.Status(err), nil
-	}
-	log.Info("collection released")
 	metrics.QueryCoordReleaseLatency.WithLabelValues().Observe(float64(tr.ElapseSpan().Milliseconds()))
 	return merr.Success(), nil
-}
-
-func (s *Server) dropLoadConfigCollectionV2AckCallback(ctx context.Context, result message.BroadcastResultDropLoadConfigMessageV2) error {
-	releaseJob := job.NewReleaseCollectionJob(ctx,
-		result,
-		s.dist,
-		s.meta,
-		s.broker,
-		s.targetMgr,
-		s.targetObserver,
-		s.checkerController,
-		s.proxyClientManager,
-	)
-	s.jobScheduler.Add(releaseJob)
-	if err := releaseJob.Wait(); err != nil {
-		return err
-	}
-	meta.GlobalFailedLoadCache.Remove(result.Message.Header().GetCollectionId())
-	return nil
 }
 
 func (s *Server) LoadPartitions(ctx context.Context, req *querypb.LoadPartitionsRequest) (*commonpb.Status, error) {
@@ -424,49 +287,12 @@ func (s *Server) LoadPartitions(ctx context.Context, req *querypb.LoadPartitions
 		return merr.Status(err), nil
 	}
 
-	// if user specified the replica number in load request, load config changes won't be apply to the collection automatically
-	userSpecifiedReplicaMode := req.GetReplicaNumber() > 0
-
-	// to be compatible with old sdk, which set replica=1 if replica is not specified
-	// so only both replica and resource groups didn't set in request, it will turn to use the configured load info
-	if req.GetReplicaNumber() <= 0 && len(req.GetResourceGroups()) == 0 {
-		// when replica number or resource groups is not set, use database level config
-		rgs, replicas, err := s.broker.GetCollectionLoadInfo(ctx, req.GetCollectionID())
-		if err != nil {
-			log.Warn("failed to get data base level load info", zap.Error(err))
-		}
-
-		if req.GetReplicaNumber() <= 0 {
-			log.Info("load collection use database level replica number", zap.Int64("databaseLevelReplicaNum", replicas))
-			req.ReplicaNumber = int32(replicas)
-		}
-
-		if len(req.GetResourceGroups()) == 0 {
-			log.Info("load collection use database level resource groups", zap.Strings("databaseLevelResourceGroups", rgs))
-			req.ResourceGroups = rgs
-		}
-	}
-
-	loadJob := job.NewLoadPartitionJob(ctx,
-		req,
-		s.dist,
-		s.meta,
-		s.broker,
-		s.targetMgr,
-		s.targetObserver,
-		s.collectionObserver,
-		s.nodeMgr,
-		userSpecifiedReplicaMode,
-	)
-	s.jobScheduler.Add(loadJob)
-	err := loadJob.Wait()
-	if err != nil {
+	if err := s.broadcastAlterLoadConfigCollectionV2ForLoadPartitions(ctx, req); err != nil {
 		msg := "failed to load partitions"
 		log.Warn(msg, zap.Error(err))
 		metrics.QueryCoordLoadCount.WithLabelValues(metrics.FailLabel).Inc()
 		return merr.Status(errors.Wrap(err, msg)), nil
 	}
-
 	metrics.QueryCoordLoadCount.WithLabelValues(metrics.SuccessLabel).Inc()
 	return merr.Success(), nil
 }
@@ -493,28 +319,15 @@ func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePart
 		return merr.Status(err), nil
 	}
 
-	tr := timerecord.NewTimeRecorder("release-partitions")
-	releaseJob := job.NewReleasePartitionJob(ctx,
-		req,
-		s.dist,
-		s.meta,
-		s.broker,
-		s.targetMgr,
-		s.targetObserver,
-		s.checkerController,
-		s.proxyClientManager,
-	)
-	s.jobScheduler.Add(releaseJob)
-	err := releaseJob.Wait()
-	if err != nil {
-		msg := "failed to release partitions"
-		log.Warn(msg, zap.Error(err))
+	if err := s.broadcastAlterLoadConfigCollectionV2ForReleasePartitions(ctx, req); err != nil {
 		metrics.QueryCoordReleaseCount.WithLabelValues(metrics.FailLabel).Inc()
-		return merr.Status(errors.Wrap(err, msg)), nil
+		return merr.Status(err), nil
 	}
 
+	job.WaitCollectionReleased(s.dist, s.checkerController, req.GetCollectionID(), req.GetPartitionIDs()...)
+
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()
-	metrics.QueryCoordReleaseLatency.WithLabelValues().Observe(float64(tr.ElapseSpan().Milliseconds()))
+	// metrics.QueryCoordReleaseLatency.WithLabelValues().Observe(float64(tr.ElapseSpan().Milliseconds()))
 
 	meta.GlobalFailedLoadCache.Remove(req.GetCollectionID())
 	return merr.Success(), nil

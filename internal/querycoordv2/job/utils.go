@@ -30,10 +30,10 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
-// waitCollectionReleased blocks until
+// WaitCollectionReleased blocks until
 // all channels and segments of given collection(partitions) are released,
 // empty partition list means wait for collection released
-func waitCollectionReleased(dist *meta.DistributionManager, checkerController *checkers.CheckerController, collection int64, partitions ...int64) {
+func WaitCollectionReleased(dist *meta.DistributionManager, checkerController *checkers.CheckerController, collection int64, partitions ...int64) {
 	partitionSet := typeutil.NewUniqueSet(partitions...)
 	for {
 		var (

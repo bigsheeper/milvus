@@ -347,9 +347,22 @@ func (job *LoadCollectionJob) Execute() error {
 		LoadSpan:  sp,
 		Schema:    collInfo.GetSchema(),
 	}
+	incomingPartitions := typeutil.NewSet(req.GetPartitionIds()...)
+	currentPartitions := job.meta.CollectionManager.GetPartitionsByCollection(job.ctx, req.GetCollectionId())
+	toReleasePartitions := make([]int64, 0)
+	for _, partition := range currentPartitions {
+		if !incomingPartitions.Contain(partition.GetPartitionID()) {
+			toReleasePartitions = append(toReleasePartitions, partition.GetPartitionID())
+		}
+	}
+	if len(toReleasePartitions) > 0 {
+		job.targetObserver.ReleasePartition(req.GetCollectionId(), toReleasePartitions...)
+		if err := job.meta.CollectionManager.RemovePartition(job.ctx, req.GetCollectionId(), toReleasePartitions...); err != nil {
+			return errors.Wrap(err, "failed to remove partitions")
+		}
+	}
 
-	err = job.meta.CollectionManager.PutCollection(job.ctx, collection, partitions...)
-	if err != nil {
+	if err = job.meta.CollectionManager.PutCollection(job.ctx, collection, partitions...); err != nil {
 		msg := "failed to store collection and partitions"
 		log.Warn(msg, zap.Error(err))
 		return errors.Wrap(err, msg)
@@ -363,6 +376,6 @@ func (job *LoadCollectionJob) Execute() error {
 	}
 
 	// 6. register load task into collection observer
-	job.collectionObserver.LoadCollection(ctx, req.GetCollectionId())
+	job.collectionObserver.LoadPartitions(ctx, req.GetCollectionId(), incomingPartitions.Collect())
 	return nil
 }

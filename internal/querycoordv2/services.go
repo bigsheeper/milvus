@@ -324,6 +324,7 @@ func (s *Server) ReleasePartitions(ctx context.Context, req *querypb.ReleasePart
 		return merr.Status(err), nil
 	}
 
+	job.WaitCurrentTargetUpdated(ctx, s.targetObserver, req.GetCollectionID())
 	job.WaitCollectionReleased(s.dist, s.checkerController, req.GetCollectionID(), req.GetPartitionIDs()...)
 
 	metrics.QueryCoordReleaseCount.WithLabelValues(metrics.SuccessLabel).Inc()

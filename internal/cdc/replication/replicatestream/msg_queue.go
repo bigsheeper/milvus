@@ -176,6 +176,10 @@ func (q *msgQueue) CleanupConfirmedMessages(lastConfirmedTimeTick uint64) []mess
 		copy(cleanedMessages, q.buf[:cut])
 
 		// Drop the prefix [0:cut)
+		// Release memory of [0:cut) by zeroing references before reslicing
+		for i := 0; i < cut; i++ {
+			q.buf[i] = nil
+		}
 		q.buf = q.buf[cut:]
 		// Adjust read cursor relative to the new slice
 		q.readIdx -= cut

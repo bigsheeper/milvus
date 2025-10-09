@@ -94,6 +94,12 @@ func (r *replicateStreamClient) startInternal() {
 		// when we need to stop the send/recv loops
 		connCtx, connCancel := context.WithCancel(r.ctx)
 
+		if connCtx.Err() != nil {
+			logger.Info("close replicate stream client by ctx done")
+			connCancel()
+			return
+		}
+
 		milvusClient, err := resource.Resource().ClusterClient().CreateMilvusClient(connCtx, r.replicateInfo.GetTargetCluster())
 		if err != nil {
 			logger.Warn("create milvus client failed, retry...", zap.Error(err))
@@ -107,6 +113,7 @@ func (r *replicateStreamClient) startInternal() {
 			continue
 		}
 		logger.Info("replicate stream client service started")
+		backoff.Reset()
 
 		// reset client and pending messages
 		r.client = client

@@ -623,6 +623,54 @@ func (_c *IMetaTable_CheckIfAliasCreatable_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// CheckIfAliasDroppable provides a mock function with given fields: ctx, dbName, alias
+func (_m *IMetaTable) CheckIfAliasDroppable(ctx context.Context, dbName string, alias string) error {
+	ret := _m.Called(ctx, dbName, alias)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckIfAliasDroppable")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = rf(ctx, dbName, alias)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// IMetaTable_CheckIfAliasDroppable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckIfAliasDroppable'
+type IMetaTable_CheckIfAliasDroppable_Call struct {
+	*mock.Call
+}
+
+// CheckIfAliasDroppable is a helper method to define mock.On call
+//   - ctx context.Context
+//   - dbName string
+//   - alias string
+func (_e *IMetaTable_Expecter) CheckIfAliasDroppable(ctx interface{}, dbName interface{}, alias interface{}) *IMetaTable_CheckIfAliasDroppable_Call {
+	return &IMetaTable_CheckIfAliasDroppable_Call{Call: _e.mock.On("CheckIfAliasDroppable", ctx, dbName, alias)}
+}
+
+func (_c *IMetaTable_CheckIfAliasDroppable_Call) Run(run func(ctx context.Context, dbName string, alias string)) *IMetaTable_CheckIfAliasDroppable_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfAliasDroppable_Call) Return(_a0 error) *IMetaTable_CheckIfAliasDroppable_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *IMetaTable_CheckIfAliasDroppable_Call) RunAndReturn(run func(context.Context, string, string) error) *IMetaTable_CheckIfAliasDroppable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CheckIfCreateRole provides a mock function with given fields: ctx, req
 func (_m *IMetaTable) CheckIfCreateRole(ctx context.Context, req *milvuspb.CreateRoleRequest) error {
 	ret := _m.Called(ctx, req)

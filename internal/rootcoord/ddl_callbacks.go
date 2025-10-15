@@ -127,3 +127,16 @@ func startBroadcastWithDatabaseLock(ctx context.Context, dbName string) (broadca
 	}
 	return broadcaster, nil
 }
+
+// startBroadcastWithAlterAliasLock starts a broadcast with alter alias lock.
+func startBroadcastWithAlterAliasLock(ctx context.Context, dbName string, collectionName string, alias string) (broadcaster.BroadcastAPI, error) {
+	broadcaster, err := broadcast.StartBroadcastWithResourceKeys(ctx,
+		message.NewSharedDBNameResourceKey(dbName),
+		message.NewExclusiveCollectionNameResourceKey(dbName, collectionName),
+		message.NewExclusiveCollectionNameResourceKey(dbName, alias),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start broadcast with alter alias lock")
+	}
+	return broadcaster, nil
+}

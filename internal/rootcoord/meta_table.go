@@ -50,11 +50,17 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
+var errIgnoredAlterAlias = errors.New("ignored alter alias") // alias already created on current collection, so it can be ignored.
+
 type MetaTableChecker interface {
 	RBACChecker
 
 	CheckIfDatabaseCreatable(ctx context.Context, req *milvuspb.CreateDatabaseRequest) error
 	CheckIfDatabaseDroppable(ctx context.Context, req *milvuspb.DropDatabaseRequest) error
+
+	CheckIfAliasCreatable(ctx context.Context, dbName string, alias string, collectionName string) error
+	CheckIfAliasAlterable(ctx context.Context, dbName string, alias string, collectionName string) error
+	CheckIfAliasDroppable(ctx context.Context, dbName string, alias string) error
 }
 
 //go:generate mockery --name=IMetaTable --structname=MockIMetaTable --output=./  --filename=mock_meta_table.go --with-expecter --inpackage
@@ -91,8 +97,6 @@ type IMetaTable interface {
 	RemovePartition(ctx context.Context, dbID int64, collectionID UniqueID, partitionID UniqueID, ts Timestamp) error
 
 	// Alias
-	CheckIfAliasCreatable(ctx context.Context, dbName string, alias string, collectionName string) error
-	CheckIfAliasAlterable(ctx context.Context, dbName string, alias string, collectionName string) error
 	AlterAlias(ctx context.Context, result message.BroadcastResultAlterAliasMessageV2) error
 	DropAlias(ctx context.Context, result message.BroadcastResultDropAliasMessageV2) error
 	DescribeAlias(ctx context.Context, dbName string, alias string, ts Timestamp) (string, error)
@@ -1154,7 +1158,7 @@ func (mt *MetaTable) CheckIfAliasCreatable(ctx context.Context, dbName string, a
 	aliasedCollectionID, ok := mt.aliases.get(dbName, alias)
 	if ok && aliasedCollectionID == collectionID {
 		log.Ctx(ctx).Warn("add duplicate alias", zap.String("alias", alias), zap.String("collection", collectionName))
-		return nil
+		return errIgnoredAlterAlias
 	} else if ok {
 		// TODO: better to check if aliasedCollectionID exist or is available, though not very possible.
 		aliasedColl := mt.collID2Meta[aliasedCollectionID]
@@ -1167,6 +1171,16 @@ func (mt *MetaTable) CheckIfAliasCreatable(ctx context.Context, dbName string, a
 	if !ok || !coll.Available() {
 		// you cannot alias to a non-existent collection.
 		return merr.WrapErrCollectionNotFoundWithDB(dbName, collectionName)
+	}
+	return nil
+}
+
+func (mt *MetaTable) CheckIfAliasDroppable(ctx context.Context, dbName string, alias string) error {
+	mt.ddLock.RLock()
+	defer mt.ddLock.RUnlock()
+
+	if _, ok := mt.aliases.get(dbName, alias); !ok {
+		return merr.WrapErrAliasNotFound(dbName, alias)
 	}
 	return nil
 }
@@ -1255,10 +1269,12 @@ func (mt *MetaTable) CheckIfAliasAlterable(ctx context.Context, dbName string, a
 	}
 
 	// check if alias exists.
-	_, ok = mt.aliases.get(dbName, alias)
+	existAliasCollectionID, ok := mt.aliases.get(dbName, alias)
 	if !ok {
-		//
 		return merr.WrapErrAliasNotFound(dbName, alias)
+	}
+	if existAliasCollectionID == collectionID {
+		return errIgnoredAlterAlias
 	}
 	return nil
 }

@@ -38,7 +38,8 @@ func RegisterDDLCallbacks(core *Core) {
 	}
 
 	ddlCallback.registerDatabaseCallbacks()
-	// RBAC
+	ddlCallback.registerCollectionCallbacks()
+	ddlCallback.registerPartitionCallbacks()
 	ddlCallback.registerRBACCallbacks()
 	ddlCallback.registerAliasCallbacks()
 }
@@ -69,6 +70,18 @@ func (c *DDLCallback) registerDatabaseCallbacks() {
 func (c *DDLCallback) registerAliasCallbacks() {
 	registry.RegisterAlterAliasV2AckCallback(c.alterAliasV2AckCallback)
 	registry.RegisterDropAliasV2AckCallback(c.dropAliasV2AckCallback)
+}
+
+// registerCollectionCallbacks registers the collection callbacks.
+func (c *DDLCallback) registerCollectionCallbacks() {
+	registry.RegisterCreateCollectionV1AckCallback(c.createCollectionV1AckCallback)
+	registry.RegisterDropCollectionV1AckCallback(c.dropCollectionV1AckCallback)
+}
+
+// registerPartitionCallbacks registers the partition callbacks.
+func (c *DDLCallback) registerPartitionCallbacks() {
+	registry.RegisterCreatePartitionV1AckCallback(c.createPartitionV1AckCallback)
+	registry.RegisterDropPartitionV1AckCallback(c.dropPartitionV1AckCallback)
 }
 
 // DDLCallback is the callback of ddl.

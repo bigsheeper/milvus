@@ -350,6 +350,10 @@ func (r *replicateStreamClient) handleAlterReplicateConfigMessage(msg message.Im
 	return false
 }
 
+func (r *replicateStreamClient) BlockUntilFinish() {
+	<-r.finishedCh
+}
+
 func (r *replicateStreamClient) Close() {
 	r.cancel()
 	<-r.finishedCh

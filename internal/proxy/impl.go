@@ -3958,7 +3958,6 @@ func (node *Proxy) FlushAll(ctx context.Context, request *milvuspb.FlushAllReque
 		Condition:       NewTaskCondition(ctx),
 		FlushAllRequest: request,
 		mixCoord:        node.mixCoord,
-		chMgr:           node.chMgr,
 	}
 
 	method := "FlushAll"

@@ -17,10 +17,12 @@ import (
 	"github.com/milvus-io/milvus/internal/mocks/streamingcoord/mock_client"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/client/handler/mock_producer"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/client/mock_handler"
+	"github.com/milvus-io/milvus/internal/util/streamingutil/status"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
 	pulsar2 "github.com/milvus-io/milvus/pkg/v2/streaming/walimpls/impls/pulsar"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/walimpls/impls/walimplstest"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/replicateutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -83,6 +85,258 @@ func TestReplicateService(t *testing.T) {
 	}
 }
 
+func TestReplicateService_GetReplicateConfiguration(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		c := mock_client.NewMockClient(t)
+		as := mock_client.NewMockAssignmentService(t)
+		c.EXPECT().Assignment().Return(as).Maybe()
+
+		expectedConfig := &commonpb.ReplicateConfiguration{
+			Clusters: []*commonpb.MilvusCluster{
+				{
+					ClusterId: "primary",
+					ConnectionParam: &commonpb.ConnectionParam{
+						Uri:   "http://primary:19530",
+						Token: "secret-token",
+					},
+					Pchannels: []string{"channel1"},
+				},
+				{
+					ClusterId: "secondary",
+					ConnectionParam: &commonpb.ConnectionParam{
+						Uri:   "http://secondary:19530",
+						Token: "another-secret",
+					},
+					Pchannels: []string{"channel1"},
+				},
+			},
+			CrossClusterTopology: []*commonpb.CrossClusterTopology{
+				{SourceClusterId: "primary", TargetClusterId: "secondary"},
+			},
+		}
+
+		as.EXPECT().GetReplicateConfiguration(mock.Anything, mock.Anything).Return(
+			replicateutil.MustNewConfigHelper("secondary", expectedConfig), nil,
+		)
+
+		rs := &replicateService{
+			walAccesserImpl: &walAccesserImpl{
+				lifetime:             typeutil.NewLifetime(),
+				clusterID:            "secondary",
+				streamingCoordClient: c,
+			},
+		}
+
+		config, err := rs.GetReplicateConfiguration(context.Background())
+		assert.NoError(t, err)
+		assert.NotNil(t, config)
+
+		// Tokens should be sanitized for all clusters
+		assert.Empty(t, config.Clusters[0].ConnectionParam.Token)
+		assert.Empty(t, config.Clusters[1].ConnectionParam.Token)
+		// URIs should be preserved
+		assert.Equal(t, "http://primary:19530", config.Clusters[0].ConnectionParam.Uri)
+		assert.Equal(t, "http://secondary:19530", config.Clusters[1].ConnectionParam.Uri)
+	})
+
+	t.Run("lifetime_closed", func(t *testing.T) {
+		lifetime := typeutil.NewLifetime()
+		lifetime.SetState(typeutil.LifetimeStateStopped)
+		lifetime.Wait()
+
+		rs := &replicateService{
+			walAccesserImpl: &walAccesserImpl{
+				lifetime: lifetime,
+			},
+		}
+
+		config, err := rs.GetReplicateConfiguration(context.Background())
+		assert.Error(t, err)
+		assert.Nil(t, config)
+		assert.ErrorIs(t, err, ErrWALAccesserClosed)
+	})
+
+	t.Run("assignment_error", func(t *testing.T) {
+		c := mock_client.NewMockClient(t)
+		as := mock_client.NewMockAssignmentService(t)
+		c.EXPECT().Assignment().Return(as).Maybe()
+
+		as.EXPECT().GetReplicateConfiguration(mock.Anything, mock.Anything).Return(
+			nil, errors.New("assignment service unavailable"),
+		)
+
+		rs := &replicateService{
+			walAccesserImpl: &walAccesserImpl{
+				lifetime:             typeutil.NewLifetime(),
+				clusterID:            "secondary",
+				streamingCoordClient: c,
+			},
+		}
+
+		config, err := rs.GetReplicateConfiguration(context.Background())
+		assert.Error(t, err)
+		assert.Nil(t, config)
+		assert.Contains(t, err.Error(), "assignment service unavailable")
+	})
+
+	t.Run("standalone_single_cluster", func(t *testing.T) {
+		c := mock_client.NewMockClient(t)
+		as := mock_client.NewMockAssignmentService(t)
+		c.EXPECT().Assignment().Return(as).Maybe()
+
+		standaloneConfig := &commonpb.ReplicateConfiguration{
+			Clusters: []*commonpb.MilvusCluster{
+				{
+					ClusterId: "standalone",
+					ConnectionParam: &commonpb.ConnectionParam{
+						Uri:   "http://standalone:19530",
+						Token: "standalone-secret",
+					},
+					Pchannels: []string{"ch1"},
+				},
+			},
+		}
+
+		as.EXPECT().GetReplicateConfiguration(mock.Anything, mock.Anything).Return(
+			replicateutil.MustNewConfigHelper("standalone", standaloneConfig), nil,
+		)
+
+		rs := &replicateService{
+			walAccesserImpl: &walAccesserImpl{
+				lifetime:             typeutil.NewLifetime(),
+				clusterID:            "standalone",
+				streamingCoordClient: c,
+			},
+		}
+
+		config, err := rs.GetReplicateConfiguration(context.Background())
+		assert.NoError(t, err)
+		assert.NotNil(t, config)
+		assert.Len(t, config.Clusters, 1)
+		assert.Equal(t, "standalone", config.Clusters[0].ClusterId)
+		assert.Empty(t, config.Clusters[0].ConnectionParam.Token)
+		assert.Equal(t, "http://standalone:19530", config.Clusters[0].ConnectionParam.Uri)
+		assert.Empty(t, config.CrossClusterTopology)
+	})
+}
+
+func TestReplicateService_SkipMessageTypes(t *testing.T) {
+	newReplicateService := func(t *testing.T) *replicateService {
+		c := mock_client.NewMockClient(t)
+		as := mock_client.NewMockAssignmentService(t)
+		c.EXPECT().Assignment().Return(as).Maybe()
+		as.EXPECT().GetReplicateConfiguration(mock.Anything).Return(replicateutil.MustNewConfigHelper(
+			"by-dev",
+			&commonpb.ReplicateConfiguration{
+				Clusters: []*commonpb.MilvusCluster{
+					{ClusterId: "primary", Pchannels: []string{"primary-rootcoord-dml_0", "primary-rootcoord-dml_1"}},
+					{ClusterId: "by-dev", Pchannels: []string{"by-dev-rootcoord-dml_0", "by-dev-rootcoord-dml_1"}},
+				},
+				CrossClusterTopology: []*commonpb.CrossClusterTopology{
+					{SourceClusterId: "primary", TargetClusterId: "by-dev"},
+				},
+			},
+		), nil).Maybe()
+
+		h := mock_handler.NewMockHandlerClient(t)
+		p := mock_producer.NewMockProducer(t)
+		p.EXPECT().Append(mock.Anything, mock.Anything).Return(&types.AppendResult{
+			MessageID: walimplstest.NewTestMessageID(1),
+			TimeTick:  1,
+		}, nil).Maybe()
+		p.EXPECT().IsAvailable().Return(true).Maybe()
+		p.EXPECT().Available().Return(make(chan struct{})).Maybe()
+		h.EXPECT().CreateProducer(mock.Anything, mock.Anything).Return(p, nil).Maybe()
+
+		return &replicateService{
+			walAccesserImpl: &walAccesserImpl{
+				lifetime:             typeutil.NewLifetime(),
+				clusterID:            "by-dev",
+				streamingCoordClient: c,
+				handlerClient:        h,
+				producers:            make(map[string]*producer.ResumableProducer),
+			},
+		}
+	}
+
+	t.Run("skip_AlterResourceGroup", func(t *testing.T) {
+		old := paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue("AlterResourceGroup,DropResourceGroup")
+		defer paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue(old)
+
+		rs := newReplicateService(t)
+		broadcastMsg := message.NewAlterResourceGroupMessageBuilderV2().
+			WithHeader(&message.AlterResourceGroupMessageHeader{}).
+			WithBody(&message.AlterResourceGroupMessageBody{}).
+			WithBroadcast([]string{"primary-rootcoord-dml_0_cchannel"}).
+			MustBuildBroadcast()
+		msgs := broadcastMsgToReplicateMsgs(broadcastMsg)
+		for _, msg := range msgs {
+			_, err := rs.Append(context.Background(), msg)
+			assert.Error(t, err)
+			se := status.AsStreamingError(err)
+			assert.NotNil(t, se)
+			assert.True(t, se.IsIgnoredOperation())
+		}
+	})
+
+	t.Run("skip_DropResourceGroup", func(t *testing.T) {
+		old := paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue("AlterResourceGroup,DropResourceGroup")
+		defer paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue(old)
+
+		rs := newReplicateService(t)
+		broadcastMsg := message.NewDropResourceGroupMessageBuilderV2().
+			WithHeader(&message.DropResourceGroupMessageHeader{ResourceGroupName: "test_rg"}).
+			WithBody(&message.DropResourceGroupMessageBody{}).
+			WithBroadcast([]string{"primary-rootcoord-dml_0_cchannel"}).
+			MustBuildBroadcast()
+		msgs := broadcastMsgToReplicateMsgs(broadcastMsg)
+		for _, msg := range msgs {
+			_, err := rs.Append(context.Background(), msg)
+			assert.Error(t, err)
+			se := status.AsStreamingError(err)
+			assert.NotNil(t, se)
+			assert.True(t, se.IsIgnoredOperation())
+		}
+	})
+
+	t.Run("non_skipped_message_passthrough", func(t *testing.T) {
+		old := paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue("AlterResourceGroup,DropResourceGroup")
+		defer paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue(old)
+
+		rs := newReplicateService(t)
+		replicateMsgs := createReplicateCreateCollectionMessages()
+		for _, msg := range replicateMsgs {
+			_, err := rs.Append(context.Background(), msg)
+			assert.NoError(t, err)
+		}
+	})
+
+	t.Run("empty_skip_list", func(t *testing.T) {
+		old := paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue("")
+		defer paramtable.Get().StreamingCfg.ReplicationSkipMessageTypes.SwapTempValue(old)
+
+		rs := newReplicateService(t)
+		replicateMsgs := createReplicateCreateCollectionMessages()
+		for _, msg := range replicateMsgs {
+			_, err := rs.Append(context.Background(), msg)
+			assert.NoError(t, err)
+		}
+	})
+}
+
+func broadcastMsgToReplicateMsgs(broadcastMsg message.BroadcastMutableMessage) []message.ReplicateMutableMessage {
+	msgs := broadcastMsg.WithBroadcastID(200).SplitIntoMutableMessage()
+	replicateMsgs := make([]message.ReplicateMutableMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		immutableMsg := msg.WithLastConfirmedUseMessageID().WithTimeTick(1).IntoImmutableMessage(pulsar2.NewPulsarID(
+			pulsar.NewMessageID(1, 2, 3, 4),
+		))
+		replicateMsgs = append(replicateMsgs, message.MustNewReplicateMessage("primary", immutableMsg.IntoImmutableMessageProto()))
+	}
+	return replicateMsgs
+}
+
+>>>>>>> 4ced506de4 (enhance: add configurable skip list for replicate message types)
 func createReplicateCreateCollectionMessages() []message.ReplicateMutableMessage {
 	schema := &schemapb.CollectionSchema{
 		Fields: []*schemapb.FieldSchema{

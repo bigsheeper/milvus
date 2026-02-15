@@ -17,12 +17,10 @@ import (
 	"github.com/milvus-io/milvus/internal/mocks/streamingcoord/mock_client"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/client/handler/mock_producer"
 	"github.com/milvus-io/milvus/internal/mocks/streamingnode/client/mock_handler"
-	"github.com/milvus-io/milvus/internal/util/streamingutil/status"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
 	pulsar2 "github.com/milvus-io/milvus/pkg/v2/streaming/walimpls/impls/pulsar"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/walimpls/impls/walimplstest"
-	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/replicateutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )

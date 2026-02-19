@@ -82,7 +82,7 @@ class MilvusConan(ConanFile):
         "glog:with_gflags": True,
         "glog:shared": True,
         "prometheus-cpp:with_pull": False,
-        "fmt:header_only": True,
+        "fmt:header_only": False,
         "onetbb:tbbmalloc": False,
         "onetbb:tbbproxy": False,
         "gdal:shared": True,

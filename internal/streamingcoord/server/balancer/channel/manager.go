@@ -542,6 +542,10 @@ func (cm *ChannelManager) updatePChannelMeta(ctx context.Context, pChannelMetas 
 	// update in-memory copy and increase the version.
 	for _, pchannel := range pChannelMetas {
 		c := newPChannelMetaFromProto(pchannel)
+		// Preserve transient vchannelAllocatable flag from old meta.
+		if old, ok := cm.channels[c.ChannelID()]; ok {
+			c.vchannelAllocatable = old.vchannelAllocatable
+		}
 		cm.channels[c.ChannelID()] = c
 	}
 	cm.version.Local++
@@ -688,6 +692,28 @@ func (cm *ChannelManager) getNewIncomingTask(newConfig *replicateutil.ConfigHelp
 		}
 	}
 	return incomingReplicatingTasks
+}
+
+// syncVChannelAllocatable updates the vchannelAllocatable flag on all pchannels.
+// When a replicate config exists, only pchannels listed in the current cluster's config
+// are allocatable. This prevents allocating vchannels to newly added pchannels before
+// the replicate config update has propagated to all clusters.
+func (cm *ChannelManager) syncVChannelAllocatable() {
+	if cm.replicateConfig == nil {
+		// No replicate config — all channels are allocatable (standalone mode).
+		for _, meta := range cm.channels {
+			meta.vchannelAllocatable = true
+		}
+		return
+	}
+	configPchannels := make(map[string]struct{})
+	for _, p := range cm.replicateConfig.GetCurrentCluster().GetPchannels() {
+		configPchannels[p] = struct{}{}
+	}
+	for _, meta := range cm.channels {
+		_, ok := configPchannels[meta.Name()]
+		meta.vchannelAllocatable = ok
+	}
 }
 
 // applyAssignments applies the assignments.

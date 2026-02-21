@@ -69,7 +69,7 @@ func RecoverChannelManager(ctx context.Context, incomingChannel ...string) (*Cha
 	}
 
 	globalVersion := resource.Resource().Session().GetRegisteredRevision()
-	return &ChannelManager{
+	cm := &ChannelManager{
 		cond:     syncutil.NewContextCond(&sync.Mutex{}),
 		channels: channels,
 		version: typeutil.VersionInt64Pair{
@@ -80,7 +80,9 @@ func RecoverChannelManager(ctx context.Context, incomingChannel ...string) (*Cha
 		cchannelMeta:     cchannelMeta,
 		streamingVersion: streamingVersion,
 		replicateConfig:  replicateConfig,
-	}, nil
+	}
+	cm.syncVChannelAllocatable()
+	return cm, nil
 }
 
 // recoverCChannelMeta recovers the control channel meta.
@@ -296,12 +298,19 @@ func (cm *ChannelManager) CurrentPChannelsView() *PChannelView {
 func (cm *ChannelManager) AllocVirtualChannels(ctx context.Context, param AllocVChannelParam) ([]string, error) {
 	cm.cond.L.Lock()
 	defer cm.cond.L.Unlock()
-	if len(cm.channels) < param.Num {
-		return nil, errors.Errorf("not enough pchannels to allocate, expected: %d, got: %d", param.Num, len(cm.channels))
+
+	allocatable := make(map[ChannelID]*PChannelMeta, len(cm.channels))
+	for id, meta := range cm.channels {
+		if meta.IsVChannelAllocatable() {
+			allocatable[id] = meta
+		}
+	}
+	if len(allocatable) < param.Num {
+		return nil, errors.Errorf("not enough pchannels to allocate, expected: %d, got: %d", param.Num, len(allocatable))
 	}
 
 	vchannels := make([]string, 0, param.Num)
-	for _, channel := range cm.sortChannelsByVChannelCount() {
+	for _, channel := range cm.sortChannelsByVChannelCount(allocatable) {
 		if len(vchannels) >= param.Num {
 			break
 		}
@@ -316,10 +325,10 @@ type withVChannelCount struct {
 	vchannelCount int
 }
 
-// sortChannelsByVChannelCount sorts the channels by the vchannel count.
-func (cm *ChannelManager) sortChannelsByVChannelCount() []withVChannelCount {
-	vchannelCounts := make([]withVChannelCount, 0, len(cm.channels))
-	for id := range cm.channels {
+// sortChannelsByVChannelCount sorts the given channels by the vchannel count.
+func (cm *ChannelManager) sortChannelsByVChannelCount(channels map[ChannelID]*PChannelMeta) []withVChannelCount {
+	vchannelCounts := make([]withVChannelCount, 0, len(channels))
+	for id := range channels {
 		vchannelCounts = append(vchannelCounts, withVChannelCount{
 			id:            id,
 			vchannelCount: StaticPChannelStatsManager.Get().GetPChannelStats(id).VChannelCount(),
@@ -440,6 +449,10 @@ func (cm *ChannelManager) updatePChannelMeta(ctx context.Context, pChannelMetas 
 	// update in-memory copy and increase the version.
 	for _, pchannel := range pChannelMetas {
 		c := newPChannelMetaFromProto(pchannel)
+		// Preserve transient vchannelAllocatable flag from old meta.
+		if old, ok := cm.channels[c.ChannelID()]; ok {
+			c.vchannelAllocatable = old.vchannelAllocatable
+		}
 		cm.channels[c.ChannelID()] = c
 	}
 	cm.version.Local++
@@ -517,6 +530,7 @@ func (cm *ChannelManager) UpdateReplicateConfiguration(ctx context.Context, resu
 	}
 
 	cm.replicateConfig = config
+	cm.syncVChannelAllocatable()
 	cm.cond.UnsafeBroadcast()
 	cm.version.Local++
 	cm.metrics.UpdateAssignmentVersion(cm.version.Local)
@@ -582,6 +596,28 @@ func (cm *ChannelManager) getNewIncomingTask(newConfig *replicateutil.ConfigHelp
 		}
 	}
 	return incomingReplicatingTasks
+}
+
+// syncVChannelAllocatable updates the vchannelAllocatable flag on all pchannels.
+// When a replicate config exists, only pchannels listed in the current cluster's config
+// are allocatable. This prevents allocating vchannels to newly added pchannels before
+// the replicate config update has propagated to all clusters.
+func (cm *ChannelManager) syncVChannelAllocatable() {
+	if cm.replicateConfig == nil {
+		// No replicate config — all channels are allocatable (standalone mode).
+		for _, meta := range cm.channels {
+			meta.vchannelAllocatable = true
+		}
+		return
+	}
+	configPchannels := make(map[string]struct{})
+	for _, p := range cm.replicateConfig.GetCurrentCluster().GetPchannels() {
+		configPchannels[p] = struct{}{}
+	}
+	for _, meta := range cm.channels {
+		_, ok := configPchannels[meta.Name()]
+		meta.vchannelAllocatable = ok
+	}
 }
 
 // applyAssignments applies the assignments.

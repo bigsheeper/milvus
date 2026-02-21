@@ -35,7 +35,13 @@ func newPChannelMetaFromProto(channel *streamingpb.PChannelMeta) *PChannelMeta {
 // PChannelMeta is the read only version of PChannelInfo, to be used in balancer,
 // If you need to update PChannelMeta, please use CopyForWrite to get mutablePChannel.
 type PChannelMeta struct {
-	inner *streamingpb.PChannelMeta
+	inner               *streamingpb.PChannelMeta
+	vchannelAllocatable bool // whether this pchannel can accept new vchannel allocations (transient, not persisted)
+}
+
+// IsVChannelAllocatable returns whether this pchannel can accept new vchannel allocations.
+func (c *PChannelMeta) IsVChannelAllocatable() bool {
+	return c.vchannelAllocatable
 }
 
 // Name returns the name of the channel.
@@ -113,7 +119,8 @@ func (c *PChannelMeta) State() streamingpb.PChannelMetaState {
 func (c *PChannelMeta) CopyForWrite() *mutablePChannel {
 	return &mutablePChannel{
 		PChannelMeta: &PChannelMeta{
-			inner: proto.Clone(c.inner).(*streamingpb.PChannelMeta),
+			inner:               proto.Clone(c.inner).(*streamingpb.PChannelMeta),
+			vchannelAllocatable: c.vchannelAllocatable,
 		},
 	}
 }

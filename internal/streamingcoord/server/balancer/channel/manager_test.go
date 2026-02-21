@@ -410,6 +410,109 @@ func TestAllocVirtualChannels(t *testing.T) {
 	assert.Equal(t, allocVChannels[3], "by-dev-rootcoord-dml_13_1v3")
 }
 
+func TestAllocVirtualChannelsWithReplicateConfig(t *testing.T) {
+	ResetStaticPChannelStatsManager()
+	RecoverPChannelStatsManager([]string{})
+
+	catalog := mock_metastore.NewMockStreamingCoordCataLog(t)
+	s := sessionutil.NewMockSession(t)
+	s.EXPECT().GetRegisteredRevision().Return(int64(1))
+	resource.InitForTest(resource.OptStreamingCatalog(catalog), resource.OptSession(s))
+
+	catalog.EXPECT().GetCChannel(mock.Anything).Return(&streamingpb.CChannelMeta{
+		Pchannel: "dml_0",
+	}, nil).Maybe()
+	catalog.EXPECT().GetVersion(mock.Anything).Return(&streamingpb.StreamingVersion{Version: 1}, nil).Maybe()
+	catalog.EXPECT().ListPChannel(mock.Anything).Return(nil, nil).Maybe()
+	// Recover with a replicate config listing only dml_0 and dml_1.
+	cfg := &commonpb.ReplicateConfiguration{
+		Clusters: []*commonpb.MilvusCluster{
+			{ClusterId: "by-dev", Pchannels: []string{"dml_0", "dml_1"}},
+			{ClusterId: "by-dev2", Pchannels: []string{"dml_0_2", "dml_1_2"}},
+		},
+		CrossClusterTopology: []*commonpb.CrossClusterTopology{
+			{SourceClusterId: "by-dev", TargetClusterId: "by-dev2"},
+		},
+	}
+	catalog.EXPECT().GetReplicateConfiguration(mock.Anything).Return(
+		&streamingpb.ReplicateConfigurationMeta{ReplicateConfiguration: cfg}, nil).Maybe()
+
+	ctx := context.Background()
+	m, err := RecoverChannelManager(ctx, "dml_0", "dml_1", "dml_2")
+	assert.NoError(t, err)
+	assert.NotNil(t, m)
+
+	// dml_2 is not in replicate config, so only 2 channels are allocatable.
+	// Requesting 3 should fail.
+	_, err = m.AllocVirtualChannels(ctx, AllocVChannelParam{
+		CollectionID: 1,
+		Num:          3,
+	})
+	assert.Error(t, err)
+
+	// Requesting 2 should succeed and only use dml_0 and dml_1.
+	vchannels, err := m.AllocVirtualChannels(ctx, AllocVChannelParam{
+		CollectionID: 1,
+		Num:          2,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, vchannels, 2)
+	for _, vc := range vchannels {
+		assert.False(t, strings.Contains(vc, "dml_2"))
+	}
+
+	// Update replicate config to include all 3 pchannels.
+	newCfg := &commonpb.ReplicateConfiguration{
+		Clusters: []*commonpb.MilvusCluster{
+			{ClusterId: "by-dev", Pchannels: []string{"dml_0", "dml_1", "dml_2"}},
+			{ClusterId: "by-dev2", Pchannels: []string{"dml_0_2", "dml_1_2", "dml_2_2"}},
+		},
+		CrossClusterTopology: []*commonpb.CrossClusterTopology{
+			{SourceClusterId: "by-dev", TargetClusterId: "by-dev2"},
+		},
+	}
+	msg := message.NewAlterReplicateConfigMessageBuilderV2().
+		WithHeader(&message.AlterReplicateConfigMessageHeader{
+			ReplicateConfiguration: newCfg,
+		}).
+		WithBody(&message.AlterReplicateConfigMessageBody{}).
+		WithBroadcast([]string{"dml_0", "dml_1", "dml_2"}).
+		MustBuildBroadcast()
+
+	result := message.BroadcastResultAlterReplicateConfigMessageV2{
+		Message: message.MustAsBroadcastAlterReplicateConfigMessageV2(msg),
+		Results: map[string]*message.AppendResult{
+			"dml_0": {
+				MessageID:              walimplstest.NewTestMessageID(1),
+				LastConfirmedMessageID: walimplstest.NewTestMessageID(2),
+				TimeTick:               1,
+			},
+			"dml_1": {
+				MessageID:              walimplstest.NewTestMessageID(3),
+				LastConfirmedMessageID: walimplstest.NewTestMessageID(4),
+				TimeTick:               1,
+			},
+			"dml_2": {
+				MessageID:              walimplstest.NewTestMessageID(5),
+				LastConfirmedMessageID: walimplstest.NewTestMessageID(6),
+				TimeTick:               1,
+			},
+		},
+	}
+
+	catalog.EXPECT().SaveReplicateConfiguration(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	err = m.UpdateReplicateConfiguration(ctx, result)
+	assert.NoError(t, err)
+
+	// Now all 3 pchannels are allocatable — requesting 3 should succeed.
+	vchannels, err = m.AllocVirtualChannels(ctx, AllocVChannelParam{
+		CollectionID: 2,
+		Num:          3,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, vchannels, 3)
+}
+
 func TestStreamingEnableChecker(t *testing.T) {
 	ctx := context.Background()
 	ResetStaticPChannelStatsManager()

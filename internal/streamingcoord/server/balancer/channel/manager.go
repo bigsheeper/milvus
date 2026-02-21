@@ -69,7 +69,7 @@ func RecoverChannelManager(ctx context.Context, incomingChannel ...string) (*Cha
 	}
 
 	globalVersion := resource.Resource().Session().GetRegisteredRevision()
-	return &ChannelManager{
+	cm := &ChannelManager{
 		cond:     syncutil.NewContextCond(&sync.Mutex{}),
 		channels: channels,
 		version: typeutil.VersionInt64Pair{
@@ -80,7 +80,9 @@ func RecoverChannelManager(ctx context.Context, incomingChannel ...string) (*Cha
 		cchannelMeta:     cchannelMeta,
 		streamingVersion: streamingVersion,
 		replicateConfig:  replicateConfig,
-	}, nil
+	}
+	cm.syncVChannelAllocatable()
+	return cm, nil
 }
 
 // recoverCChannelMeta recovers the control channel meta.
@@ -296,12 +298,19 @@ func (cm *ChannelManager) CurrentPChannelsView() *PChannelView {
 func (cm *ChannelManager) AllocVirtualChannels(ctx context.Context, param AllocVChannelParam) ([]string, error) {
 	cm.cond.L.Lock()
 	defer cm.cond.L.Unlock()
-	if len(cm.channels) < param.Num {
-		return nil, errors.Errorf("not enough pchannels to allocate, expected: %d, got: %d", param.Num, len(cm.channels))
+
+	allocatable := make(map[ChannelID]*PChannelMeta, len(cm.channels))
+	for id, meta := range cm.channels {
+		if meta.IsVChannelAllocatable() {
+			allocatable[id] = meta
+		}
+	}
+	if len(allocatable) < param.Num {
+		return nil, errors.Errorf("not enough pchannels to allocate, expected: %d, got: %d", param.Num, len(allocatable))
 	}
 
 	vchannels := make([]string, 0, param.Num)
-	for _, channel := range cm.sortChannelsByVChannelCount() {
+	for _, channel := range cm.sortChannelsByVChannelCount(allocatable) {
 		if len(vchannels) >= param.Num {
 			break
 		}
@@ -316,10 +325,10 @@ type withVChannelCount struct {
 	vchannelCount int
 }
 
-// sortChannelsByVChannelCount sorts the channels by the vchannel count.
-func (cm *ChannelManager) sortChannelsByVChannelCount() []withVChannelCount {
-	vchannelCounts := make([]withVChannelCount, 0, len(cm.channels))
-	for id := range cm.channels {
+// sortChannelsByVChannelCount sorts the given channels by the vchannel count.
+func (cm *ChannelManager) sortChannelsByVChannelCount(channels map[ChannelID]*PChannelMeta) []withVChannelCount {
+	vchannelCounts := make([]withVChannelCount, 0, len(channels))
+	for id := range channels {
 		vchannelCounts = append(vchannelCounts, withVChannelCount{
 			id:            id,
 			vchannelCount: StaticPChannelStatsManager.Get().GetPChannelStats(id).VChannelCount(),
@@ -440,6 +449,10 @@ func (cm *ChannelManager) updatePChannelMeta(ctx context.Context, pChannelMetas 
 	// update in-memory copy and increase the version.
 	for _, pchannel := range pChannelMetas {
 		c := newPChannelMetaFromProto(pchannel)
+		// Preserve transient vchannelAllocatable flag from old meta.
+		if old, ok := cm.channels[c.ChannelID()]; ok {
+			c.vchannelAllocatable = old.vchannelAllocatable
+		}
 		cm.channels[c.ChannelID()] = c
 	}
 	cm.version.Local++
@@ -517,6 +530,7 @@ func (cm *ChannelManager) UpdateReplicateConfiguration(ctx context.Context, resu
 	}
 
 	cm.replicateConfig = config
+	cm.syncVChannelAllocatable()
 	cm.cond.UnsafeBroadcast()
 	cm.version.Local++
 	cm.metrics.UpdateAssignmentVersion(cm.version.Local)
@@ -532,14 +546,36 @@ func (cm *ChannelManager) getNewIncomingTask(newConfig *replicateutil.ConfigHelp
 	}
 	incomingReplicatingTasks := make([]*streamingpb.ReplicatePChannelMeta, 0, len(incoming.TargetClusters()))
 	for _, targetCluster := range incoming.TargetClusters() {
-		if current != nil && current.TargetCluster(targetCluster.GetClusterId()) != nil {
-			// target already exists, skip it.
-			continue
+		// Determine which pchannels are new and need CDC tasks.
+		// If the target cluster already exists, only create tasks for newly appended pchannels.
+		newPchannels := targetCluster.GetPchannels()
+		skipGetReplicateCheckpoint := false
+		if current != nil {
+			if currentTarget := current.TargetCluster(targetCluster.GetClusterId()); currentTarget != nil {
+				existingCount := len(currentTarget.GetPchannels())
+				if existingCount >= len(newPchannels) {
+					// No new pchannels, skip this target cluster.
+					continue
+				}
+				// Only process newly appended pchannels (validator ensures existing pchannels are preserved at same positions).
+				newPchannels = newPchannels[existingCount:]
+				// For pchannel-increasing tasks, the secondary WAL for new pchannels hasn't received
+				// the AlterReplicateConfig yet, so GetReplicateInfo would fail. Skip it and use
+				// InitializedCheckpoint directly. The secondary filters out duplicates on restart.
+				skipGetReplicateCheckpoint = true
+			}
 		}
-		// TODO: support add new pchannels into existing clusters.
-		for _, pchannel := range targetCluster.GetPchannels() {
+		for _, pchannel := range newPchannels {
 			sourceClusterID := targetCluster.SourceCluster().ClusterId
 			sourcePChannel := targetCluster.MustGetSourceChannel(pchannel)
+			checkpointTimeTick := appendResults[sourcePChannel].TimeTick
+			if skipGetReplicateCheckpoint {
+				// For pchannel-increasing tasks, the CDC scanner uses DeliverFilterTimeTickGT
+				// (strictly greater than). Subtract 1 so the AlterReplicateConfig message itself
+				// (whose TimeTick == appendResults.TimeTick) is included in the scan.
+				// The secondary needs this message on ALL pchannels for the broadcast to complete.
+				checkpointTimeTick--
+			}
 			incomingReplicatingTasks = append(incomingReplicatingTasks, &streamingpb.ReplicatePChannelMeta{
 				SourceChannelName: sourcePChannel,
 				TargetChannelName: pchannel,
@@ -553,12 +589,35 @@ func (cm *ChannelManager) getNewIncomingTask(newConfig *replicateutil.ConfigHelp
 					ClusterId: sourceClusterID,
 					Pchannel:  sourcePChannel,
 					MessageId: appendResults[sourcePChannel].LastConfirmedMessageID.IntoProto(),
-					TimeTick:  appendResults[sourcePChannel].TimeTick,
+					TimeTick:  checkpointTimeTick,
 				},
+				SkipGetReplicateCheckpoint: skipGetReplicateCheckpoint,
 			})
 		}
 	}
 	return incomingReplicatingTasks
+}
+
+// syncVChannelAllocatable updates the vchannelAllocatable flag on all pchannels.
+// When a replicate config exists, only pchannels listed in the current cluster's config
+// are allocatable. This prevents allocating vchannels to newly added pchannels before
+// the replicate config update has propagated to all clusters.
+func (cm *ChannelManager) syncVChannelAllocatable() {
+	if cm.replicateConfig == nil {
+		// No replicate config — all channels are allocatable (standalone mode).
+		for _, meta := range cm.channels {
+			meta.vchannelAllocatable = true
+		}
+		return
+	}
+	configPchannels := make(map[string]struct{})
+	for _, p := range cm.replicateConfig.GetCurrentCluster().GetPchannels() {
+		configPchannels[p] = struct{}{}
+	}
+	for _, meta := range cm.channels {
+		_, ok := configPchannels[meta.Name()]
+		meta.vchannelAllocatable = ok
+	}
 }
 
 // applyAssignments applies the assignments.

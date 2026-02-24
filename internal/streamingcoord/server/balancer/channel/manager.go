@@ -542,6 +542,7 @@ func (cm *ChannelManager) updatePChannelMeta(ctx context.Context, pChannelMetas 
 	// update in-memory copy and increase the version.
 	for _, pchannel := range pChannelMetas {
 		c := newPChannelMetaFromProto(pchannel)
+		c.availableInReplication = isChannelAvailableInReplication(c.Name(), cm.replicateConfig)
 		cm.channels[c.ChannelID()] = c
 	}
 	cm.version.Local++

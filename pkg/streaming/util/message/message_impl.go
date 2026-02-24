@@ -207,8 +207,8 @@ func (m *messageImpl) OverwriteReplicateVChannel(vchannel string, broadcastVChan
 		panic("broadcast vchannels not set when overwrite replicate vchannel")
 	}
 	bh := m.broadcastHeader()
-	if len(broadcastVChannels[0]) < len(bh.Vchannels) {
-		panic("broadcast vchannels length mismatch, cannot decrease")
+	if len(bh.Vchannels) != len(broadcastVChannels[0]) {
+		panic("broadcast vchannels length mismatch")
 	}
 	bh.Vchannels = broadcastVChannels[0]
 	bhVal, err := EncodeProto(bh)

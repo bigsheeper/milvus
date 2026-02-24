@@ -69,7 +69,7 @@ func RecoverChannelManager(ctx context.Context, incomingChannel ...string) (*Cha
 	}
 
 	globalVersion := resource.Resource().Session().GetRegisteredRevision()
-	return &ChannelManager{
+	cm := &ChannelManager{
 		cond:     syncutil.NewContextCond(&sync.Mutex{}),
 		channels: channels,
 		version: typeutil.VersionInt64Pair{

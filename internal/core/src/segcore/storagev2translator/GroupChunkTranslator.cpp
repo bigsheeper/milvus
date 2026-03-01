@@ -49,6 +49,7 @@
 #include "segcore/memory_planner.h"
 #include "segcore/storagev2translator/GroupCTMeta.h"
 #include "storage/KeyRetriever.h"
+#include "storage/ThreadPools.h"
 #include "storage/Util.h"
 
 namespace milvus::segcore::storagev2translator {
@@ -338,17 +339,20 @@ GroupChunkTranslator::get_cells(milvus::OpContext* ctx,
     }
 
     // Submit cell-batch loading tasks
-    auto channel = std::make_shared<milvus::segcore::CellReaderChannel>();
+    auto& pool = milvus::ThreadPools::GetThreadPool(
+        milvus::PriorityForLoad(load_priority_));
+    auto channel = std::make_shared<milvus::segcore::CellReaderChannel>(
+        static_cast<size_t>(pool.GetMaxThreadNum() * 1.5));
     auto fs = milvus_storage::ArrowFileSystemSingleton::GetInstance()
                   .GetArrowFileSystem();
 
+    auto factory = milvus::segcore::MakeFileReaderFactory(insert_files_, fs);
     auto load_futures =
         milvus::segcore::LoadCellBatchAsync(ctx,
-                                            insert_files_,
                                             std::move(cell_specs),
+                                            std::move(factory),
                                             channel,
                                             DEFAULT_FIELD_MAX_MEMORY_LIMIT,
-                                            fs,
                                             load_priority_);
 
     LOG_INFO(
@@ -362,12 +366,22 @@ GroupChunkTranslator::get_cells(milvus::OpContext* ctx,
         completed_cells;
     completed_cells.reserve(cids.size());
 
-    std::shared_ptr<milvus::segcore::CellLoadResult> cell_data;
-    while (channel->pop(cell_data)) {
-        CheckCancellation(
-            ctx, segment_id_, "GroupChunkTranslator::get_cells()");
-        completed_cells[cell_data->cid] =
-            load_group_chunk(cell_data->tables, cell_data->cid);
+    try {
+        std::shared_ptr<milvus::segcore::CellLoadResult> cell_data;
+        while (channel->pop(cell_data)) {
+            CheckCancellation(
+                ctx, segment_id_, "GroupChunkTranslator::get_cells()");
+            completed_cells[cell_data->cid] =
+                load_group_chunk(cell_data->tables, cell_data->cid);
+        }
+    } catch (std::exception& ex) {
+        // make sure all futures are handled, but still throw pop & load ex
+        try {
+            storage::WaitAllFutures(load_futures);
+        } catch (...) {
+            LOG_WARN("WaitAllFutures exception swallowed");
+        }
+        throw;
     }
 
     storage::WaitAllFutures(load_futures);

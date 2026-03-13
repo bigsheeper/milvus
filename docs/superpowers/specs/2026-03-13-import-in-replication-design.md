@@ -786,6 +786,588 @@ After compaction:
 
 ---
 
+## Outstanding Consistency Issues and Trade-offs
+
+### Critical Issues Identified
+
+The `visible_timestamp` solution solves the basic write consistency problem but introduces **new semantic ambiguities** that require careful consideration.
+
+---
+
+### Issue 1: Row Reappears After DELETE ⚠️ CRITICAL
+
+**Scenario:**
+```
+T=1000: Import data: (pk=2, field=100, ts=1000)
+        → Segment A: hidden (importing=true)
+
+T=2000: User INSERT: (pk=2, field=200, ts=2000)
+        → Segment B: growing segment, queryable immediately
+        → Query result: pk=2, field=200 ✓
+
+T=2500: User DELETE pk=2 (ts=2500)
+        → Delta log: (pk=2, ts=2500)
+        → Applies to Segment B: rowTs=2000 < deleteTs=2500 → DELETED ✓
+        → Query result: nothing (pk=2 deleted) ✓
+
+T=3000: CommitImport → Segment A becomes visible
+        → Segment A: visible_timestamp=3000, importing=false
+
+Query after commit:
+- Segment A: (pk=2, field=100, rowTs=1000, effectiveTs=3000)
+  → DELETE check: effectiveTs=3000 > deleteTs=2500 → NOT deleted
+- Segment B: (pk=2, field=200, ts=2000) → marked deleted at T=2500
+- Merge results: Only Segment A row returned
+- **Result: pk=2, field=100 VISIBLE! (row reappeared after being deleted!)**
+```
+
+**Root Cause:**
+
+Semantic ambiguity in DELETE behavior:
+
+**Interpretation A: "DELETE applies to data visible at time of delete"**
+- DELETE at T=2500 operates on visible data only (Segment B)
+- Import data becomes visible later at T=3000 (after delete)
+- DELETE doesn't apply to import → Import row appears (seems wrong)
+
+**Interpretation B: "DELETE applies to all data with timestamp < delete timestamp"**
+- DELETE at T=2500 should delete ALL pk=2 where rowTs < 2500
+- Import data has rowTs=1000 < 2500 → should be deleted
+- But visible_timestamp prevents this → Import row appears (also seems wrong)
+
+**User Expectation:**
+- "I deleted pk=2 at T=2500, it should stay deleted"
+- Seeing pk=2 reappear at T=3000 violates this expectation
+
+---
+
+### Issue 2: UPSERT During WaitingCommit
+
+**Scenario:**
+```
+T=1000: Import (pk=2, field=100) → hidden in import segment
+
+T=2000: User UPSERT (pk=2, field=200)
+        → System queries for pk=2 in visible data
+        → Doesn't find pk=2 (import segment hidden)
+        → Treats UPSERT as INSERT
+        → Creates new row in growing segment: (pk=2, field=200, ts=2000)
+
+T=3000: CommitImport
+        → Import segment visible: (pk=2, field=100, effectiveTs=3000)
+        → Growing segment: (pk=2, field=200, ts=2000)
+
+Query after commit - Primary key deduplication:
+- Option A: Use rowTs for deduplication
+  → rowTs=1000 (import) < rowTs=2000 (growing)
+  → Growing wins: Return (pk=2, field=200) ✓
+
+- Option B: Use effectiveTs for deduplication
+  → effectiveTs=3000 (import) > ts=2000 (growing)
+  → Import wins: Return (pk=2, field=100) ✗ (user's UPSERT lost!)
+
+**Current Milvus behavior:** Likely uses rowTs for deduplication
+→ Growing segment wins (correct for UPSERT)
+→ But then import data is "old data" that gets overridden
+→ Is this the intended semantic? Import loses to DML?
+```
+
+**Semantic Question:**
+- Should import data "win" over concurrent DML? (effectiveTs semantics)
+- Or should import data be "old data" that gets overridden? (rowTs semantics)
+
+**Current solution uses rowTs** → Import loses to DML
+- Correct for UPSERT case
+- But conceptually, import isn't "old data", it's "external data loaded at T_commit"
+
+---
+
+### Issue 3: Read Consistency - Deduplication Logic
+
+**The Dilemma:**
+
+For primary key deduplication across segments, which timestamp should we use?
+
+**Option A: Use rowTs (original timestamp in binlog)**
+```go
+if importRow.rowTs < growingRow.ts {
+    return growingRow  // Growing wins
+}
+```
+- ✅ Correct for UPSERT case (DML wins over import)
+- ✅ Simpler implementation (existing logic)
+- ❌ Contradicts visible_timestamp semantic (import "appears" at T_commit, not T_import)
+- ❌ Import becomes "historical backfill" rather than "current data load"
+
+**Option B: Use effectiveTs (visible_timestamp for import)**
+```go
+if importRow.effectiveTs > growingRow.ts {
+    return importRow  // Import wins
+}
+```
+- ✅ Consistent with visible_timestamp semantic (import "appears" at T_commit)
+- ✅ Import data treated as "current" not "historical"
+- ❌ Breaks UPSERT case (user's upsert lost)
+- ❌ Requires new deduplication logic
+
+**Current Design Assumption:** Uses rowTs (Option A)
+- But this means visible_timestamp ONLY affects DELETE filtering
+- Deduplication uses original rowTs
+- **Inconsistent semantic model**
+
+---
+
+### Issue 4: Compaction Timing Race Condition
+
+**Scenario:**
+```
+T=1000: Import executes → Segment 100 created (importing=true, rowTs=1000)
+T=2000: IndexBuilding → WaitingCommit transition
+        → Segment 100: importing=true, visible_timestamp NOT SET YET
+
+T=2500: Compaction triggered (background process)
+        → Checks Segment 100: importing=true
+        → Should compaction skip it? Or process it?
+
+Option A: Compaction skips importing segments
+→ Safe, but what if segment stays in WaitingCommit for hours?
+→ Compaction backlog builds up
+
+Option B: Compaction processes importing segments
+→ Segment 100 compacted → Output Segment 200
+→ Segment 200: importing=false (compaction clears flag?), rowTs=1000
+→ visible_timestamp not set (compaction doesn't know about it)
+
+T=3000: CommitImport tries to set visible_timestamp on Segment 100
+        → Segment 100 no longer exists (compacted to Segment 200)
+        → How to find Segment 200? Mapping lost!
+        → Segment 200 becomes visible with rowTs=1000 (wrong semantics)
+```
+
+**Resolution Required:**
+1. Block compaction on segments with `importing=true`
+2. Or track segment provenance through compaction
+3. Or set visible_timestamp BEFORE WaitingCommit (but don't know T_commit yet)
+
+---
+
+### Issue 5: Multiple Import Jobs with Same Primary Keys
+
+**Scenario:**
+```
+Job A: Import file1.parquet with pk=1,2,3
+       → T_import=1000, enters WaitingCommit
+
+Job B: Import file2.parquet with pk=2,4,5 (pk=2 is duplicate!)
+       → T_import=2000, enters WaitingCommit
+
+T=3000: User DELETE pk=2 (ts=3000)
+        → Deletes from growing segment (if pk=2 exists there)
+
+T=4000: Job A CommitImport
+        → Segment A: (pk=2 from Job A, effectiveTs=4000)
+
+T=5000: Job B CommitImport
+        → Segment B: (pk=2 from Job B, effectiveTs=5000)
+
+Query after both commits:
+- Segment A: pk=2, effectiveTs=4000
+  → DELETE check: 4000 > 3000 → NOT deleted
+- Segment B: pk=2, effectiveTs=5000
+  → DELETE check: 5000 > 3000 → NOT deleted
+- Deduplication: pk=2 from Segment B wins (effectiveTs=5000 > 4000)
+- Result: Two import jobs with same PK, both visible, DELETE didn't apply
+```
+
+**Issues:**
+1. DELETE at T=3000 doesn't affect ANY import data for pk=2
+2. Two import jobs can import same PK → deduplication required
+3. If using effectiveTs for dedup: Later commit wins (Job B)
+4. If using rowTs for dedup: Depends on original file timestamps
+
+**User Expectation:**
+- "I deleted pk=2 before committing imports"
+- Expected: pk=2 deleted everywhere
+- Reality: pk=2 appears from both imports (immune to DELETE)
+
+---
+
+### Issue 6: Cross-Cluster Read Consistency Window
+
+**Scenario with CDC replication:**
+
+```
+PRIMARY CLUSTER:
+T=1000: Import → WaitingCommit
+T=2000: DELETE pk=2 (delta log written locally)
+T=3000: CommitImport
+        → Segment visible with effectiveTs=3000
+        → Query: pk=2 visible (DELETE doesn't apply: 3000 > 2000)
+
+SECONDARY CLUSTER:
+T=1000: Import message arrives via CDC → WaitingCommit
+T=3000: CommitImportMessage arrives (broadcast, instant)
+        → Segment visible with effectiveTs=3000
+T=3000+lag: DELETE message arrives via CDC (asynchronous replication)
+        → DELETE applied to delta log
+
+Query timeline on SECONDARY:
+- Between T=3000 and T=3000+lag:
+  → Query sees pk=2 (import segment visible, DELETE not arrived)
+- After T=3000+lag:
+  → Query sees pk=2 (DELETE arrived but effectiveTs > deleteTs)
+
+Result: Same as primary ✓ (eventually)
+But there's a window where secondary sees data before DELETE arrives
+```
+
+**Note:** This is acceptable eventual consistency behavior for CDC.
+The visible_timestamp ensures both clusters converge to same result.
+
+---
+
+### Fundamental Problem: Semantic Ambiguity
+
+**The root issue:** `visible_timestamp` conflates two different concepts:
+
+1. **Content Timestamp** - When this data logically "exists" in the database
+   - For import: T_import (when source data was created)
+   - Determines: Ordering, deduplication, versioning
+
+2. **Visibility Timestamp** - When this data becomes queryable
+   - For import: T_commit (when CommitImportMessage received)
+   - Determines: Access control, atomicity
+
+**For normal DML:**
+- These are identical (data exists = data queryable at same moment)
+
+**For import with WaitingCommit:**
+- Content timestamp: T_import (rowTs in binlog)
+- Visibility timestamp: T_commit (visible_timestamp override)
+- **Creates semantic mismatch**
+
+**The core question:**
+
+**Should DELETE at T_delete affect import data where:**
+- `T_import < T_delete < T_commit`
+
+**Answer A:** No (use visible_timestamp for filtering)
+- Import "appears" at T_commit, after the delete
+- Delete doesn't apply → Data visible after commit
+- **Issue:** Row reappears after being explicitly deleted
+
+**Answer B:** Yes (use rowTs for filtering, ignore visible_timestamp for deletes)
+- Import data has timestamp T_import, before the delete
+- Delete should apply
+- **Issue:** Delete affects "hidden" data (original problem we tried to solve)
+
+**No perfect solution with current approach!**
+
+---
+
+## Possible Solutions
+
+### Solution 1: Block DML During WaitingCommit ⚠️
+
+**Design:**
+- When ANY import job enters WaitingCommit state on a collection
+- Reject ALL DML operations (INSERT/DELETE/UPSERT) on that collection
+- Return error: "DML operations blocked while import job pending commit"
+- Unblock after CommitImport or AbortImport
+
+**Implementation:**
+```go
+func (node *Proxy) Insert(ctx context.Context, req *milvuspb.InsertRequest) (*milvuspb.MutationResult, error) {
+    // Check if collection has jobs in WaitingCommit
+    jobs := node.dataCoord.GetImportJobs(req.GetCollectionName())
+    for _, job := range jobs {
+        if job.GetState() == internalpb.ImportJobStateV2_WaitingCommit {
+            return nil, merr.WrapErrImportFailed(
+                "DML operations blocked: import job in WaitingCommit state. " +
+                "Please commit or abort the import job first.")
+        }
+    }
+    // ... proceed with insert ...
+}
+```
+
+**Pros:**
+- ✅ Completely avoids ALL semantic ambiguity issues
+- ✅ Simple implementation (~100 LOC)
+- ✅ Clear error messages for users
+- ✅ No complex timestamp logic needed
+- ✅ Guarantees consistency across all scenarios
+
+**Cons:**
+- ❌ **Bad UX** - Users can't do DML during import commit window
+- ❌ Requires users to finish imports quickly or risk blocking application
+- ❌ Doesn't scale for multiple import jobs (one blocks all DML)
+- ❌ Could cause application downtime if import stuck in WaitingCommit
+- ❌ Not ideal for CDC use case (continuous replication + occasional imports)
+
+**Risk Level:** Low (simple, safe)
+**User Impact:** High (blocking operation)
+
+---
+
+### Solution 2: Accept "Row Reappears" Behavior (Document as Limitation)
+
+**Design:**
+- Keep visible_timestamp solution as-is
+- Clearly document that DML during WaitingCommit has "eventual visibility" semantics
+- Add warnings in API docs and operational guide
+
+**Documentation:**
+```
+WARNING: DML operations during import WaitingCommit phase:
+
+If you perform DML operations (INSERT/DELETE/UPSERT) while an import job
+is in WaitingCommit state, the following behavior applies:
+
+1. DELETE: Deletes only affect visible data at time of delete.
+   Import data becomes visible at commit time and will NOT be deleted
+   by prior DELETE operations, even if the timestamp suggests it should be.
+
+2. UPSERT: Upsert operates on visible data only. If upserted PK exists
+   in hidden import data, you may see unexpected results after commit.
+
+3. INSERT: Insert creates new row. If same PK exists in import data,
+   deduplication will prefer the DML operation (newer timestamp).
+
+RECOMMENDATION: Wait for all import jobs to complete (or abort) before
+performing DML operations on the same collection.
+```
+
+**Pros:**
+- ✅ No blocking - DML always allowed
+- ✅ No additional implementation complexity
+- ✅ Works with current visible_timestamp design
+- ✅ Performance not impacted
+
+**Cons:**
+- ❌ Surprising behavior for users (row reappears after DELETE)
+- ❌ Requires users to understand complex timing semantics
+- ❌ May cause data quality issues in production
+- ❌ Hard to debug when issues occur
+- ❌ Not intuitive - violates user expectations
+
+**Risk Level:** Medium (complex semantics)
+**User Impact:** Medium (surprising behavior, documentation burden)
+
+---
+
+### Solution 3: Track and Replay DML During WaitingCommit
+
+**Design:**
+- Record all DML operations that occur during WaitingCommit phase
+- Store in temporary buffer: `PendingDMLBuffer[jobID] = []DMLOperation`
+- On CommitImport: Apply buffered DML to import segments BEFORE making visible
+- On AbortImport: Discard buffer
+
+**Implementation:**
+```go
+type DMLOperation struct {
+    Type      string  // "insert", "delete", "upsert"
+    PrimaryKey PK
+    Timestamp uint64
+    Data      FieldData  // For insert/upsert
+}
+
+type ImportJob struct {
+    // ... existing fields ...
+    PendingDML []DMLOperation
+}
+
+// During DML execution
+func (node *Proxy) Delete(ctx context.Context, req *milvuspb.DeleteRequest) {
+    // Execute delete normally
+    result := node.executeDelete(req)
+
+    // Check if collection has jobs in WaitingCommit
+    jobs := node.dataCoord.GetImportJobsInWaitingCommit(req.GetCollectionName())
+    for _, job := range jobs {
+        // Record delete for replay on commit
+        node.dataCoord.RecordPendingDML(job.JobID, DMLOperation{
+            Type: "delete",
+            PrimaryKey: req.PrimaryKeys,
+            Timestamp: req.Timestamp,
+        })
+    }
+
+    return result
+}
+
+// On commit
+func (c *DDLCallbacks) commitImportAckCallback(...) {
+    // ... make segments visible ...
+
+    // Replay pending DML
+    pendingDML := c.importMeta.GetPendingDML(jobID)
+    for _, dml := range pendingDML {
+        switch dml.Type {
+        case "delete":
+            c.applyDeleteToSegments(job.SegmentIDs, dml.PrimaryKey, dml.Timestamp)
+        case "upsert":
+            // More complex - need to check if PK exists, update or insert
+        }
+    }
+
+    // Clear buffer
+    c.importMeta.ClearPendingDML(jobID)
+}
+```
+
+**Pros:**
+- ✅ Correct semantics - DML applies to import data as expected
+- ✅ No blocking - DML always allowed
+- ✅ User expectations met (DELETE stays deleted)
+- ✅ Works for all DML types (INSERT/DELETE/UPSERT)
+
+**Cons:**
+- ❌ **Complex implementation** - need DML replay mechanism (~500-1000 LOC)
+- ❌ **Memory overhead** - buffer all DML during WaitingCommit
+- ❌ **Replay complexity** - UPSERT replay is non-trivial
+- ❌ **Performance cost** - replay adds latency to commit operation
+- ❌ **Concurrency issues** - need to handle DML arriving during replay
+- ❌ **Buffer overflow** - what if millions of DML operations during long WaitingCommit?
+
+**Risk Level:** High (complex, many edge cases)
+**User Impact:** Low (transparent to users)
+
+---
+
+### Solution 4: Import to Temporary Collection + Swap
+
+**Design:**
+- Import creates temporary hidden collection: `{collection_name}_import_{jobID}`
+- Data imported to temp collection (fully queryable internally)
+- DML operations on main collection work normally
+- On CommitImport: Atomic "merge" or "swap" operation
+  - Copy/move segments from temp collection to main collection
+  - Apply any necessary deduplication with main collection data
+  - Delete temp collection
+
+**Implementation:**
+```go
+func (s *Server) ImportV2(req *datapb.ImportRequest) {
+    // Create temporary collection
+    tempCollectionName := fmt.Sprintf("%s_import_%d", req.CollectionName, req.JobID)
+    s.broker.CreateCollection(tempCollectionName, req.Schema)
+
+    // Import to temp collection (normal flow, no WaitingCommit complexity)
+    job := s.createImportJob(tempCollectionName, req.Files)
+
+    // Temp collection is fully functional
+    // Main collection DML works normally
+}
+
+func (s *Server) CommitImport(req *datapb.CommitImportRequest) {
+    job := s.importMeta.GetJob(req.JobID)
+    tempCollection := job.TempCollectionName
+    mainCollection := job.MainCollectionName
+
+    // Merge segments from temp to main
+    s.mergeCollectionSegments(tempCollection, mainCollection)
+
+    // Drop temp collection
+    s.broker.DropCollection(tempCollection)
+}
+```
+
+**Pros:**
+- ✅ Complete isolation - import and DML don't interfere
+- ✅ No semantic ambiguity
+- ✅ Can validate import data before commit (query temp collection)
+- ✅ Rollback is simple (just drop temp collection)
+- ✅ No blocking of DML operations
+
+**Cons:**
+- ❌ **Major architectural change** - temp collection management
+- ❌ **Metadata overhead** - double collection metadata
+- ❌ **Merge complexity** - deduplication during merge is expensive
+- ❌ **Atomicity challenges** - merge is not instantaneous
+- ❌ **Resource overhead** - duplicate indexes, memory
+- ❌ **CDC replication** - how to replicate temp collection creation/merge?
+
+**Risk Level:** Very High (major redesign)
+**User Impact:** Low (transparent to users if done right)
+
+---
+
+### Solution 5: Hybrid Approach - Conditional Blocking
+
+**Design:**
+- Don't block all DML - only block operations that would cause semantic issues
+- Allow INSERT (new PKs) freely
+- Block DELETE/UPSERT on PKs that exist in WaitingCommit import data
+- Requires checking PK bloom filters of import segments
+
+**Implementation:**
+```go
+func (node *Proxy) Delete(ctx context.Context, req *milvuspb.DeleteRequest) {
+    // Check if any import job in WaitingCommit has these PKs
+    jobs := node.dataCoord.GetImportJobsInWaitingCommit(req.GetCollectionName())
+    for _, job := range jobs {
+        for _, pk := range req.PrimaryKeys {
+            // Check bloom filter of import segments
+            if node.dataCoord.ImportSegmentContainsPK(job, pk) {
+                return nil, merr.WrapErrImportFailed(
+                    fmt.Sprintf("Cannot delete pk=%v: exists in uncommitted import job %s. "+
+                        "Commit or abort import first.", pk, job.JobID))
+            }
+        }
+    }
+    // ... proceed with delete ...
+}
+```
+
+**Pros:**
+- ✅ Allows most DML to proceed (only blocks conflicts)
+- ✅ Clear error messages for blocked operations
+- ✅ Prevents semantic ambiguity for conflicting PKs
+- ✅ Relatively simple implementation
+
+**Cons:**
+- ❌ Still blocks some DML (better than all, but not ideal)
+- ❌ Bloom filter checks add latency to every DML
+- ❌ False positives from bloom filters (over-blocking)
+- ❌ Doesn't solve all issues (INSERT with duplicate PK during import)
+
+**Risk Level:** Medium
+**User Impact:** Medium (partial blocking)
+
+---
+
+## Recommendation Matrix
+
+| Solution | Consistency | Complexity | User Impact | Feasibility |
+|----------|------------|------------|-------------|-------------|
+| **1. Block DML** | ✅ Perfect | ✅ Low | ❌ High (blocking) | ✅ High |
+| **2. Document Limitation** | ❌ Poor | ✅ None | ⚠️ Medium (confusion) | ✅ High |
+| **3. DML Replay** | ✅ Perfect | ❌ Very High | ✅ Low (transparent) | ⚠️ Medium |
+| **4. Temp Collection** | ✅ Perfect | ❌ Very High | ✅ Low (transparent) | ❌ Low |
+| **5. Conditional Block** | ⚠️ Good | ⚠️ Medium | ⚠️ Medium | ⚠️ Medium |
+
+---
+
+## Decision Required
+
+**We need to choose:**
+
+1. **Solution 1 (Block DML)** - Safest, simplest, but bad UX
+2. **Solution 2 (Document)** - Ship with known limitation, iterate later
+3. **Solution 3 (DML Replay)** - Complex but correct semantics
+4. **Solution 5 (Conditional Block)** - Middle ground
+
+**Recommended Approach for v1:**
+- Start with **Solution 1 (Block DML)** for correctness
+- Add config flag to disable blocking for brave users
+- Plan **Solution 3 (DML Replay)** for v2 if user demand justifies complexity
+
+**What's your preference?**
+
+---
+
 ## Protocol Buffer Definitions
 
 ### New Message Types
@@ -2016,9 +2598,10 @@ This design enables import in replicated Milvus clusters using a unified FSM wit
 
 ---
 
-**Document Version:** v1.3
+**Document Version:** v1.4
 **Last Updated:** 2026-03-13
 **Changelog:**
+- v1.4: Identified critical outstanding consistency issues with visible_timestamp approach and documented 5 possible solutions
 - v1.3: Added write consistency solution with segment-level visible_timestamp to fix DML timestamp ordering
 - v1.2: Clarified consistency model - user responsibility to check all clusters, no automatic secondary validation
 - v1.1: Added auto-commit for non-replicating clusters (unified FSM)

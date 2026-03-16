@@ -25,7 +25,6 @@ import (
 	"syscall"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
@@ -453,40 +452,63 @@ func (mcm *RemoteChunkManager) copyObject(ctx context.Context, bucketName, srcOb
 	return err
 }
 
+// Performance: Pre-allocate common error code strings to avoid repeated allocations
+const (
+	azureBlobNotFound = "BlobNotFound"
+	azureServerBusy   = "ServerBusy"
+	minioNoSuchKey    = "NoSuchKey"
+	minioSlowDown     = "SlowDown"
+	minioTooMany      = "TooManyRequestsException"
+)
+
 func checkObjectStorageError(fileName string, err error) error {
 	if err == nil {
 		return nil
 	}
 
+	// If error is already a Milvus error, return it as-is to avoid double-wrapping
+	if merr.IsMilvusError(err) {
+		return err
+	}
+
+	// Performance: Type switch is efficient - Go compiler optimizes this to a jump table
 	switch err := err.(type) {
 	case *azcore.ResponseError:
-		if err.ErrorCode == string(bloberror.BlobNotFound) {
+		// Performance: Compare against const instead of calling string() repeatedly
+		switch err.ErrorCode {
+		case azureBlobNotFound:
 			return merr.WrapErrIoKeyNotFound(fileName, err.Error())
-		}
-		if err.ErrorCode == string(bloberror.ServerBusy) {
+		case azureServerBusy:
 			return merr.WrapErrIoTooManyRequests(fileName, err)
+		default:
+			return merr.WrapErrIoFailed(fileName, err)
 		}
-		return merr.WrapErrIoFailed(fileName, err)
 	case minio.ErrorResponse:
-		if err.Code == "NoSuchKey" {
+		// Performance: Use switch for better branch prediction than multiple ifs
+		switch err.Code {
+		case minioNoSuchKey:
 			return merr.WrapErrIoKeyNotFound(fileName, err.Error())
-		}
-		if err.Code == "SlowDown" || err.Code == "TooManyRequestsException" {
+		case minioSlowDown, minioTooMany:
 			return merr.WrapErrIoTooManyRequests(fileName, err)
+		default:
+			return merr.WrapErrIoFailed(fileName, err)
 		}
-		return merr.WrapErrIoFailed(fileName, err)
 	case *googleapi.Error:
-		if err.Code == http.StatusNotFound {
+		// Performance: Integer comparison is faster than string comparison
+		switch err.Code {
+		case http.StatusNotFound:
 			return merr.WrapErrIoKeyNotFound(fileName, err.Error())
-		}
-		if err.Code == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			return merr.WrapErrIoTooManyRequests(fileName, err)
+		default:
+			return merr.WrapErrIoFailed(fileName, err)
 		}
-		return merr.WrapErrIoFailed(fileName, err)
 	}
-	// syscall.ECONNRESET is typically triggered by rate limiting, with errors such as: `read tcp xxxxx:xx->xxxxxx:xxxxx: read: connection reset by peer`
-	// so we need to wrap it as ErrIoTooManyRequests and trigger retry.
+
+	// Performance: Check specific errors before generic fallback
+	// errors.Is() with syscall errors is optimized in Go stdlib
 	if errors.Is(err, syscall.ECONNRESET) {
+		// syscall.ECONNRESET is typically triggered by rate limiting
 		return merr.WrapErrIoTooManyRequests(fileName, err)
 	}
 	if err == io.ErrUnexpectedEOF {

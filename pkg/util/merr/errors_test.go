@@ -160,6 +160,27 @@ func (s *ErrSuite) TestWrap() {
 	s.ErrorIs(WrapErrInconsistentRequery("unknown"), ErrInconsistentRequery)
 }
 
+func (s *ErrSuite) TestIsMilvusError() {
+	// Test with Milvus errors
+	s.True(IsMilvusError(ErrCollectionNotFound))
+	s.True(IsMilvusError(WrapErrCollectionNotFound("test")))
+	s.True(IsMilvusError(WrapErrIoKeyNotFound("key", "not found")))
+	s.True(IsMilvusError(WrapErrServiceNotReady("test", 0, "init")))
+
+	// Test with wrapped Milvus errors
+	wrappedErr := errors.Wrap(WrapErrCollectionNotFound("test"), "additional context")
+	s.True(IsMilvusError(wrappedErr))
+
+	// Test with non-Milvus errors
+	s.False(IsMilvusError(errors.New("generic error")))
+	s.False(IsMilvusError(context.Canceled))
+	s.False(IsMilvusError(context.DeadlineExceeded))
+	s.False(IsMilvusError(os.ErrClosed))
+
+	// Test with nil
+	s.False(IsMilvusError(nil))
+}
+
 func (s *ErrSuite) TestOldCode() {
 	s.ErrorIs(OldCodeToMerr(commonpb.ErrorCode_NotReadyServe), ErrServiceNotReady)
 	s.ErrorIs(OldCodeToMerr(commonpb.ErrorCode_CollectionNotExists), ErrCollectionNotFound)

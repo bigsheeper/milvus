@@ -1331,6 +1331,45 @@ func TestToMilvusIoError(t *testing.T) {
 		err := ToMilvusIoError(fileName, googleErr)
 		assert.ErrorIs(t, err, merr.ErrIoFailed)
 	})
+
+	// Test the refactored behavior: already-wrapped Milvus errors should be returned as-is
+	t.Run("already wrapped ErrIoKeyNotFound", func(t *testing.T) {
+		originalErr := merr.WrapErrIoKeyNotFound(fileName, "key not found")
+		err := ToMilvusIoError(fileName, originalErr)
+		// Should return the same error without double-wrapping
+		assert.Equal(t, originalErr, err)
+		assert.ErrorIs(t, err, merr.ErrIoKeyNotFound)
+	})
+
+	t.Run("already wrapped ErrIoTooManyRequests", func(t *testing.T) {
+		originalErr := merr.WrapErrIoTooManyRequests(fileName, errors.New("rate limited"))
+		err := ToMilvusIoError(fileName, originalErr)
+		assert.Equal(t, originalErr, err)
+		assert.ErrorIs(t, err, merr.ErrIoTooManyRequests)
+	})
+
+	t.Run("already wrapped ErrIoFailed", func(t *testing.T) {
+		originalErr := merr.WrapErrIoFailed(fileName, errors.New("io failed"))
+		err := ToMilvusIoError(fileName, originalErr)
+		assert.Equal(t, originalErr, err)
+		assert.ErrorIs(t, err, merr.ErrIoFailed)
+	})
+
+	t.Run("already wrapped ErrIoUnexpectEOF", func(t *testing.T) {
+		originalErr := merr.WrapErrIoUnexpectEOF(fileName, io.ErrUnexpectedEOF)
+		err := ToMilvusIoError(fileName, originalErr)
+		assert.Equal(t, originalErr, err)
+		assert.ErrorIs(t, err, merr.ErrIoUnexpectEOF)
+	})
+
+	t.Run("wrapped milvus error in error chain", func(t *testing.T) {
+		innerErr := merr.WrapErrIoKeyNotFound(fileName, "not found")
+		wrappedErr := errors.Wrap(innerErr, "additional context")
+		err := ToMilvusIoError(fileName, wrappedErr)
+		// Should detect the milvus error in the chain and not double-wrap
+		assert.Equal(t, wrappedErr, err)
+		assert.ErrorIs(t, err, merr.ErrIoKeyNotFound)
+	})
 }
 
 func tlsVersionName(v uint16) string {

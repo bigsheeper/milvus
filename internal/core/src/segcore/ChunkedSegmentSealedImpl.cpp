@@ -2763,8 +2763,7 @@ ChunkedSegmentSealedImpl::mask_with_timestamps(BitsetTypeView& bitset_chunk,
             scan_timestamp_range(
                 ts, range.first, range.second, [&](int64_t i, Timestamp val) {
                     Timestamp effective_val =
-                        (commit_ts_ > 0 && commit_ts_ > val) ? commit_ts_
-                                                              : val;
+                        (commit_ts_ > 0 && commit_ts_ > val) ? commit_ts_ : val;
                     ttl_mask[i] = effective_val <= collection_ttl;
                 });
             bitset_chunk |= ttl_mask;
@@ -2797,9 +2796,8 @@ ChunkedSegmentSealedImpl::mask_with_timestamps(BitsetTypeView& bitset_chunk,
             // timestamp as max(row.ts, commit_ts_). This prevents rows with old
             // historical timestamps from being visible to queries dispatched
             // before T_commit.
-            Timestamp effective_val = (commit_ts_ > 0 && commit_ts_ > val)
-                                          ? commit_ts_
-                                          : val;
+            Timestamp effective_val =
+                (commit_ts_ > 0 && commit_ts_ > val) ? commit_ts_ : val;
             mask[i] = effective_val > timestamp;
         });
     bitset_chunk |= mask;

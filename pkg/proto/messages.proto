@@ -65,6 +65,8 @@ enum MessageType {
     DropSnapshot                 = 41;
     BatchUpdateManifest          = 42;
     RefreshExternalCollection    = 43;
+    CommitImport                 = 44;
+    RollbackImport               = 45;
 
     // AlterWAL is used to alter the wal configuration to the current cluster.
     AlterWAL             = 700;
@@ -626,6 +628,26 @@ message RefreshExternalCollectionMessageHeader {
 // RefreshExternalCollectionMessageBody is the body of refresh external collection message.
 // Empty - all info is in header.
 message RefreshExternalCollectionMessageBody {}
+
+// CommitImportMessageHeader is the header of commit import message.
+message CommitImportMessageHeader {
+    int64 collection_id = 1;
+    int64 job_id        = 2;
+}
+
+// CommitImportMessageBody is the body of commit import message.
+// Empty - all info is in header.
+message CommitImportMessageBody {}
+
+// RollbackImportMessageHeader is the header of rollback import message.
+message RollbackImportMessageHeader {
+    int64 collection_id = 1;
+    int64 job_id        = 2;
+}
+
+// RollbackImportMessageBody is the body of rollback import message.
+// Empty - all info is in header.
+message RollbackImportMessageBody {}
 
 // CacheExpirations is the cache expirations of proxy collection meta cache.
 message CacheExpirations {

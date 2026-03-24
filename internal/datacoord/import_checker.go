@@ -456,9 +456,23 @@ func (c *importChecker) unsetSegmentImporting(originSegmentIDs, statsSegmentIDs 
 		return segment.GetIsImporting()
 	})
 
+	if len(isImportingSegments) == 0 {
+		return false
+	}
+
+	// Allocate a single commit timestamp for the whole import batch. All segments
+	// share the same logical commit time so that MVCC queries see them consistently.
+	nowTs, err := c.alloc.AllocTimestamp(c.ctx)
+	if err != nil {
+		log.Warn("failed to allocate commit timestamp for import segments", zap.Error(err))
+		return true
+	}
+
 	for _, segmentID := range isImportingSegments {
-		op := UpdateIsImporting(segmentID, false)
-		err := c.meta.UpdateSegmentsInfo(c.ctx, op)
+		err := c.meta.UpdateSegmentsInfo(c.ctx,
+			UpdateIsImporting(segmentID, false),
+			UpdateCommitTimestamp(segmentID, uint64(nowTs)),
+		)
 		if err != nil {
 			log.Warn("update import segment failed", zap.Error(err))
 			return true

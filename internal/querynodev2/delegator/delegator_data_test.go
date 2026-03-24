@@ -40,6 +40,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/mocks/util/mock_segcore"
 	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
+	"github.com/milvus-io/milvus/internal/querynodev2/delegator/deletebuffer"
 	"github.com/milvus-io/milvus/internal/querynodev2/pkoracle"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/storage"
@@ -1681,6 +1682,57 @@ func TestSegmentEffectiveTs(t *testing.T) {
 		StartPosition: &msgpb.MsgPosition{Timestamp: 1000},
 	}
 	assert.Equal(t, uint64(1000), segmentEffectiveTs(infoNormal))
+}
+
+func TestSegmentEffectiveTs_DelegatorHelper(t *testing.T) {
+	// commit_ts=0: use start_position
+	info := &querypb.SegmentLoadInfo{
+		StartPosition: &msgpb.MsgPosition{Timestamp: 1000},
+	}
+	assert.Equal(t, uint64(1000), segmentEffectiveTs(info))
+
+	// commit_ts > 0: override
+	info.CommitTimestamp = 5000
+	assert.Equal(t, uint64(5000), segmentEffectiveTs(info))
+
+	// nil start_position + commit_ts
+	info2 := &querypb.SegmentLoadInfo{CommitTimestamp: 3000}
+	assert.Equal(t, uint64(3000), segmentEffectiveTs(info2))
+
+	// both zero
+	info3 := &querypb.SegmentLoadInfo{}
+	assert.Equal(t, uint64(0), segmentEffectiveTs(info3))
+}
+
+func TestDeleteBuffer_PinsAtCommitTs(t *testing.T) {
+	// Simulate: import segment segID=42, start_position.ts=1000, commit_ts=5000.
+	// After LoadSegments, the delete buffer must be pinned at commit_ts=5000.
+
+	const segID int64 = 42
+	const commitTs uint64 = 5000
+	const startTs uint64 = 1000
+
+	buf := deletebuffer.NewDoubleCacheDeleteBuffer[*deletebuffer.Item](0, 1024*1024)
+
+	// Compute effective ts: segmentEffectiveTs must return commit_ts for import segment.
+	effectiveTs := segmentEffectiveTs(&querypb.SegmentLoadInfo{
+		SegmentID:       segID,
+		StartPosition:   &msgpb.MsgPosition{Timestamp: startTs},
+		CommitTimestamp: commitTs,
+	})
+	assert.Equal(t, commitTs, effectiveTs,
+		"segmentEffectiveTs must return commit_ts for import segment")
+
+	// Pin at commit_ts (as LoadSegments does).
+	buf.Pin(effectiveTs, segID)
+
+	// Unpin at wrong ts (start_position.ts): no-op, pin at commit_ts stays.
+	buf.Unpin(startTs, segID)
+
+	// Pin at commit_ts is still active — Unpin at commit_ts removes it.
+	buf.Unpin(commitTs, segID)
+	// After unpin, a second unpin should be safe (no panic/error).
+	buf.Unpin(commitTs, segID)
 }
 
 func TestDelegatorDataSuite(t *testing.T) {

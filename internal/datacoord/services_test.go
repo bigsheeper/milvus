@@ -3518,3 +3518,18 @@ func TestServer_CreateExternalCollection_NoOp(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.False(t, merr.Ok(resp.GetStatus()))
 }
+
+func TestCommitImport_HappyPath(t *testing.T) {
+	// TODO: implement full test once DataCoord Server test infrastructure is wired up.
+	t.Skip("not yet implemented")
+}
+
+func TestAbortImport_HappyPath(t *testing.T) {
+	// TODO: implement full test once DataCoord Server test infrastructure is wired up.
+	t.Skip("not yet implemented")
+}
+
+func TestHandleCommitVchannelRPC(t *testing.T) {
+	// TODO: implement full test once DataCoord Server test infrastructure is wired up.
+	t.Skip("not yet implemented")
+}

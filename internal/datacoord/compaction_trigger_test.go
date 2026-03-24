@@ -1930,7 +1930,7 @@ func Test_compactionTrigger_shouldDoSingleCompaction(t *testing.T) {
 		// Without the fix, rows appear expired. With the fix, commit_timestamp is used as effective ts.
 		now := time.Now()
 		commitTs := tsoutil.ComposeTSByTime(now.Add(24*time.Hour), 0) // future: definitely not expired
-		expireTime := uint64(5000)                                     // > old row ts (1000) but < commitTs
+		expireTime := uint64(5000)                                    // > old row ts (1000) but < commitTs
 
 		var importBinlogs []*datapb.FieldBinlog
 		for i := 0; i < 100; i++ {

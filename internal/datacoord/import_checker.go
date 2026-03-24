@@ -471,7 +471,7 @@ func (c *importChecker) unsetSegmentImporting(originSegmentIDs, statsSegmentIDs 
 	for _, segmentID := range isImportingSegments {
 		err := c.meta.UpdateSegmentsInfo(c.ctx,
 			UpdateIsImporting(segmentID, false),
-			UpdateCommitTimestamp(segmentID, uint64(nowTs)),
+			UpdateCommitTimestamp(segmentID, nowTs),
 		)
 		if err != nil {
 			log.Warn("update import segment failed", zap.Error(err))

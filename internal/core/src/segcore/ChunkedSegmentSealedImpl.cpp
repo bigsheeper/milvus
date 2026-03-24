@@ -584,16 +584,21 @@ ChunkedSegmentSealedImpl::load_column_group_data_internal(
                 op_ctx,
                 is_replace);
             if (field_id == TimestampFieldID) {
-                auto timestamp_proxy_column = get_column(TimestampFieldID);
-                AssertInfo(timestamp_proxy_column != nullptr,
-                           "timestamp proxy column is nullptr");
                 // TODO check timestamp_index ready instead of check system_ready_count_
-                int64_t num_rows;
+                int64_t num_rows = 0;
                 for (auto& [_, info] : load_info.field_infos) {
                     num_rows = info.row_count;
                 }
-                init_timestamp_index_from_column(timestamp_proxy_column,
-                                                 num_rows);
+                if (commit_ts_ != 0) {
+                    std::vector<Timestamp> ts(num_rows, commit_ts_);
+                    init_timestamp_index_owned(std::move(ts), num_rows);
+                } else {
+                    auto timestamp_proxy_column = get_column(TimestampFieldID);
+                    AssertInfo(timestamp_proxy_column != nullptr,
+                               "timestamp proxy column is nullptr");
+                    init_timestamp_index_from_column(timestamp_proxy_column,
+                                                     num_rows);
+                }
                 system_ready_count_++;
             }
         }
@@ -729,6 +734,9 @@ ChunkedSegmentSealedImpl::load_system_field_internal(
             offset += chunk_ptr->Span().row_count();
         }
 
+        if (commit_ts_ != 0) {
+            std::fill(timestamps.begin(), timestamps.end(), commit_ts_);
+        }
         init_timestamp_index_owned(std::move(timestamps), num_rows);
         ++system_ready_count_;
     } else {
@@ -2762,9 +2770,7 @@ ChunkedSegmentSealedImpl::mask_with_timestamps(BitsetTypeView& bitset_chunk,
             ttl_mask.resize(total_size, false);
             scan_timestamp_range(
                 ts, range.first, range.second, [&](int64_t i, Timestamp val) {
-                    Timestamp effective_val =
-                        (commit_ts_ > 0 && commit_ts_ > val) ? commit_ts_ : val;
-                    ttl_mask[i] = effective_val <= collection_ttl;
+                    ttl_mask[i] = val <= collection_ttl;
                 });
             bitset_chunk |= ttl_mask;
         }
@@ -2792,13 +2798,7 @@ ChunkedSegmentSealedImpl::mask_with_timestamps(BitsetTypeView& bitset_chunk,
     mask.resize(total_size, true);
     scan_timestamp_range(
         ts, range.first, range.second, [&](int64_t i, Timestamp val) {
-            // For import segments with commit_timestamp, treat the effective row
-            // timestamp as max(row.ts, commit_ts_). This prevents rows with old
-            // historical timestamps from being visible to queries dispatched
-            // before T_commit.
-            Timestamp effective_val =
-                (commit_ts_ > 0 && commit_ts_ > val) ? commit_ts_ : val;
-            mask[i] = effective_val > timestamp;
+            mask[i] = val > timestamp;
         });
     bitset_chunk |= mask;
 }
@@ -3461,13 +3461,15 @@ ChunkedSegmentSealedImpl::SetLoadInfo(
     const proto::segcore::SegmentLoadInfo& load_info) {
     std::unique_lock lck(mutex_);
     segment_load_info_ = SegmentLoadInfo(load_info, schema_);
+    commit_ts_ = static_cast<milvus::Timestamp>(load_info.commit_timestamp());
     LOG_INFO(
         "SetLoadInfo for segment {}, num_rows: {}, index count: {}, "
-        "storage_version: {}",
+        "storage_version: {}, commit_ts: {}",
         id_,
         segment_load_info_.GetNumOfRows(),
         segment_load_info_.GetIndexInfoCount(),
-        segment_load_info_.GetStorageVersion());
+        segment_load_info_.GetStorageVersion(),
+        commit_ts_);
 }
 
 void
@@ -3637,11 +3639,17 @@ ChunkedSegmentSealedImpl::LoadColumnGroup(
             op_ctx,
             is_replace);
         if (field_id == TimestampFieldID) {
-            auto timestamp_proxy_column = get_column(TimestampFieldID);
-            AssertInfo(timestamp_proxy_column != nullptr,
-                       "timestamp proxy column is nullptr");
             int64_t num_rows = segment_load_info_.GetNumOfRows();
-            init_timestamp_index_from_column(timestamp_proxy_column, num_rows);
+            if (commit_ts_ != 0) {
+                std::vector<Timestamp> ts(num_rows, commit_ts_);
+                init_timestamp_index_owned(std::move(ts), num_rows);
+            } else {
+                auto timestamp_proxy_column = get_column(TimestampFieldID);
+                AssertInfo(timestamp_proxy_column != nullptr,
+                           "timestamp proxy column is nullptr");
+                init_timestamp_index_from_column(timestamp_proxy_column,
+                                                 num_rows);
+            }
             system_ready_count_++;
         }
     }
@@ -3684,7 +3692,7 @@ ChunkedSegmentSealedImpl::LoadBatchTextIndexes(
     for (auto& [field_id, load_text_index_info] : text_indexes_to_load) {
         auto future = pool.Submit(
             [this, op_ctx, info = std::move(load_text_index_info)]() mutable
-            -> void { LoadTextIndex(op_ctx, std::move(info)); });
+                -> void { LoadTextIndex(op_ctx, std::move(info)); });
         load_index_futures.emplace_back(std::move(future));
     }
 

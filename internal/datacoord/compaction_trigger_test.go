@@ -1965,6 +1965,62 @@ func Test_compactionTrigger_shouldDoSingleCompaction(t *testing.T) {
 	})
 }
 
+func Test_compactionTrigger_shouldDoSingleCompaction_CommitTimestamp(t *testing.T) {
+	indexMeta := newSegmentIndexMeta(nil)
+	mock0Allocator := newMockAllocator(t)
+	trigger := newCompactionTrigger(&meta{
+		indexMeta:  indexMeta,
+		channelCPs: newChannelCps(),
+	}, &compactionInspector{}, mock0Allocator, newMockHandler(), newIndexEngineVersionManager())
+
+	// Import segment: binlog TimestampFrom=100, TimestampTo=500 (very old)
+	// commit_timestamp=2000 (current time)
+	// expireTime=1000 — between old binlog ts and commit_ts
+	// Without fix: would trigger (500 < 1000). With fix: must NOT trigger (max(500,2000)=2000 > 1000).
+	importSeg := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:              99,
+			CollectionID:    1,
+			NumOfRows:       1000,
+			State:           commonpb.SegmentState_Flushed,
+			CommitTimestamp: 2000,
+			Binlogs: []*datapb.FieldBinlog{
+				{Binlogs: []*datapb.Binlog{
+					{EntriesNum: 900, TimestampFrom: 100, TimestampTo: 500, MemorySize: 1024 * 1024},
+				}},
+			},
+		},
+	}
+	// expireTime=1000: old binlog ts (500) < 1000, but commit_ts (2000) > 1000 → NOT expired
+	shouldCompact := trigger.ShouldDoSingleCompaction(importSeg, &compactTime{expireTime: 1000})
+	assert.False(t, shouldCompact,
+		"import segment with commit_ts=2000 must NOT be TTL-compacted at expireTime=1000")
+
+	// At expireTime=3000 > commit_ts=2000 → should compact
+	shouldCompact = trigger.ShouldDoSingleCompaction(importSeg, &compactTime{expireTime: 3000})
+	assert.True(t, shouldCompact,
+		"import segment with commit_ts=2000 MUST be TTL-compacted at expireTime=3000")
+
+	// Normal segment (commit_ts=0): old behavior preserved
+	normalSeg := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:        100,
+			NumOfRows: 1000,
+			State:     commonpb.SegmentState_Flushed,
+			// CommitTimestamp = 0
+			Binlogs: []*datapb.FieldBinlog{
+				{Binlogs: []*datapb.Binlog{
+					{EntriesNum: 900, TimestampFrom: 100, TimestampTo: 500, MemorySize: 1024 * 1024},
+				}},
+			},
+		},
+	}
+	// Normal: 500 < 1000 → should compact (old behavior unchanged)
+	shouldCompact = trigger.ShouldDoSingleCompaction(normalSeg, &compactTime{expireTime: 1000})
+	assert.True(t, shouldCompact,
+		"normal segment with binlog ts=500 MUST be TTL-compacted at expireTime=1000 (unchanged behavior)")
+}
+
 func Test_compactionTrigger_ShouldStrictCompactExpiry(t *testing.T) {
 	trigger := &compactionTrigger{}
 

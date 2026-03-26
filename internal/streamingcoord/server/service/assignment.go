@@ -185,7 +185,7 @@ func (s *assignmentServiceImpl) validateReplicateConfiguration(ctx context.Conte
 
 // validateForcePromoteConfiguration validates that the force promote configuration is safe.
 // Requirements:
-// 1. Must contain ONLY the current cluster
+// 1. Must contain ONLY the current cluster (exactly one cluster entry)
 // 2. Must have NO topology (no replication relationships)
 func validateForcePromoteConfiguration(config *commonpb.ReplicateConfiguration, currentClusterID string) error {
 	// Use config helper to validate the configuration structure
@@ -241,7 +241,14 @@ func (s *assignmentServiceImpl) handleForcePromote(ctx context.Context, config *
 	}
 	defer broadcaster.Close()
 
-	// Validate and construct force promote configuration
+	// Validate the caller-supplied config: must contain exactly the current cluster
+	// with no topology. The server then derives the actual promotion config from etcd.
+	currentClusterID := paramtable.Get().CommonCfg.ClusterPrefix.GetValue()
+	if err := validateForcePromoteConfiguration(config, currentClusterID); err != nil {
+		return nil, err
+	}
+
+	// Derive and construct the actual force-promote config from current etcd state.
 	forcePromoteConfig, pchannels, err := s.validateForcePromoteConfiguration(ctx)
 	if err != nil {
 		return nil, err

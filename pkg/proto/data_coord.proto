@@ -1535,6 +1535,10 @@ message SegmentDescription {
   int64 storage_version = 15; // storage version
   bool is_sorted = 16; // whether the segment is sorted by primary key
   string manifest_path = 17; // StorageV2 manifest file path
+  // commit_timestamp mirrors SegmentInfo.commit_timestamp.
+  // Must be preserved across snapshot/restore so temporal protections
+  // (GC, TTL, MVCC) are not lost on the restored segments.
+  uint64 commit_timestamp = 18;
 }
 
 message CollectionDescription {

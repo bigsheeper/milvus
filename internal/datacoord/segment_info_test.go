@@ -310,3 +310,25 @@ func TestSegmentEffectiveDmlTs(t *testing.T) {
 		assert.Equal(t, uint64(2000), segmentEffectiveDmlTs(seg))
 	})
 }
+
+func TestGetEarliestTs_CommitTimestamp(t *testing.T) {
+	t.Run("returns commit_timestamp when non-zero, ignoring stale binlog timestamps", func(t *testing.T) {
+		seg := NewSegmentInfo(&datapb.SegmentInfo{
+			Binlogs: []*datapb.FieldBinlog{
+				{Binlogs: []*datapb.Binlog{{TimestampFrom: 100, TimestampTo: 200}}},
+			},
+			CommitTimestamp: 9999,
+		})
+		assert.Equal(t, uint64(9999), seg.GetEarliestTs())
+	})
+
+	t.Run("falls back to binlog TimestampFrom when commit_timestamp is zero", func(t *testing.T) {
+		seg := NewSegmentInfo(&datapb.SegmentInfo{
+			Binlogs: []*datapb.FieldBinlog{
+				{Binlogs: []*datapb.Binlog{{TimestampFrom: 100, TimestampTo: 200}}},
+				{Binlogs: []*datapb.Binlog{{TimestampFrom: 50, TimestampTo: 150}}},
+			},
+		})
+		assert.Equal(t, uint64(50), seg.GetEarliestTs())
+	})
+}

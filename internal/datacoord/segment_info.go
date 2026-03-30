@@ -82,6 +82,12 @@ func (s *SegmentInfo) GetResidualSegmentSize() int64 {
 }
 
 func (s *SegmentInfo) GetEarliestTs() uint64 {
+	// For import segments, row timestamps predate the actual commit time.
+	// Use commit_timestamp as the effective data age so compaction priority
+	// and TTL decisions are not distorted by stale row timestamps.
+	if commitTs := s.GetCommitTimestamp(); commitTs != 0 {
+		return commitTs
+	}
 	if s.earliestTs.Load() == 0 {
 		var earliestFromTs uint64 = math.MaxUint64
 		for _, binlogs := range s.GetBinlogs() {

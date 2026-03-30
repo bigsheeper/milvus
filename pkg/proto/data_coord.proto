@@ -720,6 +720,11 @@ message CompactionSegmentBinlogs {
   // at the 20%, 40%, 60%, 80%, and 100% data distribution levels
   repeated int64 expirQuantiles = 12;
   bool is_sorted_by_namespace = 13;
+  // commit_timestamp mirrors SegmentInfo.commit_timestamp.
+  // DataNode uses it to protect import/CDC segment rows from premature TTL
+  // expiry during compaction: isEntityExpired uses max(row_ts, commit_ts)
+  // so stale row timestamps never cause rows to be silently dropped.
+  uint64 commit_timestamp = 14;
 }
 
 message CompactionPlan {

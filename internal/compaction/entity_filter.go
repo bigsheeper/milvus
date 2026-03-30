@@ -16,20 +16,25 @@ type EntityFilter interface {
 	GetMissingDeleteCount() int
 }
 
-func NewEntityFilter(deletedPkTs map[interface{}]typeutil.Timestamp, ttl int64, currTime time.Time) EntityFilter {
-	return newEntityFilter(deletedPkTs, ttl, currTime)
+func NewEntityFilter(deletedPkTs map[interface{}]typeutil.Timestamp, ttl int64, currTime time.Time, commitTs typeutil.Timestamp) EntityFilter {
+	return newEntityFilter(deletedPkTs, ttl, currTime, commitTs)
 }
 
 type EntityFilterImpl struct {
 	deletedPkTs map[interface{}]typeutil.Timestamp // pk2ts
 	ttl         int64                              // nanoseconds
 	currentTime time.Time
+	// commitTs is SegmentInfo.commit_timestamp for import/CDC segments.
+	// When non-zero, row timestamps in binlogs are stale (they predate the
+	// actual write time). isEntityExpired uses max(row_ts, commitTs) so that
+	// no row is prematurely expired due to a stale timestamp.
+	commitTs typeutil.Timestamp
 
 	expiredCount int
 	deletedCount int
 }
 
-func newEntityFilter(deletedPkTs map[interface{}]typeutil.Timestamp, ttl int64, currTime time.Time) *EntityFilterImpl {
+func newEntityFilter(deletedPkTs map[interface{}]typeutil.Timestamp, ttl int64, currTime time.Time, commitTs typeutil.Timestamp) *EntityFilterImpl {
 	if deletedPkTs == nil {
 		deletedPkTs = make(map[interface{}]typeutil.Timestamp)
 	}
@@ -37,6 +42,7 @@ func newEntityFilter(deletedPkTs map[interface{}]typeutil.Timestamp, ttl int64, 
 		deletedPkTs: deletedPkTs,
 		ttl:         ttl,
 		currentTime: currTime,
+		commitTs:    commitTs,
 	}
 }
 
@@ -96,7 +102,15 @@ func (filter *EntityFilterImpl) isEntityExpired(entityTs typeutil.Timestamp) boo
 	if filter.ttl <= 0 {
 		return false
 	}
-	entityTime, _ := tsoutil.ParseTS(entityTs)
+
+	// For import/CDC segments commitTs is the real write time; row timestamps
+	// in binlogs are stale (copied from the source cluster).  Use whichever is
+	// larger so a row is never marked expired due to a stale timestamp alone.
+	effectiveTs := entityTs
+	if filter.commitTs != 0 && filter.commitTs > entityTs {
+		effectiveTs = filter.commitTs
+	}
+	entityTime, _ := tsoutil.ParseTS(effectiveTs)
 
 	// this dur can represents 292 million years before or after 1970, enough for milvus
 	// ttl calculation
@@ -109,6 +123,14 @@ func (filter *EntityFilterImpl) isEntityExpired(entityTs typeutil.Timestamp) boo
 func (filter *EntityFilterImpl) isEntityExpiredByTTLField(expirationTimeMicros int64) bool {
 	// entity expire is not enabled if expirationTimeMicros < 0
 	if expirationTimeMicros < 0 {
+		return false
+	}
+
+	// For import/CDC segments the per-row TTL field value was written with the
+	// source cluster's clock, so the expiration time is equally stale.  Skip
+	// this check entirely when commitTs is set; TTL expiry will be re-evaluated
+	// after a subsequent major compaction that clears commit_timestamp.
+	if filter.commitTs != 0 {
 		return false
 	}
 

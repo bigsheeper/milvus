@@ -93,7 +93,7 @@ func mergeSortMultipleSegments(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		segmentFilters[i] = compaction.NewEntityFilter(delta, collectionTtl, currentTime)
+		segmentFilters[i] = compaction.NewEntityFilter(delta, collectionTtl, currentTime, s.GetCommitTimestamp())
 	}
 
 	defer func() {

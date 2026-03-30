@@ -460,18 +460,10 @@ func (c *importChecker) unsetSegmentImporting(originSegmentIDs, statsSegmentIDs 
 		return false
 	}
 
-	// Allocate a single commit timestamp for the whole import batch. All segments
-	// share the same logical commit time so that MVCC queries see them consistently.
-	nowTs, err := c.alloc.AllocTimestamp(c.ctx)
-	if err != nil {
-		log.Warn("failed to allocate commit timestamp for import segments", zap.Error(err))
-		return true
-	}
-
+	// TODO: CommitTimestamp will be assigned by the 2PC commit flow (see companion PR).
 	for _, segmentID := range isImportingSegments {
 		err := c.meta.UpdateSegmentsInfo(c.ctx,
 			UpdateIsImporting(segmentID, false),
-			UpdateCommitTimestamp(segmentID, nowTs),
 		)
 		if err != nil {
 			log.Warn("update import segment failed", zap.Error(err))

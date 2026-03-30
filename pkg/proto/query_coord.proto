@@ -406,7 +406,9 @@ message SegmentLoadInfo {
     common.LoadPriority priority = 23;
     string manifest_path = 24;
     // commit_timestamp mirrors data_coord.SegmentInfo.commit_timestamp.
-    // QueryNode uses it for delete-buffer pinning and ListAfter calls.
+    // QueryNode uses it for: delete-buffer pinning, ListAfter calls, and
+    // passing to C++ segcore to overwrite the in-memory timestamp column
+    // (enabling correct MVCC visibility and TTL evaluation).
     uint64 commit_timestamp = 25;
 }
 

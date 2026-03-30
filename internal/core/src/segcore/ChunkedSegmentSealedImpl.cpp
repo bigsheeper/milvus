@@ -843,8 +843,14 @@ ChunkedSegmentSealedImpl::load_column_group_data_internal(
                 op_ctx,
                 is_replace);
             if (field_id == TimestampFieldID) {
-                init_storage_v2_timestamp_index(
-                    column, num_rows, info.warmup_policy);
+                if (commit_ts_ != 0) {
+                    std::vector<Timestamp> ts(num_rows, commit_ts_);
+                    init_storage_v1_timestamp_index(std::move(ts),
+                                                    num_rows);
+                } else {
+                    init_storage_v2_timestamp_index(
+                        column, num_rows, info.warmup_policy);
+                }
             }
         }
 
@@ -979,6 +985,9 @@ ChunkedSegmentSealedImpl::load_system_field_internal(
             offset += chunk_ptr->Span().row_count();
         }
 
+        if (commit_ts_ != 0) {
+            std::fill(timestamps.begin(), timestamps.end(), commit_ts_);
+        }
         init_storage_v1_timestamp_index(std::move(timestamps), num_rows);
     } else {
         AssertInfo(system_field_type == SystemFieldType::RowId,
@@ -3829,17 +3838,30 @@ ChunkedSegmentSealedImpl::LoadGeometryCache(
 }
 
 void
+ChunkedSegmentSealedImpl::SetCommitTimestamp(uint64_t ts) {
+    std::unique_lock lck(mutex_);
+    commit_ts_ = ts;
+}
+
+uint64_t
+ChunkedSegmentSealedImpl::GetCommitTimestamp() const {
+    return commit_ts_;
+}
+
+void
 ChunkedSegmentSealedImpl::SetLoadInfo(
     proto::segcore::SegmentLoadInfo load_info) {
     std::unique_lock lck(mutex_);
+    commit_ts_ = static_cast<milvus::Timestamp>(load_info.commit_timestamp());
     segment_load_info_ = SegmentLoadInfo(std::move(load_info), schema_);
     LOG_INFO(
         "SetLoadInfo for segment {}, num_rows: {}, index count: {}, "
-        "storage_version: {}",
+        "storage_version: {}, commit_ts: {}",
         id_,
         segment_load_info_.GetNumOfRows(),
         segment_load_info_.GetIndexInfoCount(),
-        segment_load_info_.GetStorageVersion());
+        segment_load_info_.GetStorageVersion(),
+        commit_ts_);
 }
 
 void
@@ -4027,8 +4049,13 @@ ChunkedSegmentSealedImpl::LoadColumnGroup(
             op_ctx,
             is_replace);
         if (field_id == TimestampFieldID) {
-            init_storage_v2_timestamp_index(column,
-                                            segment_load_info_.GetNumOfRows());
+            int64_t num_rows = segment_load_info_.GetNumOfRows();
+            if (commit_ts_ != 0) {
+                std::vector<Timestamp> ts(num_rows, commit_ts_);
+                init_storage_v1_timestamp_index(std::move(ts), num_rows);
+            } else {
+                init_storage_v2_timestamp_index(column, num_rows);
+            }
         }
     }
 }
@@ -4070,7 +4097,7 @@ ChunkedSegmentSealedImpl::LoadBatchTextIndexes(
     for (auto& [field_id, load_text_index_info] : text_indexes_to_load) {
         auto future = pool.Submit(
             [this, op_ctx, info = std::move(load_text_index_info)]() mutable
-            -> void { LoadTextIndex(op_ctx, std::move(info)); });
+                -> void { LoadTextIndex(op_ctx, std::move(info)); });
         load_index_futures.emplace_back(std::move(future));
     }
 

@@ -1328,6 +1328,23 @@ func UpdateIsImporting(segmentID int64, isImporting bool) UpdateOperator {
 	}
 }
 
+// UpdateCommitTimestamp sets the commit_timestamp on an import segment.
+// Non-zero marks it as committed at that transaction time, overriding
+// start_position.Timestamp for all temporal decisions.
+// Pass 0 to clear (e.g., after compaction rewrites all row timestamps).
+func UpdateCommitTimestamp(segmentID int64, ts uint64) UpdateOperator {
+	return func(modPack *updateSegmentPack) bool {
+		segment := modPack.Get(segmentID)
+		if segment == nil {
+			log.Ctx(context.TODO()).Warn("meta update: update commit timestamp failed - segment not found",
+				zap.Int64("segmentID", segmentID))
+			return false
+		}
+		segment.CommitTimestamp = ts
+		return true
+	}
+}
+
 // UpdateImportSegmentPosition updates the segment's StartPosition and DmlPosition
 // for import segments using actual timestamps from the imported data.
 // Unlike UpdateStartPosition/UpdateDmlPosition, this operator allows nil MsgID
@@ -2626,7 +2643,7 @@ func (m *meta) TruncateChannelByTime(ctx context.Context, vChannel string, flush
 	}
 
 	for _, segment := range segments {
-		if segment.GetDmlPosition().GetTimestamp() <= flushTs && segment.GetState() != commonpb.SegmentState_Dropped {
+		if segmentEffectiveDmlTs(segment.SegmentInfo) <= flushTs && segment.GetState() != commonpb.SegmentState_Dropped {
 			cloned := segment.Clone()
 			updateSegStateAndPrepareMetrics(cloned, commonpb.SegmentState_Dropped, metricMutation)
 			segmentsToDrop = append(segmentsToDrop, cloned)

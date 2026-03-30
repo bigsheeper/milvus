@@ -41,6 +41,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 	"github.com/milvus-io/milvus/pkg/v2/util/tsoutil"
+	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
 type ImportCheckerSuite struct {
@@ -274,6 +275,7 @@ func (s *ImportCheckerSuite) TestCheckJob() {
 	s.Equal(internalpb.ImportJobState_IndexBuilding, s.importMeta.GetJob(context.TODO(), job.GetJobID()).GetState())
 
 	// test check IndexBuilding job
+	alloc.EXPECT().AllocTimestamp(mock.Anything).Return(tsoutil.GetCurrentTime(), nil).Once()
 	s.checker.checkIndexBuildingJob(job)
 	for _, t := range importTasks {
 		task := s.importMeta.GetTask(context.TODO(), t.GetTaskID())
@@ -786,10 +788,103 @@ func TestImportCheckerCompaction(t *testing.T) {
 	log.Info("job index building")
 
 	// check index building
+	alloc.EXPECT().AllocTimestamp(mock.Anything).Return(tsoutil.GetCurrentTime(), nil).Maybe()
 	catalog.EXPECT().SaveImportJob(mock.Anything, mock.Anything).Return(nil).Once()
 	assert.Eventually(t, func() bool {
 		job := importMeta.GetJob(context.TODO(), jobID)
 		return job.GetState() == internalpb.ImportJobState_Completed
 	}, 2*time.Second, 100*time.Millisecond)
 	log.Info("job completed")
+}
+
+func newTestMeta(t *testing.T) *meta {
+	t.Helper()
+	catalog := mocks.NewDataCoordCatalog(t)
+	catalog.EXPECT().ListChannelCheckpoint(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListIndexes(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListSegmentIndexes(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListAnalyzeTasks(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListCompactionTask(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListPartitionStatsInfos(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListStatsTasks(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListSnapshots(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListExternalCollectionRefreshJobs(mock.Anything).Return(nil, nil)
+	catalog.EXPECT().ListExternalCollectionRefreshTasks(mock.Anything).Return(nil, nil)
+	broker := broker2.NewMockBroker(t)
+	broker.EXPECT().ShowCollectionIDs(mock.Anything).Return(nil, nil)
+	m, err := newMeta(context.TODO(), catalog, nil, broker)
+	assert.NoError(t, err)
+	return m
+}
+
+func TestUnsetSegmentImporting_SetsCommitTimestampAtomically(t *testing.T) {
+	paramtable.Init()
+	m := newTestMeta(t)
+	catalog := m.catalog.(*mocks.DataCoordCatalog)
+
+	seg := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:          100,
+			IsImporting: true,
+			State:       commonpb.SegmentState_Flushed,
+		},
+	}
+	catalog.EXPECT().AddSegment(mock.Anything, mock.Anything).Return(nil).Once()
+	err := m.AddSegment(context.Background(), seg)
+	assert.NoError(t, err)
+
+	// Expect exactly one AlterSegments call (both operators go in one UpdateSegmentsInfo)
+	catalog.EXPECT().AlterSegments(mock.Anything, mock.Anything).Return(nil).Once()
+
+	mockAlloc := allocator.NewMockAllocator(t)
+	mockAlloc.EXPECT().AllocTimestamp(mock.Anything).Return(typeutil.Timestamp(12345), nil).Once()
+
+	checker := &importChecker{
+		meta:  m,
+		alloc: mockAlloc,
+		ctx:   context.Background(),
+	}
+
+	retry := checker.unsetSegmentImporting([]int64{100}, nil)
+	assert.False(t, retry)
+
+	updated := m.GetSegment(context.Background(), 100)
+	assert.NotNil(t, updated)
+	assert.False(t, updated.GetIsImporting(), "IsImporting must be unset")
+	assert.Equal(t, uint64(12345), updated.GetCommitTimestamp(),
+		"CommitTimestamp must be set to the allocated timestamp in the same call")
+}
+
+func TestUnsetSegmentImporting_AllocFail_ReturnsTrue(t *testing.T) {
+	paramtable.Init()
+	m := newTestMeta(t)
+	catalog := m.catalog.(*mocks.DataCoordCatalog)
+
+	seg := &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:          101,
+			IsImporting: true,
+			State:       commonpb.SegmentState_Flushed,
+		},
+	}
+	catalog.EXPECT().AddSegment(mock.Anything, mock.Anything).Return(nil).Once()
+	err := m.AddSegment(context.Background(), seg)
+	assert.NoError(t, err)
+
+	mockAlloc := allocator.NewMockAllocator(t)
+	mockAlloc.EXPECT().AllocTimestamp(mock.Anything).
+		Return(typeutil.Timestamp(0), errors.New("alloc failed")).Once()
+
+	checker := &importChecker{
+		meta:  m,
+		alloc: mockAlloc,
+		ctx:   context.Background(),
+	}
+
+	retry := checker.unsetSegmentImporting([]int64{101}, nil)
+	assert.True(t, retry, "must return true (retry) when AllocTimestamp fails")
+
+	// segment must still be importing since we bailed out early
+	unchanged := m.GetSegment(context.Background(), 101)
+	assert.True(t, unchanged.GetIsImporting(), "IsImporting must remain true after alloc failure")
 }

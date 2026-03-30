@@ -66,6 +66,7 @@ set(MILVUS_TEST_FILES
         test_virtual_pk.cpp
         test_mvcc_fast_path.cpp
         test_external_take.cpp
+        test_commit_timestamp.cpp
         )
 
 if ( NOT (INDEX_ENGINE STREQUAL "cardinal") )

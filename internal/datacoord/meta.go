@@ -1850,6 +1850,16 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 		compactFromSegIDs = append(compactFromSegIDs, cloned.GetID())
 	}
 
+	// Propagate commit_timestamp: clustering compaction rewrites row data but does
+	// not assign fresh row timestamps, so import/CDC segments must retain their
+	// commit_timestamp to keep TTL and GC protections intact after compaction.
+	maxCommitTs := uint64(0)
+	for _, seg := range compactFromSegInfos {
+		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
+			maxCommitTs = ts
+		}
+	}
+
 	for _, seg := range result.GetSegments() {
 		segmentInfo := &datapb.SegmentInfo{
 			ID:                  seg.GetSegmentID(),
@@ -1872,10 +1882,11 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 				return info.GetDmlPosition()
 			})),
 			// visible after stats and index
-			IsInvisible:    true,
-			StorageVersion: seg.GetStorageVersion(),
-			ManifestPath:   seg.GetManifest(),
-			ExpirQuantiles: seg.GetExpirQuantiles(),
+			IsInvisible:     true,
+			StorageVersion:  seg.GetStorageVersion(),
+			ManifestPath:    seg.GetManifest(),
+			ExpirQuantiles:  seg.GetExpirQuantiles(),
+			CommitTimestamp: maxCommitTs,
 		}
 		segment := NewSegmentInfo(segmentInfo)
 		compactToSegInfos = append(compactToSegInfos, segment)
@@ -1956,6 +1967,18 @@ func (m *meta) completeMixCompactionMutation(
 
 	log = log.With(zap.Int64s("compactFrom", compactFromSegIDs))
 
+	// Propagate commit_timestamp: if any input segment is an import/CDC segment,
+	// the output must inherit the max commit_timestamp so TTL and GC protections
+	// are not silently dropped when the segment is recompacted later.
+	// commit_timestamp is only cleared when the data is written with fresh row
+	// timestamps (which mix compaction does not do — it copies rows as-is).
+	maxCommitTs := uint64(0)
+	for _, seg := range compactFromSegInfos {
+		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
+			maxCommitTs = ts
+		}
+	}
+
 	compactToSegments := make([]*SegmentInfo, 0)
 	for _, compactToSegment := range result.GetSegments() {
 		compactToSegmentInfo := NewSegmentInfo(
@@ -1988,6 +2011,7 @@ func (m *meta) completeMixCompactionMutation(
 				ManifestPath:        compactToSegment.GetManifest(),
 				IsSortedByNamespace: compactToSegment.GetIsSortedByNamespace(),
 				ExpirQuantiles:      compactToSegment.GetExpirQuantiles(),
+				CommitTimestamp:     maxCommitTs,
 			})
 
 		if compactToSegmentInfo.GetNumOfRows() == 0 {
@@ -2495,6 +2519,10 @@ func (m *meta) completeSortCompactionMutation(
 		ManifestPath:              resultSegment.GetManifest(),
 		ExpirQuantiles:            resultSegment.GetExpirQuantiles(),
 		IsSortedByNamespace:       resultSegment.GetIsSortedByNamespace(),
+		// Preserve commit_timestamp: sort compaction reorders rows but does not
+		// rewrite row timestamps, so import/CDC segments must retain their
+		// commit_timestamp to keep TTL and GC protections intact after sort.
+		CommitTimestamp: oldSegment.GetCommitTimestamp(),
 	}
 
 	segment := NewSegmentInfo(segmentInfo)

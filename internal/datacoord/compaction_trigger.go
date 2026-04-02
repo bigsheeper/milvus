@@ -723,8 +723,9 @@ func getExpirQuantilesIndexByRatio(ratio float64, percentilesLen int) int {
 func (t *compactionTrigger) ShouldCompactExpiryWithTTLField(compactTime *compactTime, segment *SegmentInfo) bool {
 	// expirQuantiles are precomputed percentiles of actual row timestamps.
 	// For import segments, those row timestamps predate the commit time, so
-	// the quantiles would always appear expired. Skip TTL compaction until
-	// commit_timestamp is cleared (i.e., after major compaction rewrites the data).
+	// the quantiles would always appear expired. Skip quantile-based TTL
+	// compaction entirely — regular TTL compaction via ShouldDoSingleCompaction
+	// still works correctly using max(row_ts, commit_ts).
 	if segment.GetCommitTimestamp() != 0 {
 		return false
 	}

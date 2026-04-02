@@ -1328,10 +1328,9 @@ func UpdateIsImporting(segmentID int64, isImporting bool) UpdateOperator {
 	}
 }
 
-// UpdateCommitTimestamp sets the commit_timestamp on an import segment.
+// UpdateCommitTimestamp sets the commit_timestamp on an import/CDC segment.
 // Non-zero marks it as committed at that transaction time, overriding
 // start_position.Timestamp for all temporal decisions.
-// Pass 0 to clear (e.g., after compaction rewrites all row timestamps).
 func UpdateCommitTimestamp(segmentID int64, ts uint64) UpdateOperator {
 	return func(modPack *updateSegmentPack) bool {
 		segment := modPack.Get(segmentID)

@@ -447,12 +447,14 @@ message SegmentInfo {
   // at the 20%, 40%, 60%, 80%, and 100% data distribution levels
   repeated int64 expirQuantiles = 33;
   int32 schema_version = 34;
-  // commit_timestamp is the transaction timestamp for import segments.
+  // commit_timestamp is the transaction timestamp for import/CDC segments.
   // When non-zero, it overrides start_position.Timestamp, dml_position.Timestamp,
   // and binlog.TimestampFrom/TimestampTo for all temporal decisions (delete
   // filtering, snapshot visibility, compaction selection, GC).
-  // Zero means normal segment. Cleared to 0 when segment data is rewritten by
-  // major compaction.
+  // Zero means normal segment.
+  // Propagated through compaction (max of input segments) because no compaction
+  // type rewrites row timestamps — stale rows always need commit_ts protection
+  // until TTL naturally expires using max(row_ts, commit_ts).
   uint64 commit_timestamp = 35;
 }
 

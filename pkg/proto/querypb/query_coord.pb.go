@@ -2288,7 +2288,9 @@ type SegmentLoadInfo struct {
 	Priority         commonpb.LoadPriority            `protobuf:"varint,23,opt,name=priority,proto3,enum=milvus.proto.common.LoadPriority" json:"priority,omitempty"`
 	ManifestPath     string                           `protobuf:"bytes,24,opt,name=manifest_path,json=manifestPath,proto3" json:"manifest_path,omitempty"`
 	// commit_timestamp mirrors data_coord.SegmentInfo.commit_timestamp.
-	// QueryNode uses it for delete-buffer pinning and ListAfter calls.
+	// QueryNode uses it for: delete-buffer pinning, ListAfter calls, and
+	// passing to C++ segcore to overwrite the in-memory timestamp column
+	// (enabling correct MVCC visibility and TTL evaluation).
 	CommitTimestamp uint64 `protobuf:"varint,25,opt,name=commit_timestamp,json=commitTimestamp,proto3" json:"commit_timestamp,omitempty"`
 }
 

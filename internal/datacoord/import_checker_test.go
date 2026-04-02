@@ -274,7 +274,6 @@ func (s *ImportCheckerSuite) TestCheckJob() {
 	s.Equal(internalpb.ImportJobState_IndexBuilding, s.importMeta.GetJob(context.TODO(), job.GetJobID()).GetState())
 
 	// test check IndexBuilding job
-	alloc.EXPECT().AllocTimestamp(mock.Anything).Return(tsoutil.GetCurrentTime(), nil).Once()
 	s.checker.checkIndexBuildingJob(job)
 	for _, t := range importTasks {
 		task := s.importMeta.GetTask(context.TODO(), t.GetTaskID())

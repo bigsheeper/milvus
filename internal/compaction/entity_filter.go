@@ -128,8 +128,9 @@ func (filter *EntityFilterImpl) isEntityExpiredByTTLField(expirationTimeMicros i
 
 	// For import/CDC segments the per-row TTL field value was written with the
 	// source cluster's clock, so the expiration time is equally stale.  Skip
-	// this check entirely when commitTs is set; TTL expiry will be re-evaluated
-	// after a subsequent major compaction that clears commit_timestamp.
+	// this check entirely when commitTs is set.  commit_timestamp is propagated
+	// across compactions (never cleared) because compaction does not rewrite
+	// row timestamps and per-row TTL field values cannot be corrected.
 	if filter.commitTs != 0 {
 		return false
 	}

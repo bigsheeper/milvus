@@ -64,7 +64,7 @@ TEST(CommitTimestamp, MVCC_RowsInvisibleBeforeCommitTs) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     auto vec =
-        schema->AddDebugField("vec", DataType::FLOAT_VECTOR, 16, knowhere::metric::L2);
+        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     // N=10 rows, original ts = [100, 101, ..., 109]
@@ -105,7 +105,7 @@ TEST(CommitTimestamp, TTL_RowsNotExpiredWhenCommitTsAboveTtl) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     auto vec =
-        schema->AddDebugField("vec", DataType::FLOAT_VECTOR, 16, knowhere::metric::L2);
+        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;
@@ -148,7 +148,7 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     auto vec =
-        schema->AddDebugField("vec", DataType::FLOAT_VECTOR, 16, knowhere::metric::L2);
+        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;
@@ -205,7 +205,7 @@ TEST(CommitTimestamp, NormalSegment_BehaviorUnchanged) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     auto vec =
-        schema->AddDebugField("vec", DataType::FLOAT_VECTOR, 16, knowhere::metric::L2);
+        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;

@@ -2005,11 +2005,28 @@ ChunkedSegmentSealedImpl::ChunkedSegmentSealedImpl(
                  const Timestamp* timestamps,
                  const std::function<void(const SegOffset offset,
                                           const Timestamp ts)>& callback) {
-              this->search_batch_pks(
-                  pks,
-                  [&](const size_t idx) { return timestamps[idx]; },
-                  false,
-                  callback);
+              if (commit_ts_ != 0) {
+                  // For import segments with commit_ts, row timestamps are
+                  // overwritten to commit_ts. Skip the timestamp filter in
+                  // PK search so that deletes with ts < commit_ts can still
+                  // find the matching rows. Pass the original delete
+                  // timestamp to the callback for correct storage.
+                  for (size_t i = 0; i < pks.size(); i++) {
+                      auto offsets = insert_record_.search_pk(
+                          pks[i],
+                          std::numeric_limits<Timestamp>::max(),
+                          true);
+                      for (auto offset : offsets) {
+                          callback(offset, timestamps[i]);
+                      }
+                  }
+              } else {
+                  this->search_batch_pks(
+                      pks,
+                      [&](const size_t idx) { return timestamps[idx]; },
+                      false,
+                      callback);
+              }
           },
           segment_id) {
 }

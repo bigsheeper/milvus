@@ -794,4 +794,3 @@ func TestImportCheckerCompaction(t *testing.T) {
 	}, 2*time.Second, 100*time.Millisecond)
 	log.Info("job completed")
 }
-

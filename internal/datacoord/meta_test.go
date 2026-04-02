@@ -742,6 +742,70 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		suite.EqualValues(7777, infos[0].GetCommitTimestamp(), "sort compaction must preserve input commit_timestamp")
 	})
 
+	suite.Run("clustering compaction propagates commit_timestamp to output", func() {
+		latestSegments := NewSegmentsInfo()
+		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
+			ID: 1, CollectionID: 100, PartitionID: 10,
+			State: commonpb.SegmentState_Flushed, Level: datapb.SegmentLevel_L1,
+			NumOfRows: 2, CommitTimestamp: 6000,
+		}})
+		latestSegments.SetSegment(2, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
+			ID: 2, CollectionID: 100, PartitionID: 10,
+			State: commonpb.SegmentState_Flushed, Level: datapb.SegmentLevel_L1,
+			NumOfRows: 3, CommitTimestamp: 4000,
+		}})
+
+		result := &datapb.CompactionPlanResult{
+			Segments: []*datapb.CompactionSegment{{SegmentID: 10, NumOfRows: 5}},
+		}
+		task := &datapb.CompactionTask{
+			InputSegments: []UniqueID{1, 2},
+			Type:          datapb.CompactionType_ClusteringCompaction,
+		}
+		m := &meta{
+			catalog:      &datacoord.Catalog{MetaKv: NewMetaMemoryKV()},
+			segments:     latestSegments,
+			chunkManager: mockChMgr,
+		}
+		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
+		suite.NoError(err)
+		suite.Require().Equal(1, len(infos))
+		suite.EqualValues(6000, infos[0].GetCommitTimestamp(), "clustering compaction output must carry max(input commit_timestamps)")
+	})
+
+	suite.Run("mix compaction with mixed import and normal segments uses max commit_timestamp", func() {
+		// One import segment (commitTs=5000) + one normal segment (commitTs=0).
+		// Output must inherit 5000 — conservative protection for the import rows.
+		latestSegments := NewSegmentsInfo()
+		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
+			ID: 1, CollectionID: 100, PartitionID: 10,
+			State: commonpb.SegmentState_Flushed, Level: datapb.SegmentLevel_L1,
+			NumOfRows: 2, CommitTimestamp: 5000,
+		}})
+		latestSegments.SetSegment(2, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
+			ID: 2, CollectionID: 100, PartitionID: 10,
+			State: commonpb.SegmentState_Flushed, Level: datapb.SegmentLevel_L1,
+			NumOfRows: 3, CommitTimestamp: 0,
+		}})
+
+		result := &datapb.CompactionPlanResult{
+			Segments: []*datapb.CompactionSegment{{SegmentID: 10, NumOfRows: 5}},
+		}
+		task := &datapb.CompactionTask{
+			InputSegments: []UniqueID{1, 2},
+			Type:          datapb.CompactionType_MixCompaction,
+		}
+		m := &meta{
+			catalog:      &datacoord.Catalog{MetaKv: NewMetaMemoryKV()},
+			segments:     latestSegments,
+			chunkManager: mockChMgr,
+		}
+		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
+		suite.NoError(err)
+		suite.Require().Equal(1, len(infos))
+		suite.EqualValues(5000, infos[0].GetCommitTimestamp(), "mixed compaction (import+normal) must carry import segment's commit_timestamp")
+	})
+
 	suite.Run("mix compaction with no import segments sets commit_timestamp to 0", func() {
 		latestSegments := NewSegmentsInfo()
 		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{

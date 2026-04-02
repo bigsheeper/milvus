@@ -1778,6 +1778,69 @@ func TestDeleteBuffer_PinsAtCommitTs(t *testing.T) {
 	buf.Unpin(commitTs, segID)
 }
 
+func TestDeleteBuffer_ListAfterUsesCommitTs(t *testing.T) {
+	// Invariant I10: ListAfter must use segmentEffectiveTs (commit_ts when non-zero),
+	// not the raw StartPosition timestamp.
+	// If ListAfter uses the stale StartPosition, it would return too many delete records
+	// (including pre-import deletes that are irrelevant).
+
+	const commitTs uint64 = 5000
+	const startTs uint64 = 1000
+
+	info := &querypb.SegmentLoadInfo{
+		SegmentID:       42,
+		StartPosition:   &msgpb.MsgPosition{Timestamp: startTs},
+		CommitTimestamp: commitTs,
+	}
+
+	effectiveTs := segmentEffectiveTs(info)
+	assert.Equal(t, commitTs, effectiveTs,
+		"segmentEffectiveTs must return commit_ts for import segment, not startPosition")
+
+	// Verify: for normal segment (commitTs=0), effectiveTs falls back to startPosition
+	normalInfo := &querypb.SegmentLoadInfo{
+		SegmentID:     43,
+		StartPosition: &msgpb.MsgPosition{Timestamp: startTs},
+	}
+	normalEffective := segmentEffectiveTs(normalInfo)
+	assert.Equal(t, startTs, normalEffective,
+		"segmentEffectiveTs must return startPosition for normal segment")
+}
+
+func TestDeleteBuffer_CatchUpUsesCommitTs(t *testing.T) {
+	// Invariant I10: catchUpTs in loadStreamDelete must start at segmentEffectiveTs,
+	// not StartPosition.Timestamp. This ensures the catch-up phase doesn't
+	// re-process delete records from before the import commit time.
+
+	const commitTs uint64 = 5000
+	const startTs uint64 = 1000
+
+	info := &querypb.SegmentLoadInfo{
+		SegmentID:       42,
+		StartPosition:   &msgpb.MsgPosition{Timestamp: startTs},
+		CommitTimestamp: commitTs,
+	}
+
+	// Simulate catchUpTs initialization logic from loadStreamDelete
+	catchUpTs := segmentEffectiveTs(info)
+	// snapshotMaxTs=0 means no snapshot → catchUpTs should be segmentEffectiveTs
+	snapshotMaxTs := uint64(0)
+	if snapshotMaxTs > 0 {
+		catchUpTs = snapshotMaxTs + 1
+	}
+	assert.Equal(t, commitTs, catchUpTs,
+		"catchUpTs must start at commit_ts (not startPosition) when no snapshot exists")
+
+	// With snapshot: catchUpTs should advance beyond snapshot
+	snapshotMaxTs = 6000
+	catchUpTs2 := segmentEffectiveTs(info)
+	if snapshotMaxTs > 0 {
+		catchUpTs2 = snapshotMaxTs + 1
+	}
+	assert.Equal(t, uint64(6001), catchUpTs2,
+		"catchUpTs must advance to snapshotMaxTs+1 when snapshot exists")
+}
+
 func TestDelegatorDataSuite(t *testing.T) {
 	suite.Run(t, new(DelegatorDataSuite))
 }

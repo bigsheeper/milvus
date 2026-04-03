@@ -221,10 +221,9 @@ TEST(PhysicalTimeEdgeCase, ImportSegmentSkipsTTLFieldFilter) {
 
     // For an import segment, TTL field filter must be suppressed to prevent
     // stale source-cluster TTL values from expiring rows prematurely.
-    auto ttl_expr =
-        exec::CreateTTLFieldFilterExpression(query_context.get());
-    EXPECT_EQ(ttl_expr, nullptr)
-        << "TTL field filter must be nil for import/CDC segments (commit_ts != 0)";
+    auto ttl_expr = exec::CreateTTLFieldFilterExpression(query_context.get());
+    EXPECT_EQ(ttl_expr, nullptr) << "TTL field filter must be nil for "
+                                    "import/CDC segments (commit_ts != 0)";
 }
 
 // Test: regular (non-import) segment still applies TTL field filter.
@@ -258,8 +257,7 @@ TEST(PhysicalTimeEdgeCase, NonImportSegmentAppliesTTLFieldFilter) {
         current_physical_us);
 
     // For a regular segment, TTL field filter must be compiled.
-    auto ttl_expr =
-        exec::CreateTTLFieldFilterExpression(query_context.get());
+    auto ttl_expr = exec::CreateTTLFieldFilterExpression(query_context.get());
     EXPECT_NE(ttl_expr, nullptr)
         << "TTL field filter must be present for non-import segments";
 }

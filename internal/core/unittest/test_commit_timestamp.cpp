@@ -63,13 +63,13 @@ CreateImportSegment(SchemaPtr schema,
 TEST(CommitTimestamp, MVCC_RowsInvisibleBeforeCommitTs) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
-    auto vec =
-        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
+    auto vec = schema->AddDebugField(
+        "vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     // N=10 rows, original ts = [100, 101, ..., 109]
     constexpr int64_t N = 10;
-    constexpr Timestamp T_old = 100;    // ts_offset; actual range [100, 109]
+    constexpr Timestamp T_old = 100;  // ts_offset; actual range [100, 109]
     constexpr Timestamp T_commit = 5000;
     constexpr Timestamp T_before = 2000;  // < T_commit
     constexpr Timestamp T_after = 6000;   // > T_commit
@@ -104,14 +104,15 @@ TEST(CommitTimestamp, MVCC_RowsInvisibleBeforeCommitTs) {
 TEST(CommitTimestamp, TTL_RowsNotExpiredWhenCommitTsAboveTtl) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
-    auto vec =
-        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
+    auto vec = schema->AddDebugField(
+        "vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;
-    constexpr Timestamp T_old = 100;           // original ts range: [100, 109]
+    constexpr Timestamp T_old = 100;  // original ts range: [100, 109]
     constexpr Timestamp T_commit = 5000;
-    constexpr Timestamp TTL_THRESHOLD = 3000;  // old ts <= 3000 -> expired without overwrite
+    constexpr Timestamp TTL_THRESHOLD =
+        3000;  // old ts <= 3000 -> expired without overwrite
 
     auto dataset = DataGen(schema, N, /*seed=*/42, /*ts_offset=*/T_old);
 
@@ -137,7 +138,8 @@ TEST(CommitTimestamp, TTL_RowsNotExpiredWhenCommitTsAboveTtl) {
         seg_ctrl->mask_with_timestamps(view, T_old + 10000, TTL_THRESHOLD);
         EXPECT_EQ(bs.count(), static_cast<size_t>(N))
             << "Without overwrite, row.ts=" << T_old
-            << " <= ttl=" << TTL_THRESHOLD << ": all rows should be TTL-expired";
+            << " <= ttl=" << TTL_THRESHOLD
+            << ": all rows should be TTL-expired";
     }
 }
 
@@ -147,14 +149,14 @@ TEST(CommitTimestamp, TTL_RowsNotExpiredWhenCommitTsAboveTtl) {
 TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
-    auto vec =
-        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
+    auto vec = schema->AddDebugField(
+        "vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;
-    constexpr Timestamp T_old = 1000;    // original ts range: [1000, 1009]
+    constexpr Timestamp T_old = 1000;  // original ts range: [1000, 1009]
     constexpr Timestamp T_commit = 3000;
-    constexpr Timestamp T_delete = 2000;  // < T_commit
+    constexpr Timestamp T_delete = 2000;         // < T_commit
     constexpr Timestamp T_query_visible = 4000;  // > T_commit
     constexpr Timestamp T_query_hidden = 2500;   // < T_commit
 
@@ -183,7 +185,8 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
         // MVCC must not mask any row.
         BitsetType bs_mvcc(N, false);
         BitsetTypeView view_mvcc(bs_mvcc);
-        seg->mask_with_timestamps(view_mvcc, T_query_visible, /*collection_ttl=*/0);
+        seg->mask_with_timestamps(
+            view_mvcc, T_query_visible, /*collection_ttl=*/0);
         EXPECT_EQ(bs_mvcc.count(), 0UL)
             << "MVCC must not mask any row at query_ts=" << T_query_visible;
 
@@ -204,8 +207,8 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
 TEST(CommitTimestamp, NormalSegment_BehaviorUnchanged) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
-    auto vec =
-        schema->AddDebugField("vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
+    auto vec = schema->AddDebugField(
+        "vec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
     schema->set_primary_field_id(pk);
 
     constexpr int64_t N = 10;
@@ -223,13 +226,15 @@ TEST(CommitTimestamp, NormalSegment_BehaviorUnchanged) {
         BitsetTypeView view(bs);
         seg->mask_with_timestamps(view, 500, /*collection_ttl=*/0);
         EXPECT_EQ(bs.count(), static_cast<size_t>(N))
-            << "query_ts=500 < row_ts_min=" << ROW_TS_MIN << ": all rows invisible";
+            << "query_ts=500 < row_ts_min=" << ROW_TS_MIN
+            << ": all rows invisible";
     }
     // MVCC: query_ts > ROW_TS_MAX -> none masked
     {
         BitsetType bs(N, false);
         BitsetTypeView view(bs);
-        seg->mask_with_timestamps(view, ROW_TS_MAX + 1000, /*collection_ttl=*/0);
+        seg->mask_with_timestamps(
+            view, ROW_TS_MAX + 1000, /*collection_ttl=*/0);
         EXPECT_EQ(bs.count(), 0UL)
             << "query_ts > row_ts_max=" << ROW_TS_MAX << ": all rows visible";
     }
@@ -237,7 +242,8 @@ TEST(CommitTimestamp, NormalSegment_BehaviorUnchanged) {
     {
         BitsetType bs(N, false);
         BitsetTypeView view(bs);
-        seg->mask_with_timestamps(view, ROW_TS_MAX + 1000, /*collection_ttl=*/500);
+        seg->mask_with_timestamps(
+            view, ROW_TS_MAX + 1000, /*collection_ttl=*/500);
         EXPECT_EQ(bs.count(), 0UL)
             << "ttl=500 < row_ts_min=" << ROW_TS_MIN << ": no TTL expiry";
     }

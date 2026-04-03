@@ -2013,7 +2013,9 @@ ChunkedSegmentSealedImpl::ChunkedSegmentSealedImpl(
                   // timestamp to the callback for correct storage.
                   for (size_t i = 0; i < pks.size(); i++) {
                       auto offsets = insert_record_.search_pk(
-                          pks[i], std::numeric_limits<Timestamp>::max(), true);
+                          pks[i],
+                          std::numeric_limits<Timestamp>::max(),
+                          true);
                       for (auto offset : offsets) {
                           callback(offset, timestamps[i]);
                       }

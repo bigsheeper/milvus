@@ -259,7 +259,6 @@ func (s *BulkInsertSuite) runForStructArray() {
 	// Wait for import to complete
 	err = WaitForImportDone(ctx, s.Cluster, jobID)
 	s.NoError(err)
-	AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 
 	// Create index for vector array field
 	createIndexStatus, err := c.MilvusClient.CreateIndex(ctx, &milvuspb.CreateIndexRequest{

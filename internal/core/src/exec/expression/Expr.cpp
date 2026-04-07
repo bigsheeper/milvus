@@ -104,15 +104,6 @@ CreateTTLFieldFilterExpression(QueryContext* query_context) {
         return nullptr;
     }
 
-    // Import/CDC segments carry a commit_timestamp that reflects the real write time.
-    // Their per-row TTL field values are copied from the source cluster and may already
-    // be in the past, causing premature expiry.  Skip the TTL field check for these
-    // segments — collection-level TTL is already handled correctly via the timestamp
-    // index override in mask_with_timestamps.
-    if (segment->GetCommitTimestamp() != 0) {
-        return nullptr;
-    }
-
     auto ttl_field_id = schema.get_ttl_field_id().value();
     auto& ttl_field_meta = schema[ttl_field_id];
 

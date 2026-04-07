@@ -103,14 +103,10 @@ func (filter *EntityFilterImpl) isEntityExpired(entityTs typeutil.Timestamp) boo
 		return false
 	}
 
-	// For import/CDC segments commitTs is the real write time; row timestamps
-	// in binlogs are stale (copied from the source cluster).  Use whichever is
-	// larger so a row is never marked expired due to a stale timestamp alone.
-	effectiveTs := entityTs
-	if filter.commitTs != 0 && filter.commitTs > entityTs {
-		effectiveTs = filter.commitTs
-	}
-	entityTime, _ := tsoutil.ParseTS(effectiveTs)
+	// For import/CDC segments, row timestamps in binlogs may predate the actual
+	// commit time.  Use whichever is larger so a row is never marked expired
+	// due to an outdated timestamp alone.
+	entityTime, _ := tsoutil.ParseTS(effectiveTimestamp(entityTs, filter.commitTs))
 
 	// this dur can represents 292 million years before or after 1970, enough for milvus
 	// ttl calculation
@@ -126,15 +122,16 @@ func (filter *EntityFilterImpl) isEntityExpiredByTTLField(expirationTimeMicros i
 		return false
 	}
 
-	// For import/CDC segments the per-row TTL field value was written with the
-	// source cluster's clock, so the expiration time is equally stale.  Skip
-	// this check entirely when commitTs is set.  commit_timestamp is propagated
-	// across compactions (never cleared) because compaction does not rewrite
-	// row timestamps and per-row TTL field values cannot be corrected.
-	if filter.commitTs != 0 {
-		return false
-	}
-
 	// entityExpireTs is microseconds
 	return filter.currentTime.UnixMicro() >= expirationTimeMicros
+}
+
+// effectiveTimestamp returns max(rawTs, commitTs) when commitTs is non-zero.
+// For import/CDC segments, row timestamps may predate the actual commit time;
+// using the larger value prevents premature expiration.
+func effectiveTimestamp(rawTs, commitTs typeutil.Timestamp) typeutil.Timestamp {
+	if commitTs != 0 && commitTs > rawTs {
+		return commitTs
+	}
+	return rawTs
 }

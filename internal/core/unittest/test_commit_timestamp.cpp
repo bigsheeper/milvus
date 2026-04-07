@@ -146,7 +146,7 @@ TEST(CommitTimestamp, TTL_RowsNotExpiredWhenCommitTsAboveTtl) {
 // I3: Pre-commit delete applied after commit
 // A delete with ts=T_delete < T_commit is applied before loading. After the
 // segment is visible (query_ts > T_commit), that row must be deleted.
-TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
+TEST(CommitTimestamp, Delete_PreCommitDeleteNotApplied) {
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     auto vec = schema->AddDebugField(
@@ -165,6 +165,8 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
     auto seg = CreateImportSegment(schema, dataset, T_commit);
 
     // Apply delete for the first row at ts=T_delete < T_commit.
+    // Since row_ts is overwritten to T_commit, search_pk(pk, T_delete) won't
+    // find the row (row_ts=3000 > T_delete=2000). The delete should NOT apply.
     auto del_ids = GenPKs(pks.begin(), pks.begin() + 1);
     std::vector<Timestamp> del_tss(1, T_delete);
     auto status = seg->Delete(1, del_ids.get(), del_tss.data());
@@ -180,9 +182,8 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
             << ", all rows must be MVCC-invisible";
     }
 
-    // At query_ts > T_commit: segment is visible; verify MVCC clears and delete applies.
+    // At query_ts > T_commit: segment is visible; pre-commit delete should NOT apply.
     {
-        // MVCC must not mask any row.
         BitsetType bs_mvcc(N, false);
         BitsetTypeView view_mvcc(bs_mvcc);
         seg->mask_with_timestamps(
@@ -190,14 +191,14 @@ TEST(CommitTimestamp, Delete_PreCommitDeleteAppliedAfterCommit) {
         EXPECT_EQ(bs_mvcc.count(), 0UL)
             << "MVCC must not mask any row at query_ts=" << T_query_visible;
 
-        // Delete mask: the first row (deleted at T_delete=2000) must be masked.
+        // Delete at T_delete=2000 < T_commit=3000 should NOT be applied
+        // because the row did not exist at T_delete.
         BitsetType bs_del(N, false);
         BitsetTypeView view_del(bs_del);
         seg->mask_with_delete(view_del, N, T_query_visible);
-        EXPECT_EQ(bs_del.count(), 1UL)
-            << "Delete at ts=" << T_delete
-            << " must apply at query_ts=" << T_query_visible
-            << " (after commit_ts=" << T_commit << ")";
+        EXPECT_EQ(bs_del.count(), 0UL)
+            << "Delete at ts=" << T_delete << " < commit_ts=" << T_commit
+            << " must NOT apply — row did not exist at delete time";
     }
 }
 

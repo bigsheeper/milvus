@@ -86,7 +86,7 @@ func mergeSortMultipleSegments(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		segmentReaders[i] = reader
+		segmentReaders[i] = wrapReaderWithTimestampOverwrite(reader, s.GetCommitTimestamp())
 		delta, err := compaction.ComposeDeleteFromDeltalogs(ctx, pkField.DataType, s,
 			storage.WithDownloader(binlogIO.Download),
 			storage.WithStorageConfig(compactionParams.StorageConfig))

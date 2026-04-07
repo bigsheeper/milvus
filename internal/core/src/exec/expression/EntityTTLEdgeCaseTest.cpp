@@ -184,10 +184,10 @@ TEST(PhysicalTimeEdgeCase, SearchWithoutFilterTTLFiltering) {
     }
 }
 
-// Test: import/CDC segment (commit_ts != 0) skips TTL field filter at query time.
-// Mirrors the Go compaction fix in isEntityExpiredByTTLField: stale per-row TTL
-// field values from the source cluster must not prematurely expire rows.
-TEST(PhysicalTimeEdgeCase, ImportSegmentSkipsTTLFieldFilter) {
+// Test: import/CDC segment (commit_ts != 0) does NOT skip TTL field filter.
+// TTL field values represent user-specified expiration intent and should be
+// honored regardless of commit_ts.
+TEST(PhysicalTimeEdgeCase, ImportSegmentAppliesTTLFieldFilter) {
     auto schema = std::make_shared<Schema>();
     auto pk_fid = schema->AddDebugField("pk", DataType::INT64);
     auto ttl_fid = schema->AddDebugField("ttl_field", DataType::TIMESTAMPTZ);
@@ -219,11 +219,11 @@ TEST(PhysicalTimeEdgeCase, ImportSegmentSkipsTTLFieldFilter) {
                            std::shared_ptr<milvus::exec::BaseConfig>>(),
         current_physical_us);
 
-    // For an import segment, TTL field filter must be suppressed to prevent
-    // stale source-cluster TTL values from expiring rows prematurely.
+    // TTL field values represent user-specified expiration intent.
+    // Import segments should still apply TTL field filter.
     auto ttl_expr = exec::CreateTTLFieldFilterExpression(query_context.get());
-    EXPECT_EQ(ttl_expr, nullptr) << "TTL field filter must be nil for "
-                                    "import/CDC segments (commit_ts != 0)";
+    EXPECT_NE(ttl_expr, nullptr) << "TTL field filter must NOT be skipped for "
+                                    "import/CDC segments — TTL field is user intent";
 }
 
 // Test: regular (non-import) segment still applies TTL field filter.

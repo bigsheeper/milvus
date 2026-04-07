@@ -55,12 +55,11 @@ type CommitTimestampSuite struct {
 // ─── Helper: modify segment metadata in etcd ──────────────────────────────
 
 // setCommitTimestamp reads a segment's metadata from etcd, sets its
-// StartPosition/DmlPosition to staleTs and CommitTimestamp to commitTs,
-// then writes it back. This simulates an import segment without going
-// through the actual import pipeline.
+// CommitTimestamp to commitTs, then writes it back. This simulates an
+// import segment without going through the actual import pipeline.
 func (s *CommitTimestampSuite) setCommitTimestamp(
 	collectionID int64,
-	staleTs, commitTs uint64,
+	commitTs uint64,
 ) []int64 {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -89,23 +88,9 @@ func (s *CommitTimestampSuite) setCommitTimestamp(
 
 		log.Info("setCommitTimestamp: modifying segment",
 			zap.Int64("segmentID", seg.GetID()),
-			zap.Uint64("staleTs", staleTs),
 			zap.Uint64("commitTs", commitTs))
 
-		if seg.StartPosition != nil {
-			seg.StartPosition.Timestamp = staleTs
-		}
-		if seg.DmlPosition != nil {
-			seg.DmlPosition.Timestamp = staleTs
-		}
 		seg.CommitTimestamp = commitTs
-
-		for _, fieldBinlog := range seg.Binlogs {
-			for _, binlog := range fieldBinlog.Binlogs {
-				binlog.TimestampFrom = staleTs
-				binlog.TimestampTo = staleTs
-			}
-		}
 
 		data, err := proto.Marshal(&seg)
 		s.Require().NoError(err)
@@ -212,7 +197,7 @@ func (s *CommitTimestampSuite) queryCount(ctx context.Context, collName string) 
 		CollectionName:     collName,
 		Expr:               "",
 		OutputFields:       []string{"count(*)"},
-		GuaranteeTimestamp: 1, // Strong consistency (eventually consistent with max ts)
+		ConsistencyLevel:   commonpb.ConsistencyLevel_Strong,
 		QueryParams: []*commonpb.KeyValuePair{
 			{Key: "reduce_stop_for_best", Value: "false"},
 		},
@@ -244,8 +229,7 @@ func (s *CommitTimestampSuite) TestS4_MVCC_Visibility() {
 
 	// Set commit_ts = a future TSO to test MVCC
 	tCommit := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
-	staleTs := tsoutil.ComposeTSByTime(time.Now().Add(-48*time.Hour), 0)
-	s.setCommitTimestamp(collectionID, staleTs, tCommit)
+	s.setCommitTimestamp(collectionID, tCommit)
 
 	// Build index and load (triggers C++ timestamp overwrite)
 	s.buildIndexAndLoad(ctx, collName)
@@ -285,8 +269,7 @@ func (s *CommitTimestampSuite) TestS5_Delete_OnImportSegment() {
 	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
 
 	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
-	staleTs := tsoutil.ComposeTSByTime(time.Now().Add(-48*time.Hour), 0)
-	s.setCommitTimestamp(collectionID, staleTs, commitTs)
+	s.setCommitTimestamp(collectionID, commitTs)
 
 	s.buildIndexAndLoad(ctx, collName)
 
@@ -328,8 +311,7 @@ func (s *CommitTimestampSuite) TestS6_Upsert_OnImportSegment() {
 	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
 
 	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
-	staleTs := tsoutil.ComposeTSByTime(time.Now().Add(-48*time.Hour), 0)
-	s.setCommitTimestamp(collectionID, staleTs, commitTs)
+	s.setCommitTimestamp(collectionID, commitTs)
 
 	s.buildIndexAndLoad(ctx, collName)
 
@@ -353,7 +335,83 @@ func (s *CommitTimestampSuite) TestS6_Upsert_OnImportSegment() {
 		"after upsert, total row count should remain %d", rowNum)
 }
 
-// ─── S2: Compaction preserves commit_ts ──────────────────────────────────
+// ─── S7: Delete before commit_ts should not take effect ──────────────────
+
+func (s *CommitTimestampSuite) TestS7_Delete_BeforeCommitTs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+	const deleteCount = 10
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// Set commit_ts to a future time — deletes happening "now" are before commit_ts
+	commitTs := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Delete first 10 PKs — these deletes have ts < commit_ts
+	pks := make([]string, deleteCount)
+	for i := 0; i < deleteCount; i++ {
+		pks[i] = strconv.FormatInt(int64(i+1), 10)
+	}
+	expr := fmt.Sprintf("%s in [%s]", integration.Int64Field, strings.Join(pks, ","))
+	deleteResp, err := s.Cluster.MilvusClient.Delete(ctx, &milvuspb.DeleteRequest{
+		CollectionName: collName,
+		Expr:           expr,
+	})
+	s.Require().NoError(err)
+	s.Require().True(merr.Ok(deleteResp.GetStatus()))
+
+	time.Sleep(2 * time.Second)
+
+	// Deletes before commit_ts should NOT take effect — row didn't exist yet
+	count := s.queryCount(ctx, collName)
+	s.Equal(int64(rowNum), count,
+		"delete before commit_ts should not take effect — all %d rows should remain", rowNum)
+}
+
+// ─── S8: Upsert before commit_ts should not take effect ──────────────────
+
+func (s *CommitTimestampSuite) TestS8_Upsert_BeforeCommitTs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+	const upsertCount = 20
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// Set commit_ts to a future time — upserts happening "now" are before commit_ts
+	commitTs := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Upsert first 20 rows — these upserts have ts < commit_ts
+	pkColumn := integration.NewInt64FieldDataWithStart(integration.Int64Field, upsertCount, 1)
+	vecColumn := integration.NewFloatVectorFieldData(integration.FloatVecField, upsertCount, dim)
+	upsertResp, err := s.Cluster.MilvusClient.Upsert(ctx, &milvuspb.UpsertRequest{
+		CollectionName: collName,
+		FieldsData:     []*schemapb.FieldData{pkColumn, vecColumn},
+		NumRows:        uint32(upsertCount),
+	})
+	s.Require().NoError(err)
+	s.Require().True(merr.Ok(upsertResp.GetStatus()))
+
+	time.Sleep(2 * time.Second)
+
+	// Upsert before commit_ts: the delete part should not take effect on the
+	// import segment (row didn't exist yet), so we should see rowNum + upsertCount
+	// rows (original import rows + new upserted rows as separate inserts).
+	count := s.queryCount(ctx, collName)
+	s.Equal(int64(rowNum+upsertCount), count,
+		"upsert before commit_ts: delete part should not apply, expect %d rows", rowNum+upsertCount)
+}
+
+// ─── S2: Compaction normalizes commit_ts ──────────────────────────────────
 
 func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -407,8 +465,7 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 
 	// Set commit_ts on both segments
 	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
-	staleTs := tsoutil.ComposeTSByTime(time.Now().Add(-48*time.Hour), 0)
-	modifiedSegIDs := s.setCommitTimestamp(collectionID, staleTs, commitTs)
+	modifiedSegIDs := s.setCommitTimestamp(collectionID, commitTs)
 	s.Require().GreaterOrEqual(len(modifiedSegIDs), 2,
 		"should have at least 2 segments to compact")
 
@@ -422,6 +479,7 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 	compactionID := compactResp.GetCompactionID()
 
 	// Wait for compaction to complete
+	compactionCompleted := false
 	for i := 0; i < 60; i++ {
 		time.Sleep(2 * time.Second)
 		stateResp, err := s.Cluster.MilvusClient.GetCompactionState(ctx, &milvuspb.GetCompactionStateRequest{
@@ -432,23 +490,20 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 		}
 		if stateResp.GetState() == commonpb.CompactionState_Completed {
 			log.Info("compaction completed", zap.Int64("compactionID", compactionID))
+			compactionCompleted = true
 			break
 		}
 	}
+	s.Require().True(compactionCompleted, "compaction did not complete within timeout")
 
-	// Verify output segments have CommitTimestamp set
+	// Verify output segments have CommitTimestamp cleared (normalized)
 	segments, err := s.Cluster.ShowSegments(collName)
 	s.Require().NoError(err)
 
-	hasOutputWithCommitTs := false
 	for _, seg := range segments {
-		if seg.GetState() == commonpb.SegmentState_Flushed && seg.GetCommitTimestamp() > 0 {
-			hasOutputWithCommitTs = true
-			log.Info("compaction output segment has commit_ts",
-				zap.Int64("segmentID", seg.GetID()),
-				zap.Uint64("commitTimestamp", seg.GetCommitTimestamp()))
+		if seg.GetState() == commonpb.SegmentState_Flushed {
+			s.Equal(uint64(0), seg.GetCommitTimestamp(),
+				"compaction output segment %d must have CommitTimestamp=0 (normalized)", seg.GetID())
 		}
 	}
-	s.True(hasOutputWithCommitTs,
-		"compaction output segment must inherit commit_timestamp from input segments")
 }

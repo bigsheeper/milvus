@@ -685,6 +685,12 @@ func (t *clusteringCompactionTask) mappingSegment(
 				continue
 			}
 
+			// Normalize import segment timestamps: overwrite to commit_ts
+			// so the output segment becomes a normal segment (commit_ts = 0).
+			if commitTs := segment.GetCommitTimestamp(); commitTs != 0 {
+				(*v).Timestamp = int64(commitTs)
+			}
+
 			clusteringKey := row[t.clusteringKeyField.FieldID]
 			var clusterBuffer *ClusterBuffer
 			if t.isVectorClusteringKey {

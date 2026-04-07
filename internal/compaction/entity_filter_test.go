@@ -86,7 +86,7 @@ func (s *EntityFilterSuite) TestEntityFilterByTTL() {
 // TestEntityFilterByTTLWithCommitTs verifies that import/CDC segments (commitTs != 0)
 // are protected from premature TTL expiry caused by stale row timestamps.
 func (s *EntityFilterSuite) TestEntityFilterByTTLWithCommitTs() {
-	// Entity was written 5 years ago (stale timestamp from source cluster).
+	// Entity was written 5 years ago (outdated timestamp).
 	staleEntityTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	staleEntityTs := tsoutil.ComposeTSByTime(staleEntityTime, 0)
 
@@ -120,14 +120,15 @@ func (s *EntityFilterSuite) TestEntityFilterByTTLWithCommitTs() {
 		s.True(got, "row should expire when both row_ts and commitTs are beyond TTL")
 	})
 
-	s.Run("with commitTs: ttl_field expiration is skipped", func() {
-		// Per-row TTL field claims expiration 1 day ago (equally stale for import segment).
+	s.Run("with commitTs: ttl_field expiration still applies", func() {
+		// Per-row TTL field claims expiration 1 day ago. TTL field represents
+		// user intent and should be honored regardless of commitTs.
 		expiredTimeMicros := nowTime.Add(-24 * time.Hour).UnixMicro()
 		recentCommitTime := nowTime.AddDate(0, -6, 0)
 		commitTs := tsoutil.ComposeTSByTime(recentCommitTime, 0)
 		filter := newEntityFilter(nil, ttlOneYear, nowTime, commitTs)
 		got := filter.Filtered("pk1", tsoutil.ComposeTSByTime(nowTime.AddDate(0, -6, 0), 0), expiredTimeMicros)
-		s.False(got, "stale ttl_field should not expire the row when commitTs is set")
+		s.True(got, "ttl_field expiration should apply even when commitTs is set")
 	})
 
 	s.Run("without commitTs: ttl_field expiration applies", func() {

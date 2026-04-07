@@ -75,15 +75,7 @@ func (s *CommitTimestampSuite) TestImport_CommitTimestampSetAfterCompletion() {
 	err = WaitForImportDone(ctx, c, importResp.GetJobID())
 	s.NoError(err)
 
-	segments, err := c.ShowSegments(collectionName)
-	s.NoError(err)
-	s.NotEmpty(segments, "expected at least one segment after import")
-
-	for _, seg := range segments {
-		s.Greater(seg.GetCommitTimestamp(), uint64(0),
-			"segment %d should have CommitTimestamp > 0, got %d",
-			seg.GetID(), seg.GetCommitTimestamp())
-	}
+	AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 }
 
 // TestImport_DataQueryableAfterCommit verifies that a Strong-consistency query

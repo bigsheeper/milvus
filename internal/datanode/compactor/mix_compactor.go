@@ -317,14 +317,22 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 				err := func() error {
 					rec := rb.Build()
 					defer rec.Release()
-					return mWriter.Write(rec)
+					out := overwriteRecordTimestamps(rec, seg.GetCommitTimestamp())
+					if out != rec {
+						defer out.Release()
+					}
+					return mWriter.Write(out)
 				}()
 				if err != nil {
 					return 0, 0, err
 				}
 			}
 		} else {
-			err := mWriter.Write(r)
+			out := overwriteRecordTimestamps(r, seg.GetCommitTimestamp())
+			if out != r {
+				defer out.Release()
+			}
+			err := mWriter.Write(out)
 			if err != nil {
 				return 0, 0, err
 			}

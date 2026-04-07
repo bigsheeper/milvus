@@ -1849,13 +1849,35 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 		compactFromSegIDs = append(compactFromSegIDs, cloned.GetID())
 	}
 
-	// Propagate commit_timestamp: clustering compaction rewrites row data but does
-	// not assign fresh row timestamps, so import/CDC segments must retain their
-	// commit_timestamp to keep TTL and GC protections intact after compaction.
+	// Compaction normalizes import segments: row timestamps in the output
+	// binlogs are already rewritten to commit_ts by the compactor.
 	maxCommitTs := uint64(0)
 	for _, seg := range compactFromSegInfos {
 		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
 			maxCommitTs = ts
+		}
+	}
+
+	clusterStartPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+		return info.GetStartPosition()
+	}))
+	clusterDmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+		return info.GetDmlPosition()
+	}))
+	if maxCommitTs != 0 {
+		if clusterStartPos != nil && clusterStartPos.Timestamp < maxCommitTs {
+			clusterStartPos = &msgpb.MsgPosition{
+				ChannelName: clusterStartPos.ChannelName,
+				MsgID:       clusterStartPos.MsgID,
+				Timestamp:   maxCommitTs,
+			}
+		}
+		if clusterDmlPos != nil && clusterDmlPos.Timestamp < maxCommitTs {
+			clusterDmlPos = &msgpb.MsgPosition{
+				ChannelName: clusterDmlPos.ChannelName,
+				MsgID:       clusterDmlPos.MsgID,
+				Timestamp:   maxCommitTs,
+			}
 		}
 	}
 
@@ -1874,18 +1896,14 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 			CompactionFrom:      compactFromSegIDs,
 			LastExpireTime:      tsoutil.ComposeTSByTime(time.Unix(t.GetStartTime(), 0), 0),
 			Level:               datapb.SegmentLevel_L2,
-			StartPosition: getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
-				return info.GetStartPosition()
-			})),
-			DmlPosition: getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
-				return info.GetDmlPosition()
-			})),
+			StartPosition:       clusterStartPos,
+			DmlPosition:         clusterDmlPos,
 			// visible after stats and index
 			IsInvisible:     true,
 			StorageVersion:  seg.GetStorageVersion(),
 			ManifestPath:    seg.GetManifest(),
 			ExpirQuantiles:  seg.GetExpirQuantiles(),
-			CommitTimestamp: maxCommitTs,
+			CommitTimestamp: 0, // Normalized: row timestamps already rewritten
 		}
 		segment := NewSegmentInfo(segmentInfo)
 		compactToSegInfos = append(compactToSegInfos, segment)
@@ -1966,15 +1984,39 @@ func (m *meta) completeMixCompactionMutation(
 
 	log = log.With(zap.Int64s("compactFrom", compactFromSegIDs))
 
-	// Propagate commit_timestamp: if any input segment is an import/CDC segment,
-	// the output must inherit the max commit_timestamp so TTL and GC protections
-	// are not silently dropped when the segment is recompacted later.
-	// commit_timestamp is only cleared when the data is written with fresh row
-	// timestamps (which mix compaction does not do — it copies rows as-is).
+	// Compaction normalizes import segments: row timestamps in the output
+	// binlogs are already rewritten to commit_ts by the compactor, so the
+	// output segment is a normal segment with CommitTimestamp = 0.
+	// Update position timestamps to reflect the effective time.
 	maxCommitTs := uint64(0)
 	for _, seg := range compactFromSegInfos {
 		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
 			maxCommitTs = ts
+		}
+	}
+
+	startPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+		return info.GetStartPosition()
+	}))
+	dmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+		return info.GetDmlPosition()
+	}))
+	// If any input had commit_ts, update position timestamps so the output
+	// segment's positions reflect the actual data age.
+	if maxCommitTs != 0 {
+		if startPos != nil && startPos.Timestamp < maxCommitTs {
+			startPos = &msgpb.MsgPosition{
+				ChannelName: startPos.ChannelName,
+				MsgID:       startPos.MsgID,
+				Timestamp:   maxCommitTs,
+			}
+		}
+		if dmlPos != nil && dmlPos.Timestamp < maxCommitTs {
+			dmlPos = &msgpb.MsgPosition{
+				ChannelName: dmlPos.ChannelName,
+				MsgID:       dmlPos.MsgID,
+				Timestamp:   maxCommitTs,
+			}
 		}
 	}
 
@@ -2000,17 +2042,13 @@ func (m *meta) completeMixCompactionMutation(
 				LastExpireTime:      tsoutil.ComposeTSByTime(time.Unix(t.GetStartTime(), 0), 0),
 				Level:               datapb.SegmentLevel_L1,
 				StorageVersion:      compactToSegment.GetStorageVersion(),
-				StartPosition: getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
-					return info.GetStartPosition()
-				})),
-				DmlPosition: getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
-					return info.GetDmlPosition()
-				})),
+				StartPosition:       startPos,
+				DmlPosition:         dmlPos,
 				IsSorted:            compactToSegment.GetIsSorted(),
 				ManifestPath:        compactToSegment.GetManifest(),
 				IsSortedByNamespace: compactToSegment.GetIsSortedByNamespace(),
 				ExpirQuantiles:      compactToSegment.GetExpirQuantiles(),
-				CommitTimestamp:     maxCommitTs,
+				CommitTimestamp:     0, // Normalized: row timestamps already rewritten
 			})
 
 		if compactToSegmentInfo.GetNumOfRows() == 0 {
@@ -2489,14 +2527,35 @@ func (m *meta) completeSortCompactionMutation(
 
 	resultSegment := result.GetSegments()[0]
 
+	// Compaction normalizes import segments: row timestamps in the output
+	// binlogs are already rewritten to commit_ts by the compactor.
+	oldStartPos := oldSegment.GetStartPosition()
+	oldDmlPos := oldSegment.GetDmlPosition()
+	if commitTs := oldSegment.GetCommitTimestamp(); commitTs != 0 {
+		if oldStartPos != nil && oldStartPos.Timestamp < commitTs {
+			oldStartPos = &msgpb.MsgPosition{
+				ChannelName: oldStartPos.ChannelName,
+				MsgID:       oldStartPos.MsgID,
+				Timestamp:   commitTs,
+			}
+		}
+		if oldDmlPos != nil && oldDmlPos.Timestamp < commitTs {
+			oldDmlPos = &msgpb.MsgPosition{
+				ChannelName: oldDmlPos.ChannelName,
+				MsgID:       oldDmlPos.MsgID,
+				Timestamp:   commitTs,
+			}
+		}
+	}
+
 	segmentInfo := &datapb.SegmentInfo{
 		CollectionID:              oldSegment.GetCollectionID(),
 		PartitionID:               oldSegment.GetPartitionID(),
 		InsertChannel:             oldSegment.GetInsertChannel(),
 		MaxRowNum:                 oldSegment.GetMaxRowNum(),
 		LastExpireTime:            oldSegment.GetLastExpireTime(),
-		StartPosition:             oldSegment.GetStartPosition(),
-		DmlPosition:               oldSegment.GetDmlPosition(),
+		StartPosition:             oldStartPos,
+		DmlPosition:               oldDmlPos,
 		IsImporting:               oldSegment.GetIsImporting(),
 		State:                     commonpb.SegmentState_Flushed,
 		Level:                     oldSegment.GetLevel(),
@@ -2518,10 +2577,7 @@ func (m *meta) completeSortCompactionMutation(
 		ManifestPath:              resultSegment.GetManifest(),
 		ExpirQuantiles:            resultSegment.GetExpirQuantiles(),
 		IsSortedByNamespace:       resultSegment.GetIsSortedByNamespace(),
-		// Preserve commit_timestamp: sort compaction reorders rows but does not
-		// rewrite row timestamps, so import/CDC segments must retain their
-		// commit_timestamp to keep TTL and GC protections intact after sort.
-		CommitTimestamp: oldSegment.GetCommitTimestamp(),
+		CommitTimestamp:           0, // Normalized: row timestamps already rewritten
 	}
 
 	segment := NewSegmentInfo(segmentInfo)

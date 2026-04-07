@@ -608,6 +608,16 @@ func ValidateManifestSegment(info *SegmentInfo) string {
 	return ""
 }
 
+// effectiveTimestamp returns max(rawTs, commitTs) when commitTs is non-zero.
+// For import/CDC segments, row timestamps may predate the actual commit time;
+// using the larger value prevents premature expiration.
+func effectiveTimestamp(rawTs, commitTs uint64) uint64 {
+	if commitTs != 0 && commitTs > rawTs {
+		return commitTs
+	}
+	return rawTs
+}
+
 // segmentEffectiveTs returns the start-position timestamp that governs temporal
 // decisions for a segment. For import segments with a non-zero commit_timestamp,
 // commit_timestamp overrides start_position.Timestamp because the data was not

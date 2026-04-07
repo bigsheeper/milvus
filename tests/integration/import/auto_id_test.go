@@ -120,6 +120,7 @@ func (s *BulkInsertSuite) runTestAutoID() {
 		s.True(len(segment.GetStatslogs()) > 0)
 		s.NoError(CheckLogID(segment.GetStatslogs()))
 	}
+	AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 
 	// create index
 	createIndexStatus, err := c.MilvusClient.CreateIndex(ctx, &milvuspb.CreateIndexRequest{

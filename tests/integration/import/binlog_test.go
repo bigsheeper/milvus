@@ -414,6 +414,7 @@ func (s *BulkInsertSuite) runBinlogTest(dmlGroup *DMLGroup) {
 	s.Equal(sourceCollectionInfo.l1MaxTs, segment.GetDmlPosition().GetTimestamp(),
 		"L1 segment DmlPosition should match actual max timestamp from source binlogs")
 	log.Info("L1 segment position verification passed")
+	AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 
 	// l0 import
 	if totalDeleteRowNum > 0 {
@@ -459,6 +460,7 @@ func (s *BulkInsertSuite) runBinlogTest(dmlGroup *DMLGroup) {
 		s.Equal(sourceCollectionInfo.l0MaxTs, segment.GetDmlPosition().GetTimestamp(),
 			"L0 segment DmlPosition should match actual max timestamp from source deltalogs")
 		log.Info("L0 segment position verification passed")
+		AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 	}
 
 	// load

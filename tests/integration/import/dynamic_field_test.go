@@ -162,6 +162,7 @@ func (s *BulkInsertSuite) testImportDynamicField() {
 	s.NoError(err)
 	s.NotEmpty(segments)
 	log.Info("Show segments", zap.Any("segments", segments))
+	AssertImportSegmentsHaveCommitTimestamp(s.T(), c, collectionName)
 
 	// load refresh
 	loadStatus, err = c.MilvusClient.LoadCollection(ctx, &milvuspb.LoadCollectionRequest{

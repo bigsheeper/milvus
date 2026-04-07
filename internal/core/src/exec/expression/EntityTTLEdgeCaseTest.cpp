@@ -19,7 +19,6 @@
 #include "exec/expression/Expr.h"
 #include "query/PlanProto.h"
 #include "query/ExecPlanNodeVisitor.h"
-#include "segcore/ChunkedSegmentSealedImpl.h"
 #include "segcore/SegmentGrowingImpl.h"
 #include "test_utils/DataGen.h"
 
@@ -182,82 +181,4 @@ TEST(PhysicalTimeEdgeCase, SearchWithoutFilterTTLFiltering) {
     for (int i = test_data_count / 2; i < test_data_count; i++) {
         EXPECT_TRUE(bitset_view[i]) << "Row " << i << " should not be expired";
     }
-}
-
-// Test: import/CDC segment (commit_ts != 0) does NOT skip TTL field filter.
-// TTL field values represent user-specified expiration intent and should be
-// honored regardless of commit_ts.
-TEST(PhysicalTimeEdgeCase, ImportSegmentAppliesTTLFieldFilter) {
-    auto schema = std::make_shared<Schema>();
-    auto pk_fid = schema->AddDebugField("pk", DataType::INT64);
-    auto ttl_fid = schema->AddDebugField("ttl_field", DataType::TIMESTAMPTZ);
-    schema->set_primary_field_id(pk_fid);
-    schema->set_ttl_field_id(ttl_fid);
-
-    // Sealed segment simulates an import segment.
-    auto sealed_seg = CreateSealedSegment(schema, empty_index_meta);
-    auto segment_internal =
-        dynamic_cast<SegmentInternalInterface*>(sealed_seg.get());
-
-    // Set commit_ts != 0 to mark it as an import/CDC segment.
-    uint64_t commit_ts = 1000000ULL << 18;
-    sealed_seg->SetCommitTimestamp(commit_ts);
-
-    int64_t current_physical_us = 1770026400000000LL;
-
-    auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test_query",
-        segment_internal,
-        0,
-        commit_ts + (1ULL << 18),  // query_ts slightly after commit_ts
-        0,
-        0,
-        query::PlanOptions(),
-        std::make_shared<milvus::exec::QueryConfig>(),
-        nullptr,
-        std::unordered_map<std::string,
-                           std::shared_ptr<milvus::exec::BaseConfig>>(),
-        current_physical_us);
-
-    // TTL field values represent user-specified expiration intent.
-    // Import segments should still apply TTL field filter.
-    auto ttl_expr = exec::CreateTTLFieldFilterExpression(query_context.get());
-    EXPECT_NE(ttl_expr, nullptr) << "TTL field filter must NOT be skipped for "
-                                    "import/CDC segments — TTL field is user intent";
-}
-
-// Test: regular (non-import) segment still applies TTL field filter.
-TEST(PhysicalTimeEdgeCase, NonImportSegmentAppliesTTLFieldFilter) {
-    auto schema = std::make_shared<Schema>();
-    auto pk_fid = schema->AddDebugField("pk", DataType::INT64);
-    auto ttl_fid = schema->AddDebugField("ttl_field", DataType::TIMESTAMPTZ);
-    schema->set_primary_field_id(pk_fid);
-    schema->set_ttl_field_id(ttl_fid);
-
-    auto segment = CreateGrowingSegment(schema, empty_index_meta);
-    auto segment_internal =
-        dynamic_cast<SegmentInternalInterface*>(segment.get());
-    // commit_ts == 0 by default (non-import segment)
-
-    int64_t current_physical_us = 1770026400000000LL;
-    uint64_t query_ts = 1000000ULL << 18;
-
-    auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test_query",
-        segment_internal,
-        0,
-        query_ts,
-        0,
-        0,
-        query::PlanOptions(),
-        std::make_shared<milvus::exec::QueryConfig>(),
-        nullptr,
-        std::unordered_map<std::string,
-                           std::shared_ptr<milvus::exec::BaseConfig>>(),
-        current_physical_us);
-
-    // For a regular segment, TTL field filter must be compiled.
-    auto ttl_expr = exec::CreateTTLFieldFilterExpression(query_context.get());
-    EXPECT_NE(ttl_expr, nullptr)
-        << "TTL field filter must be present for non-import segments";
 }

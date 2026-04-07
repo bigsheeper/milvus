@@ -1814,6 +1814,20 @@ func getMinPosition(positions []*msgpb.MsgPosition) *msgpb.MsgPosition {
 	return minPos
 }
 
+// normalizePositionTimestamp updates a position's timestamp to commitTs if
+// commitTs is non-zero and larger. Used during compaction completion to
+// normalize import segment positions after row timestamps are rewritten.
+func normalizePositionTimestamp(pos *msgpb.MsgPosition, commitTs uint64) *msgpb.MsgPosition {
+	if commitTs == 0 || pos == nil || pos.Timestamp >= commitTs {
+		return pos
+	}
+	return &msgpb.MsgPosition{
+		ChannelName: pos.ChannelName,
+		MsgID:       pos.MsgID,
+		Timestamp:   commitTs,
+	}
+}
+
 func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, result *datapb.CompactionPlanResult) ([]*SegmentInfo, *segMetricMutation, error) {
 	log := log.Ctx(context.TODO()).With(zap.Int64("planID", t.GetPlanID()),
 		zap.String("type", t.GetType().String()),
@@ -1858,28 +1872,12 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 		}
 	}
 
-	clusterStartPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	clusterStartPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	}))
-	clusterDmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	})), maxCommitTs)
+	clusterDmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	}))
-	if maxCommitTs != 0 {
-		if clusterStartPos != nil && clusterStartPos.Timestamp < maxCommitTs {
-			clusterStartPos = &msgpb.MsgPosition{
-				ChannelName: clusterStartPos.ChannelName,
-				MsgID:       clusterStartPos.MsgID,
-				Timestamp:   maxCommitTs,
-			}
-		}
-		if clusterDmlPos != nil && clusterDmlPos.Timestamp < maxCommitTs {
-			clusterDmlPos = &msgpb.MsgPosition{
-				ChannelName: clusterDmlPos.ChannelName,
-				MsgID:       clusterDmlPos.MsgID,
-				Timestamp:   maxCommitTs,
-			}
-		}
-	}
+	})), maxCommitTs)
 
 	for _, seg := range result.GetSegments() {
 		segmentInfo := &datapb.SegmentInfo{
@@ -1995,30 +1993,12 @@ func (m *meta) completeMixCompactionMutation(
 		}
 	}
 
-	startPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	startPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	}))
-	dmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	})), maxCommitTs)
+	dmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	}))
-	// If any input had commit_ts, update position timestamps so the output
-	// segment's positions reflect the actual data age.
-	if maxCommitTs != 0 {
-		if startPos != nil && startPos.Timestamp < maxCommitTs {
-			startPos = &msgpb.MsgPosition{
-				ChannelName: startPos.ChannelName,
-				MsgID:       startPos.MsgID,
-				Timestamp:   maxCommitTs,
-			}
-		}
-		if dmlPos != nil && dmlPos.Timestamp < maxCommitTs {
-			dmlPos = &msgpb.MsgPosition{
-				ChannelName: dmlPos.ChannelName,
-				MsgID:       dmlPos.MsgID,
-				Timestamp:   maxCommitTs,
-			}
-		}
-	}
+	})), maxCommitTs)
 
 	compactToSegments := make([]*SegmentInfo, 0)
 	for _, compactToSegment := range result.GetSegments() {
@@ -2529,24 +2509,9 @@ func (m *meta) completeSortCompactionMutation(
 
 	// Compaction normalizes import segments: row timestamps in the output
 	// binlogs are already rewritten to commit_ts by the compactor.
-	oldStartPos := oldSegment.GetStartPosition()
-	oldDmlPos := oldSegment.GetDmlPosition()
-	if commitTs := oldSegment.GetCommitTimestamp(); commitTs != 0 {
-		if oldStartPos != nil && oldStartPos.Timestamp < commitTs {
-			oldStartPos = &msgpb.MsgPosition{
-				ChannelName: oldStartPos.ChannelName,
-				MsgID:       oldStartPos.MsgID,
-				Timestamp:   commitTs,
-			}
-		}
-		if oldDmlPos != nil && oldDmlPos.Timestamp < commitTs {
-			oldDmlPos = &msgpb.MsgPosition{
-				ChannelName: oldDmlPos.ChannelName,
-				MsgID:       oldDmlPos.MsgID,
-				Timestamp:   commitTs,
-			}
-		}
-	}
+	commitTs := oldSegment.GetCommitTimestamp()
+	oldStartPos := normalizePositionTimestamp(oldSegment.GetStartPosition(), commitTs)
+	oldDmlPos := normalizePositionTimestamp(oldSegment.GetDmlPosition(), commitTs)
 
 	segmentInfo := &datapb.SegmentInfo{
 		CollectionID:              oldSegment.GetCollectionID(),

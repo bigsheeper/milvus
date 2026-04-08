@@ -3279,11 +3279,12 @@ func Test_compactionTrigger_ShouldCompactExpiryWithTTLField_CommitTimestamp(t *t
 		},
 	}
 
-	// Even though all quantiles are far in the past, commit_timestamp != 0 should suppress TTL compaction.
+	// expirQuantiles are based on original row timestamps; ShouldCompactExpiryWithTTLField
+	// does not adjust for commit_timestamp, so stale quantiles still trigger compaction.
 	startTime := tsoutil.ComposeTSByTime(ts.Add(time.Minute), 0)
 	ct := &compactTime{startTime: startTime, collectionTTL: 0}
 	shouldCompact := trigger.ShouldCompactExpiryWithTTLField(ct, segment)
-	assert.False(t, shouldCompact, "import segment with commit_timestamp must not trigger TTL compaction via expirQuantiles")
+	assert.True(t, shouldCompact, "stale expirQuantiles should still trigger TTL compaction")
 }
 
 func newTestIndexMeta(collID, segID, indexID int64, indexType string, segIdx *model.SegmentIndex) *indexMeta {

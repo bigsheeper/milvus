@@ -4,6 +4,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/stretchr/testify/assert"
@@ -29,15 +30,15 @@ func newMockRecord(timestamps []int64) *mockRecord {
 	return &mockRecord{tsArray: arr, n: len(timestamps)}
 }
 
-func (r *mockRecord) Column(i storage.FieldID) array.Array {
+func (r *mockRecord) Column(i storage.FieldID) arrow.Array {
 	if i == common.TimeStampField {
 		return r.tsArray
 	}
 	return nil
 }
-func (r *mockRecord) Len() int  { return r.n }
-func (r *mockRecord) Release()  { r.tsArray.Release() }
-func (r *mockRecord) Retain()   { r.tsArray.Retain() }
+func (r *mockRecord) Len() int { return r.n }
+func (r *mockRecord) Release() { r.tsArray.Release() }
+func (r *mockRecord) Retain()  { r.tsArray.Retain() }
 
 func TestOverwriteRecordTimestamps_Zero(t *testing.T) {
 	rec := newMockRecord([]int64{100, 200, 300})

@@ -682,10 +682,10 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		}
 	})
 
-	suite.Run("mix compaction propagates commit_timestamp to output", func() {
+	suite.Run("mix compaction normalizes commit_timestamp to zero", func() {
 		// Input: two import segments with different commit_timestamps.
-		// Output segment must carry the max commit_timestamp so TTL protections
-		// are not silently lost after compaction.
+		// After compaction, row timestamps are already rewritten to commit_ts
+		// by the compactor, so the output segment is normalized (CommitTimestamp = 0).
 		latestSegments := NewSegmentsInfo()
 		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
 			ID: 1, CollectionID: 100, PartitionID: 10,
@@ -713,10 +713,10 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
 		suite.NoError(err)
 		suite.Require().Equal(1, len(infos))
-		suite.EqualValues(8000, infos[0].GetCommitTimestamp(), "output segment must carry max(input commit_timestamps)")
+		suite.EqualValues(0, infos[0].GetCommitTimestamp(), "compaction normalizes commit_timestamp: row timestamps already rewritten")
 	})
 
-	suite.Run("sort compaction propagates commit_timestamp to output", func() {
+	suite.Run("sort compaction normalizes commit_timestamp to zero", func() {
 		latestSegments := NewSegmentsInfo()
 		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
 			ID: 1, CollectionID: 100, PartitionID: 10,
@@ -739,10 +739,10 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
 		suite.NoError(err)
 		suite.Require().Equal(1, len(infos))
-		suite.EqualValues(7777, infos[0].GetCommitTimestamp(), "sort compaction must preserve input commit_timestamp")
+		suite.EqualValues(0, infos[0].GetCommitTimestamp(), "sort compaction normalizes commit_timestamp: row timestamps already rewritten")
 	})
 
-	suite.Run("clustering compaction propagates commit_timestamp to output", func() {
+	suite.Run("clustering compaction normalizes commit_timestamp to zero", func() {
 		latestSegments := NewSegmentsInfo()
 		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
 			ID: 1, CollectionID: 100, PartitionID: 10,
@@ -770,12 +770,12 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
 		suite.NoError(err)
 		suite.Require().Equal(1, len(infos))
-		suite.EqualValues(6000, infos[0].GetCommitTimestamp(), "clustering compaction output must carry max(input commit_timestamps)")
+		suite.EqualValues(0, infos[0].GetCommitTimestamp(), "clustering compaction normalizes commit_timestamp: row timestamps already rewritten")
 	})
 
-	suite.Run("mix compaction with mixed import and normal segments uses max commit_timestamp", func() {
+	suite.Run("mix compaction with mixed import and normal segments normalizes to zero", func() {
 		// One import segment (commitTs=5000) + one normal segment (commitTs=0).
-		// Output must inherit 5000 — conservative protection for the import rows.
+		// After compaction, row timestamps are rewritten, so output is normalized.
 		latestSegments := NewSegmentsInfo()
 		latestSegments.SetSegment(1, &SegmentInfo{SegmentInfo: &datapb.SegmentInfo{
 			ID: 1, CollectionID: 100, PartitionID: 10,
@@ -803,7 +803,7 @@ func (suite *MetaBasicSuite) TestCompleteCompactionMutation() {
 		infos, _, err := m.CompleteCompactionMutation(context.TODO(), task, result)
 		suite.NoError(err)
 		suite.Require().Equal(1, len(infos))
-		suite.EqualValues(5000, infos[0].GetCommitTimestamp(), "mixed compaction (import+normal) must carry import segment's commit_timestamp")
+		suite.EqualValues(0, infos[0].GetCommitTimestamp(), "compaction normalizes commit_timestamp: row timestamps already rewritten")
 	})
 
 	suite.Run("mix compaction with no import segments sets commit_timestamp to 0", func() {

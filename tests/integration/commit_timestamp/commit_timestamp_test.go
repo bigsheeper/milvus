@@ -194,10 +194,10 @@ func (s *CommitTimestampSuite) buildIndexAndLoad(ctx context.Context, collName s
 
 func (s *CommitTimestampSuite) queryCount(ctx context.Context, collName string) int64 {
 	queryResp, err := s.Cluster.MilvusClient.Query(ctx, &milvuspb.QueryRequest{
-		CollectionName:     collName,
-		Expr:               "",
-		OutputFields:       []string{"count(*)"},
-		ConsistencyLevel:   commonpb.ConsistencyLevel_Strong,
+		CollectionName:   collName,
+		Expr:             "",
+		OutputFields:     []string{"count(*)"},
+		ConsistencyLevel: commonpb.ConsistencyLevel_Strong,
 		QueryParams: []*commonpb.KeyValuePair{
 			{Key: "reduce_stop_for_best", Value: "false"},
 		},

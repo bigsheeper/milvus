@@ -1067,6 +1067,18 @@ func (s *mockMixCoord) PushClientCommand(ctx context.Context, req *milvuspb.Push
 	panic("implement me")
 }
 
+func (m *mockMixCoord) CommitImport(ctx context.Context, req *datapb.CommitImportRequest) (*commonpb.Status, error) {
+	panic("implement me")
+}
+
+func (m *mockMixCoord) AbortImport(ctx context.Context, req *datapb.AbortImportRequest) (*commonpb.Status, error) {
+	panic("implement me")
+}
+
+func (m *mockMixCoord) HandleCommitVchannel(ctx context.Context, req *datapb.HandleCommitVchannelRequest) (*commonpb.Status, error) {
+	panic("implement me")
+}
+
 type mockHandler struct {
 	meta *meta
 }

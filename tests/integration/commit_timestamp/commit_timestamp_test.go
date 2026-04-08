@@ -52,7 +52,7 @@ type CommitTimestampSuite struct {
 	integration.MiniClusterSuite
 }
 
-// ─── Helper: modify segment metadata in etcd ──────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────
 
 // setCommitTimestamp reads a segment's metadata from etcd, sets its
 // CommitTimestamp to commitTs, then writes it back. This simulates an
@@ -78,7 +78,6 @@ func (s *CommitTimestampSuite) setCommitTimestamp(
 		if err != nil {
 			continue
 		}
-		// Only modify flushed L1 segments with data
 		if seg.GetState() != commonpb.SegmentState_Flushed && seg.GetState() != commonpb.SegmentState_Flushing {
 			continue
 		}
@@ -102,25 +101,7 @@ func (s *CommitTimestampSuite) setCommitTimestamp(
 	return segmentIDs
 }
 
-// getSegmentCommitTimestamps reads CommitTimestamp for all flushed segments.
-func (s *CommitTimestampSuite) getSegmentCommitTimestamps(collectionID int64) map[int64]uint64 {
-	segments, err := s.Cluster.ShowSegments(s.collectionName(collectionID))
-	s.Require().NoError(err)
-	result := make(map[int64]uint64)
-	for _, seg := range segments {
-		if seg.GetState() == commonpb.SegmentState_Flushed {
-			result[seg.GetID()] = seg.GetCommitTimestamp()
-		}
-	}
-	return result
-}
-
-func (s *CommitTimestampSuite) collectionName(collectionID int64) string {
-	// We track collection name directly in tests, this is a placeholder
-	return ""
-}
-
-// createCollectionAndInsert creates a collection, inserts rows, flushes, builds index, and loads.
+// createCollectionAndInsert creates a collection, inserts rows, and flushes.
 // Returns (collectionName, collectionID).
 func (s *CommitTimestampSuite) createCollectionAndInsert(
 	ctx context.Context,
@@ -140,7 +121,6 @@ func (s *CommitTimestampSuite) createCollectionAndInsert(
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(createResp))
 
-	// Insert data
 	pkColumn := integration.NewInt64FieldDataWithStart(integration.Int64Field, rowNum, 1)
 	vecColumn := integration.NewFloatVectorFieldData(integration.FloatVecField, rowNum, dim)
 	insertResp, err := s.Cluster.MilvusClient.Insert(ctx, &milvuspb.InsertRequest{
@@ -151,7 +131,6 @@ func (s *CommitTimestampSuite) createCollectionAndInsert(
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(insertResp.GetStatus()))
 
-	// Flush
 	flushResp, err := s.Cluster.MilvusClient.Flush(ctx, &milvuspb.FlushRequest{
 		CollectionNames: []string{collName},
 	})
@@ -161,7 +140,6 @@ func (s *CommitTimestampSuite) createCollectionAndInsert(
 	flushTs := flushResp.GetCollFlushTs()[collName]
 	s.WaitForFlush(ctx, segIDs, flushTs, "", collName)
 
-	// Get collection ID
 	showResp, err := s.Cluster.MilvusClient.ShowCollections(ctx, &milvuspb.ShowCollectionsRequest{
 		CollectionNames: []string{collName},
 	})
@@ -192,16 +170,24 @@ func (s *CommitTimestampSuite) buildIndexAndLoad(ctx context.Context, collName s
 	s.WaitForLoad(ctx, collName)
 }
 
-func (s *CommitTimestampSuite) queryCount(ctx context.Context, collName string) int64 {
-	queryResp, err := s.Cluster.MilvusClient.Query(ctx, &milvuspb.QueryRequest{
-		CollectionName:   collName,
-		Expr:             "",
-		OutputFields:     []string{"count(*)"},
-		ConsistencyLevel: commonpb.ConsistencyLevel_Strong,
+// queryCountWithTs queries count(*) with an explicit guarantee timestamp.
+// Use guaranteeTs=0 for strong consistency.
+func (s *CommitTimestampSuite) queryCountWithTs(ctx context.Context, collName string, guaranteeTs uint64) int64 {
+	req := &milvuspb.QueryRequest{
+		CollectionName: collName,
+		Expr:           "",
+		OutputFields:   []string{"count(*)"},
 		QueryParams: []*commonpb.KeyValuePair{
 			{Key: "reduce_stop_for_best", Value: "false"},
 		},
-	})
+	}
+	if guaranteeTs > 0 {
+		req.GuaranteeTimestamp = guaranteeTs
+	} else {
+		req.ConsistencyLevel = commonpb.ConsistencyLevel_Strong
+	}
+
+	queryResp, err := s.Cluster.MilvusClient.Query(ctx, req)
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(queryResp.GetStatus()), queryResp.GetStatus().GetReason())
 
@@ -214,72 +200,10 @@ func (s *CommitTimestampSuite) queryCount(ctx context.Context, collName string) 
 	return 0
 }
 
-// ─── S4: MVCC visibility with commit_ts ──────────────────────────────────
-
-func (s *CommitTimestampSuite) TestS4_MVCC_Visibility() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	const rowNum = 100
-
-	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
-
-	// Record a "before" timestamp
-	tBefore := tsoutil.ComposeTSByTime(time.Now().Add(-1*time.Second), 0)
-
-	// Set commit_ts = a future TSO to test MVCC
-	tCommit := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
-	s.setCommitTimestamp(collectionID, tCommit)
-
-	// Build index and load (triggers C++ timestamp overwrite)
-	s.buildIndexAndLoad(ctx, collName)
-
-	// Query with guarantee_timestamp < commit_ts → should return 0 rows
-	queryResp, err := s.Cluster.MilvusClient.Query(ctx, &milvuspb.QueryRequest{
-		CollectionName:     collName,
-		Expr:               "",
-		OutputFields:       []string{"count(*)"},
-		GuaranteeTimestamp: tBefore,
-	})
-	s.Require().NoError(err)
-	s.Require().True(merr.Ok(queryResp.GetStatus()), queryResp.GetStatus().GetReason())
-	for _, field := range queryResp.GetFieldsData() {
-		if field.GetFieldName() == "count(*)" {
-			count := field.GetScalars().GetLongData().GetData()[0]
-			s.Equal(int64(0), count,
-				"MVCC: query before commit_ts should return 0 rows")
-		}
-	}
-
-	// Query with Strong consistency → should return all rows
-	count := s.queryCount(ctx, collName)
-	s.Equal(int64(rowNum), count,
-		"MVCC: Strong consistency query should return all rows")
-}
-
-// ─── S5: Delete on import segment ──────────────────────────────────────
-
-func (s *CommitTimestampSuite) TestS5_Delete_OnImportSegment() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	const rowNum = 100
-	const deleteCount = 10
-
-	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
-
-	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
-	s.setCommitTimestamp(collectionID, commitTs)
-
-	s.buildIndexAndLoad(ctx, collName)
-
-	// Verify all rows present before delete
-	count := s.queryCount(ctx, collName)
-	s.Equal(int64(rowNum), count, "should have all rows before delete")
-
-	// Delete first 10 PKs
-	pks := make([]string, deleteCount)
-	for i := 0; i < deleteCount; i++ {
+// deleteByPKs deletes the first N PKs (1-based) from the collection.
+func (s *CommitTimestampSuite) deleteByPKs(ctx context.Context, collName string, count int) {
+	pks := make([]string, count)
+	for i := 0; i < count; i++ {
 		pks[i] = strconv.FormatInt(int64(i+1), 10)
 	}
 	expr := fmt.Sprintf("%s in [%s]", integration.Int64Field, strings.Join(pks, ","))
@@ -289,19 +213,167 @@ func (s *CommitTimestampSuite) TestS5_Delete_OnImportSegment() {
 	})
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(deleteResp.GetStatus()))
-
-	// Wait a bit for delete propagation
-	time.Sleep(2 * time.Second)
-
-	// Query with strong consistency — should return rowNum - deleteCount
-	count = s.queryCount(ctx, collName)
-	s.Equal(int64(rowNum-deleteCount), count,
-		"after deleting %d rows from import segment, should have %d rows", deleteCount, rowNum-deleteCount)
 }
 
-// ─── S6: Upsert on import segment ──────────────────────────────────────
+// searchWithTs performs a search with explicit guarantee timestamp. Returns result count.
+func (s *CommitTimestampSuite) searchWithTs(ctx context.Context, collName string, guaranteeTs uint64, topk int) int {
+	params := integration.GetSearchParams(integration.IndexFaissIvfFlat, metric.L2)
+	searchReq := integration.ConstructSearchRequest("", collName, "",
+		integration.FloatVecField, schemapb.DataType_FloatVector, nil,
+		metric.L2, params, 1, dim, topk, -1)
+	searchReq.GuaranteeTimestamp = guaranteeTs
 
-func (s *CommitTimestampSuite) TestS6_Upsert_OnImportSegment() {
+	searchResult, err := s.Cluster.MilvusClient.Search(ctx, searchReq)
+	s.Require().NoError(err)
+	s.Require().True(merr.Ok(searchResult.GetStatus()), searchResult.GetStatus().GetReason())
+
+	return len(searchResult.GetResults().GetScores())
+}
+
+// ─── MVCC Visibility ──────────────────────────────────────────────────────
+
+func (s *CommitTimestampSuite) TestMVCC_Visibility() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	tBefore := tsoutil.ComposeTSByTime(time.Now(), 0)
+
+	// Set commit_ts to a future time to test MVCC
+	tCommit := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
+	tAfterCommit := tsoutil.ComposeTSByTime(time.Now().Add(20*time.Second), 0)
+	s.setCommitTimestamp(collectionID, tCommit)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Query with guarantee_ts < commit_ts → 0 rows
+	count := s.queryCountWithTs(ctx, collName, tBefore)
+	s.Equal(int64(0), count,
+		"MVCC: query before commit_ts should return 0 rows")
+
+	// Strong consistency query (guarantee_ts = now < commit_ts) → 0 rows
+	count = s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(0), count,
+		"MVCC: strong consistency query should return 0 rows when commit_ts is in the future")
+
+	// Query with guarantee_ts = commit_ts → all rows
+	count = s.queryCountWithTs(ctx, collName, tCommit)
+	s.Equal(int64(rowNum), count,
+		"MVCC: query at commit_ts should return all rows")
+
+	// Query with guarantee_ts > commit_ts → all rows
+	count = s.queryCountWithTs(ctx, collName, tAfterCommit)
+	s.Equal(int64(rowNum), count,
+		"MVCC: query after commit_ts should return all rows")
+}
+
+func (s *CommitTimestampSuite) TestMVCC_StrongConsistency_CommitTsInPast() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// Set commit_ts to now (in the past by the time query runs)
+	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Strong consistency query should return all rows when commit_ts is in the past
+	count := s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowNum), count,
+		"MVCC: strong consistency query should return all rows when commit_ts is in the past")
+}
+
+// ─── Search ──────────────────────────────────────────────────────────────
+
+func (s *CommitTimestampSuite) TestSearch_WithGuaranteeTs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	tBefore := tsoutil.ComposeTSByTime(time.Now(), 0)
+	tCommit := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
+	s.setCommitTimestamp(collectionID, tCommit)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Search with guarantee_ts < commit_ts → 0 results
+	resultCount := s.searchWithTs(ctx, collName, tBefore, 10)
+	s.Equal(0, resultCount,
+		"search before commit_ts should return 0 results")
+
+	// Search with guarantee_ts = commit_ts → results
+	resultCount = s.searchWithTs(ctx, collName, tCommit, 10)
+	s.Greater(resultCount, 0,
+		"search at commit_ts should return results")
+}
+
+// ─── Delete ──────────────────────────────────────────────────────────────
+
+func (s *CommitTimestampSuite) TestDelete_AfterCommitTs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+	const deleteCount = 10
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// commit_ts in the past so delete_ts > commit_ts
+	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Verify all rows present
+	count := s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowNum), count, "should have all rows before delete")
+
+	s.deleteByPKs(ctx, collName, deleteCount)
+	time.Sleep(2 * time.Second)
+
+	// Delete after commit_ts should take effect
+	count = s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowNum-deleteCount), count,
+		"delete after commit_ts should take effect")
+}
+
+func (s *CommitTimestampSuite) TestDelete_BeforeCommitTs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+	const deleteCount = 10
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// commit_ts in the future so delete_ts < commit_ts
+	commitTs := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	s.deleteByPKs(ctx, collName, deleteCount)
+	time.Sleep(2 * time.Second)
+
+	// Delete before commit_ts should NOT take effect — query at commit_ts
+	count := s.queryCountWithTs(ctx, collName, commitTs)
+	s.Equal(int64(rowNum), count,
+		"delete before commit_ts should not take effect")
+}
+
+// ─── Upsert ──────────────────────────────────────────────────────────────
+
+func (s *CommitTimestampSuite) TestUpsert_AfterCommitTs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -310,12 +382,13 @@ func (s *CommitTimestampSuite) TestS6_Upsert_OnImportSegment() {
 
 	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
 
+	// commit_ts in the past so upsert_ts > commit_ts
 	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
 	s.setCommitTimestamp(collectionID, commitTs)
 
 	s.buildIndexAndLoad(ctx, collName)
 
-	// Upsert first 20 rows with new vector values
+	// Upsert first 20 rows
 	pkColumn := integration.NewInt64FieldDataWithStart(integration.Int64Field, upsertCount, 1)
 	vecColumn := integration.NewFloatVectorFieldData(integration.FloatVecField, upsertCount, dim)
 	upsertResp, err := s.Cluster.MilvusClient.Upsert(ctx, &milvuspb.UpsertRequest{
@@ -326,56 +399,27 @@ func (s *CommitTimestampSuite) TestS6_Upsert_OnImportSegment() {
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(upsertResp.GetStatus()))
 
-	// Wait for upsert to propagate
 	time.Sleep(2 * time.Second)
 
-	// Total row count should still be 100
-	count := s.queryCount(ctx, collName)
+	// After upsert, total count should remain the same (old rows deleted, new rows inserted)
+	count := s.queryCountWithTs(ctx, collName, 0)
 	s.Equal(int64(rowNum), count,
 		"after upsert, total row count should remain %d", rowNum)
-}
 
-// ─── S7: Delete before commit_ts should not take effect ──────────────────
-
-func (s *CommitTimestampSuite) TestS7_Delete_BeforeCommitTs() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	const rowNum = 100
-	const deleteCount = 10
-
-	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
-
-	// Set commit_ts to a future time — deletes happening "now" are before commit_ts
-	commitTs := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
-	s.setCommitTimestamp(collectionID, commitTs)
-
-	s.buildIndexAndLoad(ctx, collName)
-
-	// Delete first 10 PKs — these deletes have ts < commit_ts
-	pks := make([]string, deleteCount)
-	for i := 0; i < deleteCount; i++ {
-		pks[i] = strconv.FormatInt(int64(i+1), 10)
-	}
-	expr := fmt.Sprintf("%s in [%s]", integration.Int64Field, strings.Join(pks, ","))
-	deleteResp, err := s.Cluster.MilvusClient.Delete(ctx, &milvuspb.DeleteRequest{
-		CollectionName: collName,
-		Expr:           expr,
+	// Validate upsert worked: query the upserted PKs — they should exist
+	queryResp, err := s.Cluster.MilvusClient.Query(ctx, &milvuspb.QueryRequest{
+		CollectionName:   collName,
+		Expr:             fmt.Sprintf("%s in [1,2,3]", integration.Int64Field),
+		OutputFields:     []string{integration.Int64Field},
+		ConsistencyLevel: commonpb.ConsistencyLevel_Strong,
 	})
 	s.Require().NoError(err)
-	s.Require().True(merr.Ok(deleteResp.GetStatus()))
-
-	time.Sleep(2 * time.Second)
-
-	// Deletes before commit_ts should NOT take effect — row didn't exist yet
-	count := s.queryCount(ctx, collName)
-	s.Equal(int64(rowNum), count,
-		"delete before commit_ts should not take effect — all %d rows should remain", rowNum)
+	s.Require().True(merr.Ok(queryResp.GetStatus()))
+	s.Equal(3, len(queryResp.GetFieldsData()[0].GetScalars().GetLongData().GetData()),
+		"upserted PKs should be queryable")
 }
 
-// ─── S8: Upsert before commit_ts should not take effect ──────────────────
-
-func (s *CommitTimestampSuite) TestS8_Upsert_BeforeCommitTs() {
+func (s *CommitTimestampSuite) TestUpsert_BeforeCommitTs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -384,13 +428,12 @@ func (s *CommitTimestampSuite) TestS8_Upsert_BeforeCommitTs() {
 
 	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
 
-	// Set commit_ts to a future time — upserts happening "now" are before commit_ts
+	// commit_ts in the future so upsert_ts < commit_ts
 	commitTs := tsoutil.ComposeTSByTime(time.Now().Add(10*time.Second), 0)
 	s.setCommitTimestamp(collectionID, commitTs)
 
 	s.buildIndexAndLoad(ctx, collName)
 
-	// Upsert first 20 rows — these upserts have ts < commit_ts
 	pkColumn := integration.NewInt64FieldDataWithStart(integration.Int64Field, upsertCount, 1)
 	vecColumn := integration.NewFloatVectorFieldData(integration.FloatVecField, upsertCount, dim)
 	upsertResp, err := s.Cluster.MilvusClient.Upsert(ctx, &milvuspb.UpsertRequest{
@@ -404,16 +447,16 @@ func (s *CommitTimestampSuite) TestS8_Upsert_BeforeCommitTs() {
 	time.Sleep(2 * time.Second)
 
 	// Upsert before commit_ts: the delete part should not take effect on the
-	// import segment (row didn't exist yet), so we should see rowNum + upsertCount
-	// rows (original import rows + new upserted rows as separate inserts).
-	count := s.queryCount(ctx, collName)
+	// import segment (row didn't exist yet at upsert time), so we should see
+	// rowNum + upsertCount rows at commit_ts.
+	count := s.queryCountWithTs(ctx, collName, commitTs)
 	s.Equal(int64(rowNum+upsertCount), count,
 		"upsert before commit_ts: delete part should not apply, expect %d rows", rowNum+upsertCount)
 }
 
-// ─── S2: Compaction normalizes commit_ts ──────────────────────────────────
+// ─── Compaction ──────────────────────────────────────────────────────────
 
-func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
+func (s *CommitTimestampSuite) TestCompaction_NormalizesCommitTs() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -456,14 +499,12 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 		s.WaitForFlush(ctx, segIDs, flushTs, "", collName)
 	}
 
-	// Get collection ID
 	showResp, err := s.Cluster.MilvusClient.ShowCollections(ctx, &milvuspb.ShowCollectionsRequest{
 		CollectionNames: []string{collName},
 	})
 	s.Require().NoError(err)
 	collectionID := showResp.GetCollectionIds()[0]
 
-	// Set commit_ts on both segments
 	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
 	modifiedSegIDs := s.setCommitTimestamp(collectionID, commitTs)
 	s.Require().GreaterOrEqual(len(modifiedSegIDs), 2,
@@ -478,7 +519,6 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 
 	compactionID := compactResp.GetCompactionID()
 
-	// Wait for compaction to complete
 	compactionCompleted := false
 	for i := 0; i < 60; i++ {
 		time.Sleep(2 * time.Second)
@@ -496,7 +536,7 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 	}
 	s.Require().True(compactionCompleted, "compaction did not complete within timeout")
 
-	// Verify output segments have CommitTimestamp cleared (normalized)
+	// Verify output segments: CommitTimestamp = 0, binlog timestamps updated
 	segments, err := s.Cluster.ShowSegments(collName)
 	s.Require().NoError(err)
 
@@ -504,6 +544,58 @@ func (s *CommitTimestampSuite) TestS2_Compaction_PreservesCommitTs() {
 		if seg.GetState() == commonpb.SegmentState_Flushed {
 			s.Equal(uint64(0), seg.GetCommitTimestamp(),
 				"compaction output segment %d must have CommitTimestamp=0 (normalized)", seg.GetID())
+
+			// Verify binlog TimestampFrom/To are reasonable (not stale)
+			for _, fieldBinlog := range seg.GetBinlogs() {
+				for _, binlog := range fieldBinlog.GetBinlogs() {
+					s.GreaterOrEqual(binlog.GetTimestampFrom(), commitTs,
+						"compaction output binlog TimestampFrom should be >= commitTs")
+					s.GreaterOrEqual(binlog.GetTimestampTo(), commitTs,
+						"compaction output binlog TimestampTo should be >= commitTs")
+				}
+			}
 		}
 	}
+
+	// Verify data is still queryable after compaction
+	s.buildIndexAndLoad(ctx, collName)
+	count := s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowsPerSegment*2), count,
+		"all rows should be queryable after compaction normalization")
+
+	// Verify delete works normally after compaction (segment is now normal)
+	s.deleteByPKs(ctx, collName, 5)
+	time.Sleep(2 * time.Second)
+	count = s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowsPerSegment*2-5), count,
+		"delete should work normally on compacted (normalized) segment")
+}
+
+// ─── GC Protection ──────────────────────────────────────────────────────
+
+func (s *CommitTimestampSuite) TestGC_ImportSegmentNotPrematurelyDropped() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	const rowNum = 100
+
+	collName, collectionID := s.createCollectionAndInsert(ctx, rowNum)
+
+	// Set commit_ts to now
+	commitTs := tsoutil.ComposeTSByTime(time.Now(), 0)
+	s.setCommitTimestamp(collectionID, commitTs)
+
+	s.buildIndexAndLoad(ctx, collName)
+
+	// Verify data is queryable — if GC prematurely dropped the segment,
+	// this query would return 0 rows or fail.
+	count := s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowNum), count,
+		"import segment should not be GC'd — all rows should be queryable")
+
+	// Wait a few seconds and query again to ensure stability
+	time.Sleep(5 * time.Second)
+	count = s.queryCountWithTs(ctx, collName, 0)
+	s.Equal(int64(rowNum), count,
+		"import segment should remain stable after GC cycles")
 }

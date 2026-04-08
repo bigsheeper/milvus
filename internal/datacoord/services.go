@@ -2572,7 +2572,6 @@ func (s *Server) ListRefreshExternalCollectionJobs(ctx context.Context, req *dat
 	}, nil
 }
 
-
 // broadcastCommitImportMessage broadcasts a CommitImport WAL message for the given import job.
 // The message is sent to the control channel so that all vchannels receive the commit fence.
 func (s *Server) broadcastCommitImportMessage(ctx context.Context, job ImportJob) error {

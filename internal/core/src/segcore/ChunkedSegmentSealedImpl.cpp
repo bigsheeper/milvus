@@ -845,8 +845,7 @@ ChunkedSegmentSealedImpl::load_column_group_data_internal(
             if (field_id == TimestampFieldID) {
                 if (commit_ts_ != 0) {
                     std::vector<Timestamp> ts(num_rows, commit_ts_);
-                    init_storage_v1_timestamp_index(std::move(ts),
-                                                    num_rows);
+                    init_storage_v1_timestamp_index(std::move(ts), num_rows);
                 } else {
                     init_storage_v2_timestamp_index(
                         column, num_rows, info.warmup_policy);

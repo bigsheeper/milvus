@@ -2673,8 +2673,10 @@ func (s *Server) CommitImport(ctx context.Context, req *datapb.CommitImportReque
 			}
 		},
 		func(ctx context.Context, job ImportJob) error {
-			log.Info("committing import job via WAL broadcast")
-			return s.broadcastCommitImportMessage(ctx, job)
+			log.Info("committing import job via direct completion")
+			// Use the import checker's completeImportJob to unset isImporting and complete.
+			s.importChecker.CompleteImportJob(job)
+			return nil
 		},
 	)
 }
@@ -2716,12 +2718,16 @@ func (s *Server) HandleCommitVchannel(ctx context.Context, req *datapb.HandleCom
 	// calling GetTaskBy inside the callback would attempt to re-acquire m.mu (read lock) → deadlock.
 	segIDs := s.getImportSegmentIDsByVchannel(ctx, jobID, vchannel)
 
+	commitTs := req.GetCommitTimestamp()
 	err := s.importMeta.HandleCommitVchannel(ctx, jobID, vchannel, func() error {
 		// Only access s.meta (segment meta) here, NOT s.importMeta.
-		// Batch all segment updates into a single UpdateSegmentsInfo call (one etcd write).
-		ops := make([]UpdateOperator, 0, len(segIDs))
+		// Set CommitTimestamp and clear isImporting in a single call per segment.
+		ops := make([]UpdateOperator, 0, len(segIDs)*2)
 		for _, segID := range segIDs {
-			ops = append(ops, UpdateIsImporting(segID, false))
+			ops = append(ops,
+				UpdateCommitTimestamp(segID, commitTs),
+				UpdateIsImporting(segID, false),
+			)
 		}
 		if len(ops) == 0 {
 			return nil

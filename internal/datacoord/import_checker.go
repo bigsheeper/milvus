@@ -39,6 +39,7 @@ import (
 type ImportChecker interface {
 	Start()
 	Close()
+	CompleteImportJob(job ImportJob)
 }
 
 type importChecker struct {
@@ -444,39 +445,63 @@ func (c *importChecker) checkIndexBuildingJob(job ImportJob) {
 	metrics.ImportJobLatency.WithLabelValues(metrics.ImportStageBuildIndex).Observe(float64(buildIndexDuration.Milliseconds()))
 	log.Info("import job build index done", zap.Duration("jobTimeCost/buildIndex", buildIndexDuration))
 
-	if c.unsetSegmentImporting(originSegmentIDs, statsSegmentIDs) {
-		return
-	}
-	// all finished, update import job state to `Completed`.
-	completeTime := time.Now().Format("2006-01-02T15:04:05Z07:00")
-	err := c.importMeta.UpdateJob(c.ctx, job.GetJobID(), UpdateJobState(internalpb.ImportJobState_Completed), UpdateJobCompleteTime(completeTime))
+	// Transition to Uncommitted state (2PC). Segments remain isImporting=true
+	// until commit, keeping data invisible to queries.
+	err := c.importMeta.UpdateJob(c.ctx, job.GetJobID(), UpdateJobState(internalpb.ImportJobState_Uncommitted))
 	if err != nil {
-		log.Warn("failed to update job state to Completed", zap.Error(err))
+		log.Warn("failed to update job state to Uncommitted", zap.Error(err))
 		return
 	}
-	totalDuration := job.GetTR().ElapseSpan()
-	metrics.ImportJobLatency.WithLabelValues(metrics.TotalLabel).Observe(float64(totalDuration.Milliseconds()))
-
-	LogResultSegmentsInfo(job.GetJobID(), c.meta, targetSegmentIDs)
-	log.Info("import job all completed", zap.Duration("jobTimeCost/total", totalDuration))
+	log.Info("import job index building done, transitioning to Uncommitted",
+		zap.Bool("autoCommit", job.GetAutoCommit()))
 }
 
 // checkUncommittedJob handles jobs in the Uncommitted state.
 // If auto_commit=true, it triggers a commit via broadcastCommitImportMessage.
 // If auto_commit=false, it waits for an explicit CommitImport RPC from the platform.
 func (c *importChecker) checkUncommittedJob(job ImportJob) {
-	log := log.With(zap.Int64("jobID", job.GetJobID()))
 	if !job.GetAutoCommit() {
 		// Wait for explicit CommitImport from the replication platform.
 		return
 	}
-	// auto_commit=true: trigger commit by broadcasting the WAL message.
-	if c.commitImportFn == nil {
-		panic("commitImportFn is nil but auto_commit=true; this is a programming error")
+	c.CompleteImportJob(job)
+}
+
+// CompleteImportJob assigns commit_timestamp, unsets isImporting on segments,
+// and transitions the job to Completed.
+func (c *importChecker) CompleteImportJob(job ImportJob) {
+	log := log.With(zap.Int64("jobID", job.GetJobID()))
+
+	// Allocate a commit timestamp.
+	commitTs, err := c.alloc.AllocTimestamp(c.ctx)
+	if err != nil {
+		log.Warn("failed to allocate commit timestamp", zap.Error(err))
+		return
 	}
-	if err := c.commitImportFn(c.ctx, job); err != nil {
-		log.Warn("auto-commit import failed", zap.Error(err))
+
+	// Set CommitTimestamp and unset isImporting on all segments.
+	tasks := c.importMeta.GetTaskBy(c.ctx, WithType(ImportTaskType), WithJob(job.GetJobID()))
+	originSegmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
+		return t.(*importTask).GetSegmentIDs()
+	})
+	statsSegmentIDs := lo.FlatMap(tasks, func(t ImportTask, _ int) []int64 {
+		return t.(*importTask).GetSortedSegmentIDs()
+	})
+	if c.unsetSegmentImportingWithCommitTs(originSegmentIDs, statsSegmentIDs, commitTs) {
+		return
 	}
+
+	completeTime := time.Now().Format("2006-01-02T15:04:05Z07:00")
+	if err := c.importMeta.UpdateJob(c.ctx, job.GetJobID(),
+		UpdateJobState(internalpb.ImportJobState_Completed),
+		UpdateJobCompleteTime(completeTime),
+	); err != nil {
+		log.Warn("failed to update job state to Completed", zap.Error(err))
+		return
+	}
+	totalDuration := job.GetTR().ElapseSpan()
+	metrics.ImportJobLatency.WithLabelValues(metrics.TotalLabel).Observe(float64(totalDuration.Milliseconds()))
+	log.Info("import job completed", zap.Duration("jobTimeCost/total", totalDuration))
 }
 
 // checkCommittingJob handles jobs in the Committing state.
@@ -518,7 +543,6 @@ func (c *importChecker) unsetSegmentImporting(originSegmentIDs, statsSegmentIDs 
 		return false
 	}
 
-	// TODO: CommitTimestamp will be assigned by the 2PC commit flow (see companion PR).
 	for _, segmentID := range isImportingSegments {
 		err := c.meta.UpdateSegmentsInfo(c.ctx,
 			UpdateIsImporting(segmentID, false),
@@ -528,6 +552,38 @@ func (c *importChecker) unsetSegmentImporting(originSegmentIDs, statsSegmentIDs 
 			return true
 		}
 	}
+	return false
+}
+
+// unsetSegmentImportingWithCommitTs sets CommitTimestamp and clears isImporting.
+func (c *importChecker) unsetSegmentImportingWithCommitTs(originSegmentIDs, statsSegmentIDs []int64, commitTs uint64) bool {
+	allIDs := append(originSegmentIDs, statsSegmentIDs...)
+	isImportingSegments := lo.Filter(allIDs, func(segmentID int64, _ int) bool {
+		segment := c.meta.GetSegment(c.ctx, segmentID)
+		if segment == nil {
+			return false
+		}
+		return segment.GetIsImporting()
+	})
+
+	if len(isImportingSegments) == 0 {
+		return false
+	}
+
+	for _, segmentID := range isImportingSegments {
+		err := c.meta.UpdateSegmentsInfo(c.ctx,
+			UpdateCommitTimestamp(segmentID, commitTs),
+			UpdateIsImporting(segmentID, false),
+		)
+		if err != nil {
+			log.Warn("update import segment with commit timestamp failed",
+				zap.Int64("segmentID", segmentID), zap.Error(err))
+			return true
+		}
+	}
+	log.Info("set commit timestamp on import segments",
+		zap.Uint64("commitTs", commitTs),
+		zap.Int("numSegments", len(isImportingSegments)))
 	return false
 }
 

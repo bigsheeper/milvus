@@ -1865,19 +1865,24 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 
 	// Compaction normalizes import segments: row timestamps in the output
 	// binlogs are already rewritten to commit_ts by the compactor.
-	maxCommitTs := uint64(0)
+	// Positions must be normalized to min(commit_ts) across import inputs so
+	// that deletes in [min_commit_ts, max_commit_ts) are not dropped by
+	// delegator's ListAfter filter and not truncated from WAL.
+	minCommitTs := uint64(0)
 	for _, seg := range compactFromSegInfos {
-		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
-			maxCommitTs = ts
+		if ts := seg.GetCommitTimestamp(); ts != 0 {
+			if minCommitTs == 0 || ts < minCommitTs {
+				minCommitTs = ts
+			}
 		}
 	}
 
 	clusterStartPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	})), maxCommitTs)
+	})), minCommitTs)
 	clusterDmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	})), maxCommitTs)
+	})), minCommitTs)
 
 	for _, seg := range result.GetSegments() {
 		segmentInfo := &datapb.SegmentInfo{
@@ -1985,20 +1990,24 @@ func (m *meta) completeMixCompactionMutation(
 	// Compaction normalizes import segments: row timestamps in the output
 	// binlogs are already rewritten to commit_ts by the compactor, so the
 	// output segment is a normal segment with CommitTimestamp = 0.
-	// Update position timestamps to reflect the effective time.
-	maxCommitTs := uint64(0)
+	// Positions must be normalized to min(commit_ts) across import inputs so
+	// that deletes in [min_commit_ts, max_commit_ts) are not dropped by
+	// delegator's ListAfter filter and not truncated from WAL.
+	minCommitTs := uint64(0)
 	for _, seg := range compactFromSegInfos {
-		if ts := seg.GetCommitTimestamp(); ts > maxCommitTs {
-			maxCommitTs = ts
+		if ts := seg.GetCommitTimestamp(); ts != 0 {
+			if minCommitTs == 0 || ts < minCommitTs {
+				minCommitTs = ts
+			}
 		}
 	}
 
 	startPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	})), maxCommitTs)
+	})), minCommitTs)
 	dmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	})), maxCommitTs)
+	})), minCommitTs)
 
 	compactToSegments := make([]*SegmentInfo, 0)
 	for _, compactToSegment := range result.GetSegments() {

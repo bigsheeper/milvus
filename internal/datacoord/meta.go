@@ -1865,24 +1865,18 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 
 	// Compaction normalizes import segments: row timestamps in the output
 	// binlogs are already rewritten to commit_ts by the compactor.
-	// Positions must be normalized to min(commit_ts) across import inputs so
-	// that deletes in [min_commit_ts, max_commit_ts) are not dropped by
-	// delegator's ListAfter filter and not truncated from WAL.
-	minCommitTs := uint64(0)
-	for _, seg := range compactFromSegInfos {
-		if ts := seg.GetCommitTimestamp(); ts != 0 {
-			if minCommitTs == 0 || ts < minCommitTs {
-				minCommitTs = ts
-			}
-		}
-	}
-
-	clusterStartPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	// After sort compaction, each import segment's StartPosition.ts is
+	// already raised to its own commit_ts, so getMinPosition across inputs
+	// naturally yields the earliest visibility point for all rows in the
+	// output segment (including cascading merges where previously-merged
+	// inputs carry commit_ts=0 but whose StartPosition already encodes the
+	// correct min of their sources). No additional normalize is needed.
+	clusterStartPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	})), minCommitTs)
-	clusterDmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	}))
+	clusterDmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	})), minCommitTs)
+	}))
 
 	for _, seg := range result.GetSegments() {
 		segmentInfo := &datapb.SegmentInfo{
@@ -1990,24 +1984,18 @@ func (m *meta) completeMixCompactionMutation(
 	// Compaction normalizes import segments: row timestamps in the output
 	// binlogs are already rewritten to commit_ts by the compactor, so the
 	// output segment is a normal segment with CommitTimestamp = 0.
-	// Positions must be normalized to min(commit_ts) across import inputs so
-	// that deletes in [min_commit_ts, max_commit_ts) are not dropped by
-	// delegator's ListAfter filter and not truncated from WAL.
-	minCommitTs := uint64(0)
-	for _, seg := range compactFromSegInfos {
-		if ts := seg.GetCommitTimestamp(); ts != 0 {
-			if minCommitTs == 0 || ts < minCommitTs {
-				minCommitTs = ts
-			}
-		}
-	}
-
-	startPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	// After sort compaction, each import segment's StartPosition.ts is
+	// already raised to its own commit_ts, so getMinPosition across inputs
+	// naturally yields the earliest visibility point for all rows in the
+	// output segment (including cascading merges where previously-merged
+	// inputs carry commit_ts=0 but whose StartPosition already encodes the
+	// correct min of their sources). No additional normalize is needed.
+	startPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetStartPosition()
-	})), minCommitTs)
-	dmlPos := normalizePositionTimestamp(getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
+	}))
+	dmlPos := getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 		return info.GetDmlPosition()
-	})), minCommitTs)
+	}))
 
 	compactToSegments := make([]*SegmentInfo, 0)
 	for _, compactToSegment := range result.GetSegments() {

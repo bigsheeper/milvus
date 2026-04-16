@@ -344,11 +344,16 @@ ChunkedSegmentSealedImpl::init_storage_v2_timestamp_index(
 
     // Provide a callback so DeletedRecord can read insert timestamps
     // from the column even when insert_record_.timestamps_ is empty
-    // (StorageV2 lazy-init path). This preserves the same-timestamp
-    // correctness check in DeletedRecord::InternalPush.
+    // (StorageV2 lazy-init path). For import segments with commit_ts,
+    // return commit_ts so that pre-commit deletes are correctly rejected
+    // by DeletedRecord's delete_ts <= insert_ts check.
+    auto commit_ts = commit_ts_;
     auto ts_col = column;
     deleted_record_.set_get_insert_timestamp_func(
-        [ts_col](int64_t row_id) -> Timestamp {
+        [commit_ts, ts_col](int64_t row_id) -> Timestamp {
+            if (commit_ts != 0) {
+                return commit_ts;
+            }
             auto num_chunks = ts_col->num_chunks();
             int64_t offset = 0;
             for (int64_t c = 0; c < num_chunks; ++c) {

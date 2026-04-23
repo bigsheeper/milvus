@@ -2573,8 +2573,16 @@ func (s *Server) ListRefreshExternalCollectionJobs(ctx context.Context, req *dat
 }
 
 // broadcastCommitImportMessage broadcasts a CommitImport WAL message for the given import job.
-// The message is sent to the control channel so that all vchannels receive the commit fence.
+// The message is broadcast to each vchannel of the collection so that every streaming-node
+// flusher sees the commit fence and calls HandleCommitVchannel on the data coordinator.
 func (s *Server) broadcastCommitImportMessage(ctx context.Context, job ImportJob) error {
+	vchannels := job.GetVchannels()
+	if len(vchannels) == 0 {
+		log.Ctx(ctx).Warn("broadcastCommitImportMessage: job has no vchannels, skipping",
+			zap.Int64("jobID", job.GetJobID()))
+		return nil
+	}
+
 	broadcaster, err := s.startBroadcastWithCollectionID(ctx, job.GetCollectionID())
 	if err != nil {
 		return err
@@ -2587,7 +2595,7 @@ func (s *Server) broadcastCommitImportMessage(ctx context.Context, job ImportJob
 			JobId:        job.GetJobID(),
 		}).
 		WithBody(&messagespb.CommitImportMessageBody{}).
-		WithBroadcast([]string{streaming.WAL().ControlChannel()}).
+		WithBroadcast(vchannels).
 		MustBuildBroadcast()
 
 	_, err = broadcaster.Broadcast(ctx, msg)
@@ -2596,6 +2604,13 @@ func (s *Server) broadcastCommitImportMessage(ctx context.Context, job ImportJob
 
 // broadcastRollbackImportMessage broadcasts a RollbackImport WAL message for the given import job.
 func (s *Server) broadcastRollbackImportMessage(ctx context.Context, job ImportJob) error {
+	vchannels := job.GetVchannels()
+	if len(vchannels) == 0 {
+		log.Ctx(ctx).Warn("broadcastRollbackImportMessage: job has no vchannels, skipping",
+			zap.Int64("jobID", job.GetJobID()))
+		return nil
+	}
+
 	broadcaster, err := s.startBroadcastWithCollectionID(ctx, job.GetCollectionID())
 	if err != nil {
 		return err
@@ -2608,7 +2623,7 @@ func (s *Server) broadcastRollbackImportMessage(ctx context.Context, job ImportJ
 			JobId:        job.GetJobID(),
 		}).
 		WithBody(&messagespb.RollbackImportMessageBody{}).
-		WithBroadcast([]string{streaming.WAL().ControlChannel()}).
+		WithBroadcast(vchannels).
 		MustBuildBroadcast()
 
 	_, err = broadcaster.Broadcast(ctx, msg)

@@ -460,11 +460,20 @@ func (c *importChecker) checkIndexBuildingJob(job ImportJob) {
 // If auto_commit=true, it triggers a commit via broadcastCommitImportMessage.
 // If auto_commit=false, it waits for an explicit CommitImport RPC from the platform.
 func (c *importChecker) checkUncommittedJob(job ImportJob) {
+	log := log.With(zap.Int64("jobID", job.GetJobID()))
 	if !job.GetAutoCommit() {
 		// Wait for explicit CommitImport from the replication platform.
 		return
 	}
-	c.CompleteImportJob(job)
+	// auto_commit=true: trigger commit by broadcasting the WAL message.
+	// HandleCommitVchannel on each streamingnode will apply commit_ts locally,
+	// and CDC propagates the same message to the secondary cluster.
+	if c.commitImportFn == nil {
+		panic("commitImportFn is nil but auto_commit=true; this is a programming error")
+	}
+	if err := c.commitImportFn(c.ctx, job); err != nil {
+		log.Warn("auto-commit broadcast failed, will retry on next tick", zap.Error(err))
+	}
 }
 
 // CompleteImportJob assigns commit_timestamp, unsets isImporting on segments,

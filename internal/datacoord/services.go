@@ -2673,10 +2673,8 @@ func (s *Server) CommitImport(ctx context.Context, req *datapb.CommitImportReque
 			}
 		},
 		func(ctx context.Context, job ImportJob) error {
-			log.Info("committing import job via direct completion")
-			// Use the import checker's completeImportJob to unset isImporting and complete.
-			s.importChecker.CompleteImportJob(job)
-			return nil
+			log.Info("committing import job via WAL broadcast")
+			return s.broadcastCommitImportMessage(ctx, job)
 		},
 	)
 }

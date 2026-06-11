@@ -7291,6 +7291,10 @@ type streamingConfig struct {
 	// scanner
 	WALScannerPauseConsumption ParamItem `refreshable:"true"`
 
+	// pkindex demo: primary key index KV engine selection ("pebble" | "slatedb"),
+	// empty disables the pkindex interceptor. See the PK Index KV-engine demo.
+	PKIndexEngine ParamItem `refreshable:"false"`
+
 	// balancer
 	WALBalancerTriggerInterval        ParamItem `refreshable:"true"`
 	WALBalancerBackoffInitialInterval ParamItem `refreshable:"true"`
@@ -7425,6 +7429,15 @@ This configuration is applied dynamically and does not require restarting the cl
 		Export:       false,
 	}
 	p.WALScannerPauseConsumption.Init(base.mgr)
+
+	p.PKIndexEngine = ParamItem{
+		Key:          "streaming.pkindex.engine",
+		Version:      "2.6.0",
+		DefaultValue: "",
+		Doc:          `Primary key index KV engine for the feasibility demo: "pebble" | "slatedb". Empty disables the pkindex interceptor.`,
+		Export:       false,
+	}
+	p.PKIndexEngine.Init(base.mgr)
 
 	// balancer
 	p.WALBalancerTriggerInterval = ParamItem{

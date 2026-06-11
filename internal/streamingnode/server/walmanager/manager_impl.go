@@ -10,6 +10,7 @@ import (
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/adaptor"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/lock"
+	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/pkindex"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/redo"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/replicate"
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/shard"
@@ -34,6 +35,9 @@ func OpenManager() (Manager, error) {
 			replicate.NewInterceptorBuilder(),
 			timetick.NewInterceptorBuilder(),
 			shard.NewInterceptorBuilder(),
+			// pkindex must follow shard so segment assignment / timetick are set
+			// on the insert header before DoAppend (PK Index KV-engine demo, §6.1).
+			pkindex.NewInterceptorBuilder(),
 		},
 	)
 	return newManager(opener), nil

@@ -267,6 +267,30 @@ func TestUT6b_NoResurrectionWithSurvivor(t *testing.T) {
 	})
 }
 
+// Checkpoint is off the write path: DurableCheckpoint stays zero until the first
+// Persist, then reflects the last applied position. Locks in the "checkpoint only
+// persisted at flush" design (both engines).
+func TestCheckpointOffWritePath(t *testing.T) {
+	forEachEngine(t, func(t *testing.T, name string) {
+		ctx := context.Background()
+		eng, _, _ := newEngine(t, name)
+
+		require.NoError(t, eng.Put(ctx, keyInt(1), []byte("a"), ck(10)))
+		require.NoError(t, eng.Put(ctx, keyInt(2), []byte("b"), ck(20)))
+
+		// no Persist yet → nothing is durable → checkpoint is zero
+		dc, err := eng.DurableCheckpoint(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), dc.TimeTick, "checkpoint must not advance on the write path")
+
+		// Persist binds the applied position into the durable checkpoint
+		require.NoError(t, eng.Persist(ctx))
+		dc, err = eng.DurableCheckpoint(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(20), dc.TimeTick)
+	})
+}
+
 // UT-CKPT-1 (MUST): durable checkpoint monotonic; stale install (covered<current) rejected.
 func TestUTCKPT1_MonotonicAndStaleReject(t *testing.T) {
 	forEachEngine(t, func(t *testing.T, name string) {

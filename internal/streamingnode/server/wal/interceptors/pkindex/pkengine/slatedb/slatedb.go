@@ -8,8 +8,8 @@
 //   - C2 (pause builtin compaction): the writer has no in-process compaction →
 //     PauseBuiltinCompaction is a confirmation no-op (R-S2(c), degraded).
 //   - C3 (manifest position): the binding cannot write manifest custom fields →
-//     the WAL checkpoint rides on the reserved meta key, committed atomically
-//     with data via a WriteBatch (R-S2(b), §6.6).
+//     the WAL checkpoint rides on the reserved meta key, persisted only at
+//     Persist/Install (once per flush, off the write path) (R-S2(b), §6.6).
 //   - C4 (external compaction): the binding exposes no compactor-control entry →
 //     compaction is native (standalone compactor / read-time tombstone
 //     application); the Demo Compactor degrades to "trigger + echo covered"
@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"sync"
 
 	slatedbffi "slatedb.io/slatedb-go/uniffi"
 
@@ -51,6 +52,9 @@ type engine struct {
 	*shared
 	store *slatedbffi.ObjectStore
 	db    *slatedbffi.Db
+
+	ckmu        sync.Mutex
+	lastApplied pkengine.WALCheckpoint // latest applied position (in-memory, off the write path)
 }
 
 type checkpointJSON struct {
@@ -93,36 +97,33 @@ func (e *engine) Open(ctx context.Context, p pkengine.OpenParam) error {
 	return nil
 }
 
-// Put writes the PK->locator entry and the checkpoint meta key in one WriteBatch
-// so they commit atomically (§6.6, R-S2(b): meta key replaces the unavailable
-// manifest custom field). See the Pebble Put comment for the per-key checkpoint
-// rationale — it applies identically here.
-func (e *engine) Put(ctx context.Context, key, value []byte, at pkengine.WALCheckpoint) error {
-	wb := slatedbffi.NewWriteBatch()
-	defer wb.Destroy()
-	if err := wb.Put(key, value); err != nil {
-		return err
+// advance bumps the in-memory lastApplied position (monotonic); the checkpoint
+// meta key is NOT touched on the write path — it is persisted only at
+// Persist/Install (R-S2(b): meta key replaces the unavailable manifest field).
+func (e *engine) advance(at pkengine.WALCheckpoint) {
+	e.ckmu.Lock()
+	if at.TimeTick > e.lastApplied.TimeTick {
+		e.lastApplied = at
 	}
-	if err := wb.Put(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(at.TimeTick, at.MessageID)); err != nil {
-		return err
-	}
-	_, err := e.db.Write(wb)
-	return err
+	e.ckmu.Unlock()
 }
 
-// Delete tombstones the PK and advances the checkpoint meta key in one atomic
-// WriteBatch.
+// Put writes the PK->locator entry and records the applied position in memory.
+func (e *engine) Put(ctx context.Context, key, value []byte, at pkengine.WALCheckpoint) error {
+	if _, err := e.db.Put(key, value); err != nil {
+		return err
+	}
+	e.advance(at)
+	return nil
+}
+
+// Delete tombstones the PK and records the applied position in memory.
 func (e *engine) Delete(ctx context.Context, key []byte, at pkengine.WALCheckpoint) error {
-	wb := slatedbffi.NewWriteBatch()
-	defer wb.Destroy()
-	if err := wb.Delete(key); err != nil {
+	if _, err := e.db.Delete(key); err != nil {
 		return err
 	}
-	if err := wb.Put(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(at.TimeTick, at.MessageID)); err != nil {
-		return err
-	}
-	_, err := e.db.Write(wb)
-	return err
+	e.advance(at)
+	return nil
 }
 
 // Get is a point read; SlateDB returns a nil pointer for an absent/tombstoned
@@ -163,14 +164,32 @@ func (e *engine) PauseBuiltinCompaction(ctx context.Context) error {
 	return nil
 }
 
-// Persist flushes the writer; SlateDB natively materializes SSTs + a versioned
-// CAS manifest to object storage (C3), with the checkpoint riding on the meta
-// key persisted in the same flush.
+// Persist writes the current applied position into the checkpoint meta key, then
+// flushes; SlateDB natively materializes SSTs + a versioned CAS manifest to
+// object storage (C3) with the meta key persisted in the same flush. The
+// checkpoint is written here (once per flush), not on the write path.
 func (e *engine) Persist(ctx context.Context) error {
 	if e.db == nil {
 		return merr.WrapErrServiceInternal("slatedb engine not opened")
 	}
+	e.ckmu.Lock()
+	cur := e.lastApplied
+	e.ckmu.Unlock()
+	if err := e.writeCheckpoint(cur); err != nil {
+		return err
+	}
 	return e.db.Flush() // native SST + versioned CAS manifest
+}
+
+// writeCheckpoint persists the checkpoint meta key (single write, not on the hot path).
+func (e *engine) writeCheckpoint(ck pkengine.WALCheckpoint) error {
+	wb := slatedbffi.NewWriteBatch()
+	defer wb.Destroy()
+	if err := wb.Put(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(ck.TimeTick, ck.MessageID)); err != nil {
+		return err
+	}
+	_, err := e.db.Write(wb)
+	return err
 }
 
 // readMetaCheckpoint reads the reserved checkpoint meta key from the latest
@@ -219,20 +238,14 @@ func (e *engine) InstallCompaction(ctx context.Context, result []byte, at pkengi
 		return merr.WrapErrParameterInvalidMsg(
 			"stale pkindex install rejected: covered TimeTick %d < current %d", at.TimeTick, current.TimeTick)
 	}
-	if err := e.db.Flush(); err != nil {
-		return err
-	}
 	writeback := at
 	if current.TimeTick > writeback.TimeTick {
 		writeback = current
 	}
-	wb := slatedbffi.NewWriteBatch()
-	defer wb.Destroy()
-	if err := wb.Put(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(writeback.TimeTick, writeback.MessageID)); err != nil {
+	if err := e.writeCheckpoint(writeback); err != nil {
 		return err
 	}
-	_, err := e.db.Write(wb)
-	return err
+	return e.db.Flush()
 }
 
 // compactor is the indexnode-side worker. With no binding compactor entry it

@@ -55,6 +55,14 @@ type shared struct {
 
 // engine is the per-pchannel Pebble Engine. mu serializes Persist/Install (which
 // mutate the manifest + LSM); Put/Delete/Get rely on Pebble's own concurrency.
+//
+// Checkpoint is kept OFF the write path: Put/Delete only bump the in-memory
+// lastApplied position (no KV write, no extra fsync); the covered WAL position
+// is made durable solely at Persist/Install, recorded in manifest.json
+// (§6.6) and mirrored in durableCkpt. This keeps the hot path free of redundant
+// per-write checkpoint commits while preserving the invariant "durable
+// checkpoint never runs ahead of durable data" (it only advances inside the
+// flush that makes the data durable). ckmu guards the two checkpoint fields.
 type engine struct {
 	*shared
 	mu          sync.Mutex
@@ -63,6 +71,10 @@ type engine struct {
 	ingestDir   string // local staging for SSTs about to be IngestAndExcise'd
 	manifestVer int    // monotonically increasing manifest version
 	ingestSeq   int64  // unique suffix for ingest temp files
+
+	ckmu        sync.Mutex
+	lastApplied pkengine.WALCheckpoint // latest position applied to the LSM (in-memory)
+	durableCkpt pkengine.WALCheckpoint // latest position made durable (= manifest checkpoint)
 }
 
 // --- object-store layout helpers ---
@@ -145,41 +157,55 @@ func (e *engine) Open(ctx context.Context, p pkengine.OpenParam) error {
 		return err
 	}
 	e.db = db
+	// Resume the durable checkpoint + manifest version from a prior run's manifest.
+	if m, err := e.loadManifest(ctx); err == nil {
+		e.manifestVer = m.Version
+		e.durableCkpt = pkengine.WALCheckpoint{TimeTick: m.Checkpoint.TimeTick, MessageID: m.Checkpoint.MessageID}
+		e.lastApplied = e.durableCkpt
+	}
+	if p.Recover != nil {
+		e.advance(*p.Recover)
+	}
 	return nil
 }
 
-// Put writes one PK->locator entry and advances the checkpoint meta key in the
-// SAME batch, so data and its covered WAL position commit atomically (§6.6).
-//
-// Note: the checkpoint meta Set is a cheap memtable write, but Apply(..., Sync)
-// fsyncs the WAL once per call. Since the abstraction is per-key (§3) and
-// DoAppend loops Put per PK, a single insert message of N PKs writes the same
-// checkpoint N times and fsyncs N times. That is redundant-but-idempotent and
-// acceptable for the Demo (perf is a non-goal, A10); a production version would
-// batch a whole message's PKs + one checkpoint into a single commit (and could
-// relax Sync, since the index is rebuildable from the WAL via DurableCheckpoint).
+// advance bumps the in-memory lastApplied position (monotonic). This is the only
+// checkpoint bookkeeping on the write path: no KV write, no fsync.
+func (e *engine) advance(at pkengine.WALCheckpoint) {
+	e.ckmu.Lock()
+	if at.TimeTick > e.lastApplied.TimeTick {
+		e.lastApplied = at
+	}
+	e.ckmu.Unlock()
+}
+
+// Put writes one PK->locator entry and records the applied position in memory.
+// The covered WAL position is NOT written here — it is persisted only at
+// Persist/Install (see the engine type comment). Data still commits with Sync;
+// dropping that fsync (the index is WAL-rebuildable) is a separate knob.
 func (e *engine) Put(ctx context.Context, key, value []byte, at pkengine.WALCheckpoint) error {
 	b := e.db.NewBatch()
 	if err := b.Set(key, value, nil); err != nil {
 		return err
 	}
-	if err := b.Set(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(at.TimeTick, at.MessageID), nil); err != nil {
+	if err := e.db.Apply(b, crdbpebble.Sync); err != nil {
 		return err
 	}
-	return e.db.Apply(b, crdbpebble.Sync)
+	e.advance(at)
+	return nil
 }
 
-// Delete tombstones one PK and advances the checkpoint meta key in the same
-// atomic batch (see Put for the per-key checkpoint rationale).
+// Delete tombstones one PK and records the applied position in memory (see Put).
 func (e *engine) Delete(ctx context.Context, key []byte, at pkengine.WALCheckpoint) error {
 	b := e.db.NewBatch()
 	if err := b.Delete(key, nil); err != nil {
 		return err
 	}
-	if err := b.Set(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(at.TimeTick, at.MessageID), nil); err != nil {
+	if err := e.db.Apply(b, crdbpebble.Sync); err != nil {
 		return err
 	}
-	return e.db.Apply(b, crdbpebble.Sync)
+	e.advance(at)
+	return nil
 }
 
 // Get is a point read for UT assertions; found=false on a tombstoned/absent key.
@@ -213,40 +239,44 @@ func (e *engine) PauseBuiltinCompaction(ctx context.Context) error {
 	return nil
 }
 
-// readMetaCheckpoint reads the reserved checkpoint meta key from the DB; returns
-// the zero checkpoint when unset. This is the single source of truth for the
-// covered WAL position (advanced by Put/Delete and the install write-back).
-func (e *engine) readMetaCheckpoint() pkengine.WALCheckpoint {
-	v, closer, err := e.db.Get(sstcodec.CheckpointMetaKey)
-	if err != nil {
-		return pkengine.WALCheckpoint{}
+// setDurable advances the durable checkpoint mirror (monotonic).
+func (e *engine) setDurable(ck pkengine.WALCheckpoint) {
+	e.ckmu.Lock()
+	if ck.TimeTick >= e.durableCkpt.TimeTick {
+		e.durableCkpt = ck
 	}
-	tt, msgID := sstcodec.DecodeCheckpoint(v)
-	_ = closer.Close()
-	return pkengine.WALCheckpoint{TimeTick: tt, MessageID: msgID}
+	e.ckmu.Unlock()
 }
 
 // DurableCheckpoint returns the WAL position covered by the current durable
-// state (the meta key), which is monotonic by construction.
+// state (the last value persisted into manifest.json at Persist/Install), which
+// is monotonic by construction. Note it stays zero until the first Persist —
+// in-memory writes are not "durable" until flushed.
 func (e *engine) DurableCheckpoint(ctx context.Context) (pkengine.WALCheckpoint, error) {
 	if e.db == nil {
 		return pkengine.WALCheckpoint{}, merr.WrapErrServiceInternal("pebble engine not opened")
 	}
-	return e.readMetaCheckpoint(), nil
+	e.ckmu.Lock()
+	defer e.ckmu.Unlock()
+	return e.durableCkpt, nil
 }
 
 // Persist materializes durable state to object storage (C3): it flushes the
 // memtable to on-disk SSTs, uploads any not-yet-uploaded SST via the
 // ObjectStore, and publishes a new manifest.json version carrying the current
-// WAL checkpoint. Idempotent across calls (SSTs are keyed by their stable Pebble
-// filename, re-upload skipped via Exist).
+// applied WAL position (which the flush just made durable). Idempotent across
+// calls (SSTs are keyed by their stable Pebble filename, re-upload skipped via
+// Exist).
 func (e *engine) Persist(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if err := e.db.Flush(); err != nil {
 		return err
 	}
-	ck := e.readMetaCheckpoint()
+	// The flush made everything applied so far durable; bind that position.
+	e.ckmu.Lock()
+	ck := e.lastApplied
+	e.ckmu.Unlock()
 
 	files, err := os.ReadDir(e.dbDir)
 	if err != nil {
@@ -279,11 +309,15 @@ func (e *engine) Persist(ctx context.Context) error {
 		entries = append(entries, sstEntry{Key: key, Min: min, Max: max, HasData: hasData})
 	}
 	e.manifestVer++
-	return e.writeManifest(ctx, manifest{
+	if err := e.writeManifest(ctx, manifest{
 		Version:    e.manifestVer,
 		SSTs:       entries,
 		Checkpoint: checkpointJSON{TimeTick: ck.TimeTick, MessageID: ck.MessageID},
-	})
+	}); err != nil {
+		return err
+	}
+	e.setDurable(ck)
+	return nil
 }
 
 // PlanCompaction (C4 planning) reads the current manifest and produces an opaque
@@ -331,7 +365,9 @@ func (e *engine) InstallCompaction(ctx context.Context, result []byte, at pkengi
 	}
 
 	// (UT-CKPT-1) reject stale install: covered must be >= current durable checkpoint.
-	current := e.readMetaCheckpoint()
+	e.ckmu.Lock()
+	current := e.durableCkpt
+	e.ckmu.Unlock()
 	if !at.Covers(current) {
 		return merr.WrapErrParameterInvalidMsg(
 			"stale pkindex install rejected: covered TimeTick %d < current %d", at.TimeTick, current.TimeTick)
@@ -355,23 +391,16 @@ func (e *engine) InstallCompaction(ctx context.Context, result []byte, at pkengi
 		paths = []string{localPath}
 	}
 	// Single VersionEdit: excise the replaced span (removes old SSTs incl. resurrectable
-	// deleted keys) + ingest the merged SST. The merged SST carries NO checkpoint meta
-	// key, so no position regression (§6.6 competition fix).
+	// deleted keys) + ingest the merged SST. The covered position rides on the manifest,
+	// not the SST, so there is no position regression (§6.6 competition fix).
 	if _, err := e.db.IngestAndExcise(paths, nil, span); err != nil {
 		return err
 	}
 
-	// Write back max(covered, current). at.Covers(current) holds, so writeback == at.
+	// Advance the durable checkpoint to max(covered, current) in the manifest below.
 	writeback := at
 	if current.TimeTick > writeback.TimeTick {
 		writeback = current
-	}
-	b := e.db.NewBatch()
-	if err := b.Set(sstcodec.CheckpointMetaKey, sstcodec.EncodeCheckpoint(writeback.TimeTick, writeback.MessageID), nil); err != nil {
-		return err
-	}
-	if err := e.db.Apply(b, crdbpebble.Sync); err != nil {
-		return err
 	}
 
 	// Object lifecycle: supersede + remove replaced SSTs, publish new manifest version.
@@ -394,12 +423,16 @@ func (e *engine) InstallCompaction(ctx context.Context, result []byte, at pkengi
 	if res.LiveCount > 0 {
 		newSSTs = append(newSSTs, sstEntry{Key: res.NewSSTKey, Min: res.ExciseMin, Max: res.ExciseMax, HasData: true})
 	}
-	return e.writeManifest(ctx, manifest{
+	if err := e.writeManifest(ctx, manifest{
 		Version:    e.manifestVer,
 		SSTs:       newSSTs,
 		Checkpoint: checkpointJSON{TimeTick: writeback.TimeTick, MessageID: writeback.MessageID},
 		Superseded: oldKeys,
-	})
+	}); err != nil {
+		return err
+	}
+	e.setDurable(writeback)
+	return nil
 }
 
 // writeManifest publishes a manifest version by overwriting manifest.json

@@ -823,72 +823,27 @@ func PrepareResultFieldData(sample []*schemapb.FieldData, topK int64) []*schemap
 			}
 			switch fieldType.Scalars.Data.(type) {
 			case *schemapb.ScalarField_BoolData:
-				scalar.Scalars.Data = &schemapb.ScalarField_BoolData{
-					BoolData: &schemapb.BoolArray{
-						Data: make([]bool, 0, topK),
-					},
-				}
+				boolFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_IntData:
-				scalar.Scalars.Data = &schemapb.ScalarField_IntData{
-					IntData: &schemapb.IntArray{
-						Data: make([]int32, 0, topK),
-					},
-				}
+				intFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_LongData:
-				scalar.Scalars.Data = &schemapb.ScalarField_LongData{
-					LongData: &schemapb.LongArray{
-						Data: make([]int64, 0, topK),
-					},
-				}
+				longFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_TimestamptzData:
-				scalar.Scalars.Data = &schemapb.ScalarField_TimestamptzData{
-					TimestamptzData: &schemapb.TimestamptzArray{
-						Data: make([]int64, 0, topK),
-					},
-				}
+				timestamptzFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_FloatData:
-				scalar.Scalars.Data = &schemapb.ScalarField_FloatData{
-					FloatData: &schemapb.FloatArray{
-						Data: make([]float32, 0, topK),
-					},
-				}
+				floatFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_DoubleData:
-				scalar.Scalars.Data = &schemapb.ScalarField_DoubleData{
-					DoubleData: &schemapb.DoubleArray{
-						Data: make([]float64, 0, topK),
-					},
-				}
+				doubleFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_StringData:
-				scalar.Scalars.Data = &schemapb.ScalarField_StringData{
-					StringData: &schemapb.StringArray{
-						Data: make([]string, 0, topK),
-					},
-				}
+				stringFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_JsonData:
-				scalar.Scalars.Data = &schemapb.ScalarField_JsonData{
-					JsonData: &schemapb.JSONArray{
-						Data: make([][]byte, 0, topK),
-					},
-				}
+				jsonFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_GeometryData:
-				scalar.Scalars.Data = &schemapb.ScalarField_GeometryData{
-					GeometryData: &schemapb.GeometryArray{
-						Data: make([][]byte, 0, topK),
-					},
-				}
+				geometryFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_GeometryWktData:
-				scalar.Scalars.Data = &schemapb.ScalarField_GeometryWktData{
-					GeometryWktData: &schemapb.GeometryWktArray{
-						Data: make([]string, 0, topK),
-					},
-				}
+				geometryWktFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			case *schemapb.ScalarField_ArrayData:
-				scalar.Scalars.Data = &schemapb.ScalarField_ArrayData{
-					ArrayData: &schemapb.ArrayArray{
-						Data:        make([]*schemapb.ScalarField, 0, topK),
-						ElementType: scalarField.GetArrayData().GetElementType(),
-					},
-				}
+				arrayFieldAccessor.prepare(scalar.Scalars, scalarField, topK)
 			}
 			fd.Field = scalar
 		case *schemapb.FieldData_Vectors:
@@ -1090,138 +1045,30 @@ func AppendFieldData(dst, src []*schemapb.FieldData, idx int64, fieldIdxs ...int
 				}
 			}
 			dstScalar := dstFieldData.GetScalars()
-			switch srcScalar := fieldType.Scalars.Data.(type) {
+			switch fieldType.Scalars.Data.(type) {
 			case *schemapb.ScalarField_BoolData:
-				if dstScalar.GetBoolData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_BoolData{
-						BoolData: &schemapb.BoolArray{
-							Data: []bool{srcScalar.BoolData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetBoolData().Data = append(dstScalar.GetBoolData().Data, srcScalar.BoolData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.BoolData.Data[idx]))
+				appendSize += boolFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_IntData:
-				if dstScalar.GetIntData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_IntData{
-						IntData: &schemapb.IntArray{
-							Data: []int32{srcScalar.IntData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetIntData().Data = append(dstScalar.GetIntData().Data, srcScalar.IntData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.IntData.Data[idx]))
+				appendSize += intFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_LongData:
-				if dstScalar.GetLongData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_LongData{
-						LongData: &schemapb.LongArray{
-							Data: []int64{srcScalar.LongData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetLongData().Data = append(dstScalar.GetLongData().Data, srcScalar.LongData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.LongData.Data[idx]))
+				appendSize += longFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_FloatData:
-				if dstScalar.GetFloatData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_FloatData{
-						FloatData: &schemapb.FloatArray{
-							Data: []float32{srcScalar.FloatData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetFloatData().Data = append(dstScalar.GetFloatData().Data, srcScalar.FloatData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.FloatData.Data[idx]))
+				appendSize += floatFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_DoubleData:
-				if dstScalar.GetDoubleData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_DoubleData{
-						DoubleData: &schemapb.DoubleArray{
-							Data: []float64{srcScalar.DoubleData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetDoubleData().Data = append(dstScalar.GetDoubleData().Data, srcScalar.DoubleData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.DoubleData.Data[idx]))
+				appendSize += doubleFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_StringData:
-				if dstScalar.GetStringData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_StringData{
-						StringData: &schemapb.StringArray{
-							Data: []string{srcScalar.StringData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetStringData().Data = append(dstScalar.GetStringData().Data, srcScalar.StringData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.StringData.Data[idx]))
+				appendSize += stringFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_ArrayData:
-				if dstScalar.GetArrayData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_ArrayData{
-						ArrayData: &schemapb.ArrayArray{
-							Data:        []*schemapb.ScalarField{srcScalar.ArrayData.Data[idx]},
-							ElementType: srcScalar.ArrayData.ElementType,
-						},
-					}
-				} else {
-					dstScalar.GetArrayData().Data = append(dstScalar.GetArrayData().Data, srcScalar.ArrayData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.ArrayData.Data[idx]))
+				appendSize += arrayFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_JsonData:
-				if dstScalar.GetJsonData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_JsonData{
-						JsonData: &schemapb.JSONArray{
-							Data: [][]byte{srcScalar.JsonData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetJsonData().Data = append(dstScalar.GetJsonData().Data, srcScalar.JsonData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.JsonData.Data[idx]))
+				appendSize += jsonFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_TimestamptzData:
-				if dstScalar.GetTimestamptzData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_TimestamptzData{
-						TimestamptzData: &schemapb.TimestamptzArray{
-							Data: []int64{srcScalar.TimestamptzData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetTimestamptzData().Data = append(dstScalar.GetTimestamptzData().Data, srcScalar.TimestamptzData.Data[idx])
-				}
-				/* #nosec G103 */
-				appendSize += int64(unsafe.Sizeof(srcScalar.TimestamptzData.Data[idx]))
+				appendSize += timestamptzFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			case *schemapb.ScalarField_GeometryData:
-				if dstScalar.GetGeometryData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_GeometryData{
-						GeometryData: &schemapb.GeometryArray{
-							Data: [][]byte{srcScalar.GeometryData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetGeometryData().Data = append(dstScalar.GetGeometryData().Data, srcScalar.GeometryData.Data[idx])
-				}
-				appendSize += int64(unsafe.Sizeof(srcScalar.GeometryData.Data[idx]))
-			// just for result
+				appendSize += geometryFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
+			// just for result; not accounted in appendSize
 			case *schemapb.ScalarField_GeometryWktData:
-				if dstScalar.GetGeometryWktData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_GeometryWktData{
-						GeometryWktData: &schemapb.GeometryWktArray{
-							Data: []string{srcScalar.GeometryWktData.Data[idx]},
-						},
-					}
-				} else {
-					dstScalar.GetGeometryWktData().Data = append(dstScalar.GetGeometryWktData().Data, srcScalar.GeometryWktData.Data[idx])
-				}
+				geometryWktFieldAccessor.appendOne(dstScalar, fieldType.Scalars, idx)
 			}
 		case *schemapb.FieldData_Vectors:
 			dim := fieldType.Vectors.Dim
@@ -1392,109 +1239,29 @@ func AppendFieldDataByColumn(dst, src *schemapb.FieldData, dataIndices []int64, 
 			}
 		}
 		dstScalar := dst.GetScalars()
-		switch srcScalar := srcField.Scalars.Data.(type) {
+		switch srcField.Scalars.Data.(type) {
 		case *schemapb.ScalarField_BoolData:
-			if dstScalar.GetBoolData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_BoolData{
-					BoolData: &schemapb.BoolArray{Data: make([]bool, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetBoolData().Data = append(dstScalar.GetBoolData().Data, srcScalar.BoolData.Data[idx])
-			}
+			boolFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_IntData:
-			if dstScalar.GetIntData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_IntData{
-					IntData: &schemapb.IntArray{Data: make([]int32, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetIntData().Data = append(dstScalar.GetIntData().Data, srcScalar.IntData.Data[idx])
-			}
+			intFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_LongData:
-			if dstScalar.GetLongData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_LongData{
-					LongData: &schemapb.LongArray{Data: make([]int64, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetLongData().Data = append(dstScalar.GetLongData().Data, srcScalar.LongData.Data[idx])
-			}
+			longFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_FloatData:
-			if dstScalar.GetFloatData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_FloatData{
-					FloatData: &schemapb.FloatArray{Data: make([]float32, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetFloatData().Data = append(dstScalar.GetFloatData().Data, srcScalar.FloatData.Data[idx])
-			}
+			floatFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_DoubleData:
-			if dstScalar.GetDoubleData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_DoubleData{
-					DoubleData: &schemapb.DoubleArray{Data: make([]float64, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetDoubleData().Data = append(dstScalar.GetDoubleData().Data, srcScalar.DoubleData.Data[idx])
-			}
+			doubleFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_StringData:
-			if dstScalar.GetStringData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_StringData{
-					StringData: &schemapb.StringArray{Data: make([]string, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetStringData().Data = append(dstScalar.GetStringData().Data, srcScalar.StringData.Data[idx])
-			}
+			stringFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_ArrayData:
-			if dstScalar.GetArrayData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_ArrayData{
-					ArrayData: &schemapb.ArrayArray{
-						Data:        make([]*schemapb.ScalarField, 0, len(dataIndices)),
-						ElementType: srcScalar.ArrayData.ElementType,
-					},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetArrayData().Data = append(dstScalar.GetArrayData().Data, srcScalar.ArrayData.Data[idx])
-			}
+			arrayFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_JsonData:
-			if dstScalar.GetJsonData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_JsonData{
-					JsonData: &schemapb.JSONArray{Data: make([][]byte, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetJsonData().Data = append(dstScalar.GetJsonData().Data, srcScalar.JsonData.Data[idx])
-			}
+			jsonFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_GeometryData:
-			if dstScalar.GetGeometryData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_GeometryData{
-					GeometryData: &schemapb.GeometryArray{Data: make([][]byte, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetGeometryData().Data = append(dstScalar.GetGeometryData().Data, srcScalar.GeometryData.Data[idx])
-			}
+			geometryFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_GeometryWktData:
-			if dstScalar.GetGeometryWktData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_GeometryWktData{
-					GeometryWktData: &schemapb.GeometryWktArray{Data: make([]string, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetGeometryWktData().Data = append(dstScalar.GetGeometryWktData().Data, srcScalar.GeometryWktData.Data[idx])
-			}
+			geometryWktFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		case *schemapb.ScalarField_TimestamptzData:
-			if dstScalar.GetTimestamptzData() == nil {
-				dstScalar.Data = &schemapb.ScalarField_TimestamptzData{
-					TimestamptzData: &schemapb.TimestamptzArray{Data: make([]int64, 0, len(dataIndices))},
-				}
-			}
-			for _, idx := range dataIndices {
-				dstScalar.GetTimestamptzData().Data = append(dstScalar.GetTimestamptzData().Data, srcScalar.TimestamptzData.Data[idx])
-			}
+			timestamptzFieldAccessor.appendMany(dstScalar, srcField.Scalars, dataIndices)
 		}
 	case *schemapb.FieldData_Vectors:
 		dim := srcField.Vectors.Dim
@@ -1643,23 +1410,23 @@ func DeleteFieldData(dst []*schemapb.FieldData) {
 			dstScalar := dst[i].GetScalars()
 			switch fieldType.Scalars.Data.(type) {
 			case *schemapb.ScalarField_BoolData:
-				dstScalar.GetBoolData().Data = dstScalar.GetBoolData().Data[:len(dstScalar.GetBoolData().Data)-1]
+				boolFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_IntData:
-				dstScalar.GetIntData().Data = dstScalar.GetIntData().Data[:len(dstScalar.GetIntData().Data)-1]
+				intFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_LongData:
-				dstScalar.GetLongData().Data = dstScalar.GetLongData().Data[:len(dstScalar.GetLongData().Data)-1]
+				longFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_TimestamptzData:
-				dstScalar.GetTimestamptzData().Data = dstScalar.GetTimestamptzData().Data[:len(dstScalar.GetTimestamptzData().Data)-1]
+				timestamptzFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_FloatData:
-				dstScalar.GetFloatData().Data = dstScalar.GetFloatData().Data[:len(dstScalar.GetFloatData().Data)-1]
+				floatFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_DoubleData:
-				dstScalar.GetDoubleData().Data = dstScalar.GetDoubleData().Data[:len(dstScalar.GetDoubleData().Data)-1]
+				doubleFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_StringData:
-				dstScalar.GetStringData().Data = dstScalar.GetStringData().Data[:len(dstScalar.GetStringData().Data)-1]
+				stringFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_JsonData:
-				dstScalar.GetJsonData().Data = dstScalar.GetJsonData().Data[:len(dstScalar.GetJsonData().Data)-1]
+				jsonFieldAccessor.deleteLast(dstScalar)
 			case *schemapb.ScalarField_GeometryData:
-				dstScalar.GetGeometryData().Data = dstScalar.GetGeometryData().Data[:len(dstScalar.GetGeometryData().Data)-1]
+				geometryFieldAccessor.deleteLast(dstScalar)
 			}
 		case *schemapb.FieldData_Vectors:
 			if dst[i] == nil || dst[i].GetVectors() == nil {
@@ -1722,54 +1489,19 @@ func UpdateFieldData(base, update []*schemapb.FieldData, baseIdx, updateIdx int6
 
 			switch baseScalar.Data.(type) {
 			case *schemapb.ScalarField_BoolData:
-				updateData := updateScalar.GetBoolData()
-				baseData := baseScalar.GetBoolData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				boolFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_IntData:
-				updateData := updateScalar.GetIntData()
-				baseData := baseScalar.GetIntData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				intFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_LongData:
-				updateData := updateScalar.GetLongData()
-				baseData := baseScalar.GetLongData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				longFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_FloatData:
-				updateData := updateScalar.GetFloatData()
-				baseData := baseScalar.GetFloatData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				floatFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_DoubleData:
-				updateData := updateScalar.GetDoubleData()
-				baseData := baseScalar.GetDoubleData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				doubleFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_StringData:
-				updateData := updateScalar.GetStringData()
-				baseData := baseScalar.GetStringData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				stringFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_ArrayData:
-				updateData := updateScalar.GetArrayData()
-				baseData := baseScalar.GetArrayData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				arrayFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_JsonData:
 				updateData := updateScalar.GetJsonData()
 				baseData := baseScalar.GetJsonData()
@@ -1788,26 +1520,11 @@ func UpdateFieldData(base, update []*schemapb.FieldData, baseIdx, updateIdx int6
 					}
 				}
 			case *schemapb.ScalarField_TimestamptzData:
-				updateData := updateScalar.GetTimestamptzData()
-				baseData := baseScalar.GetTimestamptzData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				timestamptzFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_GeometryData:
-				updateData := updateScalar.GetGeometryData()
-				baseData := baseScalar.GetGeometryData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				geometryFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			case *schemapb.ScalarField_GeometryWktData:
-				updateData := updateScalar.GetGeometryWktData()
-				baseData := baseScalar.GetGeometryWktData()
-				if updateData != nil && baseData != nil &&
-					int(updateIdx) < len(updateData.Data) && int(baseIdx) < len(baseData.Data) {
-					baseData.Data[baseIdx] = updateData.Data[updateIdx]
-				}
+				geometryWktFieldAccessor.updateAtGuarded(baseScalar, updateScalar, baseIdx, updateIdx)
 			default:
 				return merr.WrapErrParameterInvalidMsg("unsupported scalar field type: %s", baseFieldData.Type.String())
 			}
@@ -1987,51 +1704,23 @@ func UpdateFieldDataByColumn(base, update *schemapb.FieldData, baseIndices, upda
 
 		switch baseScalar.Data.(type) {
 		case *schemapb.ScalarField_BoolData:
-			baseData := baseScalar.GetBoolData().Data
-			updateData := updateScalar.GetBoolData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			boolFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_IntData:
-			baseData := baseScalar.GetIntData().Data
-			updateData := updateScalar.GetIntData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			intFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_LongData:
-			baseData := baseScalar.GetLongData().Data
-			updateData := updateScalar.GetLongData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			longFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_FloatData:
-			baseData := baseScalar.GetFloatData().Data
-			updateData := updateScalar.GetFloatData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			floatFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_DoubleData:
-			baseData := baseScalar.GetDoubleData().Data
-			updateData := updateScalar.GetDoubleData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			doubleFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_StringData:
-			baseData := baseScalar.GetStringData().Data
-			updateData := updateScalar.GetStringData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			stringFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_ArrayData:
-			baseData := baseScalar.GetArrayData().Data
-			updateData := updateScalar.GetArrayData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			arrayFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_JsonData:
-			baseData := baseScalar.GetJsonData().Data
-			updateData := updateScalar.GetJsonData().Data
 			if base.GetIsDynamic() {
+				baseData := baseScalar.GetJsonData().Data
+				updateData := updateScalar.GetJsonData().Data
 				// dynamic field is a json with only 1 level nested struct,
 				// so we need to unmarshal and iterate updateData's key value, and update the baseData's key value
 				for i, baseIdx := range baseIndices {
@@ -2043,28 +1732,14 @@ func UpdateFieldDataByColumn(base, update *schemapb.FieldData, baseIndices, upda
 					baseData[baseIdx] = newJSON
 				}
 			} else {
-				for i, baseIdx := range baseIndices {
-					baseData[baseIdx] = updateData[updateIndices[i]]
-				}
+				jsonFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 			}
 		case *schemapb.ScalarField_GeometryData:
-			baseData := baseScalar.GetGeometryData().Data
-			updateData := updateScalar.GetGeometryData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			geometryFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_GeometryWktData:
-			baseData := baseScalar.GetGeometryWktData().Data
-			updateData := updateScalar.GetGeometryWktData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			geometryWktFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		case *schemapb.ScalarField_TimestamptzData:
-			baseData := baseScalar.GetTimestamptzData().Data
-			updateData := updateScalar.GetTimestamptzData().Data
-			for i, baseIdx := range baseIndices {
-				baseData[baseIdx] = updateData[updateIndices[i]]
-			}
+			timestamptzFieldAccessor.updateByIndices(baseScalar, updateScalar, baseIndices, updateIndices)
 		}
 	case *schemapb.FieldData_Vectors:
 		updateField := update.Field.(*schemapb.FieldData_Vectors)
@@ -2400,118 +2075,29 @@ func MergeFieldData(dst []*schemapb.FieldData, src []*schemapb.FieldData) error 
 			fieldData := fieldID2Data[srcFieldData.FieldId]
 			SetFieldDataValidData(fieldData, append(GetFieldDataValidData(fieldData), GetFieldDataValidData(srcFieldData)...))
 			dstScalar := fieldData.GetScalars()
-			switch srcScalar := fieldType.Scalars.Data.(type) {
+			switch fieldType.Scalars.Data.(type) {
 			case *schemapb.ScalarField_BoolData:
-				if dstScalar.GetBoolData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_BoolData{
-						BoolData: &schemapb.BoolArray{
-							Data: srcScalar.BoolData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetBoolData().Data = append(dstScalar.GetBoolData().Data, srcScalar.BoolData.Data...)
-				}
+				boolFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_IntData:
-				if dstScalar.GetIntData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_IntData{
-						IntData: &schemapb.IntArray{
-							Data: srcScalar.IntData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetIntData().Data = append(dstScalar.GetIntData().Data, srcScalar.IntData.Data...)
-				}
+				intFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_LongData:
-				if dstScalar.GetLongData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_LongData{
-						LongData: &schemapb.LongArray{
-							Data: srcScalar.LongData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetLongData().Data = append(dstScalar.GetLongData().Data, srcScalar.LongData.Data...)
-				}
+				longFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_TimestamptzData:
-				if dstScalar.GetTimestamptzData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_TimestamptzData{
-						TimestamptzData: &schemapb.TimestamptzArray{
-							Data: srcScalar.TimestamptzData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetTimestamptzData().Data = append(dstScalar.GetTimestamptzData().Data, srcScalar.TimestamptzData.Data...)
-				}
+				timestamptzFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_FloatData:
-				if dstScalar.GetFloatData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_FloatData{
-						FloatData: &schemapb.FloatArray{
-							Data: srcScalar.FloatData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetFloatData().Data = append(dstScalar.GetFloatData().Data, srcScalar.FloatData.Data...)
-				}
+				floatFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_DoubleData:
-				if dstScalar.GetDoubleData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_DoubleData{
-						DoubleData: &schemapb.DoubleArray{
-							Data: srcScalar.DoubleData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetDoubleData().Data = append(dstScalar.GetDoubleData().Data, srcScalar.DoubleData.Data...)
-				}
+				doubleFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_StringData:
-				if dstScalar.GetStringData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_StringData{
-						StringData: &schemapb.StringArray{
-							Data: srcScalar.StringData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetStringData().Data = append(dstScalar.GetStringData().Data, srcScalar.StringData.Data...)
-				}
+				stringFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_ArrayData:
-				if dstScalar.GetArrayData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_ArrayData{
-						ArrayData: &schemapb.ArrayArray{
-							Data:        srcScalar.ArrayData.Data,
-							ElementType: srcScalar.ArrayData.ElementType,
-						},
-					}
-				} else {
-					dstScalar.GetArrayData().Data = append(dstScalar.GetArrayData().Data, srcScalar.ArrayData.Data...)
-				}
+				arrayFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_JsonData:
-				if dstScalar.GetJsonData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_JsonData{
-						JsonData: &schemapb.JSONArray{
-							Data: srcScalar.JsonData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetJsonData().Data = append(dstScalar.GetJsonData().Data, srcScalar.JsonData.Data...)
-				}
+				jsonFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_GeometryData:
-				if dstScalar.GetGeometryData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_GeometryData{
-						GeometryData: &schemapb.GeometryArray{
-							Data: srcScalar.GeometryData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetGeometryData().Data = append(dstScalar.GetGeometryData().Data, srcScalar.GeometryData.Data...)
-				}
+				geometryFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			case *schemapb.ScalarField_BytesData:
-				if dstScalar.GetBytesData() == nil {
-					dstScalar.Data = &schemapb.ScalarField_BytesData{
-						BytesData: &schemapb.BytesArray{
-							Data: srcScalar.BytesData.Data,
-						},
-					}
-				} else {
-					dstScalar.GetBytesData().Data = append(dstScalar.GetBytesData().Data, srcScalar.BytesData.Data...)
-				}
+				bytesFieldAccessor.mergeFrom(dstScalar, fieldType.Scalars)
 			default:
 				return merr.WrapErrParameterInvalidMsg("unsupported data type: " + srcFieldData.Type.String())
 			}

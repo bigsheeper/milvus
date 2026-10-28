@@ -48,6 +48,9 @@ type pendingHandover struct {
 	// uploadedAt is when the last complete upload of the tables started. It
 	// is zero until the tables are uploaded once.
 	uploadedAt time.Time
+	// epoch is the reset epoch of the Index at the prepare. A Reset after it
+	// makes the commit drop its result.
+	epoch uint64
 }
 
 // Handover runs one handover step under the lifetime of the Index: it
@@ -99,16 +102,12 @@ func (idx *Index) handover(ctx context.Context) (bool, error) {
 		idx.pending.Store(p)
 	}
 	if p.request == nil {
-		// Nothing to publish: the generations hold no write, so covered is
-		// committed as soon as they retire. One call for all generations,
-		// the engine retires only the oldest ones as a whole. A failed drop
-		// must not be retried, the next engine open cleans up.
-		dropErr := idx.eng.DropFrozen(ctx, p.gens...)
-		idx.lastCommitted.Store(p.covered)
+		return idx.retireEmpty(ctx, p), nil
+	}
+	if idx.resetSince(p.epoch) {
+		// the tables of the request are from before a Reset, see Reset and
+		// commit; the next handover commits the reset, so skip the upload
 		idx.pending.Store(nil)
-		if dropErr != nil {
-			idx.logger.Warn(ctx, "failed to drop empty frozen generations", mlog.Err(dropErr))
-		}
 		return true, nil
 	}
 	// keep the pending request on every failure below: a retry must send
@@ -123,6 +122,28 @@ func (idx *Index) handover(ctx context.Context) (bool, error) {
 	idx.logger.Debug(ctx, "primary key index handover committed",
 		mlog.Uint64("checkpointTimeTick", p.covered), mlog.Int("ssts", len(p.request.AddTables)))
 	return true, nil
+}
+
+// retireEmpty ends the pending handover p that has nothing to publish: the
+// generations hold no write, so covered is committed as soon as they retire.
+// One call for all generations, the engine retires only the oldest ones as a
+// whole. A failed drop must not be retried, the next engine open cleans up.
+// It runs under installMu: a Reset after the prepare of p retired the
+// generations itself and moved nothing to commit, so p is only dropped.
+func (idx *Index) retireEmpty(ctx context.Context, p *pendingHandover) bool {
+	idx.installMu.Lock()
+	defer idx.installMu.Unlock()
+	idx.pending.Store(nil)
+	if p.epoch != idx.resetEpoch {
+		return true
+	}
+	dropErr := idx.eng.DropFrozen(ctx, p.gens...)
+	// nothing was written up to covered, so it is committed even when a drop failed
+	idx.lastCommitted.Store(p.covered)
+	if dropErr != nil {
+		idx.logger.Warn(ctx, "failed to drop empty frozen generations", mlog.Err(dropErr))
+	}
+	return true
 }
 
 // prepare freezes the active generation, stages all frozen generations,
@@ -151,6 +172,16 @@ func (idx *Index) prepare(ctx context.Context) (*pendingHandover, error) {
 	if covered <= idx.LastCommittedTimeTick() {
 		return nil, nil
 	}
+	// A reset commits with a checkpoint at or above its time tick, so wait
+	// until the observe passes it.
+	idx.installMu.Lock()
+	epoch := idx.resetEpoch
+	idx.installMu.Unlock()
+	resetTT := idx.resetTT.Load()
+	reset := resetTT > idx.LastCommittedTimeTick()
+	if reset && covered < resetTT {
+		return nil, nil
+	}
 
 	if _, err := idx.eng.RotateIncrement(ctx); err != nil {
 		return nil, err
@@ -174,8 +205,10 @@ func (idx *Index) prepare(ctx context.Context) (*pendingHandover, error) {
 		}
 	}
 
-	p := &pendingHandover{gens: gens, local: local, covered: covered}
-	if len(refs) > 0 {
+	p := &pendingHandover{gens: gens, local: local, covered: covered, epoch: epoch}
+	// a reset that is not committed needs a request even without tables, so
+	// that the manifest forgets the tables before it
+	if len(refs) > 0 || reset {
 		p.request = &FlushArgs{
 			CollectionID:       idx.collectionID,
 			IndexID:            idx.indexID,
@@ -183,6 +216,9 @@ func (idx *Index) prepare(ctx context.Context) (*pendingHandover, error) {
 			PChannelTerm:       idx.cfg.Term,
 			AddTables:          refs,
 			CheckpointTimeTick: covered,
+		}
+		if reset {
+			p.request.ResetTimeTick = resetTT
 		}
 	}
 	return p, nil
@@ -228,7 +264,16 @@ func (idx *Index) upload(ctx context.Context, p *pendingHandover) error {
 //
 // commit does not read lastObserved again and does not rotate. Only one
 // prepare, upload or commit of one Index runs at a time.
+//
+// A Reset after the prepare of p makes commit drop p without an error: it
+// sends nothing when the Reset came before the flush, and installs nothing,
+// retires nothing and leaves LastCommittedTimeTick when it came during the
+// flush. The next handover commits the reset.
 func (idx *Index) commit(ctx context.Context, p *pendingHandover) error {
+	if idx.resetSince(p.epoch) {
+		// the tables of the request are from before a Reset, see Reset
+		return nil
+	}
 	before := idx.currentInstalledVersion()
 	m, err := idx.cfg.Committer.CommitFlush(ctx, *p.request)
 	if err != nil {
@@ -242,11 +287,27 @@ func (idx *Index) commit(ctx context.Context, p *pendingHandover) error {
 		return errors.Wrapf(ErrRejected, "vchannel %s: the manifest has the SST base path %s, the tables are uploaded under %s",
 			idx.vchannel, m.SSTBasePath, idx.sstBasePath)
 	}
+	if idx.resetSince(p.epoch) {
+		// The tables of the request are from before a Reset. The manifest
+		// has them now, and the next handover replaces them, see prepare.
+		idx.logger.Info(ctx, "primary key index handover committed before a reset, its tables are not installed",
+			mlog.Uint64("checkpointTimeTick", p.covered), mlog.Uint64("resetTimeTick", idx.resetTT.Load()))
+		return nil
+	}
 	if err := idx.installIfNewer(ctx, m, p.local, p.gens...); err != nil {
 		return err
 	}
+	// a Reset between the install and here is after covered: its own
+	// handover commits it
 	idx.lastCommitted.Store(p.covered)
 	return nil
+}
+
+// resetSince reports whether a Reset ran after the reset epoch epoch.
+func (idx *Index) resetSince(epoch uint64) bool {
+	idx.installMu.Lock()
+	defer idx.installMu.Unlock()
+	return idx.resetEpoch != epoch
 }
 
 // committedPath returns the local file of committed table id under dir.

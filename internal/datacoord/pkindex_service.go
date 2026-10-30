@@ -25,6 +25,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	pkcompaction "github.com/milvus-io/milvus/internal/datacoord/pkindex/compaction"
 	pkindexgc "github.com/milvus-io/milvus/internal/datacoord/pkindex/gc"
 	"github.com/milvus-io/milvus/internal/datacoord/pkindex/manifest"
 	"github.com/milvus-io/milvus/internal/pkindex"
@@ -140,13 +141,19 @@ func (s chunkManagerStore) MultiRemove(ctx context.Context, keys []string) error
 	return s.cm.MultiRemove(ctx, keys)
 }
 
-// initPKIndex builds the primary key index manifest manager and GC on the meta
-// kv and cm, and gives the manager to the service. An invalid GC configuration
-// leaves s.pkindexGC nil and does not stop the manager.
+// initPKIndex builds the primary key index manifest manager, the compaction
+// inspector and the GC on the meta kv and cm, and gives the manager to the
+// service. The manager reports each manifest change to the inspector, and the
+// GC keeps the outputs of the in-flight compactions. An invalid GC
+// configuration leaves s.pkindexGC nil and does not stop the manager.
 func (s *Server) initPKIndex(cm storage.ChunkManager) {
 	meta := metaKVStore{kv: s.kv}
 	store := chunkManagerStore{cm: cm}
 	rootPath := cm.RootPath()
+	mgr := manifest.New(meta, store, rootPath)
+	inspector := pkcompaction.New(s.ctx, func() pkcompaction.Config { return pkcompaction.ConfigFromParams(s.ctx) },
+		s.allocator, mgr, s.globalScheduler)
+	mgr.SetObserver(inspector)
 	cfg := pkindexgc.Config{
 		Interval:       Params.DataCoordCfg.PKIndexGCInterval.GetAsDuration(time.Second),
 		Grace:          Params.DataCoordCfg.PKIndexGCGrace.GetAsDuration(time.Second),
@@ -159,12 +166,9 @@ func (s *Server) initPKIndex(cm storage.ChunkManager) {
 		MissingTolerance: Params.DataCoordCfg.GCMissingTolerance.GetAsDuration(time.Second),
 	}
 	gc, err := pkindexgc.New(meta, store, rootPath, cfg,
-		// TODO: pass the outputs of the in-flight compactions of the primary
-		// key index SSTs when that compaction exists.
 		// TODO: add to the live set the tables that a streaming node still
 		// reads on demand from object storage.
-		nil)
-	mgr := manifest.New(meta, store, rootPath)
+		inspector.InFlightOutputs)
 	if err != nil {
 		mlog.Error(s.ctx, "init primary key index gc failed, the gc is disabled", mlog.Err(err))
 	} else {
@@ -177,8 +181,10 @@ func (s *Server) initPKIndex(cm storage.ChunkManager) {
 				return s.garbageCollector != nil && s.garbageCollector.collectionGCPaused(collectionID)
 			},
 		}, mgr)
+		gc.SetObserver(inspector)
 		s.pkindexGC = gc
 	}
+	s.pkindexCompaction = inspector
 	s.pkindexService.SetManager(mgr)
 }
 

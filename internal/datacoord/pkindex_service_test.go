@@ -19,14 +19,17 @@ package datacoord
 import (
 	"context"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/protobuf/proto"
 
 	pkindexgc "github.com/milvus-io/milvus/internal/datacoord/pkindex/gc"
 	"github.com/milvus-io/milvus/internal/datacoord/pkindex/manifest"
@@ -39,6 +42,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/kv/predicates"
 	"github.com/milvus-io/milvus/pkg/v3/objectstorage"
 	"github.com/milvus-io/milvus/pkg/v3/proto/pkindexpb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v3/util/merr"
 	"github.com/milvus-io/milvus/pkg/v3/util/paramtable"
 )
@@ -197,10 +201,63 @@ func TestInitPKIndexInvalidGCConfig(t *testing.T) {
 	s := &Server{ctx: context.Background(), kv: kv, pkindexService: pkindexservice.New()}
 	s.initPKIndex(storage.NewLocalChunkManager(objectstorage.RootPath(t.TempDir())))
 	assert.Nil(t, s.pkindexGC)
+	require.NotNil(t, s.pkindexCompaction)
 
 	resp, err := s.pkindexService.GetRecoveryManifests(context.Background(), &pkindexpb.GetRecoveryManifestsRequest{
 		Targets: []*pkindexpb.ManifestTarget{{CollectionId: 1, IndexId: 2, Vchannel: "v"}},
 	})
 	require.NoError(t, err)
 	assert.NotEqual(t, merr.Code(merr.ErrServiceNotReady), resp.GetStatus().GetCode())
+}
+
+// A flush committed through the service reaches the inspector, which proves
+// that initPKIndex made the inspector the observer of the manager.
+func TestInitPKIndexWiresCompaction(t *testing.T) {
+	ctx := context.Background()
+	const pchannel, vchannel = "by-dev-rootcoord-dml_0", "by-dev-rootcoord-dml_0_1v0"
+	pchannelMeta, err := proto.Marshal(&streamingpb.PChannelMeta{
+		Channel: &streamingpb.PChannelInfo{Name: pchannel, Term: 1},
+		State:   streamingpb.PChannelMetaState_PCHANNEL_META_STATE_ASSIGNED,
+	})
+	require.NoError(t, err)
+	var mu sync.Mutex
+	stored := map[string]string{streamingcoord.BuildPChannelInfoPath(pchannel): string(pchannelMeta)}
+	metaKV := mockkv.NewMetaKv(t)
+	metaKV.EXPECT().Load(mock.Anything, mock.Anything).RunAndReturn(func(_ context.Context, key string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if v, ok := stored[key]; ok {
+			return v, nil
+		}
+		return "", merr.WrapErrIoKeyNotFound(key)
+	}).Maybe()
+	save := func(_ context.Context, saves map[string]string, _ []string, _ ...predicates.Predicate) error {
+		mu.Lock()
+		defer mu.Unlock()
+		for k, v := range saves {
+			stored[k] = v
+		}
+		return nil
+	}
+	// a flush writes the pointer on two predicates: the pointer and the pchannel meta
+	metaKV.EXPECT().MultiSaveAndRemove(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(save).Maybe()
+
+	s := &Server{ctx: ctx, kv: metaKV, meta: &meta{indexMeta: &indexMeta{}}, pkindexService: pkindexservice.New()}
+	s.initPKIndex(storage.NewLocalChunkManager(objectstorage.RootPath(t.TempDir())))
+	require.NotNil(t, s.pkindexGC)
+	require.NotNil(t, s.pkindexCompaction)
+
+	assert.False(t, s.pkindexCompaction.Known(1, 2, vchannel))
+	flush, err := s.pkindexService.CommitFlush(ctx, &pkindexpb.CommitFlushRequest{
+		CollectionId: 1, IndexId: 2, Vchannel: vchannel, PchannelTerm: 1, CheckpointTimeTick: 10,
+		AddSsts: []*pkindexpb.SSTRef{{Id: 1}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, merr.Error(flush.GetStatus()))
+
+	assert.True(t, s.pkindexCompaction.Known(1, 2, vchannel))
+	// the inspector has launched no task yet
+	ids, err := s.pkindexCompaction.InFlightOutputs(ctx, 1, 2, vchannel)
+	require.NoError(t, err)
+	assert.Nil(t, ids)
 }

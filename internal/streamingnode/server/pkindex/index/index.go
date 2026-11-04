@@ -29,7 +29,9 @@ import (
 	"github.com/milvus-io/milvus/internal/pkindex/dedup"
 	"github.com/milvus-io/milvus/internal/pkindex/engine"
 	"github.com/milvus-io/milvus/internal/pkindex/sst"
+	"github.com/milvus-io/milvus/pkg/v3/metrics"
 	"github.com/milvus-io/milvus/pkg/v3/mlog"
+	"github.com/milvus-io/milvus/pkg/v3/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v3/util/typeutil"
 )
 
@@ -38,14 +40,17 @@ import (
 // of the vchannel. It reaches its pchannel only through the callbacks of its
 // Config.
 type Index struct {
-	cfg          Config
-	vchannel     string
-	collectionID int64
-	indexID      int64
-	committedDir string
-	eng          *engine.Engine
-	auth         dedup.Decider
-	logger       *mlog.Logger
+	cfg              Config
+	vchannel         string
+	collectionID     int64
+	indexID          int64
+	committedDir     string
+	eng              *engine.Engine
+	auth             dedup.Decider
+	logger           *mlog.Logger
+	openedAt         time.Time
+	metricsNodeID    string
+	metricsCloseOnce sync.Once
 
 	// ctx is canceled when the Index closes.
 	ctx      context.Context
@@ -148,6 +153,7 @@ type Config struct {
 // against the manifest and downloads what is missing or differs, so a
 // restart does not download the tables it already has.
 func Open(ctx context.Context, cfg Config) (*Index, error) {
+	openedAt := time.Now()
 	params := cfg.Params()
 	dir := Dir(cfg.Root, cfg.VChannel, cfg.IndexID)
 	// engine.Destroy removes the engine dir, so the committed tables live outside it
@@ -176,22 +182,25 @@ func Open(ctx context.Context, cfg Config) (*Index, error) {
 	}
 	idxCtx, cancel := context.WithCancel(cfg.Ctx)
 	idx := &Index{
-		cfg:          cfg,
-		vchannel:     cfg.VChannel,
-		collectionID: cfg.CollectionID,
-		indexID:      cfg.IndexID,
-		committedDir: committedDir,
-		eng:          eng,
-		logger:       cfg.Logger.With(mlog.FieldVChannel(cfg.VChannel), mlog.FieldCollectionID(cfg.CollectionID), mlog.Int64("indexID", cfg.IndexID)),
-		ctx:          idxCtx,
-		cancel:       cancel,
-		lifetime:     typeutil.NewLifetime(),
-		ready:        make(chan struct{}),
-		sstBasePath:  pkroot.SSTBasePath(cfg.StorageRootPath, cfg.CollectionID, cfg.IndexID, cfg.VChannel),
+		openedAt:      openedAt,
+		metricsNodeID: paramtable.GetStringNodeID(),
+		cfg:           cfg,
+		vchannel:      cfg.VChannel,
+		collectionID:  cfg.CollectionID,
+		indexID:       cfg.IndexID,
+		committedDir:  committedDir,
+		eng:           eng,
+		logger:        cfg.Logger.With(mlog.FieldVChannel(cfg.VChannel), mlog.FieldCollectionID(cfg.CollectionID), mlog.Int64("indexID", cfg.IndexID)),
+		ctx:           idxCtx,
+		cancel:        cancel,
+		lifetime:      typeutil.NewLifetime(),
+		ready:         make(chan struct{}),
+		sstBasePath:   pkroot.SSTBasePath(cfg.StorageRootPath, cfg.CollectionID, cfg.IndexID, cfg.VChannel),
 	}
 	// the decider only reads the engine: the observe of the WAL recovery
 	// writes it, through Apply
 	idx.auth = dedup.New(cfg.VChannel, eng, dedup.Config{Ready: idx.ready})
+	idx.recordCommittedTables(nil)
 	return idx, nil
 }
 
@@ -283,6 +292,14 @@ func (idx *Index) Close(ctx context.Context) {
 	idx.cancel()
 	idx.auth.Close()
 	idx.lifetime.Wait()
+	// Install and Reset publish their gauges under installMu. Close the
+	// engine under that lock too, so neither can recreate a removed series.
+	idx.installMu.Lock()
+	defer idx.installMu.Unlock()
+	idx.metricsCloseOnce.Do(func() {
+		metrics.StreamingNodePKIndexCommittedTables.DeleteLabelValues(idx.metricsNodeID, idx.vchannel, strconv.FormatInt(idx.indexID, 10))
+		metrics.StreamingNodePKIndexCommittedBytes.DeleteLabelValues(idx.metricsNodeID, idx.vchannel, strconv.FormatInt(idx.indexID, 10))
+	})
 	if err := idx.eng.Close(); err != nil {
 		idx.logger.Warn(ctx, "failed to close primary key index engine", mlog.Err(err))
 		return
@@ -352,6 +369,7 @@ func (idx *Index) installIfNewer(ctx context.Context, m ManifestView, local map[
 	if err := idx.eng.InstallCommitted(ctx, tables, gens...); err != nil {
 		return err
 	}
+	idx.recordCommittedTables(tables)
 	// TODO: no code deletes a local committed file. A compaction must delete
 	// the files of the tables that leave the set.
 	paths := make(map[sst.ID]string, len(tables))
@@ -424,6 +442,9 @@ func (idx *Index) resolveLocal(ctx context.Context, basePath string, ref TableRe
 	if err := idx.cfg.Store.DownloadFile(ctx, pkroot.SSTKey(basePath, int64(id)), path); err != nil {
 		return "", err
 	}
+	if info, statErr := os.Stat(path); statErr == nil {
+		metrics.StreamingNodePKIndexDownloadedBytes.WithLabelValues(idx.metricsNodeID).Add(float64(info.Size()))
+	}
 	idx.logger.Info(ctx, "downloaded a committed primary key index table", mlog.Int64("sstID", int64(id)))
 	return path, nil
 }
@@ -454,6 +475,7 @@ func (idx *Index) MarkReady(ctx context.Context) {
 	first := false
 	idx.readyOnce.Do(func() {
 		first = true
+		metrics.StreamingNodePKIndexReadyDurationSeconds.WithLabelValues(idx.metricsNodeID).Observe(time.Since(idx.openedAt).Seconds())
 		close(idx.ready)
 	})
 	if !first {
@@ -461,4 +483,16 @@ func (idx *Index) MarkReady(ctx context.Context) {
 	}
 	idx.cfg.OnRefresh(idx)
 	idx.logger.Info(ctx, "primary key index ready")
+}
+
+// recordCommittedTables publishes the installed view, rather than counting
+// files left in the committed directory. Install and reset call it while
+// holding installMu; Open calls it before publishing the Index.
+func (idx *Index) recordCommittedTables(tables []engine.CommittedTable) {
+	var bytes int64
+	for _, table := range tables {
+		bytes += table.Info.Size
+	}
+	metrics.StreamingNodePKIndexCommittedTables.WithLabelValues(idx.metricsNodeID, idx.vchannel, strconv.FormatInt(idx.indexID, 10)).Set(float64(len(tables)))
+	metrics.StreamingNodePKIndexCommittedBytes.WithLabelValues(idx.metricsNodeID, idx.vchannel, strconv.FormatInt(idx.indexID, 10)).Set(float64(bytes))
 }

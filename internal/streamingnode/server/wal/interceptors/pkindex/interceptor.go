@@ -401,6 +401,8 @@ func (i *appendInterceptor) decide(ctx context.Context, t *target, vchannel stri
 		var wait *dedup.WaitError
 		if errors.As(err, &wait) {
 			return nil, &interceptors.WaitRequiredError{Wait: func(ctx context.Context) error {
+				start := time.Now()
+				defer func() { i.metrics.waitDuration.Observe(time.Since(start).Seconds()) }()
 				if err := wait.Wait(ctx); err != nil {
 					return decideError(err)
 				}

@@ -29,6 +29,7 @@ import (
 	pkroot "github.com/milvus-io/milvus/internal/pkindex"
 	"github.com/milvus-io/milvus/internal/pkindex/engine"
 	"github.com/milvus-io/milvus/internal/pkindex/sst"
+	"github.com/milvus-io/milvus/pkg/v3/metrics"
 	"github.com/milvus-io/milvus/pkg/v3/mlog"
 	"github.com/milvus-io/milvus/pkg/v3/util/typeutil"
 )
@@ -241,9 +242,13 @@ func (idx *Index) upload(ctx context.Context, p *pendingHandover) error {
 	}
 	start := time.Now()
 	for _, ref := range p.request.AddTables {
-		if err := cfg.Store.UploadFile(ctx, pkroot.SSTKey(idx.sstBasePath, int64(ref.ID)), p.local[ref.ID]); err != nil {
+		uploadStart := time.Now()
+		err := cfg.Store.UploadFile(ctx, pkroot.SSTKey(idx.sstBasePath, int64(ref.ID)), p.local[ref.ID])
+		metrics.StreamingNodePKIndexUploadDurationSeconds.WithLabelValues(idx.metricsNodeID).Observe(time.Since(uploadStart).Seconds())
+		if err != nil {
 			return err
 		}
+		metrics.StreamingNodePKIndexUploadedBytes.WithLabelValues(idx.metricsNodeID).Observe(float64(ref.Size))
 	}
 	p.uploadedAt = start
 	return nil

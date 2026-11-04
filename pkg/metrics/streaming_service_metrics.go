@@ -237,6 +237,39 @@ var (
 		Help: "Primary key index handovers that finished, including handovers with nothing to publish",
 	})
 
+	StreamingNodePKIndexWaitDurationSeconds = newStreamingNodeHistogramVec(prometheus.HistogramOpts{
+		Name:    "pkindex_wait_duration_seconds",
+		Help:    "Time spent waiting outside the WAL lock for index readiness or observe progress, including canceled waits",
+		Buckets: prometheus.ExponentialBucketsRange(0.0001, 600, 24),
+	})
+	StreamingNodePKIndexReadyDurationSeconds = newStreamingNodeHistogramVec(prometheus.HistogramOpts{
+		Name:    "pkindex_ready_duration_seconds",
+		Help:    "Time from opening an index to its first ready transition; excludes replay after that transition",
+		Buckets: prometheus.ExponentialBucketsRange(0.001, 600, 24),
+	})
+	StreamingNodePKIndexUploadDurationSeconds = newStreamingNodeHistogramVec(prometheus.HistogramOpts{
+		Name:    "pkindex_upload_duration_seconds",
+		Help:    "Duration of each attempted table upload, including failed attempts",
+		Buckets: prometheus.ExponentialBucketsRange(0.001, 600, 24),
+	})
+	StreamingNodePKIndexUploadedBytes = newStreamingNodeHistogramVec(prometheus.HistogramOpts{
+		Name:    "pkindex_uploaded_bytes",
+		Help:    "Bytes in each successfully uploaded table, including successful reuploads",
+		Buckets: prometheus.ExponentialBucketsRange(1024, 1<<30, 20),
+	})
+	StreamingNodePKIndexCommittedTables = newStreamingNodeGaugeVec(prometheus.GaugeOpts{
+		Name: "pkindex_committed_tables",
+		Help: "Tables installed in the local primary key index view",
+	}, WALVChannelLabelName, "index_id")
+	StreamingNodePKIndexDownloadedBytes = newStreamingNodeCounterVec(prometheus.CounterOpts{
+		Name: "pkindex_downloaded_bytes_total",
+		Help: "Bytes in successfully downloaded primary key index tables, excluding local file reuse",
+	})
+	StreamingNodePKIndexCommittedBytes = newStreamingNodeGaugeVec(prometheus.GaugeOpts{
+		Name: "pkindex_committed_bytes",
+		Help: "Bytes in the installed primary key index table set, excluding obsolete local files",
+	}, WALVChannelLabelName, "index_id")
+
 	StreamingNodePKIndexHandoverFailuresTotal = newStreamingNodeCounterVec(prometheus.CounterOpts{
 		Name: "pkindex_handover_failures_total",
 		Help: "Primary key index handovers that failed and will be retried",
@@ -735,6 +768,13 @@ func RegisterStreamingNode(registry *prometheus.Registry) {
 	registry.MustRegister(StreamingNodePKIndexDecideDurationSeconds)
 	registry.MustRegister(StreamingNodePKIndexLockWaitDurationSeconds)
 	registry.MustRegister(StreamingNodePKIndexHandoverTotal)
+	registry.MustRegister(StreamingNodePKIndexWaitDurationSeconds)
+	registry.MustRegister(StreamingNodePKIndexReadyDurationSeconds)
+	registry.MustRegister(StreamingNodePKIndexUploadDurationSeconds)
+	registry.MustRegister(StreamingNodePKIndexUploadedBytes)
+	registry.MustRegister(StreamingNodePKIndexCommittedTables)
+	registry.MustRegister(StreamingNodePKIndexCommittedBytes)
+	registry.MustRegister(StreamingNodePKIndexDownloadedBytes)
 	registry.MustRegister(StreamingNodePKIndexHandoverFailuresTotal)
 	registry.MustRegister(StreamingNodePKIndexFatalTotal)
 

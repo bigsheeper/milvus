@@ -32,6 +32,7 @@ type pkindexMetrics struct {
 	companionDelete prometheus.Counter
 	decideDuration  prometheus.Observer
 	lockWait        prometheus.Observer
+	waitDuration    prometheus.Observer
 }
 
 func newMetrics() *pkindexMetrics {
@@ -42,6 +43,7 @@ func newMetrics() *pkindexMetrics {
 		companionDelete: metrics.StreamingNodePKIndexCompanionDeleteKeysTotal.WithLabelValues(nodeID),
 		decideDuration:  metrics.StreamingNodePKIndexDecideDurationSeconds.WithLabelValues(nodeID),
 		lockWait:        metrics.StreamingNodePKIndexLockWaitDurationSeconds.WithLabelValues(nodeID),
+		waitDuration:    metrics.StreamingNodePKIndexWaitDurationSeconds.WithLabelValues(nodeID),
 	}
 }
 

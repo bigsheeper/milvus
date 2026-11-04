@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/commonpb"
@@ -1032,6 +1033,12 @@ func TestDecideErrorClassification(t *testing.T) {
 // An autocommit delete needs no decision, so it does not wait.
 func TestWriteThatWaitsReturnsWaitRequired(t *testing.T) {
 	i, _ := newTestInterceptor(t, nil)
+	waitCount := func() uint64 {
+		var m dto.Metric
+		require.NoError(t, i.metrics.waitDuration.(interface{ Write(*dto.Metric) error }).Write(&m))
+		return m.GetHistogram().GetSampleCount()
+	}
+	before := waitCount()
 	decider := i.ch.Decider(testVChannel)
 	dedup.WaitUntilForTest(decider, 50)
 	f := newFakeAppender()
@@ -1068,6 +1075,7 @@ func TestWriteThatWaitsReturnsWaitRequired(t *testing.T) {
 	_, err = i.DoAppend(newTestAppendContext(), newInsert(testVChannel, 1), f.append)
 	require.NoError(t, err)
 	require.Equal(t, []message.MessageType{message.MessageTypeInsert}, f.types)
+	require.Equal(t, before+3, waitCount(), "canceled, closed and successful waits are all observed")
 }
 
 // ===== autocommit delete =====

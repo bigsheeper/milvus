@@ -54,6 +54,7 @@ func (idx *Index) Reset(ctx context.Context, tt uint64) (dirtied bool, err error
 	if err := idx.eng.Reset(ctx); err != nil {
 		return false, err
 	}
+	idx.recordCommittedTables(nil)
 	idx.resetTT.Store(tt)
 	idx.resetEpoch++
 	idx.recovered = nil

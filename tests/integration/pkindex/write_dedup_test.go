@@ -136,6 +136,10 @@ func (s *WriteDedupSuite) TestFlushCommitsManifest() {
 // reads the manifest from one that replays the whole WAL; the log of the
 // new node shows which one happened.
 func (s *WriteDedupSuite) TestDedupSurvivesStreamingNodeRestart() {
+	s.checkDedupAfterStreamingNodeRestart(false)
+}
+
+func (s *WriteDedupSuite) checkDedupAfterStreamingNodeRestart(force bool) {
 	ctx, cancel := context.WithCancel(s.Cluster.GetContext())
 	defer cancel()
 
@@ -153,7 +157,13 @@ func (s *WriteDedupSuite) TestDedupSurvivesStreamingNodeRestart() {
 		// Stop sends SIGTERM and escalates to SIGKILL after 10 s. Either way
 		// the node is gone; a kill only makes the recovery start from an
 		// older checkpoint.
-		_ = sn.Stop()
+		if force {
+			err := sn.ForceStop()
+			s.Require().Error(err)
+			s.Require().Contains(err.Error(), "killed", "the forced-stop case must actually receive SIGKILL")
+		} else {
+			_ = sn.Stop()
+		}
 	}
 	s.Cluster.AddStreamingNode()
 
@@ -172,6 +182,10 @@ func (s *WriteDedupSuite) TestDedupSurvivesStreamingNodeRestart() {
 // the primary key index on the primary key while the collection is empty, and
 // loads it.
 func (s *WriteDedupSuite) createAndLoadCollection(ctx context.Context, collectionName string) {
+	s.createAndLoadCollectionWithShards(ctx, collectionName, 1)
+}
+
+func (s *WriteDedupSuite) createAndLoadCollectionWithShards(ctx context.Context, collectionName string, shards int32) {
 	schema := integration.ConstructSchema(collectionName, dedupDim, false,
 		&schemapb.FieldSchema{
 			FieldID:      100,
@@ -199,7 +213,7 @@ func (s *WriteDedupSuite) createAndLoadCollection(ctx context.Context, collectio
 	createResp, err := s.Cluster.MilvusClient.CreateCollection(ctx, &milvuspb.CreateCollectionRequest{
 		CollectionName: collectionName,
 		Schema:         marshaledSchema,
-		ShardsNum:      1,
+		ShardsNum:      shards,
 	})
 	s.Require().NoError(err)
 	s.Require().True(merr.Ok(createResp), createResp.GetReason())
@@ -234,8 +248,13 @@ func (s *WriteDedupSuite) createAndLoadCollection(ctx context.Context, collectio
 
 // insert writes rowNum rows whose primary keys start at startPK, all tagged with tag.
 func (s *WriteDedupSuite) insert(ctx context.Context, collectionName string, startPK int64, rowNum int, tag int64) {
+	s.insertIntoPartition(ctx, collectionName, "", startPK, rowNum, tag)
+}
+
+func (s *WriteDedupSuite) insertIntoPartition(ctx context.Context, collectionName, partition string, startPK int64, rowNum int, tag int64) {
 	insertResp, err := s.Cluster.MilvusClient.Insert(ctx, &milvuspb.InsertRequest{
 		CollectionName: collectionName,
+		PartitionName:  partition,
 		FieldsData: []*schemapb.FieldData{
 			integration.NewInt64FieldDataWithStart(dedupPKField, rowNum, startPK),
 			integration.NewFloatVectorFieldData(integration.FloatVecField, rowNum, dedupDim),
